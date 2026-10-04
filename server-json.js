@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿import express from "express";
+﻿﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -378,16 +378,16 @@ async function initMongo() {
       const t0 = Date.now();
 
       await mongoose.connect(MONGO_URI, {
-  serverSelectionTimeoutMS: 25000,
-  socketTimeoutMS: 45000,
-  connectTimeoutMS: 25000,
-  maxPoolSize: 10,
-  minPoolSize: 0,
-  bufferCommands: false,
-  family: 4,
-  retryWrites: true,
-  retryReads: true,
-});
+        serverSelectionTimeoutMS: 25000,
+        socketTimeoutMS: 45000,
+        connectTimeoutMS: 25000,
+        maxPoolSize: 10,
+        minPoolSize: 0,
+        bufferCommands: false,
+        family: 4,
+        retryWrites: true,
+        retryReads: true,
+      });
 
       console.log("✅ Đã kết nối MongoDB trong " + (Date.now() - t0) + "ms");
 
@@ -618,12 +618,10 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
 // ============================================================
 // ✅ JWT_SECRET
 // ============================================================
-// ✅ KHÔNG BAO GIỜ process.exit trên serverless — chỉ cảnh báo
 const JWT_SECRET = process.env.JWT_SECRET || "FALLBACK_SECRET_CHI_DUNG_KHI_DEV_KHONG_AN_TOAN";
 if (!process.env.JWT_SECRET) {
   console.error("⚠️ JWT_SECRET chưa set — dùng fallback (KHÔNG AN TOÀN CHO PRODUCTION)");
 }
-// Bỏ hoàn toàn process.exit(1) — kể cả local dev cũng không cần thiết
 
 function auth(roles = []) {
   return (req, res, next) => {
