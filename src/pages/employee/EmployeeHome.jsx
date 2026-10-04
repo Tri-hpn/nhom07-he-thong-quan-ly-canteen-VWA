@@ -18,16 +18,15 @@ import {
 
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
+import { emitOrderUpdated, onOrderUpdated } from "../../lib/orderEvents";
 import { useI18n } from "../../hooks/useI18n";
 import { useAuth } from "../../contexts/AuthContext";
-
 import StaffKPICard from "../../components/StaffKPICard";
 import KDSTicket from "../../components/KDSTicket";
 import Inventory86List from "../../components/Inventory86List";
 import ShiftChecklist from "../../components/ShiftChecklist";
 import TelemetryDock from "../../components/TelemetryDock";
-
-const REFRESH_MS = 20000;
+const REFRESH_MS = 5000;
 const SUBSIDY_PER_ITEM = 10000; // trợ giá 10k/suất
 
 // VSATTP tasks mặc định
@@ -172,6 +171,13 @@ export default function EmployeeHome() {
     const timer = setInterval(() => load(true), REFRESH_MS);
     return () => clearInterval(timer);
   }, [load]);
+  // ✅ Nghe tín hiệu "đơn vừa cập nhật" từ tab/trang khác → load lại ngay
+useEffect(() => {
+  const off = onOrderUpdated(() => {
+    load(true);
+  });
+  return off;
+}, [load]);
 
   // ---- COMPUTED ----
   const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
@@ -314,6 +320,7 @@ export default function EmployeeHome() {
       setProcessingId(id);
       try {
         await api.orders.setStatus(id, "Sẵn sàng nhận");
+              emitOrderUpdated({ ...order, status: "Sẵn sàng nhận" });
         toast(`${order.code} — ${t("Đã báo xong món!")}`, "success", {
           variant: "card",
           title: t("Đã báo xong món!"),
@@ -336,6 +343,7 @@ export default function EmployeeHome() {
       setProcessingId(id);
       try {
         await api.orders.setStatus(id, "Đang chuẩn bị");
+              emitOrderUpdated({ ...order, status: "Đang chuẩn bị" });
         toast(`${order.code} — ${t("Đã đẩy vào bếp!")}`, "success", {
           variant: "card",
           title: t("Đã đẩy vào bếp!"),
@@ -358,6 +366,7 @@ export default function EmployeeHome() {
       setProcessingId(id);
       try {
         await api.orders.setStatus(id, "Hoàn thành");
+              emitOrderUpdated({ ...order, status: "Hoàn thành" });
         toast(`${order.code} — ${t("Đã trao khay!")}`, "success", {
           variant: "card",
           title: t("Đã trao khay!"),
