@@ -20,7 +20,7 @@ import { SkeletonCard } from "../../components/Skeleton";
 import FoodDetailModal from "../../components/FoodDetailModal";
 import ChatBotWidget from "../../components/ChatBotWidget";
 import { useI18n } from "../../hooks/useI18n";
-
+import { toast } from "../../components/Effects";
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -246,7 +246,33 @@ export default function CustomerHome({ user, cart, setCart }) {
   const [selected, setSelected] = useState(null);
   const [mode, setMode] = useState("cart");
   const [flashQty, setFlashQty] = useState({});
+      // Hàm cập nhật tồn kho khi thêm món
+  const handleUpdateStock = useCallback((itemId, quantityBought) => {
+  const updateFood = (food) => {
+    if (food.id !== itemId && food._id !== itemId) {
+      return food;
+    }
 
+    const currentStock = Number(food.stock) || 0;
+    const currentSold = Number(food.sold) || 0;
+
+    return {
+      ...food,
+
+      // Trừ số suất còn lại
+      stock: Math.max(0, currentStock - quantityBought),
+
+      // Tăng số suất đã bán
+      sold: currentSold + quantityBought,
+    };
+  };
+
+  setPromotions((prev) => prev.map(updateFood));
+  setItems((prev) => prev.map(updateFood));
+  setNewItems((prev) => prev.map(updateFood));
+  setSignatureItems((prev) => prev.map(updateFood));
+  setAllMenu((prev) => prev.map(updateFood));
+}, []);
   // Search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -407,12 +433,18 @@ export default function CustomerHome({ user, cart, setCart }) {
     setSelected(m);
   }, []);
 
-  const addToCart = useCallback(
+      const addToCart = useCallback(
     (m) => {
       const id = m.id || m._id;
       const key = `${id}-S-`;
       const qty = flashQty[id] || 1;
       const maxStock = typeof m.stock === "number" ? m.stock : 99;
+
+      // Kiểm tra tồn kho trước khi thêm
+      if (qty > maxStock) {
+        alert(`Chỉ còn ${maxStock} suất cho món này!`);
+        return;
+      }
 
       setCart((c) => {
         const existing = c[key];
@@ -432,10 +464,13 @@ export default function CustomerHome({ user, cart, setCart }) {
         };
       });
 
+      // 👇 GỌI HÀM CẬP NHẬT TỒN KHO (QUAN TRỌNG)
+      handleUpdateStock(id, qty);
+
       // reset qty về 1 sau khi thêm
       setFlashQty((q) => ({ ...q, [id]: 1 }));
     },
-    [flashQty, setCart]
+    [flashQty, setCart, handleUpdateStock]
   );
 
   const handleQtyChange = useCallback((id, newQty) => {
@@ -977,7 +1012,7 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       )}
 
-      {/* ===== MODAL ===== */}
+           {/* ===== MODAL ===== */}
       {selected && (
         <FoodDetailModal
           item={selected}
@@ -987,9 +1022,9 @@ export default function CustomerHome({ user, cart, setCart }) {
           mode={mode}
           initialQty={flashQty[selected.id || selected._id] || 1}
           onClose={() => setSelected(null)}
+          onUpdateStock={handleUpdateStock}  // 👈 THÊM DÒNG NÀY VÀO ĐÂY
         />
       )}
-
       {/* ===== CHATBOT ===== */}
       <ChatBotWidget cart={cart} setCart={setCart} user={user} />
     </div>
