@@ -2692,10 +2692,48 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
   }
 });
 
-initMongo().then(() => {
-  // Bổ sung dinh dưỡng cho món cũ (nếu thiếu) trước khi mở API
-  migrateMenuNutrition();
-  app.listen(PORT, () =>
-    console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE)
-  );
+// ============================================================
+// ✅ KHỞI TẠO MONGODB + MIGRATE (cache promise, chạy 1 lần)
+// ============================================================
+// Trên Vercel: KHÔNG gọi app.listen() — Vercel tự bọc app thành
+// serverless function. Chỉ cần export default app.
+//
+// Trên local: vẫn chạy được vì có thể gọi `node server-json.js`
+// → dùng biến môi trường VERCEL để phân biệt.
+// ============================================================
+
+let initPromise = null;
+
+function ensureInit() {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    await initMongo();
+    migrateMenuNutrition();
+  })();
+  return initPromise;
+}
+
+// Chạy init ngay khi module load
+ensureInit().catch((e) => {
+  console.error("❌ Init lỗi:", e.message);
 });
+
+// ============================================================
+// ✅ EXPORT app cho Vercel Serverless
+// ============================================================
+export default app;
+
+// ============================================================
+// ✅ CHỈ chạy app.listen() khi KHÔNG phải Vercel (local dev)
+// ============================================================
+const IS_VERCEL = !!process.env.VERCEL;
+
+if (!IS_VERCEL) {
+  ensureInit().then(() => {
+    app.listen(PORT, () =>
+      console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE)
+    );
+  });
+} else {
+  console.log("🚀 API chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+}
