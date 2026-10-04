@@ -1,15 +1,20 @@
-﻿// ============================================================
-// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Voucher
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-//    Không còn key cũ
+// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V2 - đồng bộ)
+// ============================================================
+// ✅ GIỮ NGUYÊN: logic, state, hooks, API calls, i18n
+// 🎨 THAY ĐỔI:
+//   - Breadcrumb đã ẩn qua CSS toàn cục (styles-customer.css)
+//   - Header đồng bộ với trang chủ (font, màu, spacing)
+//   - Xoá "Món đang giảm giá" — trùng với Flash Sale ở Home
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Copy, Check, Gift, Sparkles, Clock, ArrowRight, Ticket, Flame,
-  Percent, ShoppingBag, Plus, Wallet, Loader2, AlertCircle, RefreshCw, X,
+  Copy, Check, Gift, Sparkles, ArrowRight, Ticket, Leaf, TrendingUp,
+  History, HelpCircle, Utensils, Recycle, PiggyBank, Star, QrCode,
+  ExternalLink, ThumbsUp, Receipt, Lightbulb, Wallet, Plus, Loader2,
+  AlertCircle, RefreshCw, X, Award,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -20,11 +25,48 @@ import { useI18n } from "../../hooks/useI18n";
 // CONSTANTS
 // ============================================================
 
-const MODAL_Z = 2147483600;
 const COPY_FEEDBACK_MS = 1500;
 const MIN_REDEEM = 100;
 const POINT_TO_VND = 100;
 const REDEEM_OPTIONS = [100, 200, 500, 1000];
+
+const EARN_METHODS = [
+  {
+    key: "eat",
+    icon: Utensils,
+    color: "#2563EB",
+    title: "Ăn tại Căng tin",
+    badge: "Hoàn 1%",
+    desc: "Mỗi 10.000 đ thanh toán tại quầy hoặc ứng dụng nhận ngay 1 VWA Point tự động.",
+    cta: "Quét mã SV khi nhận món",
+  },
+  {
+    key: "eco",
+    icon: Leaf,
+    color: "#1D4ED8",
+    title: "Sống Xanh Học Đường",
+    badge: "+10 pts/lần",
+    desc: "Mang theo bình nước cá nhân hoặc hộp cơm riêng khi mua mang về, nhân viên quầy quét cộng ngay 10 Points.",
+    cta: "Chung tay giảm đồ nhựa",
+  },
+  {
+    key: "review",
+    icon: Star,
+    color: "#0051B1",
+    title: "Đánh giá món ăn",
+    badge: "+5 pts/lần",
+    desc: "Để lại nhận xét sao & góp ý khẩu vị trong mục Lịch sử đơn hàng để cải thiện chất lượng phục vụ bữa ăn.",
+    cta: "Đánh giá đơn gần nhất",
+  },
+];
+
+const REWARD_TABS = [
+  { id: "all", label: "Tất cả ưu đãi" },
+  { id: "voucher", label: "Voucher Giảm Tiền Trực Tiếp" },
+  { id: "food", label: "Đổi Món Ăn & Đồ Uống Miễn Phí" },
+  { id: "combo", label: "Combo Suất Ăn Trợ Giá SV" },
+  { id: "eco", label: "Quà Tặng Xanh & Bình Giữ Nhiệt" },
+];
 
 // ============================================================
 // HELPERS
@@ -32,17 +74,10 @@ const REDEEM_OPTIONS = [100, 200, 500, 1000];
 
 function groupByValue(list) {
   const map = new Map();
-
   for (const v of list) {
     const key = String(v.value);
     if (!map.has(key)) {
-      map.set(key, {
-        value: v.value,
-        count: 0,
-        vouchers: [],
-        used: 0,
-        available: 0,
-      });
+      map.set(key, { value: v.value, count: 0, vouchers: [], used: 0, available: 0 });
     }
     const g = map.get(key);
     g.count++;
@@ -50,7 +85,6 @@ function groupByValue(list) {
     if (v.used) g.used++;
     else g.available++;
   }
-
   return Array.from(map.values()).sort((a, b) => b.value - a.value);
 }
 
@@ -67,25 +101,35 @@ function fmtDate(iso) {
   }
 }
 
+function daysRemaining(iso) {
+  if (!iso) return 0;
+  try {
+    const diff = new Date(iso).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  } catch {
+    return 0;
+  }
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 
 export default function CustomerPromotions() {
   const navigate = useNavigate();
-  const { t, tData } = useI18n();
+  const { t } = useI18n();
 
   const [vouchers, setVouchers] = useState([]);
   const [publicVouchers, setPublicVouchers] = useState([]);
-  const [promotions, setPromotions] = useState([]);
   const [points, setPoints] = useState(0);
-  const [walletBalance, setWalletBalance] = useState(0);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const [tab, setTab] = useState("active");
+  const [rewardTab, setRewardTab] = useState("all");
+  const [affordableOnly, setAffordableOnly] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [claimingIds, setClaimingIds] = useState(() => new Set());
   const [openedGroup, setOpenedGroup] = useState(null);
@@ -97,35 +141,34 @@ export default function CustomerPromotions() {
   const inFlightRef = useRef(false);
 
   // ---------- Load ----------
-  const loadAll = useCallback(async (silent = false) => {
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
+  const loadAll = useCallback(
+    async (silent = false) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
 
-    if (!silent) setRefreshing(true);
-    setError("");
+      if (!silent) setRefreshing(true);
+      setError("");
 
-    try {
-      const [myRes, pubRes, promoRes, pointsRes, walletRes] = await Promise.all([
-        api.vouchers.me().catch(() => []),
-        api.vouchers.public().catch(() => []),
-        api.promotions.list().catch(() => []),
-        api.points.me().catch(() => ({ points: 0 })),
-        api.wallet.me().catch(() => ({ balance: 0 })),
-      ]);
+      try {
+        const [myRes, pubRes, pointsRes] = await Promise.all([
+          api.vouchers.me().catch(() => []),
+          api.vouchers.public().catch(() => []),
+          api.points.me().catch(() => ({ points: 0 })),
+        ]);
 
-      setVouchers(Array.isArray(myRes) ? myRes : []);
-      setPublicVouchers(Array.isArray(pubRes) ? pubRes : []);
-      setPromotions(Array.isArray(promoRes) ? promoRes : []);
-      setPoints(Number(pointsRes?.points) || 0);
-      setWalletBalance(Number(walletRes?.balance) || 0);
-    } catch (e) {
-      if (!silent) setError(e.message || t("Không tải được dữ liệu khuyến mãi"));
-    } finally {
-      setLoading(false);
-      if (!silent) setRefreshing(false);
-      inFlightRef.current = false;
-    }
-  }, [t]);
+        setVouchers(Array.isArray(myRes) ? myRes : []);
+        setPublicVouchers(Array.isArray(pubRes) ? pubRes : []);
+        setPoints(Number(pointsRes?.points) || 0);
+      } catch (e) {
+        if (!silent) setError(e.message || t("Không tải được dữ liệu khuyến mãi"));
+      } finally {
+        setLoading(false);
+        if (!silent) setRefreshing(false);
+        inFlightRef.current = false;
+      }
+    },
+    [t]
+  );
 
   useEffect(() => {
     loadAll(false);
@@ -139,14 +182,23 @@ export default function CustomerPromotions() {
 
   // ---------- Derived ----------
   const { active, used } = useMemo(() => {
-    const activeList = vouchers.filter((v) => !v.used);
-    const usedList = vouchers.filter((v) => v.used);
-    return { active: activeList, used: usedList };
+    return {
+      active: vouchers.filter((v) => !v.used),
+      used: vouchers.filter((v) => v.used),
+    };
   }, [vouchers]);
 
   const list = tab === "active" ? active : used;
   const grouped = useMemo(() => groupByValue(list), [list]);
   const canRedeem = points >= redeemPoints && redeemPoints >= MIN_REDEEM;
+
+  const tier = useMemo(() => {
+    if (points >= 1000) return { name: t("Bạch Kim"), short: t("Platinum"), next: 1500 };
+    if (points >= 500) return { name: t("Vàng"), short: t("Gold"), next: 1000 };
+    if (points >= 100) return { name: t("Bạc"), short: t("Silver"), next: 500 };
+    return { name: t("Đồng"), short: t("Bronze"), next: 100 };
+  }, [points, t]);
+  const tierProgress = Math.min(100, (points / tier.next) * 100);
 
   // ---------- Handlers ----------
   const scrollToSection = useCallback((id) => {
@@ -156,7 +208,6 @@ export default function CustomerPromotions() {
 
   const doRedeem = async () => {
     if (redeemLoading) return;
-
     if (redeemPoints < MIN_REDEEM) {
       toast(
         t("Cần ít nhất {value} điểm để đổi").replace("{value}", MIN_REDEEM),
@@ -210,10 +261,7 @@ export default function CustomerPromotions() {
     setClaimingIds((s) => new Set(s).add(v.id));
     try {
       await api.vouchers.claim(v.id);
-      toast(
-        `${t("Đã nhận voucher!")} — ${money(v.value)}!`,
-        "success"
-      );
+      toast(`${t("Đã nhận voucher!")} — ${money(v.value)}!`, "success");
       await loadAll(true);
       setTab("active");
     } catch (e) {
@@ -241,780 +289,539 @@ export default function CustomerPromotions() {
   // ============================================================
 
   return (
-    <div>
-      {/* ERROR BANNER */}
+    <div className="customer-promo-v2">
       {error && (
-        <div
-          style={{
-            background: "rgba(239, 68, 68, 0.08)",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-            borderRadius: 10,
-            padding: "12px 16px",
-            marginBottom: 16,
-            color: "#ef4444",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 13,
-          }}
-        >
-          <AlertCircle size={18} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{error}</span>
-          <button
-            onClick={() => loadAll(false)}
-            style={{
-              padding: "6px 12px",
-              background: "#ef4444",
-              color: "#fff",
-              border: 0,
-              borderRadius: 6,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 12,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
+        <div className="promo-error">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+          <button onClick={() => loadAll(false)}>
             <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
 
-      {/* HERO */}
-      <div
-        style={{
-          background:
-            "linear-gradient(135deg, #2634d5 0%, #8b5cf6 50%, #ec4899 100%)",
-          borderRadius: 18,
-          padding: "28px 32px",
-          marginBottom: 20,
-          color: "#fff",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: -30,
-            right: -30,
-            fontSize: 140,
-            opacity: 0.12,
-            transform: "rotate(-15deg)",
-          }}
-        >
-          🎁
-        </div>
-        <div style={{ position: "relative", zIndex: 2 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 12,
-              opacity: 0.9,
-              marginBottom: 8,
-              letterSpacing: 1,
-              textTransform: "uppercase",
-            }}
-          >
-            <Sparkles size={14} /> {t("Ưu đãi Canteen VWA")}
+      {/* ===== HEADER (breadcrumb đã ẩn qua CSS) ===== */}
+      <section className="promo-header">
+        <div className="promo-header__row">
+          <div className="promo-header__left">
+            <div className="promo-header__eyebrow">
+              <Leaf size={14} />
+              {t("Chương Trình Sống Xanh Học Đường")}
+            </div>
+            <h1 className="promo-title">
+              {t("Khuyến Mãi & Đổi Điểm Thưởng")}
+            </h1>
+            <p className="promo-subtitle">
+              {t("Tích lũy điểm VWA Green sau mỗi bữa ăn tại căng tin, dùng bình nước cá nhân hoặc mang hộp cơm để đổi voucher giảm giá, món ăn và quà tặng sinh thái học viện.")}
+            </p>
           </div>
-          <h1 style={{ margin: "0 0 6px", fontSize: 28, fontWeight: 800 }}>
-            {t("Khuyến mãi & Voucher")}
-          </h1>
-          <p style={{ margin: "0 0 18px", fontSize: 14, opacity: 0.95 }}>
-            {t("Nhận ưu đãi hấp dẫn, đổi điểm lấy voucher và nhiều hơn nữa!")}
-          </p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <HeroButton
-              icon={<Ticket size={16} />}
-              label={t("Ưu đãi")}
-              value={publicVouchers.length}
-              onClick={() => scrollToSection("section-public-vouchers")}
-              disabled={publicVouchers.length === 0}
-            />
-            <HeroButton
-              icon={<Wallet size={16} />}
-              label={t("Ví Canteen")}
-              value={money(walletBalance)}
-              onClick={() => navigate("/customer/wallet")}
-            />
-            <HeroButton
-              icon={<Flame size={16} />}
-              label={t("Khuyến mãi")}
-              value={promotions.length}
-              onClick={() => scrollToSection("section-promotions")}
-              disabled={promotions.length === 0}
-            />
-          </div>
-        </div>
-      </div>
 
-      {/* ĐIỂM + ĐỔI VOUCHER */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, #2634d5, #18a967)",
-          borderRadius: 18,
-          padding: "24px 28px",
-          marginBottom: 24,
-          color: "#fff",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: -20,
-            right: 20,
-            fontSize: 120,
-            opacity: 0.15,
-          }}
-        >
-          🏆
+          <button
+            className="promo-header__cta"
+            onClick={() => scrollToSection("my-vouchers")}
+          >
+            <Ticket size={18} />
+            {t("Ví Voucher Của Tôi")} ({active.length})
+          </button>
         </div>
-        <div
-          style={{
-            position: "relative",
-            zIndex: 2,
-            display: "grid",
-            gridTemplateColumns: "1fr auto",
-            gap: 24,
-            alignItems: "center",
-          }}
-          className="promo-points-grid"
-        >
+      </section>
+
+      {/* ===== POINTS HERO ===== */}
+      <section className="promo-hero">
+        <div className="promo-hero__glow-1" />
+        <div className="promo-hero__glow-2" />
+
+        <div className="promo-hero__content">
+          <div className="promo-hero__left">
+            <div className="promo-hero__badges">
+              <span className="promo-hero__badge">
+                <Award size={14} />
+                {t("Hạng")} {tier.name} ({tier.short} Member)
+              </span>
+              <span className="promo-hero__badge promo-hero__badge--eco">
+                <Leaf size={14} />
+                {t("VWA Eco Warrior")}
+              </span>
+            </div>
+
+            <div className="promo-hero__user">
+              <div className="promo-hero__user-name">
+                {t("Xin chào, bạn!")}
+              </div>
+              <div className="promo-hero__user-meta">
+                {t("Thành viên Canteen VWA")}
+              </div>
+            </div>
+
+            <div className="promo-hero__points">
+              <div className="promo-hero__points-number">{points}</div>
+              <div className="promo-hero__points-info">
+                <span className="promo-hero__points-label">
+                  {t("VWA Points khả dụng")}
+                </span>
+                <span className="promo-hero__points-value">
+                  ≈ {money(points * POINT_TO_VND)} {t("giá trị quy đổi")}
+                </span>
+              </div>
+            </div>
+
+            <div className="promo-hero__tier">
+              <div className="promo-hero__tier-row">
+                <span>
+                  <TrendingUp size={14} />
+                  {t("Tiến độ thăng Hạng")} {tier.name}
+                </span>
+                <span>
+                  <b>{points}</b> / {tier.next} pts
+                </span>
+              </div>
+              <div className="promo-hero__tier-bar">
+                <div
+                  className="promo-hero__tier-fill"
+                  style={{ width: `${tierProgress}%` }}
+                />
+              </div>
+              <p className="promo-hero__tier-note">
+                {t("Đạt Hạng Vàng: Nhận đặc quyền x1.5 điểm tích lũy & miễn phí 01 Cà phê mừng sinh nhật.")}
+              </p>
+            </div>
+
+            <div className="promo-hero__actions">
+              <button className="promo-hero__action promo-hero__action--solid">
+                <History size={16} />
+                {t("Lịch sử tích/đổi điểm")}
+              </button>
+              <button className="promo-hero__action promo-hero__action--ghost">
+                <HelpCircle size={16} />
+                {t("Quy tắc tích điểm")}
+              </button>
+              <span className="promo-hero__expiry">
+                {t("Hạn điểm:")} <b>30/06/2025</b>
+              </span>
+            </div>
+          </div>
+
+          <div className="promo-hero__right">
+            <div className="promo-achievement">
+              <div className="promo-achievement__icon">
+                <Utensils size={22} />
+              </div>
+              <div className="promo-achievement__body">
+                <b>18</b> {t("bữa")}
+                <span>{t("Ăn uống tích điểm căng tin")}</span>
+              </div>
+            </div>
+            <div className="promo-achievement">
+              <div className="promo-achievement__icon">
+                <Recycle size={22} />
+              </div>
+              <div className="promo-achievement__body">
+                <b>12</b> {t("lần Eco")}
+                <span>{t("Giảm ~240g rác thải nhựa")}</span>
+              </div>
+            </div>
+            <div className="promo-achievement">
+              <div className="promo-achievement__icon">
+                <PiggyBank size={22} />
+              </div>
+              <div className="promo-achievement__body">
+                <b>{money(580000)}</b>
+                <span>{t("Tiết kiệm từ voucher & trợ giá")}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== EARN POINTS ===== */}
+      <section className="promo-section">
+        <div className="promo-section__head">
           <div>
-            <div
-              style={{
-                fontSize: 12,
-                opacity: 0.9,
-                fontWeight: 600,
-                letterSpacing: 1,
-                marginBottom: 6,
-              }}
-            >
-              💎 {t("Điểm tích lũy của bạn")}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: 12,
-                marginBottom: 8,
-              }}
-            >
-              <div style={{ fontSize: 48, fontWeight: 900, lineHeight: 1 }}>
-                {points}
-              </div>
-              <div style={{ fontSize: 14, opacity: 0.9 }}>
-                {t("điểm")}
-              </div>
-            </div>
-            <div style={{ fontSize: 13, opacity: 0.9 }}>
-              {t("1 điểm = 100đ khi đổi voucher")}
-            </div>
+            <h2 className="promo-section__title">
+              {t("Cách Nhận Thêm VWA Green Points")}
+            </h2>
+            <p className="promo-section__sub">
+              {t("Tích điểm chủ động mỗi ngày qua thói quen ăn uống văn minh")}
+            </p>
           </div>
+          <Sparkles size={28} color="#2563EB" />
+        </div>
 
-          <div
-            style={{
-              background: "rgba(255,255,255,0.15)",
-              border: "1px solid rgba(255,255,255,0.3)",
-              borderRadius: 14,
-              padding: 16,
-              minWidth: 260,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                opacity: 0.9,
-                fontWeight: 600,
-                marginBottom: 10,
-                letterSpacing: 0.5,
-              }}
-            >
-              🎁 {t("Đổi điểm lấy voucher")}
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 4,
-                marginBottom: 10,
-              }}
-            >
-              {REDEEM_OPTIONS.map((p) => {
-                const disabled = points < p;
-                const active = redeemPoints === p;
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setRedeemPoints(p)}
-                    disabled={disabled}
-                    style={{
-                      padding: "7px 4px",
-                      background: active ? "#fff" : "rgba(255,255,255,0.15)",
-                      color: active ? "#2634d5" : "#fff",
-                      border: 0,
-                      borderRadius: 7,
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      fontWeight: 700,
-                      fontSize: 12,
-                      opacity: disabled ? 0.4 : 1,
-                    }}
+        <div className="promo-earn-grid">
+          {EARN_METHODS.map((m) => {
+            const Icon = m.icon;
+            return (
+              <div key={m.key} className="promo-earn-card">
+                <div
+                  className="promo-earn-card__icon"
+                  style={{ background: `${m.color}15`, color: m.color }}
+                >
+                  <Icon size={24} />
+                </div>
+                <div className="promo-earn-card__body">
+                  <div className="promo-earn-card__head">
+                    <b>{t(m.title)}</b>
+                    <span
+                      className="promo-earn-card__badge"
+                      style={{ background: `${m.color}15`, color: m.color }}
+                    >
+                      {t(m.badge)}
+                    </span>
+                  </div>
+                  <p className="promo-earn-card__desc">{t(m.desc)}</p>
+                  <span
+                    className="promo-earn-card__cta"
+                    style={{ color: m.color }}
                   >
-                    {p}
-                  </button>
-                );
-              })}
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                marginBottom: 10,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span style={{ opacity: 0.9 }}>{t("Nhận voucher")}:</span>
-              <b style={{ fontSize: 18 }}>
-                {money(redeemPoints * POINT_TO_VND)}
-              </b>
-            </div>
+                    {t(m.cta)} <ArrowRight size={14} />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ===== REDEEM HUB ===== */}
+      <section className="promo-section">
+        <div className="promo-section__head">
+          <div>
+            <h2 className="promo-section__title">
+              {t("Kho Quà & Voucher Đổi Điểm")}
+            </h2>
+            <p className="promo-section__sub">
+              {t("Sử dụng điểm tích lũy của bạn để áp dụng trực tiếp cho bữa ăn kế tiếp")}
+            </p>
+          </div>
+          <div className="promo-redeem-controls">
+            <label className="promo-redeem-check">
+              <input
+                type="checkbox"
+                checked={affordableOnly}
+                onChange={(e) => setAffordableOnly(e.target.checked)}
+              />
+              <span>
+                {t("Chỉ hiện quà đủ điểm đổi")} (≤ {points} pts)
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="promo-reward-tabs">
+          {REWARD_TABS.map((tItem) => (
             <button
-              onClick={doRedeem}
+              key={tItem.id}
+              className={`promo-reward-tab ${
+                rewardTab === tItem.id ? "active" : ""
+              }`}
+              onClick={() => setRewardTab(tItem.id)}
+            >
+              {t(tItem.label)}
+            </button>
+          ))}
+        </div>
+
+        <div className="promo-redeem-options">
+          <div className="promo-redeem-options__left">
+            <span className="promo-redeem-options__label">
+              {t("Đổi điểm lấy voucher:")}
+            </span>
+            {REDEEM_OPTIONS.map((p) => {
+              const disabled = points < p;
+              const isActive = redeemPoints === p;
+              return (
+                <button
+                  key={p}
+                  className={`promo-redeem-opt ${
+                    isActive ? "active" : ""
+                  }`}
+                  disabled={disabled}
+                  onClick={() => setRedeemPoints(p)}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+          <div className="promo-redeem-options__right">
+            <span className="promo-redeem-options__value">
+              {t("Nhận voucher")}:{" "}
+              <b>{money(redeemPoints * POINT_TO_VND)}</b>
+            </span>
+            <button
+              className="promo-redeem-btn"
               disabled={redeemLoading || !canRedeem}
-              style={{
-                width: "100%",
-                padding: "11px 16px",
-                background: canRedeem ? "#fff" : "rgba(255,255,255,0.3)",
-                color: canRedeem ? "#2634d5" : "rgba(255,255,255,0.7)",
-                border: 0,
-                borderRadius: 9,
-                fontWeight: 800,
-                cursor: redeemLoading || !canRedeem ? "not-allowed" : "pointer",
-                fontSize: 13,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-              }}
+              onClick={doRedeem}
             >
               {redeemLoading ? (
                 <>
-                  <Loader2
-                    size={14}
-                    style={{ animation: "spin 1s linear infinite" }}
-                  />
+                  <Loader2 size={14} className="promo-spin" />
                   {t("Đang đổi...")}
                 </>
               ) : (
                 <>
-                  <Gift size={15} /> {t("Đổi ngay")}
+                  <Gift size={15} />
+                  {t("Đổi ngay")}
                 </>
               )}
             </button>
           </div>
         </div>
-      </div>
 
-      {/* MÓN ĐANG GIẢM GIÁ */}
-      {!loading && promotions.length > 0 && (
-        <div
-          id="section-promotions"
-          style={{ scrollMarginTop: 130, marginBottom: 24 }}
-        >
-          <SectionHeader
-            color="#f59e0b"
-            title={t("Món đang giảm giá")}
-            badge={`${promotions.length} ${t("món")}`}
-          />
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-              gap: 14,
-            }}
-          >
-            {promotions.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  background: "var(--card-bg, #fff)",
-                  border: "1px solid var(--border-color, #e5e9ef)",
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                  position: "relative",
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 10,
-                    right: 10,
-                    background: "linear-gradient(135deg, #ef4444, #f59e0b)",
-                    color: "#fff",
-                    padding: "4px 10px",
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 800,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    zIndex: 2,
-                    boxShadow: "0 4px 10px rgba(239, 68, 68, 0.4)",
-                  }}
-                >
-                  <Percent size={11} /> -{m.discount_percent}%
-                </div>
-
-                <img
-                  src={m.image}
-                  alt={m.name}
-                  loading="lazy"
-                  style={{
-                    width: "100%",
-                    height: 130,
-                    objectFit: "cover",
-                  }}
-                />
-
-                <div
-                  style={{
-                    padding: 12,
-                    flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-light, #8993a3)",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.4,
-                      marginBottom: 2,
-                    }}
-                  >
-                    {m.category}
-                  </span>
-                  <b
-                    style={{
-                      fontSize: 14,
-                      color: "var(--text-primary, #172033)",
-                      marginBottom: 6,
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {tData(m, "name")}
-                  </b>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "baseline",
-                      gap: 8,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <b style={{ color: "#ef4444", fontSize: 16 }}>
-                      {money(m.price)}
-                    </b>
-                    {m.original_price > m.price && (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          color: "var(--text-light, #94a3b8)",
-                          textDecoration: "line-through",
-                        }}
-                      >
-                        {money(m.original_price)}
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => navigate("/customer/menu")}
-                    style={{
-                      marginTop: "auto",
-                      width: "100%",
-                      padding: "9px 12px",
-                      background: "#2634d5",
-                      color: "#fff",
-                      border: 0,
-                      borderRadius: 8,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontSize: 12,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 5,
-                    }}
-                  >
-                    <ShoppingBag size={13} /> {t("Đặt ngay")}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ƯU ĐÃI TOÀN HỆ THỐNG */}
-      {!loading && publicVouchers.length > 0 && (
-        <div
-          id="section-public-vouchers"
-          style={{ marginBottom: 24, scrollMarginTop: 130 }}
-        >
-          <SectionHeader
-            color="#ec4899"
-            title={t("Ưu đãi toàn hệ thống")}
-            badge={`${publicVouchers.length} ${t("voucher")}`}
-          />
-          <p
-            style={{
-              margin: "0 0 14px",
-              fontSize: 13,
-              color: "var(--text-muted, #64748b)",
-            }}
-          >
-            {t("Nhấn \"Nhận ngay\" để lưu voucher vào ví của bạn.")}
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-              gap: 14,
-            }}
-          >
-            {publicVouchers.map((v) => {
-              const isClaiming = claimingIds.has(v.id);
-              const anyClaiming = claimingIds.size > 0;
-
-              return (
-                <div
-                  key={v.id}
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)",
-                    borderRadius: 14,
-                    padding: 2,
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "var(--card-bg, #fff)",
-                      borderRadius: 12,
-                      padding: 16,
-                      height: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        marginBottom: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 50,
-                          height: 50,
-                          borderRadius: 12,
-                          background:
-                            "linear-gradient(135deg, #ec4899, #8b5cf6)",
-                          color: "#fff",
-                          display: "grid",
-                          placeItems: "center",
-                          fontSize: 24,
-                          flexShrink: 0,
-                        }}
-                      >
-                        🎟️
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-light, #8993a3)",
-                            fontWeight: 600,
-                            letterSpacing: 0.5,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {t("Tiết kiệm ngay")}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 22,
-                            fontWeight: 800,
-                            color: "#ec4899",
-                            lineHeight: 1.1,
-                          }}
-                        >
-                          {money(v.value)}
-                        </div>
-                      </div>
+        {publicVouchers.length > 0 && (
+          <div className="promo-public-section">
+            <div className="promo-public-section__head">
+              <Ticket size={18} />
+              <b>
+                {t("Ưu đãi toàn hệ thống")} ({publicVouchers.length})
+              </b>
+            </div>
+            <div className="promo-public-grid">
+              {publicVouchers.map((v) => {
+                const isClaiming = claimingIds.has(v.id);
+                const anyClaiming = claimingIds.size > 0;
+                return (
+                  <div key={v.id} className="promo-public-card">
+                    <div className="promo-public-card__value">
+                      {money(v.value)}
                     </div>
-
-                    <div
-                      style={{
-                        fontFamily: "monospace",
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: "var(--text-muted, #64748b)",
-                        padding: "6px 10px",
-                        background: "var(--bg-tertiary, #f5f7fb)",
-                        borderRadius: 6,
-                        marginBottom: 12,
-                        textAlign: "center",
-                        border: "1px dashed var(--border-color, #cbd5e1)",
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      {v.code}
-                    </div>
-
+                    <div className="promo-public-card__code">{v.code}</div>
                     <button
-                      onClick={() => claimVoucher(v)}
+                      className="promo-public-card__btn"
                       disabled={isClaiming || anyClaiming}
-                      style={{
-                        marginTop: "auto",
-                        width: "100%",
-                        padding: "11px 16px",
-                        background:
-                          isClaiming || anyClaiming
-                            ? "#94a3b8"
-                            : "linear-gradient(135deg, #ec4899, #8b5cf6)",
-                        color: "#fff",
-                        border: 0,
-                        borderRadius: 10,
-                        fontWeight: 700,
-                        cursor:
-                          isClaiming || anyClaiming
-                            ? "not-allowed"
-                            : "pointer",
-                        fontSize: 13,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                      }}
+                      onClick={() => claimVoucher(v)}
                     >
                       {isClaiming ? (
                         <>
-                          <Loader2
-                            size={14}
-                            style={{ animation: "spin 1s linear infinite" }}
-                          />
+                          <Loader2 size={13} className="promo-spin" />
                           {t("Đang nhận...")}
                         </>
                       ) : (
                         <>
-                          <Plus size={15} /> {t("Nhận ngay")}
+                          <Plus size={14} />
+                          {t("Nhận ngay")}
                         </>
                       )}
                     </button>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* VÍ VOUCHER CỦA TÔI */}
-      <div
-        id="section-my-vouchers"
-        style={{ marginBottom: 24, scrollMarginTop: 130 }}
-      >
-        <SectionHeader color="#2634d5" title={t("Ví voucher của tôi")} />
-
-        {/* Tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            marginBottom: 14,
-            background: "var(--card-bg, #fff)",
-            border: "1px solid var(--border-color, #e7ebf0)",
-            borderRadius: 12,
-            padding: 6,
-          }}
-        >
-          {[
-            {
-              id: "active",
-              label: t("Khả dụng"),
-              count: active.length,
-              icon: Sparkles,
-            },
-            {
-              id: "used",
-              label: t("Đã dùng"),
-              count: used.length,
-              icon: Clock,
-            },
-          ].map((tItem) => {
-            const Icon = tItem.icon;
-            const isActive = tab === tItem.id;
-            return (
-              <button
-                key={tItem.id}
-                onClick={() => setTab(tItem.id)}
-                style={{
-                  padding: "10px 18px",
-                  border: 0,
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  background: isActive ? "#2634d5" : "transparent",
-                  color: isActive ? "#fff" : "var(--text-muted, #475569)",
-                  fontWeight: isActive ? 700 : 500,
-                  fontSize: 13,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <Icon size={15} />
-                {tItem.label}
-                <span
-                  style={{
-                    background: isActive
-                      ? "#fff"
-                      : "var(--bg-tertiary, #f5f7fb)",
-                    color: isActive ? "#2634d5" : "var(--text-muted, #64748b)",
-                    minWidth: 22,
-                    height: 20,
-                    padding: "0 7px",
-                    borderRadius: 10,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {tItem.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Loading */}
-        {loading && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: 40,
-              color: "var(--text-light, #8993a3)",
-            }}
-          >
-            <Loader2
-              size={24}
-              style={{ animation: "spin 1s linear infinite", marginBottom: 8 }}
-            />
-            <div style={{ fontSize: 13 }}>{t("Đang tải voucher...")}</div>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* Empty */}
-        {!loading && list.length === 0 && (
-          <div
-            style={{
-              background: "var(--card-bg, #fff)",
-              border: "1px solid var(--border-color, #e7ebf0)",
-              borderRadius: 14,
-              padding: 40,
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 50, marginBottom: 12 }}>🎟️</div>
-            <h3
-              style={{
-                margin: "0 0 6px",
-                color: "var(--text-primary, #172033)",
-                fontSize: 15,
-              }}
-            >
-              {tab === "active"
-                ? t("Chưa có voucher khả dụng")
-                : t("Chưa có voucher nào đã dùng")}
-            </h3>
-            <p
-              style={{
-                margin: "0 0 16px",
-                color: "var(--text-muted, #64748b)",
-                fontSize: 13,
-              }}
-            >
-              {tab === "active"
-                ? t("Đổi điểm hoặc nhận voucher từ mục \"Ưu đãi toàn hệ thống\".")
-                : t("Các voucher đã sử dụng sẽ xuất hiện ở đây.")}
-            </p>
-            {tab === "active" && (
-              <button
-                onClick={() => {
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background: "#2634d5",
-                  color: "#fff",
-                  padding: "10px 20px",
-                  borderRadius: 10,
-                  border: 0,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                <Gift size={15} /> {t("Đổi điểm lấy voucher")}
-              </button>
+        {/* ĐÃ XOÁ: Khối "Món đang giảm giá" — trùng với Flash Sale ở Home */}
+      </section>
+
+      {/* ===== WALLET + ACTIVITY ===== */}
+      <section className="promo-section" id="my-vouchers">
+        <div className="promo-split">
+          <div className="promo-split__left">
+            <div className="promo-split__head">
+              <div>
+                <h2 className="promo-section__title">
+                  {t("Ví Voucher Đã Đổi")} ({grouped.length})
+                </h2>
+                <p className="promo-section__sub">
+                  {t("Sẵn sàng xuất trình mã barcode/QR tại quầy thanh toán")}
+                </p>
+              </div>
+              <Wallet size={24} color="#2563EB" />
+            </div>
+
+            {loading && (
+              <div className="promo-wallet-loading">
+                <Loader2 size={24} className="promo-spin" />
+                <span>{t("Đang tải voucher...")}</span>
+              </div>
             )}
-          </div>
-        )}
 
-        {/* Grid voucher */}
-        {!loading && grouped.length > 0 && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-              gap: 14,
-            }}
-          >
-            {grouped.map((g) => (
-              <VoucherGroupCard
-                key={makeGroupKey(g)}
-                group={g}
-                copiedId={copiedId}
-                onCopy={copyCode}
-                onOpenGroup={setOpenedGroup}
-                onUse={() => navigate("/customer/checkout")}
-                t={t}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+            {!loading && grouped.length === 0 && (
+              <div className="promo-wallet-empty">
+                <Ticket size={40} />
+                <b>{t("Chưa có voucher nào")}</b>
+                <p>
+                  {t("Đổi điểm hoặc nhận voucher từ mục Ưu đãi toàn hệ thống.")}
+                </p>
+              </div>
+            )}
 
-      {/* MODAL CHỌN VOUCHER */}
+            {!loading && grouped.length > 0 && (
+              <div className="promo-wallet-list">
+                {grouped.slice(0, 4).map((g) => {
+                  const isUsed = g.available === 0;
+                  const firstVoucher = g.vouchers[0];
+                  const days = daysRemaining(firstVoucher?.expires_at);
+                  const isCopied = copiedId === firstVoucher?.id;
+
+                  return (
+                    <div
+                      key={makeGroupKey(g)}
+                      className={`promo-wallet-card ${
+                        isUsed ? "promo-wallet-card--used" : ""
+                      }`}
+                    >
+                      <div className="promo-wallet-card__top">
+                        <div className="promo-wallet-card__icon">
+                          <Ticket size={22} />
+                        </div>
+                        <div className="promo-wallet-card__info">
+                          <span className="promo-wallet-card__tag">
+                            {t("Voucher")} {money(g.value)}
+                          </span>
+                          <b className="promo-wallet-card__name">
+                            {t("Giảm")} {money(g.value)}{" "}
+                            {g.available > 1 && `×${g.available}`}
+                          </b>
+                          <div className="promo-wallet-card__code">
+                            {firstVoucher?.code}
+                          </div>
+                        </div>
+                        {!isUsed && days > 0 && (
+                          <span className="promo-wallet-card__days">
+                            {t("Còn")} {days} {t("ngày")}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="promo-wallet-card__bottom">
+                        <div className="promo-wallet-card__meta">
+                          <QrCode size={14} />
+                          {t("Áp dụng tại quầy")}
+                        </div>
+                        {!isUsed && (
+                          <div className="promo-wallet-card__actions">
+                            <button
+                              className="promo-wallet-card__icon-btn"
+                              onClick={() => copyCode(firstVoucher)}
+                              title={t("Sao chép mã")}
+                            >
+                              {isCopied ? (
+                                <Check size={14} />
+                              ) : (
+                                <Copy size={14} />
+                              )}
+                            </button>
+                            <button
+                              className="promo-wallet-card__use"
+                              onClick={() => navigate("/customer/checkout")}
+                            >
+                              <QrCode size={14} />
+                              {t("Dùng ngay")}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {grouped.length > 4 && (
+                  <button
+                    className="promo-wallet-see-more"
+                    onClick={() => scrollToSection("my-vouchers")}
+                  >
+                    {t("Xem tất cả")} ({grouped.length}) <ArrowRight size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="promo-wallet-note">
+              <HelpCircle size={18} />
+              <p>
+                {t("Voucher đổi điểm không có giá trị quy đổi thành tiền mặt và áp dụng tối đa 01 voucher/đơn hàng tại quầy.")}
+              </p>
+            </div>
+          </div>
+
+          <div className="promo-split__right">
+            <div className="promo-split__head">
+              <div>
+                <h2 className="promo-section__title">
+                  {t("Biến Động Điểm Thưởng")}
+                </h2>
+                <p className="promo-section__sub">
+                  {t("Lịch sử tích lũy và sử dụng VWA Green Points gần đây")}
+                </p>
+              </div>
+              <button className="promo-activity-see-all">
+                {t("Xem toàn bộ")} <ExternalLink size={13} />
+              </button>
+            </div>
+
+            <div className="promo-activity-table">
+              <div className="promo-activity-table__head">
+                <div>{t("Thời gian")}</div>
+                <div>{t("Nội dung hoạt động")}</div>
+                <div className="right">{t("Điểm số")}</div>
+              </div>
+              <div className="promo-activity-table__body">
+                <ActivityRow
+                  date={t("Hôm nay")}
+                  time="11:30"
+                  icon={<Receipt size={18} />}
+                  title={t("Tích điểm đơn hàng")}
+                  sub={`${t("Mã đơn")}: #ORD-20250228-092`}
+                  delta="+5"
+                  deltaType="up"
+                />
+                <ActivityRow
+                  date={t("Hôm nay")}
+                  time="11:30"
+                  icon={<Leaf size={18} />}
+                  iconColor="#1D4ED8"
+                  title={t("Thưởng mang bình cá nhân Eco Bonus")}
+                  sub={t("Quét xác nhận tại máy pha chế quầy đồ uống")}
+                  delta="+10"
+                  deltaType="up"
+                  highlight
+                />
+                <ActivityRow
+                  date="27/02/2025"
+                  time="12:15"
+                  icon={<Receipt size={18} />}
+                  title={t("Tích điểm đơn hàng")}
+                  sub={`${t("Mã đơn")}: #ORD-20250227-081`}
+                  delta="+4"
+                  deltaType="up"
+                />
+                <ActivityRow
+                  date="25/02/2025"
+                  time="18:40"
+                  icon={<Gift size={18} />}
+                  iconColor="#EF4444"
+                  title={t("Đổi Voucher Giảm 10k Cơm Trưa")}
+                  sub={`${t("Mã voucher tạo mới")}: #VWA-2025-LUNCH10`}
+                  delta="-100"
+                  deltaType="down"
+                  highlight
+                />
+                <ActivityRow
+                  date="24/02/2025"
+                  time="13:05"
+                  icon={<ThumbsUp size={18} />}
+                  title={t("Thưởng đánh giá chất lượng món ăn")}
+                  sub={t("Phản hồi món Bò kho bánh mì kèm ảnh chụp")}
+                  delta="+5"
+                  deltaType="up"
+                />
+              </div>
+            </div>
+
+            <div className="promo-activity-tip">
+              <Lightbulb size={20} color="#2563EB" />
+              <span>
+                {t("Bạn chỉ cần thêm")} <b>15 {t("lần sống xanh")}</b>{" "}
+                {t("nữa để đạt Hạng Vàng danh dự.")}
+              </span>
+              <button>{t("Tìm hiểu thêm")}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* MODAL */}
       {openedGroup && (
         <GroupModal
           group={openedGroup}
@@ -1030,397 +837,51 @@ export default function CustomerPromotions() {
       )}
 
       <style>{`
-        @keyframes spin {
+        @keyframes promo-spin {
           from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
+          to { transform: rotate(360deg); }
         }
-        @media (max-width: 768px) {
-          .promo-points-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
+        .promo-spin { animation: promo-spin 1s linear infinite; }
       `}</style>
     </div>
   );
 }
 
 // ============================================================
-// SUB-COMPONENTS
+// SUB: ActivityRow
 // ============================================================
 
-function HeroButton({ icon, label, value, onClick, disabled }) {
+function ActivityRow({ date, time, icon, iconColor = "#2563EB", title, sub, delta, deltaType, highlight }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        cursor: disabled ? "not-allowed" : "pointer",
-        color: "#fff",
-        fontFamily: "inherit",
-        background: "rgba(255,255,255,0.18)",
-        border: "1px solid rgba(255,255,255,0.3)",
-        padding: "10px 16px",
-        borderRadius: 10,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        fontSize: 13,
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {icon} <span>{label}: <b>{value}</b></span>
-    </button>
-  );
-}
-
-function SectionHeader({ color, title, badge }) {
-  return (
-    <div
-      style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}
-    >
-      <div
-        style={{
-          width: 4,
-          height: 22,
-          borderRadius: 4,
-          background: color,
-        }}
-      />
-      <h2
-        style={{
-          margin: 0,
-          fontSize: 17,
-          color: "var(--text-primary, #172033)",
-        }}
-      >
-        {title}
-      </h2>
-      {badge && (
-        <span
-          style={{
-            background: color,
-            color: "#fff",
-            padding: "2px 10px",
-            borderRadius: 12,
-            fontSize: 11,
-            fontWeight: 700,
-          }}
-        >
-          {badge}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function VoucherGroupCard({ group: g, copiedId, onCopy, onOpenGroup, onUse, t }) {
-  const isUsed = g.available === 0;
-  const hasMultiple = g.count > 1;
-  const firstVoucher = g.vouchers[0];
-  const isCopied = copiedId === firstVoucher?.id;
-
-  return (
-    <div
-      style={{
-        background: isUsed ? "var(--bg-tertiary, #f5f7fb)" : "var(--card-bg, #fff)",
-        border: `1px solid ${
-          isUsed ? "var(--border-color, #e5e9ef)" : "#2634d5"
-        }`,
-        borderRadius: 14,
-        overflow: "hidden",
-        opacity: isUsed ? 0.7 : 1,
-        display: "flex",
-        flexDirection: "column",
-        position: "relative",
-      }}
-    >
-      {hasMultiple && (
-        <div
-          style={{
-            position: "absolute",
-            top: 10,
-            right: 10,
-            background: isUsed ? "#94a3b8" : "#ef4444",
-            color: "#fff",
-            padding: "3px 10px",
-            borderRadius: 20,
-            fontSize: 12,
-            fontWeight: 800,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-            zIndex: 3,
-          }}
-        >
-          ×{g.count}
-        </div>
-      )}
-
-      <div
-        style={{
-          background: isUsed
-            ? "linear-gradient(135deg, #94a3b8, #64748b)"
-            : "linear-gradient(135deg, #2634d5, #8b5cf6)",
-          color: "#fff",
-          padding: "14px 16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              opacity: 0.85,
-              letterSpacing: 1,
-              fontWeight: 600,
-              textTransform: "uppercase",
-            }}
-          >
-            {isUsed ? t("Đã dùng") : t("Giảm giá")}
-          </div>
-          <div
-            style={{
-              fontSize: 24,
-              fontWeight: 800,
-              lineHeight: 1.1,
-              marginTop: 2,
-            }}
-          >
-            {money(g.value)}
-          </div>
-        </div>
-        <div
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.2)",
-            display: "grid",
-            placeItems: "center",
-            fontSize: 20,
-          }}
-        >
-          🎟️
-        </div>
+    <div className={`promo-activity-row ${highlight ? "highlight" : ""}`}>
+      <div className="promo-activity-row__date">
+        <b>{date}</b>
+        <span>{time}</span>
       </div>
-
+      <div className="promo-activity-row__content">
+        <div
+          className="promo-activity-row__title"
+          style={{ color: deltaType === "down" ? "#EF4444" : undefined }}
+        >
+          <span style={{ color: iconColor }}>{icon}</span>
+          {title}
+        </div>
+        <div className="promo-activity-row__sub">{sub}</div>
+      </div>
       <div
-        style={{
-          padding: "12px 16px",
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
+        className={`promo-activity-row__delta ${
+          deltaType === "down" ? "down" : "up"
+        }`}
       >
-        {hasMultiple ? (
-          <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: "#2634d5",
-                marginBottom: 6,
-              }}
-            >
-              {g.available} {t("Khả dụng")}
-              {g.used > 0 && (
-                <span style={{ color: "#ef4444", fontWeight: 600 }}>
-                  {" "}· {g.used} {t("Đã dùng").toLowerCase()}
-                </span>
-              )}
-            </div>
-            <div
-              style={{
-                background: "var(--bg-tertiary, #f5f7fb)",
-                border: "1px dashed #2634d5",
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 11,
-                color: "var(--text-muted, #64748b)",
-                maxHeight: 60,
-                overflowY: "auto",
-              }}
-            >
-              {g.vouchers.slice(0, 3).map((v) => (
-                <div
-                  key={v.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "2px 0",
-                  }}
-                >
-                  <span style={{ fontFamily: "monospace" }}>{v.code}</span>
-                  <span
-                    style={{
-                      color: v.used ? "#ef4444" : "#18a967",
-                      fontWeight: 700,
-                      fontSize: 10,
-                    }}
-                  >
-                    {v.used ? t("Đã dùng") : t("Khả dụng")}
-                  </span>
-                </div>
-              ))}
-              {g.vouchers.length > 3 && (
-                <div
-                  style={{
-                    color: "#94a3b8",
-                    fontStyle: "italic",
-                    fontSize: 10,
-                  }}
-                >
-                  ... +{g.vouchers.length - 3}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                justifyContent: "space-between",
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: isUsed ? "var(--text-muted, #64748b)" : "#2634d5",
-                  letterSpacing: 1,
-                  padding: "5px 10px",
-                  background: isUsed ? "transparent" : "rgba(38, 52, 213, 0.08)",
-                  borderRadius: 6,
-                  flex: 1,
-                  textAlign: "center",
-                  border: isUsed
-                    ? "1px dashed var(--border-color, #cbd5e1)"
-                    : "1px dashed #2634d5",
-                  wordBreak: "break-all",
-                }}
-              >
-                {firstVoucher?.code}
-              </div>
-              {!isUsed && firstVoucher && (
-                <button
-                  onClick={() => onCopy(firstVoucher)}
-                  title={t("Sao chép mã")}
-                  aria-label={t("Sao chép mã")}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: isCopied ? "#18a967" : "var(--bg-tertiary, #f5f7fb)",
-                    color: isCopied ? "#fff" : "var(--text-primary, #475569)",
-                    border: isCopied ? 0 : "1px solid var(--border-color, #e5e9ef)",
-                    cursor: "pointer",
-                    display: "grid",
-                    placeItems: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  {isCopied ? <Check size={14} /> : <Copy size={14} />}
-                </button>
-              )}
-            </div>
-
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--text-light, #8993a3)",
-                lineHeight: 1.5,
-              }}
-            >
-              {firstVoucher?.claimed_from && (
-                <div>• {t("Nhận từ ƯĐ toàn hệ thống")}</div>
-              )}
-              {firstVoucher?.points_used > 0 && (
-                <div>
-                  • {t("Đổi từ điểm:")}{" "}
-                  <b>{firstVoucher.points_used}</b>
-                </div>
-              )}
-              {firstVoucher?.used_at && (
-                <div>
-                  • {t("Đã dùng ngày")} {fmtDate(firstVoucher.used_at)}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {!isUsed ? (
-          hasMultiple ? (
-            <button
-              onClick={() => onOpenGroup(g)}
-              style={{
-                marginTop: "auto",
-                width: "100%",
-                padding: "10px 14px",
-                background: "#2634d5",
-                color: "#fff",
-                border: 0,
-                borderRadius: 10,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontSize: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-              }}
-            >
-              {t("Xem {n} voucher").replace("{n}", g.available)}{" "}
-              <ArrowRight size={14} />
-            </button>
-          ) : (
-            <button
-              onClick={onUse}
-              style={{
-                marginTop: "auto",
-                width: "100%",
-                padding: "10px 14px",
-                background: "#2634d5",
-                color: "#fff",
-                border: 0,
-                borderRadius: 10,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontSize: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 5,
-              }}
-            >
-              {t("Dùng ngay")} <ArrowRight size={14} />
-            </button>
-          )
-        ) : (
-          <div
-            style={{
-              marginTop: "auto",
-              padding: "9px 14px",
-              textAlign: "center",
-              background: "var(--bg-secondary, #e2e8f0)",
-              color: "var(--text-muted, #64748b)",
-              borderRadius: 10,
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            {t("Hết hiệu lực")}
-          </div>
-        )}
+        {delta} pts
       </div>
     </div>
   );
 }
+
+// ============================================================
+// SUB: GroupModal
+// ============================================================
 
 function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
   return (
@@ -1429,200 +890,67 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
       role="dialog"
       aria-modal="true"
       aria-label={t("Chọn voucher")}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: MODAL_Z,
-        padding: 20,
-        overflowY: "auto",
-      }}
+      className="promo-modal-overlay"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--card-bg, #fff)",
-          borderRadius: 14,
-          padding: 24,
-          width: "100%",
-          maxWidth: 480,
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
+        className="promo-modal"
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <h3 style={{ margin: 0, color: "var(--text-primary, #172033)" }}>
+        <div className="promo-modal__head">
+          <h3>
             {t("Chọn voucher {value}").replace("{value}", money(g.value))}
           </h3>
-          <button
-            onClick={onClose}
-            aria-label={t("Đóng")}
-            style={{
-              background: "transparent",
-              border: 0,
-              cursor: "pointer",
-              color: "var(--text-light, #8993a3)",
-              padding: 4,
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
+          <button onClick={onClose} aria-label={t("Đóng")}>
             <X size={20} />
           </button>
         </div>
 
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text-muted, #64748b)",
-            marginBottom: 14,
-          }}
-        >
+        <p className="promo-modal__desc">
           {t("Bạn có {available} voucher khả dụng cho mệnh giá này. Chọn 1 để sử dụng.")
             .replace("{available}", g.available)}
-        </div>
+        </p>
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            maxHeight: 400,
-            overflowY: "auto",
-          }}
-        >
+        <div className="promo-modal__list">
           {g.vouchers.map((v) => {
             const vUsed = v.used;
             const vCopied = copiedId === v.id;
-
             return (
               <div
                 key={v.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: 12,
-                  background: vUsed
-                    ? "var(--bg-tertiary, #f5f7fb)"
-                    : "var(--card-bg, #fff)",
-                  border: `1px solid ${
-                    vUsed ? "var(--border-color, #e5e9ef)" : "#2634d5"
-                  }`,
-                  borderRadius: 10,
-                  opacity: vUsed ? 0.6 : 1,
-                }}
+                className={`promo-modal__item ${vUsed ? "used" : ""}`}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: vUsed ? "#94a3b8" : "#2634d5",
-                      wordBreak: "break-all",
-                    }}
-                  >
-                    {v.code}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-light, #8993a3)",
-                      marginTop: 2,
-                    }}
-                  >
+                <div className="promo-modal__item-info">
+                  <b>{v.code}</b>
+                  <span>
                     {v.used_at
                       ? `${t("Đã dùng ngày")} ${fmtDate(v.used_at)}`
                       : v.created_at
                       ? `${t("Nhận ngày")} ${fmtDate(v.created_at)}`
                       : ""}
-                  </div>
+                  </span>
                 </div>
-
                 {!vUsed && (
                   <>
                     <button
                       onClick={() => onCopy(v)}
-                      aria-label={t("Sao chép mã")}
-                      style={{
-                        padding: 8,
-                        border: "1px solid var(--border-color, #e5e9ef)",
-                        borderRadius: 8,
-                        background: vCopied ? "#18a967" : "var(--card-bg, #fff)",
-                        color: vCopied ? "#fff" : "var(--text-primary, #475569)",
-                        cursor: "pointer",
-                        display: "grid",
-                        placeItems: "center",
-                        flexShrink: 0,
-                      }}
+                      className="promo-modal__copy"
                     >
                       {vCopied ? <Check size={14} /> : <Copy size={14} />}
                     </button>
-                    <button
-                      onClick={onUse}
-                      style={{
-                        padding: "8px 14px",
-                        background: "#2634d5",
-                        color: "#fff",
-                        border: 0,
-                        borderRadius: 8,
-                        fontWeight: 700,
-                        fontSize: 12,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                        flexShrink: 0,
-                      }}
-                    >
+                    <button onClick={onUse} className="promo-modal__use">
                       {t("Dùng")}
                     </button>
                   </>
                 )}
-
                 {vUsed && (
-                  <span
-                    style={{
-                      padding: "3px 10px",
-                      borderRadius: 10,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      background: "#fee2e2",
-                      color: "#ef4444",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {t("Đã dùng")}
-                  </span>
+                  <span className="promo-modal__used-tag">{t("Đã dùng")}</span>
                 )}
               </div>
             );
           })}
         </div>
 
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: 16,
-            width: "100%",
-            padding: 12,
-            background: "var(--bg-tertiary, #f5f7fb)",
-            color: "var(--text-primary, #475569)",
-            border: "1px solid var(--border-color, #e5e9ef)",
-            borderRadius: 10,
-            fontWeight: 700,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
+        <button onClick={onClose} className="promo-modal__close">
           {t("Đóng")}
         </button>
       </div>

@@ -1,11 +1,14 @@
-﻿// ============================================================
+// ============================================================
 // CUSTOMERORDERDETAIL.JSX — Modal chi tiết đơn hàng (Customer)
+// ============================================================
+// ✅ SOURCE-TEXT I18N
+// ✅ Ngày giờ đầy đủ + nhãn "Hôm nay / Hôm qua"
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  X, Package, Clock, CheckCircle2, ChefHat, Truck, Star,
-  Send, Loader2, AlertCircle,
+  X, Package, Clock, CheckCircle2, ChefHat, Truck, Star, Send,
+  Loader2,
 } from "lucide-react";
 import { api } from "../api";
 import { money } from "./UI";
@@ -18,20 +21,20 @@ const POINTS_PER_REVIEW = 10;
 const MAX_COMMENT_LENGTH = 500;
 
 const STATUS_FLOW = {
-  "Chờ xác nhận": { step: 1, labelKey: "status.pending", color: "#f59e0b" },
-  "Đã xác nhận": { step: 2, labelKey: "status.confirmed", color: "#2634d5" },
-  "Đang chuẩn bị": { step: 3, labelKey: "status.preparing", color: "#8b5cf6" },
-  "Sẵn sàng nhận": { step: 4, labelKey: "status.ready", color: "#18a967" },
-  "Hoàn thành": { step: 5, labelKey: "status.done", color: "#18a967" },
-  "Đã hủy": { step: 0, labelKey: "status.cancelled", color: "#ef4444" },
+  "Chờ xác nhận": { step: 1, label: "Chờ xác nhận", color: "#f59e0b" },
+  "Đã xác nhận": { step: 2, label: "Đã xác nhận", color: "#2634d5" },
+  "Đang chuẩn bị": { step: 3, label: "Đang chuẩn bị", color: "#8b5cf6" },
+  "Sẵn sàng nhận": { step: 4, label: "Sẵn sàng nhận", color: "#18a967" },
+  "Hoàn thành": { step: 5, label: "Hoàn thành", color: "#18a967" },
+  "Đã hủy": { step: 0, label: "Đã hủy", color: "#ef4444" },
 };
 
 const ALL_STEPS = [
-  { step: 1, labelKey: "status.pending", icon: Clock },
-  { step: 2, labelKey: "status.confirmed", icon: CheckCircle2 },
-  { step: 3, labelKey: "status.preparing", icon: ChefHat },
-  { step: 4, labelKey: "status.ready", icon: Truck },
-  { step: 5, labelKey: "status.done", icon: CheckCircle2 },
+  { step: 1, label: "Chờ xác nhận", icon: Clock },
+  { step: 2, label: "Đã xác nhận", icon: CheckCircle2 },
+  { step: 3, label: "Đang chuẩn bị", icon: ChefHat },
+  { step: 4, label: "Sẵn sàng nhận", icon: Truck },
+  { step: 5, label: "Hoàn thành", icon: CheckCircle2 },
 ];
 
 function fmtDateTime(iso) {
@@ -39,9 +42,32 @@ function fmtDateTime(iso) {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "—";
-    return d.toLocaleString("vi-VN");
+    const dd = d.getDate().toString().padStart(2, "0");
+    const mm = (d.getMonth() + 1).toString().padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mi = d.getMinutes().toString().padStart(2, "0");
+    return `${dd}/${mm}/${yyyy} • ${hh}:${mi}`;
   } catch {
     return "—";
+  }
+}
+
+function getRelativeDateLabel(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "Hôm nay";
+    if (diffDays === 1) return "Hôm qua";
+    if (diffDays < 7) return `${diffDays} ngày trước`;
+    return "";
+  } catch {
+    return "";
   }
 }
 
@@ -171,12 +197,12 @@ export default function CustomerOrderDetail({
       setReceiving(true);
       try {
         await api.orders.received(orderId);
-        toast(t("order.receivedToast"), "success");
+        toast(t("Đã xác nhận nhận hàng thành công!"), "success");
         setConfirmAction(null);
         onUpdate?.();
         onClose?.();
       } catch (e) {
-        toast(e.message || t("order.receivedError"), "error");
+        toast(e.message || t("Không xác nhận được, vui lòng thử lại"), "error");
       } finally {
         setReceiving(false);
       }
@@ -187,12 +213,12 @@ export default function CustomerOrderDetail({
       setCancelling(true);
       try {
         await api.orders.cancel(orderId);
-        toast(t("order.cancelledToast"), "success");
+        toast(t("Đã hủy đơn hàng thành công"), "success");
         setConfirmAction(null);
         onUpdate?.();
         onClose?.();
       } catch (e) {
-        toast(e.message || t("order.cancelError"), "error");
+        toast(e.message || t("Không hủy được đơn hàng"), "error");
       } finally {
         setCancelling(false);
       }
@@ -202,7 +228,7 @@ export default function CustomerOrderDetail({
 
   const openReview = () => {
     if (!itemsCount) {
-      toast(t("order.noItemsReview"), "error");
+      toast(t("Đơn hàng không có món để đánh giá"), "error");
       return;
     }
     setRating(5);
@@ -236,7 +262,7 @@ export default function CustomerOrderDetail({
         });
         success++;
       } catch {
-        // Skip món đã đánh giá
+        // Skip
       }
     }
 
@@ -272,13 +298,13 @@ export default function CustomerOrderDetail({
 
       onUpdate?.();
       toast(
-        t("order.reviewSuccess")
+        t("Cảm ơn bạn đã đánh giá {n} món! Nhận {points} điểm thưởng.")
           .replace("{n}", success)
           .replace("{points}", success * POINTS_PER_REVIEW),
         "success"
       );
     } else {
-      toast(t("order.reviewAlreadyDone"), "error");
+      toast(t("Bạn đã đánh giá các món trong đơn này rồi."), "error");
     }
   };
 
@@ -288,13 +314,15 @@ export default function CustomerOrderDetail({
     onClose?.();
   };
 
+  const relativeLabel = getRelativeDateLabel(order.created_at);
+
   return (
     <>
       <div
         onClick={handleOverlayClick}
         role="dialog"
         aria-modal="true"
-        aria-label={t("order.detailAria").replace("{code}", order.code)}
+        aria-label={`${t("Chi tiết đơn hàng")} ${order.code}`}
         style={{
           position: "fixed",
           inset: 0,
@@ -324,10 +352,10 @@ export default function CustomerOrderDetail({
               myReviews={myReviews}
               onClose={() => setShowMyReviews(false)}
               t={t}
+              tData={tData}
             />
           ) : (
             <>
-              {/* HEADER */}
               <div
                 style={{
                   display: "flex",
@@ -358,7 +386,7 @@ export default function CustomerOrderDetail({
                         color: "var(--text-primary, #172033)",
                       }}
                     >
-                      {t("order.title")}
+                      {t("Chi tiết đơn hàng")}
                     </h3>
                     <b style={{ fontSize: 13, color: "#2634d5" }}>
                       {order.code}
@@ -367,7 +395,7 @@ export default function CustomerOrderDetail({
                 </div>
                 <button
                   onClick={onClose}
-                  aria-label={t("common.close")}
+                  aria-label={t("Đóng")}
                   type="button"
                   style={{
                     background: "transparent",
@@ -383,7 +411,6 @@ export default function CustomerOrderDetail({
                 </button>
               </div>
 
-              {/* PROGRESS */}
               {!isCancelled && (
                 <div
                   style={{
@@ -465,7 +492,7 @@ export default function CustomerOrderDetail({
                               fontWeight: active ? 700 : 500,
                             }}
                           >
-                            {t(s.labelKey)}
+                            {s.label}
                           </span>
                         </div>
                       );
@@ -474,7 +501,6 @@ export default function CustomerOrderDetail({
                 </div>
               )}
 
-              {/* CANCELLED */}
               {isCancelled && (
                 <div
                   style={{
@@ -491,19 +517,37 @@ export default function CustomerOrderDetail({
                     style={{ margin: "0 auto 8px" }}
                   />
                   <b style={{ color: "#991b1b", fontSize: 15 }}>
-                    {t("order.cancelledBanner")}
+                    {t("Đơn hàng đã bị hủy")}
                   </b>
                 </div>
               )}
 
-              {/* INFO */}
               <div style={{ marginBottom: 16 }}>
                 <InfoRow
-                  label={t("orders.orderTime")}
-                  value={fmtDateTime(order.created_at)}
+                  label={t("Thời gian đặt hàng")}
+                  value={
+                    <>
+                      {fmtDateTime(order.created_at)}
+                      {relativeLabel && (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            color: "#2634d5",
+                            fontWeight: 700,
+                            fontSize: 11,
+                            background: "rgba(38, 52, 213, 0.1)",
+                            padding: "1px 8px",
+                            borderRadius: 9999,
+                          }}
+                        >
+                          {relativeLabel}
+                        </span>
+                      )}
+                    </>
+                  }
                 />
                 <InfoRow
-                  label={t("common.status")}
+                  label={t("Trạng thái")}
                   value={
                     <span
                       style={{
@@ -515,18 +559,17 @@ export default function CustomerOrderDetail({
                         color: current.color,
                       }}
                     >
-                      {t(current.labelKey)}
+                      {current.label}
                     </span>
                   }
                 />
                 <InfoRow
-                  label={t("checkout.payment")}
-                  value={order.payment || t("checkout.cash")}
+                  label={t("Phương thức thanh toán")}
+                  value={order.payment || t("Tiền mặt")}
                   last
                 />
               </div>
 
-              {/* ITEMS */}
               <h4
                 style={{
                   margin: "16px 0 12px",
@@ -534,7 +577,7 @@ export default function CustomerOrderDetail({
                   fontSize: 14,
                 }}
               >
-                {t("orders.itemsOrdered")}
+                {t("Món đã đặt")}
               </h4>
               <div
                 style={{
@@ -559,29 +602,46 @@ export default function CustomerOrderDetail({
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-  <div style={{ color: "var(--text-primary, #172033)" }}>
-    <b>{it.qty}×</b> {tData(it, "name")}
-  </div>
+                      <div style={{ color: "var(--text-primary, #172033)" }}>
+                        <b>{it.qty}×</b> {tData(it, "name")}
+                      </div>
 
-  {it.size && (
-    <div style={{ marginTop: 4, color: "var(--text-muted, #64748b)", fontSize: 12 }}>
-      Size: {it.size.name}
-      {Number(it.size.extra_price || 0) > 0 && ` (+${money(Number(it.size.extra_price))})`}
-    </div>
-  )}
+                      {it.size && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            color: "var(--text-muted, #64748b)",
+                            fontSize: 12,
+                          }}
+                        >
+                          {t("Size")}: {it.size.name}
+                          {Number(it.size.extra_price || 0) > 0 &&
+                            ` (+${money(Number(it.size.extra_price))})`}
+                        </div>
+                      )}
 
-  {Array.isArray(it.toppings) && it.toppings.length > 0 && (
-    <div style={{ marginTop: 4, color: "var(--text-muted, #64748b)", fontSize: 12 }}>
-      <div>Topping:</div>
-      {it.toppings.map((topping, toppingIndex) => (
-        <div key={topping.id ?? toppingIndex} style={{ paddingLeft: 8 }}>
-          • {topping.name}
-          {Number(topping.price || 0) > 0 && ` (+${money(Number(topping.price))})`}
-        </div>
-      ))}
-    </div>
-  )}
-</div>
+                      {Array.isArray(it.toppings) && it.toppings.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            color: "var(--text-muted, #64748b)",
+                            fontSize: 12,
+                          }}
+                        >
+                          <div>{t("Topping")}:</div>
+                          {it.toppings.map((topping, toppingIndex) => (
+                            <div
+                              key={topping.id ?? toppingIndex}
+                              style={{ paddingLeft: 8 }}
+                            >
+                              • {topping.name}
+                              {Number(topping.price || 0) > 0 &&
+                                ` (+${money(Number(topping.price))})`}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <b style={{ color: "var(--text-muted, #64748b)" }}>
                       {money(Number(it.price || 0) * Number(it.qty || 0))}
                     </b>
@@ -589,7 +649,6 @@ export default function CustomerOrderDetail({
                 ))}
               </div>
 
-              {/* TOTAL */}
               <div
                 style={{
                   display: "flex",
@@ -599,14 +658,13 @@ export default function CustomerOrderDetail({
                 }}
               >
                 <b style={{ color: "var(--text-primary, #172033)" }}>
-                  {t("cart.total")}
+                  {t("Tổng cộng")}
                 </b>
                 <strong style={{ color: "#2634d5", fontSize: 20 }}>
                   {money(order.total || 0)}
                 </strong>
               </div>
 
-              {/* NOTE */}
               {order.note && (
                 <div
                   style={{
@@ -619,13 +677,12 @@ export default function CustomerOrderDetail({
                   }}
                 >
                   <b style={{ color: "var(--text-primary, #172033)" }}>
-                    {t("checkout.note")}:
+                    {t("Ghi chú")}:
                   </b>{" "}
                   {order.note}
                 </div>
               )}
 
-              {/* REVIEW FORM */}
               {showReview && (
                 <div
                   style={{
@@ -643,7 +700,7 @@ export default function CustomerOrderDetail({
                       fontSize: 14,
                     }}
                   >
-                    ⭐ {t("order.reviewTitle")}
+                    ⭐ {t("Đánh giá đơn hàng")}
                   </h4>
 
                   <div
@@ -658,17 +715,19 @@ export default function CustomerOrderDetail({
                       fontWeight: 600,
                     }}
                   >
-                    💡 {t("order.reviewApplyAll").replace("{n}", itemsCount)}
+                    💡{" "}
+                    {t("Đánh giá sẽ được áp dụng cho tất cả {n} món trong đơn.")
+                      .replace("{n}", itemsCount)}
                   </div>
 
-                  <label style={labelStyle}>{t("order.starsLabel")}</label>
+                  <label style={labelStyle}>{t("Số sao đánh giá")}</label>
                   <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
                     {[1, 2, 3, 4, 5].map((s) => (
                       <button
                         key={s}
                         onClick={() => setRating(s)}
                         type="button"
-                        aria-label={t("rating.starAria").replace("{n}", s)}
+                        aria-label={`${t("Chọn")} ${s} ${t("sao")}`}
                         style={{
                           background: "transparent",
                           border: 0,
@@ -686,17 +745,20 @@ export default function CustomerOrderDetail({
                   </div>
 
                   <label style={labelStyle}>
-                    {t("order.yourReview")}{" "}
+                    {t("Nhận xét của bạn")}{" "}
                     <span
-                      style={{ fontWeight: 400, color: "var(--text-light, #94a3b8)" }}
+                      style={{
+                        fontWeight: 400,
+                        color: "var(--text-light, #94a3b8)",
+                      }}
                     >
-                      ({t("review.optional")})
+                      ({t("không bắt buộc")})
                     </span>
                   </label>
                   <textarea
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
-                    placeholder={t("order.reviewPlaceholder")}
+                    placeholder={t("Chia sẻ cảm nhận về món ăn...")}
                     maxLength={MAX_COMMENT_LENGTH}
                     disabled={submitting}
                     style={{
@@ -741,19 +803,21 @@ export default function CustomerOrderDetail({
                           size={14}
                           style={{ animation: "spin 1s linear infinite" }}
                         />
-                        {t("review.sending")}
+                        {t("Đang gửi...")}
                       </>
                     ) : (
                       <>
                         <Send size={14} />{" "}
-                        {t("order.submitReview").replace("{n}", earnPoints)}
+                        {t("Gửi đánh giá & nhận {n} điểm").replace(
+                          "{n}",
+                          earnPoints
+                        )}
                       </>
                     )}
                   </button>
                 </div>
               )}
 
-              {/* ACTIONS */}
               <div
                 style={{
                   display: "flex",
@@ -784,10 +848,10 @@ export default function CustomerOrderDetail({
                           size={14}
                           style={{ animation: "spin 1s linear infinite" }}
                         />{" "}
-                        {t("common.processing")}
+                        {t("Đang xử lý...")}
                       </>
                     ) : (
-                      `✅ ${t("orders.receivedConfirm")}`
+                      `✅ ${t("Xác nhận đã nhận món")}`
                     )}
                   </button>
                 )}
@@ -814,10 +878,10 @@ export default function CustomerOrderDetail({
                           size={14}
                           style={{ animation: "spin 1s linear infinite" }}
                         />{" "}
-                        {t("common.processing")}
+                        {t("Đang xử lý...")}
                       </>
                     ) : (
-                      t("orders.cancelOrder")
+                      t("Hủy đơn hàng")
                     )}
                   </button>
                 )}
@@ -846,7 +910,10 @@ export default function CustomerOrderDetail({
                       }}
                     >
                       <Star size={16} fill="#fff" />{" "}
-                      {t("order.reviewCta").replace("{n}", earnPoints)}
+                      {t("Đánh giá đơn hàng (+{n} điểm)").replace(
+                        "{n}",
+                        earnPoints
+                      )}
                     </button>
                   )}
 
@@ -869,7 +936,7 @@ export default function CustomerOrderDetail({
                       gap: 6,
                     }}
                   >
-                    <CheckCircle2 size={16} /> {t("order.viewMyReview")}
+                    <CheckCircle2 size={16} /> {t("Xem đánh giá của tôi")}
                   </button>
                 )}
 
@@ -891,7 +958,7 @@ export default function CustomerOrderDetail({
                     opacity: submitting || receiving || cancelling ? 0.6 : 1,
                   }}
                 >
-                  {t("common.close")}
+                  {t("Đóng")}
                 </button>
               </div>
             </>
@@ -906,15 +973,14 @@ export default function CustomerOrderDetail({
         `}</style>
       </div>
 
-      {/* CONFIRM DIALOGS */}
       <ConfirmDialog
         open={confirmAction === "received"}
-        title={t("order.confirmReceivedTitle")}
-        message={t("order.confirmReceivedMsg")
+        title={t("Xác nhận đã nhận món?")}
+        message={t("Bạn xác nhận đã nhận {n} món của đơn {code}.")
           .replace("{n}", itemsCount)
           .replace("{code}", order.code)}
-        confirmText={t("orders.receivedConfirm")}
-        cancelText={t("order.notReceived")}
+        confirmText={t("Đã nhận món")}
+        cancelText={t("Chưa nhận được")}
         loading={receiving}
         onConfirm={executeConfirm}
         onClose={() => !receiving && setConfirmAction(null)}
@@ -922,10 +988,11 @@ export default function CustomerOrderDetail({
 
       <ConfirmDialog
         open={confirmAction === "cancel"}
-        title={t("order.confirmCancelTitle")}
-        message={t("order.confirmCancelMsg").replace("{code}", order.code)}
-        confirmText={t("orders.cancelOrder")}
-        cancelText={t("order.keepOrder")}
+        title={t("Hủy đơn hàng này?")}
+        message={t("Đơn hàng {code} sẽ bị hủy và không thể khôi phục.")
+          .replace("{code}", order.code)}
+        confirmText={t("Hủy đơn")}
+        cancelText={t("Giữ đơn")}
         danger
         loading={cancelling}
         onConfirm={executeConfirm}
@@ -951,14 +1018,24 @@ function InfoRow({ label, value, last = false }) {
       }}
     >
       <span style={{ color: "var(--text-muted, #64748b)" }}>{label}</span>
-      <b style={{ color: "var(--text-primary, #172033)", textAlign: "right" }}>
+      <b
+        style={{
+          color: "var(--text-primary, #172033)",
+          textAlign: "right",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          flexWrap: "wrap",
+          justifyContent: "flex-end",
+        }}
+      >
         {value}
       </b>
     </div>
   );
 }
 
-function MyReviewsView({ order, myReviews, onClose, t }) {
+function MyReviewsView({ order, myReviews, onClose, t, tData }) {
   const items = order.items || [];
   const totalPoints = myReviews.length * POINTS_PER_REVIEW;
 
@@ -989,14 +1066,14 @@ function MyReviewsView({ order, myReviews, onClose, t }) {
           </div>
           <div>
             <h3 style={{ margin: 0, color: "var(--text-primary, #172033)" }}>
-              {t("order.myReviewsTitle")}
+              {t("Đánh giá của tôi")}
             </h3>
             <b style={{ fontSize: 13, color: "#2634d5" }}>{order.code}</b>
           </div>
         </div>
         <button
           onClick={onClose}
-          aria-label={t("common.close")}
+          aria-label={t("Đóng")}
           type="button"
           style={{
             background: "transparent",
@@ -1025,7 +1102,10 @@ function MyReviewsView({ order, myReviews, onClose, t }) {
           textAlign: "center",
         }}
       >
-        ✨ {t("order.pointsEarned").replace("{points}", totalPoints)}
+        ✨ {t("Bạn đã nhận được {points} điểm thưởng").replace(
+          "{points}",
+          totalPoints
+        )}
       </div>
 
       {myReviews.length === 0 ? (
@@ -1037,13 +1117,11 @@ function MyReviewsView({ order, myReviews, onClose, t }) {
             fontSize: 13,
           }}
         >
-          {t("order.noReviews")}
+          {t("Chưa có đánh giá nào")}
         </div>
       ) : (
         myReviews.map((r, i) => {
-          const item = items.find(
-            (it) => it.menu_item_id === r.menu_item_id
-          );
+          const item = items.find((it) => it.menu_item_id === r.menu_item_id);
           return (
             <div
               key={r.id || i}
@@ -1074,7 +1152,7 @@ function MyReviewsView({ order, myReviews, onClose, t }) {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {tData(item, "name") || t("menu.title")}
+                  {tData(item, "name") || t("Món ăn")}
                 </b>
                 <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
                   {[1, 2, 3, 4, 5].map((s) => (
@@ -1106,7 +1184,7 @@ function MyReviewsView({ order, myReviews, onClose, t }) {
                     color: "var(--text-light, #94a3b8)",
                   }}
                 >
-                  ({t("order.noComment")})
+                  ({t("Không có nhận xét")})
                 </p>
               )}
               <div
@@ -1139,7 +1217,7 @@ function MyReviewsView({ order, myReviews, onClose, t }) {
           fontSize: 13,
         }}
       >
-        {t("common.close")}
+        {t("Đóng")}
       </button>
     </div>
   );

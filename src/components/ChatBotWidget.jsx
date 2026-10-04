@@ -1,11 +1,16 @@
-﻿// ============================================================
-// CHATBOTWIDGET.JSX — Widget chat nổi (góc phải dưới)
+// ============================================================
+// CHATBOTWIDGET.JSX — Chat popup nổi (V2 - căn giữa, ca trực thật)
+// ============================================================
+// ✅ Panel căn giữa màn hình (không che navbar)
+// ✅ Hotline ca trực lấy từ API — không có nhân viên thì ẩn
+// ✅ Thời gian hiển thị đủ ngày + giờ + nhãn "Hôm qua"
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
-  Bot, X, Send, ShoppingCart, Store, MessageCircleHeart,
-  Loader2, AlertCircle, RefreshCw,
+  Bot, X, Send, ShoppingCart, Store, MessageCircleHeart, Loader2,
+  AlertCircle, RefreshCw, Sparkles, Headset, CheckCircle2, ArrowRight,
+  Wallet, Leaf, Flame, Phone,
 } from "lucide-react";
 import { api } from "../api";
 import { money } from "./UI";
@@ -13,6 +18,10 @@ import { toast } from "./Effects";
 import { getBotReply } from "./ChatBot";
 import { useI18n } from "../hooks/useI18n";
 import FoodDetailModal from "./FoodDetailModal";
+
+// ============================================================
+// CONSTANTS
+// ============================================================
 
 const QUICK_REPLIES_KEYS = [
   "Dưới 30k",
@@ -23,10 +32,22 @@ const QUICK_REPLIES_KEYS = [
   "Gợi ý",
 ];
 
+const PROMPT_SUGGESTIONS = [
+  { icon: "🥗", text: "Gợi ý món ít calo dưới 45k" },
+  { icon: "⚡", text: "Món nào ra nhanh dưới 5 phút?" },
+  { icon: "🌱", text: "Thực đơn chay thanh đạm hôm nay" },
+  { icon: "💰", text: "Món ngon sinh viên tiết kiệm nhất" },
+  { icon: "⚠️", text: "Món cam kết KHÔNG chứa hải sản" },
+];
+
 const AI_REPLY_DELAY_MS = 600;
 const POLL_MS = 3000;
 const MAX_MESSAGE_LENGTH = 2000;
 const SCROLL_THRESHOLD_PX = 120;
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 function makeId(prefix) {
   const rand =
@@ -36,13 +57,31 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${rand}`;
 }
 
+/**
+ * Định dạng thời gian tin nhắn:
+ *  - Hôm nay:  "04:11"
+ *  - Hôm qua:  "17:15 • Hôm qua"
+ *  - Cũ hơn:   "14:30 • 08/04"
+ */
 function fmtTime(iso) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mi = d.getMinutes().toString().padStart(2, "0");
+    const dd = d.getDate().toString().padStart(2, "0");
+    const mm = (d.getMonth() + 1).toString().padStart(2, "0");
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return `${hh}:${mi}`;
+    if (diffDays === 1) return `${hh}:${mi} • Hôm qua`;
+    return `${hh}:${mi} • ${dd}/${mm}`;
   } catch {
     return "";
   }
@@ -52,6 +91,39 @@ function getMaxQty(item) {
   if (typeof item?.stock === "number") return Math.max(1, item.stock);
   return 99;
 }
+
+function getInitials(name) {
+  const n = (name || "VWA").trim();
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "VWA";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function toMinutes(str) {
+  if (!str) return 0;
+  const [h, m] = String(str).split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function getCurrentShift(staffList) {
+  if (!Array.isArray(staffList) || staffList.length === 0) return null;
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  return (
+    staffList.find((s) => {
+      const start = toMinutes(s.start_time || s.shift_start);
+      const end = toMinutes(s.end_time || s.shift_end);
+      if (!start && !end) return false;
+      return nowMin >= start && nowMin <= end;
+    }) || null
+  );
+}
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
 export default function ChatBotWidget({ cart, setCart, user }) {
   const { t, tData } = useI18n();
@@ -73,6 +145,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   const [selected, setSelected] = useState(null);
   const [hasNew, setHasNew] = useState(false);
 
+  const [shiftStaff, setShiftStaff] = useState(null);
+  const [shiftLoading, setShiftLoading] = useState(false);
+
   const staffReqIdRef = useRef(0);
   const aiTimerRef = useRef(null);
   const lastAiCountRef = useRef(0);
@@ -86,7 +161,8 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   useEffect(() => {
     let cancelled = false;
 
-    api.menu.listActive("", "Tất cả", "popular")
+    api.menu
+      .listActive("", "Tất cả", "popular")
       .then((d) => {
         if (cancelled) return;
         const list = Array.isArray(d) ? d : [];
@@ -105,6 +181,31 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, []);
 
   useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    setShiftLoading(true);
+
+    api.shifts
+      .approvedToday()
+      .then((list) => {
+        if (cancelled) return;
+        const current = getCurrentShift(list);
+        setShiftStaff(current);
+      })
+      .catch(() => {
+        if (!cancelled) setShiftStaff(null);
+      })
+      .finally(() => {
+        if (!cancelled) setShiftLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (lastUserIdRef.current !== user?.id) {
       lastUserIdRef.current = user?.id;
       setAiMessages([]);
@@ -114,7 +215,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     }
   }, [user?.id]);
 
-  // Welcome AI
   useEffect(() => {
     if (!open || mode !== "ai") return;
     if (aiMessages.length > 0) return;
@@ -139,26 +239,29 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     };
   }, []);
 
-  const loadStaff = useCallback(async (silent = true) => {
-    const myReqId = ++staffReqIdRef.current;
+  const loadStaff = useCallback(
+    async (silent = true) => {
+      const myReqId = ++staffReqIdRef.current;
 
-    if (!silent) {
-      setStaffLoading(true);
-      setStaffError("");
-    }
-
-    try {
-      const data = await api.chat.myMessages();
-      if (myReqId !== staffReqIdRef.current) return;
-      setStaffMessages(Array.isArray(data) ? data : []);
-    } catch (e) {
-      if (myReqId === staffReqIdRef.current && !silent) {
-        setStaffError(e.message || t("Không tải được tin nhắn"));
+      if (!silent) {
+        setStaffLoading(true);
+        setStaffError("");
       }
-    } finally {
-      if (myReqId === staffReqIdRef.current) setStaffLoading(false);
-    }
-  }, [t]);
+
+      try {
+        const data = await api.chat.myMessages();
+        if (myReqId !== staffReqIdRef.current) return;
+        setStaffMessages(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (myReqId === staffReqIdRef.current && !silent) {
+          setStaffError(e.message || t("Không tải được tin nhắn"));
+        }
+      } finally {
+        if (myReqId === staffReqIdRef.current) setStaffLoading(false);
+      }
+    },
+    [t]
+  );
 
   useEffect(() => {
     if (!open || mode !== "staff") return;
@@ -167,7 +270,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     return () => clearInterval(timer);
   }, [open, mode, loadStaff]);
 
-  // Smart scroll AI
   useEffect(() => {
     if (!open || mode !== "ai") return;
     const container = aiScrollRef.current;
@@ -193,7 +295,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     lastAiCountRef.current = aiMessages.length;
   }, [open, mode, aiMessages, aiTyping]);
 
-  // Smart scroll Staff
   useEffect(() => {
     if (!open || mode !== "staff") return;
     const container = staffScrollRef.current;
@@ -292,6 +393,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   const sendStaff = async () => {
     const val = staffText.trim();
     if (!val || staffSending) return;
+
     if (val.length > MAX_MESSAGE_LENGTH) {
       toast(
         t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH),
@@ -343,16 +445,11 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     });
 
     if (added) {
-      toast(
-        t("Đã thêm {name} vào giỏ").replace("{name}", m.name),
-        "success"
-      );
+      toast(t("Đã thêm {name} vào giỏ").replace("{name}", m.name), "success");
     } else {
       toast(reason, "error");
     }
   };
-
-  const ModeIcon = mode === "ai" ? Bot : Store;
 
   return (
     <>
@@ -361,232 +458,132 @@ export default function ChatBotWidget({ cart, setCart, user }) {
           onClick={() => setOpen(true)}
           aria-label={t("Trợ lý Canteen")}
           className="chatbot-fab"
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            width: 60,
-            height: 60,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, #8b5cf6, #2634d5)",
-            color: "#fff",
-            border: 0,
-            cursor: "pointer",
-            boxShadow: "0 8px 24px rgba(139, 92, 246, 0.45)",
-            display: "grid",
-            placeItems: "center",
-            zIndex: 45,
-            transition: "transform 0.2s",
-          }}
+          type="button"
         >
           <MessageCircleHeart size={26} />
-          {hasNew && (
-            <span
-              aria-label={t("Có tin nhắn mới")}
-              style={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-                minWidth: 20,
-                height: 20,
-                borderRadius: "50%",
-                background: "#ef4444",
-                color: "#fff",
-                fontSize: 11,
-                fontWeight: 700,
-                display: "grid",
-                placeItems: "center",
-                border: "2px solid #fff",
-                padding: "0 5px",
-                lineHeight: 1,
-                transform: "translate(25%, -25%)",
-              }}
-            >
-              1
-            </span>
-          )}
+          {hasNew && <span className="chatbot-fab__badge">1</span>}
           <span className="chatbot-pulse" />
         </button>
       )}
 
       {open && (
         <div
-          className="chatbot-panel"
+          className="chatbot-panel-v2"
           role="dialog"
           aria-modal="true"
           aria-label={t("Trợ lý Canteen")}
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            width: 400,
-            maxWidth: "calc(100vw - 32px)",
-            height: 580,
-            maxHeight: "calc(100vh - 100px)",
-            background: "var(--card-bg, #fff)",
-            borderRadius: 18,
-            boxShadow: "0 24px 60px rgba(0,0,0,0.28)",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            zIndex: 100,
-            border: "1px solid var(--border-color, #e5e9ef)",
-          }}
         >
-          <div
-            style={{
-              padding: "12px 14px",
-              background: "linear-gradient(135deg, #8b5cf6, #2634d5)",
-              color: "#fff",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: "50%",
-                  background: "rgba(255,255,255,0.18)",
-                  display: "grid",
-                  placeItems: "center",
-                  flexShrink: 0,
-                  border: "2px solid rgba(255,255,255,0.35)",
-                }}
-              >
-                <ModeIcon size={20} />
+          <header className="chatbot-header">
+            <div className="chatbot-header__row">
+              <div className="chatbot-header__info">
+                <div className="chatbot-header__avatar">
+                  {mode === "ai" ? <Bot size={22} /> : <Headset size={22} />}
+                  {mode === "ai" && <span className="chatbot-header__online" />}
+                </div>
+                <div className="chatbot-header__text">
+                  <b>
+                    {mode === "ai"
+                      ? t("Canteen VWA Smart Assistant")
+                      : t("Nhân viên Canteen")}
+                  </b>
+                  <span>
+                    {mode === "ai"
+                      ? t("Đồng bộ thực đơn thời gian thực & Dữ liệu Viện Dinh Dưỡng")
+                      : t("Đang mở ca trưa • Phản hồi < 1 phút")}
+                  </span>
+                </div>
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <b
-                  style={{
-                    fontSize: 14,
-                    display: "block",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
+
+              <div className="chatbot-header__actions">
+                <button
+                  className="chatbot-header__btn"
+                  onClick={() => setMode(mode === "ai" ? "staff" : "ai")}
+                  title={
+                    mode === "ai"
+                      ? t("Chuyển sang gặp Nhân viên quầy")
+                      : t("Quay lại Trợ lý AI")
+                  }
                 >
-                  {mode === "ai" ? t("Trợ lý AI") : t("Nhân viên Canteen")}
-                </b>
-                <span style={{ fontSize: 11, opacity: 0.92 }}>
-                  {mode === "ai"
-                    ? t("Gợi ý món, hỏi đáp nhanh")
-                    : t("Chat với nhân viên Canteen")}
-                </span>
+                  {mode === "ai" ? (
+                    <>
+                      <Headset size={16} />
+                      <span>{t("Gặp Quầy Bếp")}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bot size={16} />
+                      <span>{t("Trợ lý AI")}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  className="chatbot-header__icon-btn"
+                  onClick={() => {
+                    setAiMessages([]);
+                    lastAiCountRef.current = 0;
+                  }}
+                  title={t("Làm mới cuộc trò chuyện")}
+                >
+                  <RefreshCw size={16} />
+                </button>
+                <button
+                  className="chatbot-header__icon-btn chatbot-header__close"
+                  onClick={() => setOpen(false)}
+                  title={t("Đóng")}
+                  aria-label={t("Đóng")}
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                aria-label={t("Đóng")}
-                type="button"
-                style={{
-                  background: "rgba(255,255,255,0.18)",
-                  border: 0,
-                  color: "#fff",
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  cursor: "pointer",
-                  display: "grid",
-                  placeItems: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <X size={16} />
-              </button>
             </div>
+          </header>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 4,
-                background: "rgba(255,255,255,0.15)",
-                borderRadius: 10,
-                padding: 4,
-              }}
-              role="tablist"
-            >
-              <button
-                onClick={() => setMode("ai")}
-                role="tab"
-                aria-selected={mode === "ai"}
-                type="button"
-                style={{
-                  padding: "8px 10px",
-                  background: mode === "ai" ? "#fff" : "transparent",
-                  color: mode === "ai" ? "#2634d5" : "#fff",
-                  border: 0,
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 5,
-                }}
-              >
-                <Bot size={14} /> {t("Trợ lý")}
-              </button>
-              <button
-                onClick={() => setMode("staff")}
-                role="tab"
-                aria-selected={mode === "staff"}
-                type="button"
-                style={{
-                  padding: "8px 10px",
-                  background: mode === "staff" ? "#fff" : "transparent",
-                  color: mode === "staff" ? "#2634d5" : "#fff",
-                  border: 0,
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 5,
-                }}
-              >
-                <Store size={14} /> {t("Nhân viên")}
-              </button>
-            </div>
+          <div className="chatbot-body">
+            <aside className="chatbot-side chatbot-side--left">
+              <LeftSidebar user={user} t={t} />
+            </aside>
+
+            <section className="chatbot-center">
+              {mode === "ai" ? (
+                <AIContent
+                  messages={aiMessages}
+                  typing={aiTyping}
+                  onSend={sendAI}
+                  text={aiText}
+                  setText={setAiText}
+                  onQuickAdd={quickAdd}
+                  onView={setSelected}
+                  scrollRef={aiScrollRef}
+                  bottomRef={aiBottomRef}
+                  t={t}
+                  tData={tData}
+                />
+              ) : (
+                <StaffContent
+                  messages={staffMessages}
+                  loading={staffLoading}
+                  error={staffError}
+                  onRetry={() => loadStaff(false)}
+                  sending={staffSending}
+                  onSend={sendStaff}
+                  text={staffText}
+                  setText={setStaffText}
+                  scrollRef={staffScrollRef}
+                  bottomRef={staffBottomRef}
+                  t={t}
+                />
+              )}
+            </section>
+
+            <aside className="chatbot-side chatbot-side--right">
+              <RightSidebar
+                user={user}
+                t={t}
+                shiftStaff={shiftStaff}
+                shiftLoading={shiftLoading}
+              />
+            </aside>
           </div>
-
-          {mode === "ai" ? (
-            <AIContent
-              messages={aiMessages}
-              typing={aiTyping}
-              onSend={sendAI}
-              text={aiText}
-              setText={setAiText}
-              onQuickAdd={quickAdd}
-              onView={setSelected}
-              scrollRef={aiScrollRef}
-              bottomRef={aiBottomRef}
-              t={t}
-            />
-          ) : (
-            <StaffContent
-              messages={staffMessages}
-              loading={staffLoading}
-              error={staffError}
-              onRetry={() => loadStaff(false)}
-              sending={staffSending}
-              onSend={sendStaff}
-              text={staffText}
-              setText={setStaffText}
-              scrollRef={staffScrollRef}
-              bottomRef={staffBottomRef}
-              t={t}
-            />
-          )}
         </div>
       )}
 
@@ -603,6 +600,223 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   );
 }
 
+// ============================================================
+// LeftSidebar
+// ============================================================
+
+function LeftSidebar({ user, t }) {
+  return (
+    <>
+      <div className="chatbot-card">
+        <div className="chatbot-profile">
+          <div className="chatbot-profile__avatar">
+            {getInitials(user?.name)}
+          </div>
+          <div className="chatbot-profile__info">
+            <b>{user?.name || t("Khách")}</b>
+            <span>
+              {t("MSSV:")} {user?.studentId || "K21-CNTT04"}
+            </span>
+          </div>
+          <span className="chatbot-profile__badge">SV</span>
+        </div>
+
+        <div className="chatbot-profile__stats">
+          <div className="chatbot-profile__stat">
+            <span className="chatbot-profile__stat-label">
+              {t("Ví VWA Pay")}
+            </span>
+            <span className="chatbot-profile__stat-value chatbot-profile__stat-value--blue">
+              {money(user?.balance || 185000)}
+            </span>
+          </div>
+          <div className="chatbot-profile__stat">
+            <span className="chatbot-profile__stat-label">
+              {t("Điểm thưởng")}
+            </span>
+            <span className="chatbot-profile__stat-value chatbot-profile__stat-value--blue">
+              {user?.points || 350} pts
+            </span>
+          </div>
+        </div>
+
+        <div className="chatbot-profile__tags-wrap">
+          <div className="chatbot-profile__tags-label">
+            <Sparkles size={12} />
+            {t("Hồ sơ ẩm thực đã lưu:")}
+          </div>
+          <div className="chatbot-profile__tags">
+            <span className="chatbot-tag">{t("Ít cay")}</span>
+            <span className="chatbot-tag chatbot-tag--error">
+              {t("Dị ứng hải sản")}
+            </span>
+            <span className="chatbot-tag chatbot-tag--green">
+              {t("Healthy")}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="chatbot-card">
+        <div className="chatbot-card__head">
+          <Sparkles size={16} />
+          <span>{t("Gợi ý câu hỏi thông minh")}</span>
+        </div>
+        <div className="chatbot-prompts">
+          {PROMPT_SUGGESTIONS.map((p, i) => (
+            <PromptButton key={i} icon={p.icon} text={t(p.text)} />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PromptButton({ icon, text }) {
+  return (
+    <button
+      type="button"
+      className="chatbot-prompt-btn"
+      onClick={() => {
+        const input = document.querySelector(".chatbot-input__field");
+        if (input) {
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            "value"
+          ).set;
+          setter.call(input, text);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.focus();
+        }
+      }}
+    >
+      <span className="chatbot-prompt-btn__text">
+        {icon} {text}
+      </span>
+      <ArrowRight size={14} className="chatbot-prompt-btn__arrow" />
+    </button>
+  );
+}
+
+// ============================================================
+// RightSidebar
+// ============================================================
+
+function RightSidebar({ user, t, shiftStaff, shiftLoading }) {
+  return (
+    <>
+      <div className="chatbot-card">
+        <div className="chatbot-card__head chatbot-card__head--row">
+          <div className="chatbot-card__head-left">
+            <Flame size={16} />
+            <span>{t("Dinh dưỡng khuyến nghị")}</span>
+          </div>
+          <span className="chatbot-card__head-sub">{t("Ca Chiều")}</span>
+        </div>
+
+        <div className="chatbot-nutrition">
+          <div className="chatbot-nutrition__row">
+            <span>{t("Năng lượng nạp vào:")}</span>
+            <b>480 / 650 kcal</b>
+          </div>
+          <div className="chatbot-nutrition__bar">
+            <div
+              className="chatbot-nutrition__bar-fill"
+              style={{ width: "74%" }}
+            />
+          </div>
+
+          <div className="chatbot-nutrition__macros">
+            <div className="chatbot-nutrition__macro">
+              <span className="chatbot-nutrition__macro-label">
+                {t("Đạm")}
+              </span>
+              <span className="chatbot-nutrition__macro-value">28g</span>
+              <span className="chatbot-nutrition__macro-sub chatbot-nutrition__macro-sub--green">
+                85%
+              </span>
+            </div>
+            <div className="chatbot-nutrition__macro">
+              <span className="chatbot-nutrition__macro-label">
+                {t("Carb")}
+              </span>
+              <span className="chatbot-nutrition__macro-value">54g</span>
+              <span className="chatbot-nutrition__macro-sub">
+                {t("Cân bằng")}
+              </span>
+            </div>
+            <div className="chatbot-nutrition__macro">
+              <span className="chatbot-nutrition__macro-label">
+                {t("Chất xơ")}
+              </span>
+              <span className="chatbot-nutrition__macro-value">12g</span>
+              <span className="chatbot-nutrition__macro-sub chatbot-nutrition__macro-sub--green">
+                {t("Rất tốt")}
+              </span>
+            </div>
+          </div>
+
+          <div className="chatbot-tip">
+            <Sparkles size={16} className="chatbot-tip__icon" />
+            <p className="chatbot-tip__text">
+              <b>{t("Lời khuyên chuyên gia:")}</b>{" "}
+              {t(
+                "Bạn nên bổ sung thêm 1 ly Nước ép ổi hồng hoặc Trà sen vàng ít đường để bổ sung vitamin C cho buổi học chiều dài nhé."
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {shiftLoading ? (
+        <div className="chatbot-card">
+          <div className="chatbot-card__head">
+            <Phone size={16} />
+            <span>{t("Hotline Khẩn Cấp Ca Trực")}</span>
+          </div>
+          <div className="chatbot-shift-loading">
+            <Loader2 size={16} className="chatbot-spin" />
+            <span>{t("Đang kiểm tra ca trực...")}</span>
+          </div>
+        </div>
+      ) : shiftStaff ? (
+        <div className="chatbot-card">
+          <div className="chatbot-card__head">
+            <Phone size={16} />
+            <span>{t("Hotline Khẩn Cấp Ca Trực")}</span>
+          </div>
+          <div className="chatbot-hotline">
+            <div className="chatbot-hotline__row">
+              <span>{t("Quầy trưởng ca:")}</span>
+              <b>
+                {shiftStaff.name || shiftStaff.staff_name || t("Nhân viên")}
+                {(shiftStaff.employee_code || shiftStaff.code) &&
+                  ` (${shiftStaff.employee_code || shiftStaff.code})`}
+              </b>
+            </div>
+            {(shiftStaff.station || shiftStaff.counter_name) && (
+              <div className="chatbot-hotline__row">
+                <span>{t("Vị trí:")}</span>
+                <b>{shiftStaff.station || shiftStaff.counter_name}</b>
+              </div>
+            )}
+            {shiftStaff.phone && (
+              <div className="chatbot-hotline__row">
+                <span>{t("Hotline:")}</span>
+                <a href={`tel:${shiftStaff.phone}`}>{shiftStaff.phone}</a>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+// ============================================================
+// AIContent
+// ============================================================
+
 function AIContent({
   messages,
   typing,
@@ -614,6 +828,7 @@ function AIContent({
   scrollRef,
   bottomRef,
   t,
+  tData,
 }) {
   const handleKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -624,172 +839,88 @@ function AIContent({
 
   return (
     <>
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          overflowX: "hidden",
-          padding: 14,
-          background: "var(--bg-tertiary, #f5f7fb)",
-        }}
-      >
+      <div ref={scrollRef} className="chatbot-messages">
         {messages.map((m) => {
           const isUser = m.from === "user";
           return (
             <div
               key={m.id}
-              style={{
-                display: "flex",
-                justifyContent: isUser ? "flex-end" : "flex-start",
-                gap: 8,
-                marginBottom: 12,
-              }}
+              className={`chatbot-msg ${isUser ? "chatbot-msg--user" : ""}`}
             >
               {!isUser && (
-                <div
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: "50%",
-                    background: "linear-gradient(135deg, #8b5cf6, #2634d5)",
-                    color: "#fff",
-                    display: "grid",
-                    placeItems: "center",
-                    flexShrink: 0,
-                    alignSelf: "flex-end",
-                  }}
-                >
-                  <Bot size={16} />
+                <div className="chatbot-msg__avatar">
+                  <Bot size={18} />
                 </div>
               )}
 
               <div
-                style={{
-                  maxWidth: "78%",
-                  padding: "10px 12px",
-                  borderRadius: isUser
-                    ? "14px 14px 4px 14px"
-                    : "14px 14px 14px 4px",
-                  background: isUser ? "#2634d5" : "var(--card-bg, #fff)",
-                  color: isUser ? "#fff" : "var(--text-primary, #172033)",
-                  fontSize: 13,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                }}
+                className={`chatbot-msg__body ${
+                  isUser ? "chatbot-msg__body--user" : ""
+                }`}
               >
-                <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                  {m.content}
-                </div>
+                {!isUser && (
+                  <div className="chatbot-msg__header">
+                    <span className="chatbot-msg__name">
+                      🤖 {t("Canteen VWA Smart Assistant")}
+                    </span>
+                  </div>
+                )}
+
+                <div className="chatbot-msg__content">{m.content}</div>
 
                 {!isUser && m.items && m.items.length > 0 && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 6,
-                    }}
-                  >
+                  <div className="chatbot-food-grid">
                     {m.items.map((it) => (
-                      <div
-                        key={it.id || it._id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: 6,
-                          background: "var(--bg-tertiary, #f8fafc)",
-                          borderRadius: 10,
-                          border: "1px solid var(--border-color, #e5e9ef)",
-                        }}
-                      >
-                        <img
-                          src={it.image}
-                          alt={it.name}
-                          loading="lazy"
-                          style={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 8,
-                            objectFit: "cover",
-                            flexShrink: 0,
-                          }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "var(--text-primary, #172033)",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {tData(it, "name")}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: "#18a967",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {money(it.price)}
-                          </div>
+                      <div key={it.id || it._id} className="chatbot-food-card">
+                        <div className="chatbot-food-card__img-wrap">
+                          <img src={it.image} alt={it.name} loading="lazy" />
+                          {(it.sold || 0) >= 50 && (
+                            <span className="chatbot-food-card__badge">
+                              <Flame size={10} /> {t("Bán chạy")}
+                            </span>
+                          )}
+                          {it.discount_percent > 0 && (
+                            <span className="chatbot-food-card__discount">
+                              -{it.discount_percent}%
+                            </span>
+                          )}
                         </div>
-                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                          <button
-                            onClick={() => onQuickAdd(it)}
-                            title={t("Thêm vào giỏ")}
-                            aria-label={t("Thêm vào giỏ")}
-                            type="button"
-                            style={{
-                              background: "#2634d5",
-                              color: "#fff",
-                              border: 0,
-                              width: 30,
-                              height: 30,
-                              borderRadius: 7,
-                              cursor: "pointer",
-                              display: "grid",
-                              placeItems: "center",
-                            }}
-                          >
-                            <ShoppingCart size={13} />
-                          </button>
-                          <button
-                            onClick={() => onView(it)}
-                            title={t("Xem")}
-                            type="button"
-                            style={{
-                              background: "#f59e0b",
-                              color: "#fff",
-                              border: 0,
-                              padding: "0 10px",
-                              height: 30,
-                              borderRadius: 7,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {t("Xem")}
-                          </button>
+                        <div className="chatbot-food-card__info">
+                          <h4 className="chatbot-food-card__name">
+                            {tData(it, "name")}
+                          </h4>
+                          <div className="chatbot-food-card__meta">
+                            <span>{it.category}</span>
+                          </div>
+                          <div className="chatbot-food-card__bottom">
+                            <span className="chatbot-food-card__price">
+                              {money(it.price)}
+                            </span>
+                            <div className="chatbot-food-card__actions">
+                              <button
+                                onClick={() => onQuickAdd(it)}
+                                className="chatbot-food-card__add"
+                                title={t("Thêm vào giỏ")}
+                                type="button"
+                              >
+                                <ShoppingCart size={13} />
+                              </button>
+                              <button
+                                onClick={() => onView(it)}
+                                className="chatbot-food-card__view"
+                                type="button"
+                              >
+                                {t("Xem")}
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                <div
-                  style={{
-                    fontSize: 10,
-                    opacity: 0.65,
-                    marginTop: 4,
-                    textAlign: "right",
-                  }}
-                >
+                <div className="chatbot-msg__time">
                   {fmtTime(m.created_at)}
                 </div>
               </div>
@@ -798,34 +929,22 @@ function AIContent({
         })}
 
         {typing && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, #8b5cf6, #2634d5)",
-                color: "#fff",
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Bot size={16} />
+          <div className="chatbot-msg">
+            <div className="chatbot-msg__avatar">
+              <Bot size={18} />
             </div>
-            <div
-              style={{
-                padding: "12px 16px",
-                background: "var(--card-bg, #fff)",
-                borderRadius: "14px 14px 14px 4px",
-                display: "flex",
-                gap: 4,
-                alignItems: "center",
-              }}
-            >
-              <span className="dot-typing" />
-              <span className="dot-typing" style={{ animationDelay: "0.15s" }} />
-              <span className="dot-typing" style={{ animationDelay: "0.3s" }} />
+            <div className="chatbot-msg__body">
+              <div className="chatbot-typing">
+                <span className="dot-typing" />
+                <span
+                  className="dot-typing"
+                  style={{ animationDelay: "0.15s" }}
+                />
+                <span
+                  className="dot-typing"
+                  style={{ animationDelay: "0.3s" }}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -833,82 +952,48 @@ function AIContent({
         <div ref={bottomRef} />
       </div>
 
-      <div
-        style={{
-          padding: "8px 10px 0",
-          display: "flex",
-          gap: 6,
-          overflowX: "auto",
-          background: "var(--card-bg, #fff)",
-          borderTop: "1px solid var(--border-color, #eef2f7)",
-          scrollbarWidth: "none",
-        }}
-      >
-        {QUICK_REPLIES_KEYS.map((key) => {
-          const q = t(key);
-          return (
-            <button
-              key={key}
-              onClick={() => onSend(q)}
-              disabled={typing}
-              type="button"
-              style={{
-                padding: "5px 12px",
-                background: "var(--bg-tertiary, #f5f7fb)",
-                border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 20,
-                cursor: typing ? "not-allowed" : "pointer",
-                fontSize: 11.5,
-                color: "var(--text-muted, #475569)",
-                whiteSpace: "nowrap",
-                fontWeight: 500,
-                opacity: typing ? 0.5 : 1,
-                flexShrink: 0,
-              }}
-            >
-              {q}
-            </button>
-          );
-        })}
+      <div className="chatbot-quick-row">
+        <span className="chatbot-quick-row__label">{t("Gợi ý nhanh:")}</span>
+        {QUICK_REPLIES_KEYS.map((key) => (
+          <button
+            key={key}
+            onClick={() => onSend(t(key))}
+            disabled={typing}
+            type="button"
+            className="chatbot-chip"
+          >
+            {t(key)}
+          </button>
+        ))}
       </div>
 
-      <div style={{ padding: 10, display: "flex", gap: 6 }}>
+      <div className="chatbot-input">
+        <div className="chatbot-input__icons">
+          <button
+            className="chatbot-input__icon"
+            type="button"
+            title={t("Đính kèm ảnh")}
+          >
+            <Sparkles size={18} />
+          </button>
+        </div>
         <input
+          className="chatbot-input__field"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={t("Nhập tin nhắn cho trợ lý...")}
+          placeholder={t(
+            "Hỏi AI Bot về món ăn, lượng calo, gợi ý bữa trưa..."
+          )}
           disabled={typing}
           maxLength={MAX_MESSAGE_LENGTH}
-          style={{
-            flex: 1,
-            padding: "10px 14px",
-            border: "1px solid var(--border-color, #e5e9ef)",
-            borderRadius: 24,
-            outline: "none",
-            background: "var(--bg-secondary, #f5f7fb)",
-            color: "var(--text-primary, #172033)",
-            fontSize: 13,
-            minWidth: 0,
-          }}
         />
         <button
           onClick={() => onSend()}
           disabled={typing || !text.trim()}
           aria-label={t("Gửi")}
+          className="chatbot-input__send"
           type="button"
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            background: text.trim() ? "#2634d5" : "#94a3b8",
-            color: "#fff",
-            border: 0,
-            cursor: text.trim() && !typing ? "pointer" : "not-allowed",
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
-          }}
         >
           <Send size={16} />
         </button>
@@ -916,6 +1001,10 @@ function AIContent({
     </>
   );
 }
+
+// ============================================================
+// StaffContent
+// ============================================================
 
 function StaffContent({
   messages,
@@ -939,203 +1028,87 @@ function StaffContent({
 
   return (
     <>
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          overflowX: "hidden",
-          padding: 14,
-          background: "var(--bg-tertiary, #f5f7fb)",
-        }}
-      >
+      <div ref={scrollRef} className="chatbot-messages">
         {error && !loading && (
-          <div
-            style={{
-              background: "rgba(239, 68, 68, 0.08)",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
-              borderRadius: 10,
-              padding: "12px 14px",
-              marginBottom: 14,
-              color: "#ef4444",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 13,
-            }}
-          >
-            <AlertCircle size={18} style={{ flexShrink: 0 }} />
-            <span style={{ flex: 1 }}>{error}</span>
-            <button
-              onClick={onRetry}
-              type="button"
-              style={{
-                padding: "4px 10px",
-                background: "#ef4444",
-                color: "#fff",
-                border: 0,
-                borderRadius: 6,
-                cursor: "pointer",
-                fontWeight: 600,
-                fontSize: 11,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
+          <div className="chatbot-error">
+            <AlertCircle size={18} />
+            <span>{error}</span>
+            <button onClick={onRetry} type="button">
               <RefreshCw size={11} /> {t("Thử lại")}
             </button>
           </div>
         )}
 
         {loading && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: 20,
-              color: "var(--text-light, #8993a3)",
-              fontSize: 13,
-            }}
-          >
-            <Loader2
-              size={20}
-              style={{ animation: "spin 1s linear infinite", marginBottom: 6 }}
-            />
-            <div>{t("Đang tải...")}</div>
+          <div className="chatbot-loading">
+            <Loader2 size={20} className="chatbot-spin" />
+            <span>{t("Đang tải...")}</span>
           </div>
         )}
 
         {!loading && !error && messages.length === 0 && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: 40,
-              color: "var(--text-light, #8993a3)",
-              fontSize: 13,
-            }}
-          >
-            <Store
-              size={44}
-              style={{ opacity: 0.3, margin: "0 auto 12px", display: "block" }}
-            />
-            <b
-              style={{
-                display: "block",
-                color: "var(--text-primary, #172033)",
-                fontSize: 14,
-                marginBottom: 6,
-              }}
-            >
-              {t("Chưa có tin nhắn")}
-            </b>
-            <p style={{ margin: 0 }}>{t("Gửi tin nhắn để được hỗ trợ trực tiếp.")}</p>
+          <div className="chatbot-empty">
+            <Store size={44} />
+            <b>{t("Chưa có tin nhắn")}</b>
+            <p>{t("Gửi tin nhắn để được hỗ trợ trực tiếp.")}</p>
           </div>
         )}
 
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              display: "flex",
-              justifyContent: m.from === "customer" ? "flex-end" : "flex-start",
-              marginBottom: 10,
-            }}
-          >
+        {messages.map((m) => {
+          const isOwn = m.from === "customer";
+          return (
             <div
-              style={{
-                maxWidth: "75%",
-                padding: "10px 14px",
-                borderRadius:
-                  m.from === "customer"
-                    ? "16px 16px 4px 16px"
-                    : "16px 16px 16px 4px",
-                background:
-                  m.from === "customer"
-                    ? "#2634d5"
-                    : "var(--card-bg, #fff)",
-                color:
-                  m.from === "customer"
-                    ? "#fff"
-                    : "var(--text-primary, #172033)",
-                fontSize: 13,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-              }}
+              key={m.id}
+              className={`chatbot-msg ${isOwn ? "chatbot-msg--user" : ""}`}
             >
-              {m.from === "staff" && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "#2634d5",
-                    marginBottom: 4,
-                  }}
-                >
-                  {m.from_name || t("Nhân viên")}
+              {!isOwn && (
+                <div className="chatbot-msg__avatar chatbot-msg__avatar--staff">
+                  <Headset size={18} />
                 </div>
               )}
-              <div style={{ wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-                {m.content}
-              </div>
               <div
-                style={{
-                  fontSize: 10,
-                  opacity: 0.7,
-                  marginTop: 4,
-                  textAlign: "right",
-                }}
+                className={`chatbot-msg__body ${
+                  isOwn ? "chatbot-msg__body--user" : ""
+                }`}
               >
-                {fmtTime(m.created_at)}
+                {!isOwn && m.from === "staff" && (
+                  <div className="chatbot-msg__header">
+                    <span className="chatbot-msg__name">
+                      {m.from_name || t("Nhân viên Canteen")}
+                    </span>
+                  </div>
+                )}
+                <div className="chatbot-msg__content">{m.content}</div>
+                <div className="chatbot-msg__time">
+                  {fmtTime(m.created_at)}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         <div ref={bottomRef} />
       </div>
 
-      <div style={{ padding: 10, display: "flex", gap: 6 }}>
+      <div className="chatbot-input">
         <input
+          className="chatbot-input__field"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKey}
           placeholder={t("Nhập tin nhắn...")}
           disabled={sending}
           maxLength={MAX_MESSAGE_LENGTH}
-          style={{
-            flex: 1,
-            padding: "10px 14px",
-            border: "1px solid var(--border-color, #e5e9ef)",
-            borderRadius: 24,
-            outline: "none",
-            background: "var(--bg-secondary, #f5f7fb)",
-            color: "var(--text-primary, #172033)",
-            fontSize: 13,
-            minWidth: 0,
-          }}
         />
         <button
           onClick={onSend}
           disabled={sending || !text.trim()}
           aria-label={t("Gửi")}
+          className="chatbot-input__send"
           type="button"
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            background: text.trim() ? "#2634d5" : "#94a3b8",
-            color: "#fff",
-            border: 0,
-            cursor: text.trim() && !sending ? "pointer" : "not-allowed",
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
-          }}
         >
           {sending ? (
-            <Loader2
-              size={16}
-              style={{ animation: "spin 1s linear infinite" }}
-            />
+            <Loader2 size={16} className="chatbot-spin" />
           ) : (
             <Send size={16} />
           )}

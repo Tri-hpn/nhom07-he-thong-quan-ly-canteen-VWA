@@ -15,7 +15,9 @@
 
 import { useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { CheckCircle2, XCircle, Clock } from "lucide-react";
+import {
+  CheckCircle2, XCircle, Clock,
+} from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 
 // ============================================================

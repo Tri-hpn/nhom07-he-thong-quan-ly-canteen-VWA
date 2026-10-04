@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // OWNERVOUCHERS.JSX — Quản lý voucher (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
@@ -7,9 +7,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Plus, Search, Trash2, Edit, Ticket, Gift, Save, Check, Download,
-  Power, Globe, User as UserIcon, Eye, X, Users, Copy,
-  Loader2, AlertCircle,
+  Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";

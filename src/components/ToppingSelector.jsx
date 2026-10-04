@@ -3,7 +3,9 @@
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { Check, Loader2 } from "lucide-react";
+import {
+  Check, Loader2,
+} from "lucide-react";
 import { api } from "../api";
 import { money } from "./UI";
 import { useI18n } from "../hooks/useI18n";
@@ -22,6 +24,37 @@ function isSameIdArray(a, b) {
     if (!setB.has(id)) return false;
   }
   return true;
+}
+
+// Ánh xạ danh mục món (menu khách) → nhóm topping (`applies_to` do admin cấu hình).
+// Hai bên dùng tên nhóm khác nhau nên phải map, nếu không món thuộc các danh mục
+// Đồ uống / Bún - Phở - Cháo / Ăn vặt… sẽ không có topping nào để chọn.
+const TOPPING_GROUPS_BY_CATEGORY = {
+  "Cơm": ["Cơm"],
+  "Bún - Phở - Cháo": ["Món mặn", "Cơm"],
+  "Bánh mì - Xôi": ["Món mặn", "Cơm"],
+  "Đồ chay": ["Món chay"],
+  "Món chay": ["Món chay"],
+  "Món mặn": ["Món mặn", "Cơm"],
+  "Món phụ": ["Món phụ", "Cơm"],
+  "Ăn vặt": ["Đồ ăn nhanh"],
+  "Đồ ăn nhanh": ["Đồ ăn nhanh"],
+  "Coffee & Tea": ["Đồ uống"],
+  "Nước ép - Sinh tố": ["Đồ uống"],
+  "Tráng miệng": ["Đồ uống"],
+  "Đồ uống": ["Đồ uống"],
+  "Combo": ["Cơm", "Món mặn"],
+  "Combo 1 người": ["Cơm", "Món mặn"],
+  "Combo siêu hời": ["Cơm", "Món mặn"],
+  "Bữa sáng": ["Cơm", "Món mặn"],
+  "Bữa trưa": ["Cơm", "Món mặn"],
+  "Bữa tối": ["Cơm", "Món mặn"],
+};
+
+function resolveToppingGroups(category) {
+  if (!category) return [];
+  const key = String(category).trim();
+  return TOPPING_GROUPS_BY_CATEGORY[key] || [key];
 }
 
 export default function ToppingSelector({
@@ -58,14 +91,30 @@ export default function ToppingSelector({
 
     (async () => {
       try {
+        // Lấy TOÀN BỘ topping rồi tự lọc theo nhóm phù hợp với danh mục món.
+        // (Nếu để backend lọc theo đúng tên danh mục menu thì rất nhiều món —
+        // đồ uống, bún/phở, ăn vặt… — không khớp nhóm nào và selector biến mất.)
         const [toppingsRes, sizesRes] = await Promise.all([
-          api.toppings.list(category).catch(() => []),
+          api.toppings.list().catch(() => []),
           api.sizes.list().catch(() => []),
         ]);
 
         if (myReqId !== reqIdRef.current) return;
 
-        setToppings(Array.isArray(toppingsRes) ? toppingsRes : []);
+        const all = Array.isArray(toppingsRes) ? toppingsRes : [];
+        const groups = resolveToppingGroups(category);
+
+        const matched = groups.length
+          ? all.filter((tp) => {
+              const appliesTo = Array.isArray(tp.applies_to) ? tp.applies_to : [];
+              // Topping không giới hạn nhóm → áp dụng cho mọi món
+              if (appliesTo.length === 0) return true;
+              return appliesTo.some((g) => groups.includes(g));
+            })
+          : [];
+
+        // Không khớp nhóm nào → vẫn hiện đủ topping để khách chọn (không bao giờ mất)
+        setToppings(matched.length > 0 ? matched : all);
         setSizes(Array.isArray(sizesRes) ? sizesRes : []);
       } finally {
         if (myReqId === reqIdRef.current) setLoading(false);
@@ -183,7 +232,7 @@ export default function ToppingSelector({
             marginBottom: 6,
           }}
         />
-        <div>{t("topping.loading")}</div>
+        <div>{t("Đang tải tuỳ chọn món...")}</div>
         <style>{`
           @keyframes toppingSpin {
             from { transform: rotate(0deg); }
@@ -216,12 +265,12 @@ export default function ToppingSelector({
               fontWeight: 600,
             }}
           >
-            {t("topping.chooseSize")}
+            {t("Chọn kích cỡ")}
           </h4>
 
           <div
             role="radiogroup"
-            aria-label={t("topping.chooseSize")}
+            aria-label={t("Chọn kích cỡ")}
             style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
           >
             {sizes.map((s) => {
@@ -237,10 +286,11 @@ export default function ToppingSelector({
                   aria-checked={active}
                   aria-label={
                     extra > 0
-                      ? t("topping.sizeAriaWithExtra")
-                          .replace("{name}", s.name)
-                          .replace("{extra}", money(extra))
-                      : t("topping.sizeAria").replace("{name}", s.name)
+                      ? t("Chọn kích cỡ {name}, phụ thu {extra}", {
+                          name: s.name,
+                          extra: money(extra),
+                        })
+                      : t("Chọn kích cỡ {name}", { name: s.name })
                   }
                   onClick={() => selectSize(s.id)}
                   style={{
@@ -290,12 +340,12 @@ export default function ToppingSelector({
               fontWeight: 600,
             }}
           >
-            {t("topping.addToppings")}
+            {t("Thêm topping cho món")}
           </h4>
 
           <div
             role="group"
-            aria-label={t("topping.addToppings")}
+            aria-label={t("Thêm topping cho món")}
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(2, 1fr)",
@@ -315,9 +365,10 @@ export default function ToppingSelector({
                   type="button"
                   role="checkbox"
                   aria-checked={active}
-                  aria-label={t("topping.toppingAria")
-                    .replace("{name}", tp.name)
-                    .replace("{price}", money(price))}
+                  aria-label={t("Chọn {name}, thêm {price}", {
+                    name: tp.name,
+                    price: money(price),
+                  })}
                   onClick={() => toggleTopping(tp.id)}
                   style={{
                     display: "flex",

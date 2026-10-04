@@ -1,18 +1,31 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V4 - Staff dark theme)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// - EMPLOYEE: Dark navy #131b2e (đồng bộ với KDS Kanban)
+// - ADMIN/CUSTOMER: giữ theme sky cũ
+// - Zone labels phân chia: "NHÂN VIÊN & BẾP (KDS)" + "QUẢN TRỊ HỆ THỐNG (SAAS)"
+// - Node footer hiển thị phiên bản hệ thống
+//
+// ✅ V4:
+//   - Bỏ "Chấm công" (đã gộp vào "Ca làm việc")
+//   - Đổi "Lịch sử ca hôm nay" → "Ca làm việc"
+//   - Thêm menu "Chuẩn bị đơn" → /employee/prep
+//   - Badge: Kanban = đơn Chờ xác nhận, Prep = đơn Đang chuẩn bị
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Utensils, ShoppingBag, Users, UserCog, Warehouse,
   BarChart3, LogOut, ClipboardList, Bell, UserRound, CreditCard,
-  MessageCircle, CalendarCheck, Database, TrendingUp, Shield, Wallet, Ticket,
+  MessageCircle, CalendarCheck, Database, TrendingUp, Shield, Wallet,
+  Ticket, Sun, ChefHat, Megaphone, Package, Receipt, CheckSquare,
+  ShieldCheck, Kanban, History, BellRing, ReceiptText, UtensilsCrossed,
+  LayoutGrid, BadgeCheck, Activity, Settings,
 } from "lucide-react";
 import { api } from "../api";
 import { useI18n } from "../hooks/useI18n";
+import { LogoVWACompact } from "./LogoVWA";
 
 const POLL_MS = 30000;
 const BADGE_MAX = 99;
@@ -40,43 +53,82 @@ const ICONS = {
   promotions: Ticket,
   wallet: CreditCard,
   wallet_admin: CreditCard,
+  // Staff-specific (dark theme)
+  kds_kanban: Kanban,
+  kds_prep: ChefHat,
+  kds_history: History,
+  kds_menu: UtensilsCrossed,
+  kds_attendance: CalendarCheck,
+  kds_alerts: BellRing,
+  admin_analytics: BarChart3,
+  admin_orders: ReceiptText,
+  admin_menu: UtensilsCrossed,
+  admin_categories: LayoutGrid,
+  admin_inventory: Package,
+  admin_users: Users,
+  admin_staff: BadgeCheck,
+  admin_vouchers: Ticket,
+  admin_analytics2: Activity,
+  admin_settings: Settings,
 };
 
-// ✅ SOURCE-TEXT: Label giờ là câu tiếng Việt trực tiếp
-// Định dạng: [iconKey, labelVI, path]
+// ✅ MENU CONFIG mới — EMPLOYEE chỉ còn 1 zone (đã bỏ Chấm công riêng)
 const MENU_CONFIG = {
-  ADMIN: [
-    ["dashboard",     "Tổng quan",           "/owner"],
-    ["orders_admin",  "Đơn hàng",            "/owner/orders"],
-    ["menu",          "Thực đơn",            "/owner/menu"],
-    ["price",         "Lịch sử giá",         "/owner/price-history"],
-    ["inventory",     "Kho hàng",            "/owner/inventory"],
-    ["vouchers",      "Voucher",             "/owner/vouchers"],
-    ["finance",       "Tài chính",           "/owner/finance"],
-    ["wallet_admin",  "Ví Canteen",          "/owner/wallet"],
-    ["reports",       "Báo cáo",             "/owner/reports"],
-    ["employees",     "Nhân viên",           "/owner/employees"],
-    ["attendance",    "Ca làm & chấm công",  "/owner/shifts"],
-    ["customers",     "Khách hàng",          "/owner/customers"],
-    ["permissions",   "Phân quyền",          "/owner/permissions"],
-    ["backup",        "Backup dữ liệu",      "/owner/backup"],
-  ],
-  EMPLOYEE: [
-    ["dashboard",   "Tổng quan",       "/employee"],
-    ["process",     "Chấm công",       "/employee/attendance"],
-    ["orders",      "Đơn hàng",        "/employee/orders"],
-    ["menu",        "Thực đơn",        "/employee/menu"],
-    ["chat",        "Chat khách",      "/employee/chat"],
-  ],
-  CUSTOMER: [
-    ["dashboard",   "Trang chủ",       "/customer"],
-    ["menu",        "Thực đơn",        "/customer/menu"],
-    ["orders",      "Đơn hàng",        "/customer/orders"],
-    ["wallet",      "Ví Canteen",      "/customer/wallet"],
-    ["promotions",  "Khuyến mãi",      "/customer/promotions"],
-    ["chat",        "Chat hỗ trợ",     "/customer/chat"],
-    ["profile",     "Hồ sơ",           "/customer/profile"],
-  ],
+  ADMIN: {
+    zones: [
+      {
+        label: null,
+        items: [
+          ["dashboard",     "Tổng quan",           "/owner"],
+          ["orders_admin",  "Đơn hàng",            "/owner/orders"],
+          ["menu",          "Thực đơn",            "/owner/menu"],
+          ["price",         "Lịch sử giá",         "/owner/price-history"],
+          ["inventory",     "Kho hàng",            "/owner/inventory"],
+          ["vouchers",      "Voucher",             "/owner/vouchers"],
+          ["finance",       "Tài chính",           "/owner/finance"],
+          ["wallet_admin",  "Ví Canteen",          "/owner/wallet"],
+          ["reports",       "Báo cáo",             "/owner/reports"],
+          ["employees",     "Nhân viên",           "/owner/employees"],
+          ["attendance",    "Ca làm & chấm công",  "/owner/shifts"],
+          ["customers",     "Khách hàng",          "/owner/customers"],
+          ["permissions",   "Phân quyền",          "/owner/permissions"],
+          ["backup",        "Backup dữ liệu",      "/owner/backup"],
+        ],
+      },
+    ],
+  },
+  // ✅ EMPLOYEE — cập nhật V4
+  EMPLOYEE: {
+    zones: [
+      {
+        label: "Nhân viên & Bếp (KDS)",
+        items: [
+          ["dashboard",   "Tổng quan ca làm việc",  "/employee"],
+          ["kds_kanban",  "Bàn làm việc (Kanban)",  "/employee/orders", { badge: "kds" }],
+          ["kds_prep",    "Chuẩn bị đơn",           "/employee/prep",   { badge: "prep" }],
+          ["kds_menu",    "Thực đơn & Kho (86)",    "/employee/menu"],
+          ["kds_history", "Ca làm việc",            "/employee/shifts"],
+          ["kds_alerts",  "Thông báo khẩn",         "/employee/chat"],
+        ],
+      },
+    ],
+  },
+  CUSTOMER: {
+    zones: [
+      {
+        label: null,
+        items: [
+          ["dashboard",   "Trang chủ",       "/customer"],
+          ["menu",        "Thực đơn",        "/customer/menu"],
+          ["orders",      "Đơn hàng",        "/customer/orders"],
+          ["wallet",      "Ví Canteen",      "/customer/wallet"],
+          ["promotions",  "Khuyến mãi",      "/customer/promotions"],
+          ["chat",        "Chat hỗ trợ",     "/customer/chat"],
+          ["profile",     "Hồ sơ",           "/customer/profile"],
+        ],
+      },
+    ],
+  },
 };
 
 const PROFILE_CONFIG = {
@@ -84,6 +136,43 @@ const PROFILE_CONFIG = {
   EMPLOYEE: { to: "/employee/profile", label: "Nhân viên" },
   CUSTOMER: { to: "/customer/profile", label: "Khách hàng" },
 };
+
+const ROOT_PATHS = ["/owner", "/employee", "/customer"];
+
+// Tách "to" thành path + query
+function splitTo(to) {
+  const raw = String(to || "");
+  const i = raw.indexOf("?");
+  return i < 0
+    ? { path: raw, query: "" }
+    : { path: raw.slice(0, i), query: raw.slice(i + 1) };
+}
+
+// Giữ đúng hành vi NavLink cũ
+function pathMatches(path, pathname) {
+  if (ROOT_PATHS.includes(path)) return pathname === path;
+  return pathname === path || pathname.startsWith(path + "/");
+}
+
+// Mọi tham số khai báo trong `to` đều phải khớp URL hiện tại
+function queryMatches(query, search) {
+  const want = new URLSearchParams(query);
+  const keys = [...want.keys()];
+  if (keys.length === 0) return false;
+  const current = new URLSearchParams(search);
+  return keys.every((k) => current.get(k) === want.get(k));
+}
+
+// Xác định mục đang active — hỗ trợ query
+function isNavItemActive(to, siblings, location) {
+  const { path, query } = splitTo(to);
+  if (!pathMatches(path, location.pathname)) return false;
+  if (query) return queryMatches(query, location.search);
+  return !siblings.some((it) => {
+    const q = splitTo(it).query;
+    return q ? queryMatches(q, location.search) : false;
+  });
+}
 
 function getInitials(name) {
   if (!name) return "VWA";
@@ -115,8 +204,64 @@ function readLastSeen(key) {
   }
 }
 
-function ProfileLink({ user, role, onNavClick }) {
-  const { t } = useI18n();
+// ============================================================
+// STAFF USER CARD
+// ============================================================
+
+function StaffSidebarUser({ user, onLogout, t }) {
+  if (!user) return null;
+
+  return (
+    <div className="staff-sidebar-user">
+      <div className="staff-sidebar-user__row">
+        <div className="staff-sidebar-user__avatar">
+          {user.avatar ? (
+            <img
+              src={user.avatar}
+              alt={user.name || t("Avatar")}
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.style.display = "none";
+              }}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            getInitials(user.name)
+          )}
+        </div>
+        <div className="staff-sidebar-user__info">
+          <span className="staff-sidebar-user__name">
+            {user.name || t("Nhân viên")}
+          </span>
+          <span className="staff-sidebar-user__role">
+            {user.employeeCode || "NV-2024-08"} • {t("Quầy 01")}
+          </span>
+        </div>
+      </div>
+
+      <div className="staff-sidebar-user__footer">
+        <span className="staff-sidebar-user__tag">
+          {t("Thu ngân / ĐP Bếp")}
+        </span>
+        <button
+          type="button"
+          className="staff-sidebar-user__logout"
+          onClick={onLogout}
+          title={t("Đăng xuất")}
+          aria-label={t("Đăng xuất")}
+        >
+          <LogOut size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// LEGACY PROFILE LINK — cho ADMIN/CUSTOMER
+// ============================================================
+
+function ProfileLink({ user, role, onNavClick, t }) {
   const cfg = PROFILE_CONFIG[role];
   if (!cfg || !user) return null;
 
@@ -203,6 +348,10 @@ function ProfileLink({ user, role, onNavClick }) {
   );
 }
 
+// ============================================================
+// MAIN SIDEBAR
+// ============================================================
+
 export default function Sidebar({ role, onLogout, user }) {
   const { t } = useI18n();
 
@@ -210,13 +359,19 @@ export default function Sidebar({ role, onLogout, user }) {
   const [cartCount, setCartCount] = useState(0);
   const [orderPending, setOrderPending] = useState(0);
   const [voucherCount, setVoucherCount] = useState(0);
+  const [kdsCount, setKdsCount] = useState(0);
+  const [prepCount, setPrepCount] = useState(0);
 
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
   );
 
   const fetchReqIdRef = useRef(0);
+  const isStaff = role === "EMPLOYEE";
 
+  const location = useLocation();
+
+  // Toggle sidebar
   useEffect(() => {
     const toggle = () => setOpen((o) => !o);
     window.addEventListener("toggle-sidebar", toggle);
@@ -258,64 +413,82 @@ export default function Sidebar({ role, onLogout, user }) {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
+  // Cart (CUSTOMER)
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
 
   useEffect(() => {
     if (role !== "CUSTOMER") return;
-
     readCart();
-
     const handler = () => readCart();
     window.addEventListener("cart-updated", handler);
     window.addEventListener("refresh-cart", handler);
-
     return () => {
       window.removeEventListener("cart-updated", handler);
       window.removeEventListener("refresh-cart", handler);
     };
   }, [role, readCart]);
 
+  // Fetch counts
   const fetchCounts = useCallback(async () => {
-    if (role !== "CUSTOMER") return;
-
     const myReqId = ++fetchReqIdRef.current;
-
     try {
-      const [orders, vouchers] = await Promise.all([
-        api.orders.myOrders().catch(() => []),
-        api.vouchers.me().catch(() => []),
-      ]);
+      if (role === "CUSTOMER") {
+        const [orders, vouchers] = await Promise.all([
+          api.orders.myOrders().catch(() => []),
+          api.vouchers.me().catch(() => []),
+        ]);
 
-      if (myReqId !== fetchReqIdRef.current) return;
+        if (myReqId !== fetchReqIdRef.current) return;
 
-      const lastSeen = readLastSeen("orders_last_seen");
-      const pending = (Array.isArray(orders) ? orders : []).filter((o) => {
-        const created = new Date(o?.created_at || 0).getTime();
-        return !isNaN(created) && created > lastSeen;
-      }).length;
+        const lastSeen = readLastSeen("orders_last_seen");
+        const pending = (Array.isArray(orders) ? orders : []).filter((o) => {
+          const created = new Date(o?.created_at || 0).getTime();
+          return !isNaN(created) && created > lastSeen;
+        }).length;
+        setOrderPending(pending);
 
-      setOrderPending(pending);
+        const lastSeenPoints = readLastSeen("points_last_seen");
+        const available = (Array.isArray(vouchers) ? vouchers : []).filter(
+          (v) => {
+            if (v?.used) return false;
+            const created = new Date(v?.created_at || 0).getTime();
+            return !isNaN(created) && created > lastSeenPoints;
+          }
+        ).length;
+        setVoucherCount(available);
+      } else if (role === "EMPLOYEE") {
+        const orders = await api.orders.all("Tất cả").catch(() => []);
+        if (myReqId !== fetchReqIdRef.current) return;
 
-      const lastSeenPoints = readLastSeen("points_last_seen");
-      const available = (Array.isArray(vouchers) ? vouchers : []).filter((v) => {
-        if (v?.used) return false;
-        const created = new Date(v?.created_at || 0).getTime();
-        return !isNaN(created) && created > lastSeenPoints;
-      }).length;
+        const list = Array.isArray(orders) ? orders : [];
 
-      setVoucherCount(available);
+        // Badge Kanban = đơn Chờ xác nhận (cần duyệt)
+        const kanbanCount = list.filter(
+          (o) => o.status === "Chờ xác nhận"
+        ).length;
+
+        // Badge Chuẩn bị đơn = đơn Đang chuẩn bị
+        const prepCount = list.filter(
+          (o) => o.status === "Đang chuẩn bị"
+        ).length;
+
+        setKdsCount(kanbanCount);
+        setPrepCount(prepCount);
+      }
     } catch {
       if (myReqId === fetchReqIdRef.current) {
         setOrderPending(0);
         setVoucherCount(0);
+        setKdsCount(0);
+        setPrepCount(0);
       }
     }
   }, [role]);
 
   useEffect(() => {
-    if (role !== "CUSTOMER") return;
+    if (role !== "CUSTOMER" && role !== "EMPLOYEE") return;
 
     fetchCounts();
     if (!tabVisible) return;
@@ -339,7 +512,7 @@ export default function Sidebar({ role, onLogout, user }) {
     };
   }, [role, fetchCounts, tabVisible]);
 
-  const list = useMemo(
+  const config = useMemo(
     () => MENU_CONFIG[role] || MENU_CONFIG.CUSTOMER,
     [role]
   );
@@ -348,12 +521,19 @@ export default function Sidebar({ role, onLogout, user }) {
     (key) => {
       if (key === "orders" && orderPending > 0) return orderPending;
       if (key === "promotions" && voucherCount > 0) return voucherCount;
+      if (key === "kds_kanban" && kdsCount > 0) return kdsCount;
+      if (key === "kds" && kdsCount > 0) return kdsCount;
+      if (key === "prep" && prepCount > 0) return prepCount;
       return 0;
     },
-    [orderPending, voucherCount]
+    [orderPending, voucherCount, kdsCount, prepCount]
   );
 
   const closeSidebar = () => setOpen(false);
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <>
@@ -369,62 +549,110 @@ export default function Sidebar({ role, onLogout, user }) {
         className={"sidebar " + (open ? "mobile-open" : "")}
         aria-label={t("Điều hướng chính")}
       >
+        {/* BRAND HEADER */}
         <div className="brand">
-          <div className="brand-mark">C</div>
+          <div
+            className="brand-mark"
+            style={
+              isStaff
+                ? {
+                    padding: 0,
+                    background: "transparent",
+                    boxShadow: "none",
+                    width: 12,
+                    height: 12,
+                  }
+                : {}
+            }
+          >
+            {isStaff ? <LogoVWACompact size={12} /> : "C"}
+          </div>
           <div className="brand-text">
-            <strong>CANTEEN</strong>
-            <small>VWA</small>
+            <strong>{isStaff ? "Canteen VWA" : "CANTEEN VWA"}</strong>
+            <small>{isStaff ? t("KDS/SAAS") : "VWA"}</small>
           </div>
         </div>
 
-        <div className="role-chip">
-          {role === "ADMIN"
-            ? t("Quản trị viên")
-            : role === "EMPLOYEE"
-            ? t("Nhân viên")
-            : t("Khách hàng")}
-        </div>
+        {/* ROLE CHIP — chỉ ADMIN/CUSTOMER */}
+        {!isStaff && (
+          <div className="role-chip">
+            {role === "ADMIN" ? t("Quản trị viên") : t("Khách hàng")}
+          </div>
+        )}
 
+        {/* NAV với ZONES */}
         <nav>
-          {list.map(([key, label, to]) => {
-            const Icon = ICONS[key] || ShoppingBag;
-            const badge = getBadge(key);
+          {config.zones.map((zone, zIdx) => (
+            <div key={zIdx}>
+              {zone.label && (
+                <div className="staff-sidebar-zone-label">
+                  {t(zone.label)}
+                </div>
+              )}
 
-            return (
-              <NavLink
-                key={to + label}
-                to={to}
-                className={({ isActive }) =>
-                  "nav-link " + (isActive ? "active" : "")
-                }
-                end={
-                  to === "/owner" ||
-                  to === "/employee" ||
-                  to === "/customer"
-                }
-                onClick={closeSidebar}
-              >
-                <Icon size={18} />
-                {/* ✅ SOURCE-TEXT: t(label) */}
-                <span>{t(label)}</span>
-                {badge > 0 && (
-                  <span
-                    className="nav-badge"
-                    aria-label={`${badge} ${t("mới")}`}
+              {zone.items.map((item) => {
+                const [key, label, to, opts] = item;
+                const Icon = ICONS[key] || ShoppingBag;
+                const badge = getBadge(opts?.badge || key);
+                const itemPaths = zone.items.map((it) => it[2]);
+                const active = isNavItemActive(to, itemPaths, location);
+
+                return (
+                  <NavLink
+                    key={to + label + key}
+                    to={to}
+                    className={() => "nav-link " + (active ? "active" : "")}
+                    aria-current={active ? "page" : null}
+                    onClick={closeSidebar}
                   >
-                    {badge > BADGE_MAX ? `${BADGE_MAX}+` : badge}
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
+                    <Icon size={18} />
+                    <span>{t(label)}</span>
+                    {badge > 0 && (
+                      <span
+                        className="nav-badge"
+                        aria-label={`${badge} ${t("mới")}`}
+                      >
+                        {badge > BADGE_MAX ? `${BADGE_MAX}+` : badge}
+                      </span>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
-        <ProfileLink user={user} role={role} onNavClick={closeSidebar} />
+        {/* NODE INFO FOOTER — chỉ EMPLOYEE */}
+        {isStaff && (
+          <div className="staff-sidebar-node">
+            <div className="staff-sidebar-node__left">
+              <span className="staff-sidebar-node__dot" />
+              <span>POS Node #01</span>
+            </div>
+            <span className="staff-sidebar-node__version">v2.4.0</span>
+          </div>
+        )}
 
-        <button className="logout-btn" onClick={onLogout} type="button">
-          <LogOut size={18} /> {t("Đăng xuất")}
-        </button>
+        {/* USER CARD */}
+        {isStaff ? (
+          <StaffSidebarUser user={user} onLogout={onLogout} t={t} />
+        ) : (
+          <>
+            <ProfileLink
+              user={user}
+              role={role}
+              onNavClick={closeSidebar}
+              t={t}
+            />
+            <button
+              className="logout-btn"
+              onClick={onLogout}
+              type="button"
+            >
+              <LogOut size={18} /> {t("Đăng xuất")}
+            </button>
+          </>
+        )}
       </aside>
     </>
   );

@@ -1,28 +1,26 @@
 // ============================================================
-// CUSTOMERORDERS.JSX — Danh sách đơn hàng của khách
+// CUSTOMERORDERS.JSX — Đơn hàng của tôi (V2)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-//    Không còn key cũ kiểu "orders.xxx" / "common.xxx"
+// ✅ SOURCE-TEXT I18N
+// ✅ Đủ ngày + giờ + nhãn tương đối (Hôm nay / Hôm qua / X ngày trước)
 // ============================================================
 
-import { Skeleton, SkeletonText } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import {
-  Eye, RefreshCw, Package, Clock, CheckCircle2, XCircle,
-  ShoppingBag, Calendar, DollarSign, Loader2, AlertCircle,
-  ChefHat, Bell,
-} from "lucide-react";
 import { Link } from "react-router-dom";
+import {
+  RefreshCw, Package, Clock, CheckCircle2, XCircle, ShoppingBag,
+  ChevronLeft, ChevronRight, Loader2, AlertCircle, ChefHat, Bell,
+  QrCode, Receipt, Headset, Soup, Utensils, Store, X, Sparkles,
+  Wallet, Leaf, Flame,
+} from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { useI18n } from "../../hooks/useI18n";
 import CustomerOrderDetail from "../../components/CustomerOrderDetail";
 
-// ============================================================
-// CONSTANTS
-// ============================================================
-
 const POLL_MS = 15000;
+const FALLBACK_IMG =
+  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=70";
 
 const ACTIVE_STATUSES = [
   "Chờ xác nhận",
@@ -31,14 +29,106 @@ const ACTIVE_STATUSES = [
   "Sẵn sàng nhận",
 ];
 
-const STATUS_COLORS = {
-  "Chờ xác nhận":  { color: "#f59e0b", bg: "#fef3c7" },
-  "Đã xác nhận":   { color: "#2634d5", bg: "#dbeafe" },
-  "Đang chuẩn bị": { color: "#8b5cf6", bg: "#ede9fe" },
-  "Sẵn sàng nhận": { color: "#18a967", bg: "#d1fae5" },
-  "Hoàn thành":    { color: "#18a967", bg: "#d1fae5" },
-  "Đã hủy":        { color: "#ef4444", bg: "#fee2e2" },
+const TAB_MAP = {
+  all: () => true,
+  preparing: (s) =>
+    s === "Đang chuẩn bị" || s === "Đã xác nhận" || s === "Chờ xác nhận",
+  ready: (s) => s === "Sẵn sàng nhận",
+  completed: (s) => s === "Hoàn thành",
+  cancelled: (s) => s === "Đã hủy",
 };
+
+const STEPPER_STEPS = [
+  { key: "placed", label: "Đã xác nhận & Trả tiền", subKey: "time" },
+  { key: "preparing", label: "Đang chế biến", subKey: "status" },
+  { key: "ready", label: "Sẵn sàng nhận", subKey: "note" },
+  { key: "done", label: "Hoàn tất", subKey: "note" },
+];
+
+const STATUS_STEP_INDEX = {
+  "Chờ xác nhận": 1,
+  "Đã xác nhận": 1,
+  "Đang chuẩn bị": 2,
+  "Sẵn sàng nhận": 3,
+  "Hoàn thành": 4,
+  "Đã hủy": 0,
+};
+
+// ============================================================
+// HELPERS — Thời gian đầy đủ ngày + giờ + nhãn tương đối
+// ============================================================
+
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    const dd = d.getDate().toString().padStart(2, "0");
+    const mm = (d.getMonth() + 1).toString().padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = d.getHours().toString().padStart(2, "0");
+    const mi = d.getMinutes().toString().padStart(2, "0");
+    return `${dd}/${mm}/${yyyy} • ${hh}:${mi}`;
+  } catch {
+    return "—";
+  }
+}
+
+function fmtTime(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getHours().toString().padStart(2, "0")}:${d
+      .getMinutes()
+      .toString()
+      .padStart(2, "0")}`;
+  } catch {
+    return "";
+  }
+}
+
+function getRelativeDateLabel(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "Hôm nay";
+    if (diffDays === 1) return "Hôm qua";
+    if (diffDays < 7) return `${diffDays} ngày trước`;
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+function getOrderId(order) {
+  return order?._id || order?.id || null;
+}
+
+function getPickupPin(order) {
+  if (order.pickup_pin) return order.pickup_pin;
+  const code = order.code || "";
+  return code.slice(-2).toUpperCase() || "—";
+}
+
+function getItemsSummary(order) {
+  const items = order.items || [];
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0].name || "";
+  return `${items[0].name} + ${items.length - 1} món khác`;
+}
+
+function getTotalQty(order) {
+  return (order.items || []).reduce(
+    (s, it) => s + (Number(it.qty) || 0),
+    0
+  );
+}
 
 // ============================================================
 // MAIN COMPONENT
@@ -47,63 +137,56 @@ const STATUS_COLORS = {
 export default function CustomerOrders() {
   const { t } = useI18n();
 
-  // ✅ SOURCE-TEXT: Dùng tiếng Việt trực tiếp, không dùng key
-  const STATUS_LIST = useMemo(
-    () => [
-      { id: "Tất cả",        label: "Tất cả",         icon: Package,      color: "#2634d5" },
-      { id: "Chờ xác nhận",  label: "Chờ xác nhận",   icon: Bell,         color: "#f59e0b" },
-      { id: "Đã xác nhận",   label: "Đã xác nhận",    icon: CheckCircle2, color: "#2634d5" },
-      { id: "Đang chuẩn bị", label: "Đang chuẩn bị",  icon: ChefHat,      color: "#8b5cf6" },
-      { id: "Sẵn sàng nhận", label: "Sẵn sàng nhận",  icon: ShoppingBag,  color: "#18a967" },
-      { id: "Hoàn thành",    label: "Hoàn thành",     icon: CheckCircle2, color: "#18a967" },
-      { id: "Đã hủy",        label: "Đã hủy",         icon: XCircle,      color: "#ef4444" },
-    ],
-    []
-  );
-
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const [status, setStatus] = useState("Tất cả");
+  const [activeTab, setActiveTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [timeRange, setTimeRange] = useState("7days");
+  const [counterFilter, setCounterFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 4;
+
   const [selected, setSelected] = useState(null);
 
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
 
-  // ---------- Load ----------
-  const load = useCallback(async (silent = false) => {
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
+  const load = useCallback(
+    async (silent = false) => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
 
-    const myReqId = ++reqIdRef.current;
-    if (!silent) setRefreshing(true);
-    setError("");
+      const myReqId = ++reqIdRef.current;
+      if (!silent) setRefreshing(true);
+      setError("");
 
-    try {
-      const data = await api.orders.myOrders();
+      try {
+        const data = await api.orders.myOrders();
+        if (myReqId !== reqIdRef.current) return;
 
-      if (myReqId !== reqIdRef.current) return;
-
-      const sorted = [...(data || [])].sort((a, b) => {
-        const ta = new Date(a.created_at || 0).getTime();
-        const tb = new Date(b.created_at || 0).getTime();
-        return tb - ta;
-      });
-      setOrders(sorted);
-    } catch (e) {
-      if (myReqId === reqIdRef.current) {
-        setError(e.message || t("Không tải được đơn hàng"));
+        const sorted = [...(data || [])].sort((a, b) => {
+          const ta = new Date(a.created_at || 0).getTime();
+          const tb = new Date(b.created_at || 0).getTime();
+          return tb - ta;
+        });
+        setOrders(sorted);
+      } catch (e) {
+        if (myReqId === reqIdRef.current) {
+          setError(e.message || t("Không tải được đơn hàng"));
+        }
+      } finally {
+        if (myReqId === reqIdRef.current) {
+          setLoading(false);
+          if (!silent) setRefreshing(false);
+        }
+        inFlightRef.current = false;
       }
-    } finally {
-      if (myReqId === reqIdRef.current) {
-        setLoading(false);
-        if (!silent) setRefreshing(false);
-      }
-      inFlightRef.current = false;
-    }
-  }, [t]);
+    },
+    [t]
+  );
 
   useEffect(() => {
     load(false);
@@ -118,22 +201,18 @@ export default function CustomerOrders() {
     } catch {}
   }, []);
 
-  // ---------- Memoized derived ----------
-  const filtered = useMemo(() => {
-    if (status === "Tất cả") return orders;
-    return orders.filter((o) => o.status === status);
-  }, [orders, status]);
-
   const stats = useMemo(() => {
     let active = 0;
     let completed = 0;
     let totalSpent = 0;
+    let subsidy = 0;
 
     for (const o of orders) {
       if (ACTIVE_STATUSES.includes(o.status)) active++;
       if (o.status === "Hoàn thành") {
         completed++;
         totalSpent += Number(o.total) || 0;
+        subsidy += Number(o.discount) || 0;
       }
     }
 
@@ -142,350 +221,412 @@ export default function CustomerOrders() {
       active,
       completed,
       totalSpent,
+      subsidy,
     };
   }, [orders]);
 
+  const liveOrder = useMemo(() => {
+    return orders.find((o) => ACTIVE_STATUSES.includes(o.status)) || null;
+  }, [orders]);
+
   const counts = useMemo(() => {
-    const map = { "Tất cả": orders.length };
+    const map = { all: orders.length };
     for (const o of orders) {
-      map[o.status] = (map[o.status] || 0) + 1;
+      const s = o.status;
+      if (s === "Đang chuẩn bị" || s === "Đã xác nhận" || s === "Chờ xác nhận") {
+        map.preparing = (map.preparing || 0) + 1;
+      } else if (s === "Sẵn sàng nhận") {
+        map.ready = (map.ready || 0) + 1;
+      } else if (s === "Hoàn thành") {
+        map.completed = (map.completed || 0) + 1;
+      } else if (s === "Đã hủy") {
+        map.cancelled = (map.cancelled || 0) + 1;
+      }
     }
     return map;
   }, [orders]);
 
+  const filtered = useMemo(() => {
+    let list = orders.filter((o) => TAB_MAP[activeTab](o.status));
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((o) => {
+        const code = (o.code || "").toLowerCase();
+        const items = (o.items || [])
+          .map((it) => (it.name || "").toLowerCase())
+          .join(" ");
+        return code.includes(q) || items.includes(q);
+      });
+    }
+
+    return list;
+  }, [orders, activeTab, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginatedOrders = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchQuery, timeRange, counterFilter]);
+
+  const goToOrderDetail = (order) => {
+    setSelected(order);
+  };
+
   return (
-    <div>
-      {/* ERROR BANNER */}
+    <div className="customer-orders-v2">
       {error && (
-        <div
-          style={{
-            background: "rgba(239, 68, 68, 0.08)",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-            borderRadius: 10,
-            padding: "12px 16px",
-            marginBottom: 16,
-            color: "#ef4444",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 13,
-          }}
-        >
-          <AlertCircle size={18} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{error}</span>
-          <button
-            onClick={() => load(false)}
-            style={{
-              padding: "6px 12px",
-              background: "#ef4444",
-              color: "#fff",
-              border: 0,
-              borderRadius: 6,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 12,
-            }}
-          >
-            {t("Thử lại")}
+        <div className="orders-error">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+          <button onClick={() => load(false)}>
+            <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
 
-      {/* STATS */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 14,
-          marginBottom: 20,
-        }}
-      >
-        <StatCard
-          icon={<Package size={20} />}
-          label={t("Tổng đơn")}
-          value={stats.total}
-          color="#2634d5"
-        />
-        <StatCard
-          icon={<Clock size={20} />}
-          label={t("Đang xử lý")}
-          value={stats.active}
-          color="#f59e0b"
-        />
-        <StatCard
-          icon={<CheckCircle2 size={20} />}
-          label={t("Hoàn thành")}
-          value={stats.completed}
-          color="#18a967"
-        />
-        <StatCard
-          icon={<DollarSign size={20} />}
-          label={t("Tổng chi tiêu")}
-          value={money(stats.totalSpent)}
-          color="#8b5cf6"
-        />
-      </div>
+      <section className="orders-header">
+        <div className="orders-header__row">
+          <div className="orders-header__left">
+            <h1 className="orders-title">{t("Đơn hàng của tôi")}</h1>
+            <p className="orders-subtitle">
+              {t("Theo dõi tiến độ chế biến thời gian thực, mã nhận món tại quầy và lịch sử đặt cơm tại hệ thống Canteen VWA.")}
+            </p>
+          </div>
 
-      {/* FILTER CHIPS */}
-      <div
-        className="order-filter-box"
-        style={{
-          background: "var(--card-bg, #fff)",
-          border: "1px solid var(--border-color, #e7ebf0)",
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 20,
-        }}
-      >
-        <div
-          className="order-filter-row"
-          style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-        >
-          {STATUS_LIST.map((s) => {
-            const Icon = s.icon;
-            const active = status === s.id;
-            const count = counts[s.id] || 0;
-
-            return (
-              <button
-                key={s.id}
-                onClick={() => setStatus(s.id)}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 10,
-                  border: active
-                    ? `1px solid ${s.color}`
-                    : "1px solid var(--border-color, #e5e9ef)",
-                  background: active ? s.color : "var(--bg-tertiary, #f5f7fb)",
-                  color: active ? "#fff" : "var(--text-muted, #475569)",
-                  fontSize: 12.5,
-                  cursor: "pointer",
-                  fontWeight: active ? 700 : 500,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  transition: "all 0.2s",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <Icon size={13} />
-                {s.label}
-                {count > 0 && (
-                  <span
-                    style={{
-                      background: active
-                        ? "rgba(255,255,255,0.3)"
-                        : "var(--card-bg, #e2e8f0)",
-                      color: active ? "#fff" : "var(--text-muted, #64748b)",
-                      minWidth: 18,
-                      height: 18,
-                      padding: "0 6px",
-                      borderRadius: 9,
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 14,
-          flexWrap: "wrap",
-          gap: 10,
-        }}
-      >
-        <h3
-          style={{
-            margin: 0,
-            color: "var(--text-primary, #172033)",
-            fontSize: 16,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          📦 {t("Danh sách đơn hàng")}
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--text-light, #8993a3)",
-              fontWeight: 400,
-            }}
-          >
-            ({filtered.length} {t("đơn")})
-          </span>
-        </h3>
-        <button
-          onClick={() => load(false)}
-          disabled={refreshing}
-          style={{
-            padding: "8px 14px",
-            background: "var(--card-bg, #fff)",
-            border: "1px solid var(--border-color, #e5e9ef)",
-            borderRadius: 8,
-            cursor: refreshing ? "not-allowed" : "pointer",
-            fontSize: 12.5,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            color: "var(--text-primary, #172033)",
-            opacity: refreshing ? 0.6 : 1,
-          }}
-        >
-          {refreshing ? (
-            <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
-          ) : (
-            <RefreshCw size={13} />
-          )}
-          {refreshing ? t("Đang tải...") : t("Làm mới")}
-        </button>
-      </div>
-
-      {/* LOADING SKELETON */}
-      {loading && !orders.length && (
-        <div
-          className="orders-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-            gap: 14,
-          }}
-        >
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              aria-hidden="true"
-              style={{
-                background: "var(--card-bg, #fff)",
-                border: "1px solid var(--border-color, #e7ebf0)",
-                borderRadius: 14,
-                padding: 16,
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-              }}
+          <div className="orders-header__right">
+            <div className="orders-sync-badge">
+              <span className="orders-sync-dot" />
+              <span>{t("Đồng bộ: Vừa xong")}</span>
+            </div>
+            <button
+              className="orders-refresh-btn"
+              onClick={() => load(false)}
+              disabled={refreshing}
+              title={t("Làm mới")}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <SkeletonText width="35%" height={14} />
-                <Skeleton width={90} height={22} radius={20} />
-              </div>
+              <RefreshCw
+                size={18}
+                className={refreshing ? "orders-spin" : ""}
+              />
+            </button>
+          </div>
+        </div>
+      </section>
 
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <Skeleton width={60} height={60} radius={14} />
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <SkeletonText width="75%" height={13} />
-                  <SkeletonText width="40%" height={11} />
+      <section className="orders-kpi-grid">
+        <div className="orders-kpi-card">
+          <div className="orders-kpi-icon orders-kpi-icon--blue">
+            <Utensils size={24} />
+          </div>
+          <div className="orders-kpi-body">
+            <span className="orders-kpi-label">{t("ĐANG PHỤC VỤ")}</span>
+            <div className="orders-kpi-value-row">
+              <span className="orders-kpi-value">
+                {stats.active.toString().padStart(2, "0")}
+              </span>
+              <span className="orders-kpi-unit">{t("đơn")}</span>
+            </div>
+            <span className="orders-kpi-sub">
+              {liveOrder?.counter_name || t("Chưa có đơn nào")}
+            </span>
+          </div>
+        </div>
+
+        <div className="orders-kpi-card">
+          <div className="orders-kpi-icon orders-kpi-icon--green">
+            <CheckCircle2 size={24} />
+          </div>
+          <div className="orders-kpi-body">
+            <span className="orders-kpi-label">
+              {t("HOÀN THÀNH THÁNG NÀY")}
+            </span>
+            <div className="orders-kpi-value-row">
+              <span className="orders-kpi-value">{stats.completed}</span>
+              <span className="orders-kpi-unit">{t("suất ăn")}</span>
+            </div>
+            <span className="orders-kpi-sub orders-kpi-sub--green">
+              +{Math.max(0, stats.completed - 4)} {t("đơn so với tuần trước")}
+            </span>
+          </div>
+        </div>
+
+        <div className="orders-kpi-card">
+          <div className="orders-kpi-icon orders-kpi-icon--sky">
+            <Wallet size={24} />
+          </div>
+          <div className="orders-kpi-body">
+            <span className="orders-kpi-label">
+              {t("TRỢ GIÁ SV TÍCH LŨY")}
+            </span>
+            <div className="orders-kpi-value-row">
+              <span className="orders-kpi-value">
+                {stats.subsidy.toLocaleString("vi-VN")}
+              </span>
+              <span className="orders-kpi-unit">đ</span>
+            </div>
+            <span className="orders-kpi-sub">
+              {t("Hỗ trợ 10k/bữa trưa")}
+            </span>
+          </div>
+        </div>
+
+        <div className="orders-kpi-card">
+          <div className="orders-kpi-icon orders-kpi-icon--amber">
+            <Leaf size={24} />
+          </div>
+          <div className="orders-kpi-body">
+            <span className="orders-kpi-label">{t("ĐIỂM VWA GREEN")}</span>
+            <div className="orders-kpi-value-row">
+              <span className="orders-kpi-value orders-kpi-value--amber">
+                350
+              </span>
+              <span className="orders-kpi-unit orders-kpi-unit--amber">
+                pts
+              </span>
+            </div>
+            <span className="orders-kpi-sub">
+              {t("Đổi 01 nước ngọt miễn phí")}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {liveOrder && (
+        <section className="orders-live-section">
+          <div className="orders-live-head">
+            <div className="orders-live-head-left">
+              <span className="orders-live-pulse" />
+              <h2 className="orders-live-title">
+                {t("Đơn hàng trực tiếp đang chế biến")}
+              </h2>
+            </div>
+            <span className="orders-live-badge">
+              <Flame size={14} />
+              {t("Live KDS Canteen")}
+            </span>
+          </div>
+
+          <LiveOrderCard
+            order={liveOrder}
+            onView={() => goToOrderDetail(liveOrder)}
+            t={t}
+          />
+        </section>
+      )}
+
+      <section className="orders-filter-section">
+        <div className="orders-filter-bar">
+          <div className="orders-tabs">
+            {[
+              { id: "all", label: t("Tất cả đơn"), count: counts.all },
+              {
+                id: "preparing",
+                label: t("Đang chuẩn bị"),
+                count: counts.preparing || 0,
+              },
+              {
+                id: "ready",
+                label: t("Chờ nhận món"),
+                count: counts.ready || 0,
+              },
+              {
+                id: "completed",
+                label: t("Đã hoàn thành"),
+                count: counts.completed || 0,
+              },
+              {
+                id: "cancelled",
+                label: t("Đã hủy"),
+                count: counts.cancelled || 0,
+              },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                className={`orders-tab ${
+                  activeTab === tab.id ? "active" : ""
+                }`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
+          </div>
+
+          <div className="orders-filter-controls">
+            <div className="orders-search">
+              <Clock size={14} className="orders-search__icon" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t("Tìm theo mã đơn hoặc món...")}
+                className="orders-search__input"
+              />
+            </div>
+
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              className="orders-select"
+            >
+              <option value="today">{t("Hôm nay")}</option>
+              <option value="7days">{t("7 ngày qua")}</option>
+              <option value="month">{t("Tháng 02/2025")}</option>
+              <option value="all">{t("Tất cả thời gian")}</option>
+            </select>
+
+            <select
+              value={counterFilter}
+              onChange={(e) => setCounterFilter(e.target.value)}
+              className="orders-select"
+            >
+              <option value="all">{t("Mọi Quầy")}</option>
+              <option value="com">{t("Quầy Cơm Suất")}</option>
+              <option value="bun">{t("Quầy Bún / Phở")}</option>
+              <option value="nuoc">{t("Quầy Trà & Cafe")}</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {loading && !orders.length && (
+        <div className="orders-skeleton-list">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="orders-skeleton-card">
+              <div className="orders-skeleton-row">
+                <SkeletonBox w="140px" h="18px" />
+                <SkeletonBox w="100px" h="18px" />
+              </div>
+              <div className="orders-skeleton-row">
+                <SkeletonBox w="80px" h="80px" radius="12px" />
+                <div style={{ flex: 1 }}>
+                  <SkeletonBox w="60%" h="16px" />
+                  <SkeletonBox w="40%" h="12px" />
                 </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                <SkeletonText width={100} height={12} />
-                <Skeleton width={90} height={34} radius={9} />
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* EMPTY */}
       {!loading && filtered.length === 0 && (
-        <div
-          className="order-card"
-          style={{
-            background: "var(--card-bg, #fff)",
-            border: "1px solid var(--border-color, #e7ebf0)",
-            borderRadius: 14,
-            padding: 60,
-            textAlign: "center",
-          }}
-        >
-          <Package
-            size={50}
-            style={{
-              color: "var(--text-light, #8993a3)",
-              opacity: 0.3,
-              marginBottom: 12,
-            }}
-          />
-          <h3
-            style={{
-              margin: "0 0 6px",
-              color: "var(--text-primary, #172033)",
-              fontSize: 15,
-            }}
-          >
-            {status === "Tất cả"
+        <div className="orders-empty">
+          <Package size={56} className="orders-empty__icon" />
+          <h3 className="orders-empty__title">
+            {activeTab === "all"
               ? t("Bạn chưa có đơn hàng nào")
-              : t("Không có đơn hàng ở trạng thái \"{status}\"").replace("{status}", status)}
+              : t("Không có đơn hàng trong mục này")}
           </h3>
-          <p
-            style={{
-              margin: "0 0 16px",
-              color: "var(--text-muted, #64748b)",
-              fontSize: 13,
-            }}
-          >
-            {status === "Tất cả"
+          <p className="orders-empty__desc">
+            {activeTab === "all"
               ? t("Hãy đặt món để bắt đầu trải nghiệm")
               : t("Thử chọn trạng thái khác hoặc xem tất cả đơn hàng.")}
           </p>
-          {status === "Tất cả" && (
-            <Link
-              to="/customer/menu"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "#2634d5",
-                color: "#fff",
-                padding: "10px 20px",
-                borderRadius: 10,
-                textDecoration: "none",
-                fontWeight: 700,
-                fontSize: 13,
-              }}
-            >
+          {activeTab === "all" && (
+            <Link to="/customer/menu" className="orders-empty__btn">
               <ShoppingBag size={15} /> {t("Đặt món ngay")}
             </Link>
           )}
         </div>
       )}
 
-      {/* ORDERS GRID */}
       {!loading && filtered.length > 0 && (
-        <div
-          className="orders-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-            gap: 14,
-          }}
-        >
-          {filtered.map((o) => (
-            <OrderCard
-              key={o._id || o.id}
-              order={o}
-              onView={() => setSelected(o)}
-            />
-          ))}
-        </div>
+        <section className="orders-list-section">
+          <div className="orders-list">
+            {paginatedOrders.map((order) => (
+              <OrderHistoryCard
+                key={getOrderId(order)}
+                order={order}
+                onView={() => goToOrderDetail(order)}
+                t={t}
+              />
+            ))}
+          </div>
+        </section>
       )}
 
-      {/* DETAIL MODAL */}
+      {!loading && filtered.length > 0 && (
+        <section className="orders-footer-section">
+          {totalPages > 1 && (
+            <div className="orders-pagination">
+              <p className="orders-pagination__info">
+                {t("Hiển thị")}{" "}
+                <b>
+                  {(page - 1) * PAGE_SIZE + 1} -{" "}
+                  {Math.min(page * PAGE_SIZE, filtered.length)}
+                </b>{" "}
+                {t("trong tổng số")} <b>{filtered.length}</b>{" "}
+                {t("đơn hàng đã đặt")}
+              </p>
+
+              <div className="orders-pagination__controls">
+                <button
+                  className="orders-page-btn"
+                  disabled={page === 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  title={t("Trang trước")}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                {Array.from({ length: Math.min(4, totalPages) }).map((_, i) => {
+                  const p = i + 1;
+                  return (
+                    <button
+                      key={p}
+                      className={`orders-page-btn ${
+                        p === page ? "active" : ""
+                      }`}
+                      onClick={() => setPage(p)}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+
+                <button
+                  className="orders-page-btn"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  title={t("Trang tiếp")}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="orders-banner">
+            <div className="orders-banner__left">
+              <div className="orders-banner__icon">
+                <Bell size={26} />
+              </div>
+              <div>
+                <h4 className="orders-banner__title">
+                  {t("Văn hóa lấy món văn minh tại Canteen VWA")}
+                </h4>
+                <p className="orders-banner__desc">
+                  {t("Khi hệ thống báo")}{" "}
+                  <b>"{t("Sẵn sàng nhận món")}"</b>,{" "}
+                  {t("bạn hãy di chuyển đến màn hình KDS tại quầy tương ứng, xuất trình mã PIN số")}{" "}
+                  <b>#{getPickupPin(liveOrder || {})}</b>{" "}
+                  {t("hoặc quét mã QR để nhận khay cơm nhanh chóng, không cần chen hàng.")}
+                </p>
+              </div>
+            </div>
+            <Link to="/customer/menu" className="orders-banner__btn">
+              <Receipt size={16} />
+              {t("Sơ đồ quầy ăn")}
+            </Link>
+          </div>
+        </section>
+      )}
+
       {selected && (
         <CustomerOrderDetail
           order={selected}
@@ -495,322 +636,379 @@ export default function CustomerOrders() {
       )}
 
       <style>{`
-        @keyframes spin {
+        @keyframes ordersSpin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
         }
-        @keyframes rainbow {
-          0%   { background-position: 0% 50%; }
-          50%  { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
+        .orders-spin { animation: ordersSpin 1s linear infinite; }
       `}</style>
     </div>
   );
 }
 
-// ============================================================
-// SUB-COMPONENT: OrderCard
-// ============================================================
-
-function OrderCard({ order, onView }) {
-  const { t } = useI18n();
-  const colors = STATUS_COLORS[order.status] || {
-    color: "#64748b",
-    bg: "#f1f5f9",
-  };
-
-  const items = order.items || [];
-  const totalQty = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
-  const firstItemName = items[0]?.name || t("Đơn hàng");
-
-  // ✅ SOURCE-TEXT: status giữ nguyên tiếng Việt từ DB
-  const statusLabel = order.status;
-
+function SkeletonBox({ w, h, radius = 6 }) {
   return (
     <div
-      className="order-card"
       style={{
-        background: "var(--card-bg, #fff)",
-        border: "1px solid var(--border-color, #e7ebf0)",
-        borderRadius: 14,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        transition: "all 0.2s",
+        width: w,
+        height: h,
+        borderRadius: radius,
+        background:
+          "linear-gradient(90deg, #eef2f7 25%, #e5e9ef 50%, #eef2f7 75%)",
+        backgroundSize: "200% 100%",
+        animation: "ordersSkeleton 1.5s infinite",
       }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          padding: "14px 16px",
-          borderBottom: "1px dashed var(--border-color, #eef2f7)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          background: "var(--bg-tertiary, #f8fafc)",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--text-light, #8993a3)",
-              fontWeight: 600,
-              marginBottom: 2,
-              textTransform: "uppercase",
-            }}
-          >
-            {t("Mã đơn")}
-          </div>
-          <b
-            style={{
-              fontSize: 14,
-              color: "#2634d5",
-              fontFamily: "monospace",
-            }}
-          >
-            {order.code}
-          </b>
-        </div>
-        <span
-          style={{
-            padding: "4px 12px",
-            borderRadius: 20,
-            fontSize: 11,
-            fontWeight: 700,
-            background: colors.bg,
-            color: colors.color,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {statusLabel}
-        </span>
-      </div>
+    />
+  );
+}
 
-      {/* Items preview */}
-      <div style={{ padding: 14, flex: 1 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 12,
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: 14,
-              background:
-                "linear-gradient(135deg, #2634d5, #3b82f6, #8b5cf6, #ec4899, #2634d5)",
-              backgroundSize: "300% 300%",
-              animation: "rainbow 4s ease infinite",
-              color: "#fff",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 1,
-              flexShrink: 0,
-              boxShadow: "0 4px 16px rgba(38, 52, 213, 0.4)",
-            }}
-          >
-            <svg
-              width="26"
-              height="26"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="3 7 12 3 21 7 12 11 3 7" />
-              <polyline points="3 7 3 17 12 21 12 11" />
-              <polyline points="21 7 21 17 12 21" />
-              <line x1="8" y1="13" x2="8" y2="18" />
-              <ellipse cx="8" cy="12" rx="1.2" ry="1" />
-              <line x1="16" y1="13" x2="16" y2="18" />
-              <line x1="15" y1="12" x2="15" y2="13.5" />
-              <line x1="17" y1="12" x2="17" y2="13.5" />
-            </svg>
-            <span
-              style={{
-                fontSize: 7,
-                fontWeight: 800,
-                letterSpacing: 0.3,
-                lineHeight: 1,
-                marginTop: 1,
-              }}
-            >
-              CANTEEN
-            </span>
-            <span
-              style={{
-                fontSize: 6,
-                fontWeight: 700,
-                letterSpacing: 0.5,
-                lineHeight: 1,
-                opacity: 0.9,
-              }}
-            >
-              VWA
-            </span>
-          </div>
-          <div style={{ flex: 1, minWidth: 0, marginLeft: 4 }}>
-            <b
-              style={{
-                fontSize: 13,
-                color: "var(--text-primary, #172033)",
-                display: "block",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {firstItemName}
-              {items.length > 1 && (
-                <span
-                  style={{
-                    color: "var(--text-muted, #64748b)",
-                    fontWeight: 400,
-                  }}
-                >
-                  {" "}+{items.length - 1} {t("món khác")}
-                </span>
-              )}
-            </b>
-            <span style={{ fontSize: 11, color: "var(--text-light, #8993a3)" }}>
-              {totalQty} {t("phần")}
-            </span>
-          </div>
-        </div>
+// ============================================================
+// LiveOrderCard
+// ============================================================
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 11.5,
-              color: "var(--text-light, #8993a3)",
-            }}
-          >
-            <Calendar size={12} />
-            {order.created_at
-              ? new Date(order.created_at).toLocaleString("vi-VN", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "—"}
-          </div>
-        </div>
-      </div>
+function LiveOrderCard({ order, onView, t }) {
+  const stepIndex = STATUS_STEP_INDEX[order.status] || 1;
+  const items = order.items || [];
+  const total = Number(order.total) || 0;
+  const discount = Number(order.discount) || 0;
+  const originalTotal = total + discount;
+  const pin = getPickupPin(order);
 
-      {/* Footer */}
-      <div
-        style={{
-          padding: "12px 16px",
-          borderTop: "1px solid var(--border-color, #eef2f7)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          background: "var(--bg-tertiary, #f8fafc)",
-        }}
-      >
-        <div>
-          <span
-            style={{
-              fontSize: 10,
-              color: "var(--text-light, #8993a3)",
-              display: "block",
-              textTransform: "uppercase",
-            }}
-          >
-            {t("Tổng cộng")}
+  return (
+    <div className="orders-live-card">
+      <div className="orders-live-card__top">
+        <div className="orders-live-card__code-group">
+          <span className="orders-live-card__code">#{order.code}</span>
+          {order.counter_name && (
+            <span className="orders-live-card__counter">
+              <Soup size={14} />
+              {order.counter_name}
+            </span>
+          )}
+          <span className="orders-live-card__time">
+            <Clock size={14} />
+            {t("Đặt lúc:")} {fmtDateTime(order.created_at)}
+            {getRelativeDateLabel(order.created_at) && (
+              <span className="orders-live-card__time-label">
+                · {getRelativeDateLabel(order.created_at)}
+              </span>
+            )}
           </span>
-          <b style={{ fontSize: 17, color: "#2634d5" }}>
-            {money(order.total)}
-          </b>
+          {order.pickup_time && (
+            <span className="orders-live-card__time orders-live-card__time--pickup">
+              <Clock size={14} />
+              {t("Nhận:")} {order.pickup_time}
+            </span>
+          )}
         </div>
-        <button
-          onClick={onView}
-          style={{
-            padding: "9px 16px",
-            background: "#2634d5",
-            color: "#fff",
-            border: 0,
-            borderRadius: 9,
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: 700,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <Eye size={14} /> {t("Chi tiết")}
-        </button>
+
+        <div className="orders-live-card__pin-group">
+          <div className="orders-live-card__pin-info">
+            <span className="orders-live-card__pin-label">
+              {t("Mã nhận tại quầy")}
+            </span>
+            <span className="orders-live-card__pin-value">#{pin}</span>
+          </div>
+          <button
+            className="orders-live-card__qr-btn"
+            onClick={onView}
+            title={t("Bấm xem mã QR quầy POS")}
+          >
+            <QrCode size={22} />
+            <span>{t("Chạm quét")}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="orders-stepper">
+        <div className="orders-stepper__head">
+          <span className="orders-stepper__status">
+            <span className="orders-stepper__status-dot" />
+            {order.status === "Đang chuẩn bị"
+              ? t("Đầu bếp đang thực hiện • Dự kiến ra món trong 3 phút")
+              : `${t("Trạng thái:")} ${order.status}`}
+          </span>
+          <span className="orders-stepper__step-count">
+            {t("Bước")} {stepIndex} / 4
+          </span>
+        </div>
+
+        <div className="orders-stepper__track">
+          {STEPPER_STEPS.map((step, i) => {
+            const idx = i + 1;
+            const isDone = idx < stepIndex;
+            const isActive = idx === stepIndex;
+            return (
+              <div key={step.key} className="orders-stepper__item">
+                <div
+                  className={`orders-stepper__bar ${
+                    isDone ? "done" : isActive ? "active" : ""
+                  }`}
+                />
+                <div className="orders-stepper__label-group">
+                  <span
+                    className={`orders-stepper__label ${
+                      isDone ? "done" : isActive ? "active" : ""
+                    }`}
+                  >
+                    {step.label}
+                  </span>
+                  {step.subKey === "time" && (
+                    <span className="orders-stepper__sub">
+                      {fmtTime(order.created_at)}
+                    </span>
+                  )}
+                  {step.subKey === "status" && isActive && (
+                    <span className="orders-stepper__sub">
+                      {t("Đang chuẩn bị")}
+                    </span>
+                  )}
+                  {step.subKey === "note" && !isActive && !isDone && (
+                    <span className="orders-stepper__sub">
+                      {step.key === "ready"
+                        ? t("Chờ gọi loa/màn hình")
+                        : t("Đã lấy khay")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="orders-live-card__body">
+        <div className="orders-live-card__items">
+          <h3 className="orders-live-card__items-title">
+            {t("Danh sách món đã gọi")} (
+            {items.length.toString().padStart(2, "0")} {t("món")})
+          </h3>
+
+          {items.map((it, i) => (
+            <div key={i} className="orders-live-item">
+              <div className="orders-live-item__img">
+                <img
+                  src={it.image || FALLBACK_IMG}
+                  alt={it.name}
+                  loading="lazy"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = FALLBACK_IMG;
+                  }}
+                />
+              </div>
+              <div className="orders-live-item__info">
+                <div className="orders-live-item__row">
+                  <h4 className="orders-live-item__name">{it.name}</h4>
+                  <span className="orders-live-item__price">
+                    {money((it.price || 0) * (it.qty || 1))}
+                  </span>
+                </div>
+                <div className="orders-live-item__meta">
+                  <span className="orders-live-item__qty">SL: {it.qty}</span>
+                  {it.note && (
+                    <span className="orders-live-item__note">
+                      {t("Ghi chú:")} {it.note}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="orders-live-card__summary">
+          <div className="orders-summary-row">
+            <span className="orders-summary-label">{t("Tổng giá gốc")}</span>
+            <span className="orders-summary-value">
+              {money(originalTotal)}
+            </span>
+          </div>
+
+          {discount > 0 && (
+            <div className="orders-summary-row orders-summary-row--discount">
+              <span className="orders-summary-label">
+                <Sparkles size={14} />
+                {t("Trợ giá SV")}
+              </span>
+              <span className="orders-summary-value">-{money(discount)}</span>
+            </div>
+          )}
+
+          <div className="orders-summary-final">
+            <div>
+              <span className="orders-summary-final-label">
+                {t("Thực thanh toán")}
+              </span>
+              <span className="orders-summary-final-sub">
+                <CheckCircle2 size={13} /> {t("Đã trừ qua Thẻ SV (SSO)")}
+              </span>
+            </div>
+            <span className="orders-summary-final-value">{money(total)}</span>
+          </div>
+
+          <div className="orders-live-card__actions">
+            <button className="orders-action-btn" onClick={onView}>
+              <Receipt size={15} />
+              {t("Hóa đơn")}
+            </button>
+            <button className="orders-action-btn">
+              <Headset size={15} />
+              {t("Hỗ trợ")}
+            </button>
+            <button className="orders-action-btn orders-action-btn--primary">
+              <Bell size={15} />
+              {t("Báo tôi")}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// SUB-COMPONENT: StatCard
+// OrderHistoryCard
 // ============================================================
 
-function StatCard({ icon, label, value, color }) {
+function OrderHistoryCard({ order, onView, t }) {
+  const items = order.items || [];
+  const firstItem = items[0];
+  const totalQty = getTotalQty(order);
+  const total = Number(order.total) || 0;
+  const discount = Number(order.discount) || 0;
+  const originalTotal = total + discount;
+  const isCancelled = order.status === "Đã hủy";
+  const isCompleted = order.status === "Hoàn thành";
+
   return (
-    <div
-      style={{
-        background: "var(--card-bg, #fff)",
-        border: "1px solid var(--border-color, #e7ebf0)",
-        borderRadius: 12,
-        padding: 16,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-      }}
-    >
-      <div
-        style={{
-          width: 42,
-          height: 42,
-          borderRadius: 11,
-          background: color + "18",
-          color,
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
-        }}
-      >
-        {icon}
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <span
-          style={{
-            fontSize: 11.5,
-            color: "var(--text-light, #8993a3)",
-            display: "block",
-          }}
-        >
-          {label}
+    <div className={`order-history-card ${isCancelled ? "cancelled" : ""}`}>
+      <div className="order-history-card__top">
+        <div className="order-history-card__top-left">
+          <span className="order-history-card__code">#{order.code}</span>
+          <StatusPill status={order.status} />
+          <span className="order-history-card__date">
+            {fmtDateTime(order.created_at)}
+            {getRelativeDateLabel(order.created_at) && (
+              <span className="order-history-card__date-label">
+                {getRelativeDateLabel(order.created_at)}
+              </span>
+            )}
+          </span>
+        </div>
+        <span className="order-history-card__counter">
+          {order.counter_name || t("Quầy 01 (Cơm trưa)")}
         </span>
-        <b style={{ fontSize: 18, color, fontWeight: 800 }}>{value}</b>
+      </div>
+
+      <div className="order-history-card__body">
+        <div className="order-history-card__left">
+          <div className="order-history-card__img">
+            <img
+              src={firstItem?.image || FALLBACK_IMG}
+              alt={firstItem?.name || "Order"}
+              loading="lazy"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = FALLBACK_IMG;
+              }}
+            />
+          </div>
+          <div className="order-history-card__info">
+            <h4
+              className={`order-history-card__name ${
+                isCancelled ? "strikethrough" : ""
+              }`}
+            >
+              {getItemsSummary(order)}
+              {items.length > 1 && (
+                <span className="order-history-card__extra">
+                  {" "}
+                  (+{items.length - 1})
+                </span>
+              )}
+            </h4>
+            <p className="order-history-card__desc">
+              {totalQty}x {t("Suất ăn")} • {firstItem?.category || t("Cơm")}
+            </p>
+
+            {isCompleted && order.rating && (
+              <div className="order-history-card__rating">
+                <Sparkles size={12} color="#f59e0b" />
+                <b>{order.rating}</b>
+                <span>"{order.review || t("Món ngon, giao nhanh!")}"</span>
+              </div>
+            )}
+
+            {isCancelled && (
+              <div className="order-history-card__refund">
+                <CheckCircle2 size={13} />
+                {t("Đã hoàn 100% tiền vào Ví VWA Pay")}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="order-history-card__right">
+          <div className="order-history-card__price-group">
+            {discount > 0 && (
+              <span className="order-history-card__price-old">
+                {money(originalTotal)}
+              </span>
+            )}
+            <div className="order-history-card__price-row">
+              <span className="order-history-card__price-now">
+                {money(total)}
+              </span>
+              {discount > 0 && (
+                <span className="order-history-card__discount">
+                  -{money(discount)} {t("Trợ giá")}
+                </span>
+              )}
+            </div>
+            {isCancelled && (
+              <span className="order-history-card__refund-note">
+                {t("Đã hoàn tất thủ tục hoàn tiền")}
+              </span>
+            )}
+          </div>
+
+          <div className="order-history-card__actions">
+            <button className="order-card-action" onClick={onView}>
+              {isCancelled ? t("Lịch sử hoàn tiền") : t("Xem chi tiết")}
+            </button>
+            {!isCancelled && (
+              <button className="order-card-action order-card-action--primary">
+                <RefreshCw size={13} />
+                {t("Đặt lại món này")}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function StatusPill({ status }) {
+  const configs = {
+    "Chờ xác nhận": { color: "#f59e0b", bg: "#fef3c7", Icon: Clock },
+    "Đã xác nhận": { color: "#2634d5", bg: "#dbeafe", Icon: CheckCircle2 },
+    "Đang chuẩn bị": { color: "#8b5cf6", bg: "#ede9fe", Icon: ChefHat },
+    "Sẵn sàng nhận": { color: "#18a967", bg: "#d1fae5", Icon: ShoppingBag },
+    "Hoàn thành": { color: "#18a967", bg: "#d1fae5", Icon: CheckCircle2 },
+    "Đã hủy": { color: "#ef4444", bg: "#fee2e2", Icon: XCircle },
+  };
+  const cfg = configs[status] || configs["Chờ xác nhận"];
+  const Icon = cfg.Icon;
+
+  return (
+    <span
+      className="order-history-card__status"
+      style={{ background: cfg.bg, color: cfg.color }}
+    >
+      <Icon size={12} />
+      {status}
+    </span>
   );
 }

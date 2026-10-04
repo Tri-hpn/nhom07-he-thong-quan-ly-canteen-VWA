@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    CANTEEN VWA — STYLES.CSS (CLEAN v4)
    ============================================================
    Đã làm sạch:
@@ -69,6 +69,21 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* ============================================================
+   RESPONSIVE FOUNDATION — token dùng chung cho TOÀN dự án
+   ------------------------------------------------------------
+   --container-max : bề rộng tối đa vùng nội dung
+   --gutter        : padding 2 bên (co giãn theo màn hình)
+   --gap-fluid     : khoảng cách giữa các khối
+   --pad-block     : padding trên/dưới vùng nội dung
+   ============================================================ */
+:root {
+  --container-max: 1600px;
+  --gutter: clamp(12px, 2.2vw, 28px);
+  --gap-fluid: clamp(10px, 1.4vw, 18px);
+  --pad-block: clamp(12px, 1.8vw, 25px);
+}
+
 body {
   font-family: var(--font-sans);
   background: #f5f7fb;
@@ -79,13 +94,45 @@ body {
   overflow-x: hidden;
 }
 
+/* `overflow-x: clip` KHÔNG tạo scroll-container (khác `hidden`) nên
+   position: sticky của topbar/menu-sidebar vẫn hoạt động đúng.
+   Đây chỉ là lưới an toàn cuối cùng — mọi nguyên nhân tràn ngang
+   đều đã được sửa tận gốc ở từng thành phần bên dưới. */
+@supports (overflow-x: clip) {
+  body { overflow-x: clip; }
+}
+
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; border: 0; background: none; }
 a { color: inherit; text-decoration: none; }
-img { max-width: 100%; display: block; }
 h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.3; }
 
-* { max-width: 100vw; }
+/* ------------------------------------------------------------
+   THAY THẾ `* { max-width: 100vw }`
+   ------------------------------------------------------------
+   Rule cũ gây 2 lỗi thật:
+   1) 100vw bao gồm cả bề rộng scrollbar → tràn ngang đúng bằng
+      bề rộng scrollbar khi trang có scroll dọc.
+   2) Áp lên MỌI phần tử, kể cả position:fixed → modal/popover
+      không thể rộng hơn viewport một cách hợp lệ.
+   Thay bằng giới hạn đúng chỗ: chỉ ảnh & phần tử nhúng. */
+img, picture, video, canvas, iframe, embed, object { max-width: 100%; }
+img, video, canvas { height: auto; }
+img { display: block; }
+
+/* ------------------------------------------------------------
+   VÙNG CUỘN NGANG (bảng, tab, chip…) — sửa lỗi TRÀN NGANG TẬN GỐC
+   ------------------------------------------------------------
+   Mọi <div style={{overflowX:"auto"}}> bọc <table> trong dự án là
+   một flex/grid item. Mặc định flex/grid item KHÔNG co xuống dưới
+   min-content → chính nó đẩy trang rộng ra. Ép max-width:100% +
+   min-width:0 để nội dung cuộn BÊN TRONG hộp thay vì kéo giãn trang. */
+/* Bắt MỌI khai báo overflow-x inline (auto/scroll/hidden) — React
+   render key camelCase thành kebab-case nên DOM luôn có "overflow-x". */
+[style*="overflow-x"] {
+  max-width: 100%;
+  min-width: 0;
+}
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -129,9 +176,29 @@ main, .main {
   width: calc(100% - 250px);
 }
 
+/* ------------------------------------------------------------
+   CONTAINER CHUNG — mọi trang đều đi qua .page-content
+   - nội dung không dính mép màn hình (padding = --gutter)
+   - trên màn hình lớn bị giới hạn --container-max và căn giữa
+   - min-width:0 để grid/flex con có thể co lại (tránh tràn ngang)
+   ------------------------------------------------------------ */
 .page-content {
-  padding: 25px 28px;
   flex: 1;
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding: var(--pad-block) var(--gutter);
+  min-width: 0;
+}
+
+/* Mọi khối con TRỰC TIẾP của vùng nội dung:
+   - max-width:100% : không khối nào được rộng hơn khung nội dung
+   - min-width:0    : gỡ giới hạn min-content của flex/grid item —
+                      nguyên nhân phổ biến nhất gây tràn ngang.
+   Đây là lưới an toàn Ở TẦNG LAYOUT, bổ sung cho các fix cụ thể. */
+.page-content > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-heading { margin-bottom: 22px; }
@@ -359,96 +426,6 @@ header > div:last-child {
 .hamburger-btn:active { transform: scale(0.95); }
 
 /* ============================================================
-   PHẦN 5: GLOBAL SEARCH
-   ============================================================ */
-
-.global-search {
-  position: relative !important;
-  width: 100% !important;
-  max-width: 520px !important;
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
-}
-
-.global-search-input {
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  background: var(--bg-tertiary, #f5f7fb) !important;
-  border: 1px solid transparent !important;
-  border-radius: 12px !important;
-  padding: 10px 16px !important;
-  color: var(--text-light, #8993a3) !important;
-  transition: all 0.2s !important;
-  width: 100% !important;
-  outline: none !important;
-}
-.global-search-input:focus-within {
-  background: var(--card-bg, #fff) !important;
-  border-color: #2634d5 !important;
-  box-shadow: 0 0 0 4px rgba(38, 52, 213, 0.1) !important;
-}
-.global-search-input svg {
-  color: var(--text-light, #94a3b8) !important;
-  flex-shrink: 0 !important;
-}
-.global-search-input input {
-  flex: 1 !important;
-  border: 0 !important;
-  outline: none !important;
-  font-size: 13px !important;
-  background: transparent !important;
-  color: var(--text-primary, #172033) !important;
-  min-width: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  box-shadow: none !important;
-  appearance: none !important;
-  -webkit-appearance: none !important;
-}
-.global-search-input input::placeholder {
-  color: var(--text-light, #94a3b8) !important;
-}
-
-.global-search-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0; right: 0;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border-color, #e5e9ef);
-  border-radius: 12px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.12);
-  max-height: 400px;
-  overflow-y: auto;
-  z-index: 100;
-}
-
-.dropdown-section-title {
-  padding: 10px 14px 6px;
-  font-size: 11px;
-  color: var(--text-light, #8993a3);
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.dropdown-item {
-  width: 100%;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.dropdown-item:hover { background: var(--bg-tertiary, #f5f7fb); }
-.dropdown-item img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; }
-
-/* ============================================================
    PHẦN 6: PROFILE MINI & ICON BUTTONS
    ============================================================ */
 
@@ -548,9 +525,6 @@ header > div:last-child {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 .topbar-icon-btn:active { transform: scale(0.95); }
-
-.topbar-icon-lang:hover  { background: rgba(139, 92, 246, 0.16) !important; }
-.topbar-icon-theme:hover { background: rgba(245, 158, 11, 0.16) !important; }
 .topbar-icon-btn[title="Đăng xuất"]:hover { background: rgba(239, 68, 68, 0.16) !important; }
 .notif-bell-btn:hover    { background: rgba(24, 169, 103, 0.16) !important; }
 
@@ -997,7 +971,12 @@ body div[style*="position: fixed"][style*="inset: 0"][style*="rgba(0,0,0,0.5)"] 
   position: fixed !important;
   top: 0 !important; left: 0 !important;
   right: 0 !important; bottom: 0 !important;
-  width: 100vw !important; height: 100vh !important;
+  /* KHÔNG dùng 100vw: với position:fixed, 100vw bao gồm cả bề rộng
+     scrollbar → rộng hơn vùng nhìn thấy ~15px. 100% (đối với fixed là
+     initial containing block) = đúng bề rộng vùng nhìn thấy.
+     Tương tự bỏ 100vh: trên mobile 100vh = "large viewport" (tính cả
+     thanh địa chỉ) → phần dưới bị che. */
+  width: 100% !important; height: 100% !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -1017,6 +996,13 @@ body div[style*="position: fixed"][style*="inset: 0"][style*="rgba(0,0,0,0.5)"] 
   z-index: 2147483647 !important;
   position: relative !important;
   padding: 24px 24px 0 !important;
+}
+
+/* Trên mobile, 85vh vẫn có thể cao hơn vùng nhìn thấy → dùng dvh. */
+@supports (height: 100dvh) {
+  .food-detail-content {
+    max-height: 85dvh !important;
+  }
 }
 
 /* ============================================================
@@ -1354,9 +1340,10 @@ html.dark-mode .inv-badge--out {
 }
 
 .banner-content {
-  max-width: 100% !important;
+  max-width: min(680px, 100%) !important;
   width: 100% !important;
   box-sizing: border-box !important;
+  min-width: 0 !important;
   position: relative !important;
   z-index: 2 !important;
 }
@@ -1365,7 +1352,8 @@ html.dark-mode .inv-badge--out {
   word-wrap: break-word !important;
   overflow-wrap: break-word !important;
   max-width: 100% !important;
-  font-size: 26px !important;
+  /* Fluid: giữ 30px ở desktop, tự thu nhỏ dần khi màn hình hẹp */
+  font-size: clamp(15px, 2.6vw, 30px) !important;
   line-height: 1.25 !important;
 }
 
@@ -1373,7 +1361,7 @@ html.dark-mode .inv-badge--out {
   word-wrap: break-word !important;
   overflow-wrap: break-word !important;
   max-width: 100% !important;
-  font-size: 13px !important;
+  font-size: clamp(12px, 0.6vw + 8px, 14px) !important;
   line-height: 1.55 !important;
 }
 
@@ -1550,6 +1538,17 @@ html.dark-mode .inv-badge--out {
   box-sizing: border-box !important;
 }
 
+/* Khi .cart-2col/.checkout-2col về 1 cột (<=768px) KHÔNG được giữ
+   min-width 280px nữa vì nó ép cột rộng hơn màn hình → tràn ngang. */
+@media (max-width: 768px) {
+  .checkout-2col > div:last-child,
+  .cart-2col > div:not(.food-detail-overlay):last-child {
+    min-width: 0 !important;
+    position: static !important;
+    top: auto !important;
+  }
+}
+
 .checkout-2col > div:last-child table,
 .cart-2col > div:last-child table {
   table-layout: fixed !important;
@@ -1639,72 +1638,6 @@ html.dark-mode .inv-badge--out {
   html body .cart-item-grid > button:nth-last-child(2) { grid-area: edit !important; justify-self: end !important; align-self: end !important; }
   html body .cart-item-grid > button:last-child { grid-area: trash !important; justify-self: end !important; align-self: end !important; }
   html body .cart-item-grid > div:nth-child(3) b { font-size: 13px !important; }
-}
-
-/* ============================================================
-   PHẦN 18: CHATBOT WIDGET
-   ============================================================ */
-
-.chatbot-fab {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 45;
-}
-
-.chatbot-panel {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 100;
-}
-
-@media (min-width: 769px) {
-  .chatbot-fab {
-    width: 52px !important;
-    height: 52px !important;
-    bottom: 20px !important;
-    right: 20px !important;
-    z-index: 60 !important;
-  }
-  .chatbot-fab svg { width: 22px !important; height: 22px !important; }
-}
-
-@media (max-width: 768px) {
-  body.has-bottom-nav .chatbot-fab {
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
-    right: 12px !important;
-    width: 48px !important;
-    height: 48px !important;
-    z-index: 49 !important;
-  }
-  body.has-bottom-nav .chatbot-fab svg {
-    width: 20px !important;
-    height: 20px !important;
-  }
-
-  .chatbot-panel {
-    bottom: 0 !important;
-    right: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
-    border-radius: 0 !important;
-    z-index: 100 !important;
-  }
-}
-
-@media (max-width: 900px) and (orientation: landscape) {
-  .chatbot-panel {
-    height: calc(100vh - 20px) !important;
-    bottom: 10px !important;
-    right: 10px !important;
-    left: 10px !important;
-    width: auto !important;
-    border-radius: 16px !important;
-  }
 }
 
 /* ============================================================
@@ -1868,8 +1801,11 @@ html.dark-mode .inv-badge--out {
   align-items: center !important;
   justify-content: center !important;
   gap: 10px !important;
-  min-width: 340px !important;
-  max-width: 500px !important;
+  /* Fluid: không bao giờ rộng hơn viewport (trước đây min-width 340px
+     gây tràn ngang trên điện thoại 320–340px) */
+  min-width: 0 !important;
+  width: fit-content !important;
+  max-width: min(500px, calc(100vw - 32px)) !important;
   padding: 18px 24px !important;
   border-radius: 14px !important;
   font-size: 15px !important;
@@ -1965,7 +1901,118 @@ html.dark-mode .inv-badge--out {
     font-size: 14px !important;
   }
 }
+/* ============================================================
+   PHẦN 20B: TOAST CARD — dạng card giống ConfirmDialog
+   ============================================================ */
 
+.toast-container {
+  /* Kế thừa từ PHẦN 20: căn giữa màn hình */
+}
+
+.toast-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 320px;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 18px 22px;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e5e9ef);
+  border-radius: 16px;
+  box-shadow:
+    0 20px 50px rgba(15, 23, 42, 0.18),
+    0 4px 12px rgba(15, 23, 42, 0.08);
+  pointer-events: auto;
+  animation: toastCardIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.toast-card.toast-exit {
+  animation: toastCardOut 0.2s ease forwards;
+}
+
+.toast-card__icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.toast-card__icon svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.5;
+}
+
+.toast-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.toast-card__title {
+  font-family: var(--font-sans, inherit);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary, #172033);
+  word-break: break-word;
+}
+
+.toast-card__desc {
+  font-family: var(--font-sans, inherit);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted, #64748b);
+  word-break: break-word;
+}
+
+@keyframes toastCardIn {
+  0%   { opacity: 0; transform: scale(0.9) translateY(-8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes toastCardOut {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.94); }
+}
+
+html.dark-mode .toast-card {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+html.dark-mode .toast-card__title {
+  color: #f1f5f9;
+}
+
+html.dark-mode .toast-card__desc {
+  color: #94a3b8;
+}
+
+@media (max-width: 480px) {
+  .toast-card {
+    min-width: 0;
+    width: calc(100vw - 32px);
+    padding: 16px 18px;
+  }
+  .toast-card__icon {
+    width: 40px;
+    height: 40px;
+  }
+  .toast-card__icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .toast-card__title { font-size: 14px; }
+  .toast-card__desc { font-size: 12.5px; }
+}
 /* ============================================================
    PHẦN 21: NAV BADGE
    ============================================================ */
@@ -2135,11 +2182,6 @@ html.dark-mode .icon-btn { color: #cbd5e1; }
 html.dark-mode .icon-btn:hover { background: #334155; border-color: #475569; }
 html.dark-mode .profile-mini:hover { background: #334155; border-color: #475569; }
 
-html.dark-mode .global-search-input { background: #0f172a; border-color: #334155; }
-html.dark-mode .global-search-input input { color: #e2e8f0; }
-html.dark-mode .global-search-dropdown { background: #1e293b; border-color: #334155; }
-html.dark-mode .dropdown-item:hover { background: #334155; }
-
 html.dark-mode .status.success { background: #064e3b; color: #6ee7b7; }
 html.dark-mode .status.warning { background: #78350f; color: #fcd34d; }
 html.dark-mode .status.pending { background: #1e3a8a; color: #93c5fd; }
@@ -2189,8 +2231,6 @@ html.dark-mode .hamburger-btn:hover,
 html.dark-mode .hamburger-btn:active { background: #475569 !important; color: #60a5fa !important; }
 
 html.dark-mode .topbar-icon-btn { background: rgba(255, 255, 255, 0.05) !important; }
-html.dark-mode .topbar-icon-lang:hover  { background: rgba(139, 92, 246, 0.25) !important; }
-html.dark-mode .topbar-icon-theme:hover { background: rgba(245, 158, 11, 0.25) !important; }
 html.dark-mode .notif-bell-btn:hover    { background: rgba(24, 169, 103, 0.25) !important; }
 html.dark-mode .topbar-icon-btn[title="Đăng xuất"]:hover { background: rgba(239, 68, 68, 0.25) !important; }
 
@@ -2285,10 +2325,6 @@ html.dark-mode ::selection { background: rgba(96, 165, 250, 0.35); }
   }
   .topbar-logo-text { display: none !important; }
 
-  .global-search { flex: 1 !important; min-width: 0 !important; max-width: 100% !important; }
-  .global-search-input { padding: 7px 10px !important; border-radius: 9px !important; }
-  .global-search-input input { font-size: 12px !important; }
-
   .topbar-right, header > div:last-child {
     gap: 4px !important; flex-shrink: 0 !important;
   }
@@ -2375,7 +2411,10 @@ html.dark-mode ::selection { background: rgba(96, 165, 250, 0.35); }
 
   table {
     display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
     overflow-x: auto !important;
+    overflow-y: hidden !important;
     white-space: nowrap !important;
     -webkit-overflow-scrolling: touch;
   }
@@ -2489,7 +2528,6 @@ html.dark-mode ::selection { background: rgba(96, 165, 250, 0.35); }
   }
   .topbar-right .icon-btn svg,
   .topbar-right .cart-topbar-icon svg { width: 15px !important; height: 15px !important; }
-  .global-search-input input::placeholder { color: transparent !important; }
 
   .hamburger-btn { width: 34px !important; height: 34px !important; margin-right: 8px !important; }
   .hamburger-btn svg { width: 18px !important; height: 18px !important; }
@@ -2544,7 +2582,6 @@ html.dark-mode ::selection { background: rgba(96, 165, 250, 0.35); }
 
 @media (max-width: 380px) {
   .topbar { padding: 0 6px !important; }
-  .global-search { display: none !important; }
   .profile-info { display: none !important; }
   .banner-carousel { height: 200px !important; }
   .banner-title { font-size: 15px !important; }
@@ -2563,15 +2600,57 @@ html.dark-mode ::selection { background: rgba(96, 165, 250, 0.35); }
 
 @supports (padding: env(safe-area-inset-bottom)) {
   .chatbot-fab { bottom: calc(16px + env(safe-area-inset-bottom)) !important; }
-  .page-content { padding-bottom: calc(14px + env(safe-area-inset-bottom)) !important; }
+  .page-content {
+    padding-bottom: calc(var(--pad-block) + env(safe-area-inset-bottom)) !important;
+  }
   .topbar { padding-top: env(safe-area-inset-top) !important; }
+  /* BottomNav của customer nằm sát mép dưới → phải né thanh home của iOS
+     (class thật là .customer-bottomnav — xem styles-customer.css dòng 9326) */
+  .customer-bottomnav,
+  .bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  /* CHỈ áp dụng khi BottomNav thực sự hiển thị (.customer-bottomnav chỉ
+     display:flex khi ≤900px). Trước đây rule này nằm NGOÀI media query nên
+     desktop (≥901px) cũng bị cộng thêm 96px padding-bottom → khoảng trắng
+     thừa ở cuối trang Thực đơn / Tài khoản / Giỏ hàng. */
+  @media (max-width: 900px) {
+    body.has-bottom-nav .page-content {
+      padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+  }
 }
 
+/* ------------------------------------------------------------
+   TOUCH UX — nút bấm phải đủ lớn cho ngón tay trên thiết bị cảm
+   ứng (khuyến nghị >= 40–44px). Chỉ áp dụng khi pointer coarse nên
+   KHÔNG làm thay đổi giao diện desktop.
+   ------------------------------------------------------------ */
 @media (hover: none) and (pointer: coarse) {
-  .icon-btn, .hamburger-btn, .nav-link, .primary-btn, .outline-btn, .small-btn {
+  .icon-btn, .hamburger-btn, .nav-link, .primary-btn, .outline-btn,
+  .small-btn, .ghost-btn, .danger-btn, .success-btn, .cat-chip,
+  .tab-btn, .cart-topbar-icon, .filter-chip, .sort-chip,
+  .topbar-right > button, .topbar-right > a {
     min-height: 40px;
   }
+  .icon-btn, .hamburger-btn, .cart-topbar-icon, .topbar-right > button {
+    min-width: 40px;
+  }
   button, a { -webkit-tap-highlight-color: transparent; }
+}
+
+/* ------------------------------------------------------------
+   NO-ZOOM INPUT — iOS/Safari TỰ ĐỘNG ZOOM trang khi focus vào ô nhập
+   có font-size < 16px. Đặt 16px trên mobile để người dùng không phải
+   tự zoom (yêu cầu: "không cần người dùng tự zoom").
+   ------------------------------------------------------------ */
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }
 
 @media (max-width: 768px) {
@@ -3100,12 +3179,6 @@ html.dark-mode .payment-card .pm-body > span { color: #94a3b8; }
   max-width: 100% !important;
 }
 
-.global-search {
-  flex: 1 1 auto !important;
-  max-width: 720px !important;
-  min-width: 200px !important;
-}
-
 .topbar-logo {
   flex-shrink: 0 !important;
   margin-right: 0 !important;
@@ -3141,10 +3214,6 @@ html.dark-mode .payment-card .pm-body > span { color: #94a3b8; }
   flex-shrink: 0 !important;
 }
 
-@media (max-width: 1400px) {
-  .global-search { max-width: 560px !important; }
-}
-
 @media (max-width: 1200px) {
   .topbar-profile-btn .profile-info { display: none !important; }
   .topbar-profile-btn { padding: 4px 8px 4px 12px !important; }
@@ -3153,7 +3222,6 @@ html.dark-mode .payment-card .pm-body > span { color: #94a3b8; }
 @media (max-width: 768px) {
   .topbar { padding: 0 12px !important; gap: 8px !important; }
   .topbar-left { gap: 8px !important; }
-  .global-search { max-width: 100% !important; min-width: 0 !important; }
   .topbar-profile-btn {
     border-left: 0 !important;
     padding-left: 4px !important;
@@ -3309,12 +3377,20 @@ main.v8-login-right {
 .v8-login-page {
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
-  width: 100vw !important;
+  /* 100% thay vì 100vw: vì <html> có `scrollbar-gutter: stable`, 100vw
+     luôn LỚN HƠN vùng nhìn thấy đúng bằng bề rộng scrollbar → cột bên
+     phải bị cắt ~15px trên desktop. 100% = bề rộng thật của #root. */
+  width: 100% !important;
+  min-height: 100vh !important;
   height: 100vh !important;
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
   background: #ffffff;
+}
+
+@supports (height: 100dvh) {
+  .v8-login-page { height: 100dvh !important; }
 }
 
 .v8-login-left {
@@ -4321,6 +4397,145 @@ html.dark-mode .voucher-card__code {
 .v8-socials {
   grid-template-columns: repeat(2, 1fr) !important;
 }
+
+/* ============================================================
+   PHẦN 44: SPINNER TOÀN CỤC — .spin / .fpc-spin
+   ------------------------------------------------------------
+   <Loader2 className="spin" /> được dùng ở Login, Register,
+   ForgotPassword, ImageUploader và className="fpc-spin" ở
+   ForcePasswordChange — nhưng TRƯỚC ĐÂY KHÔNG có rule CSS nào
+   cho các class này, nên icon tải đứng yên (không quay).
+   ============================================================ */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin,
+.fpc-spin {
+  animation: spin 1s linear infinite;
+  transform-origin: center;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .fpc-spin { animation-duration: 2.5s; }
+}
+/* ============================================================
+   PHẦN 20B: TOAST CARD — dạng modal card (giống ConfirmDialog)
+   ============================================================ */
+
+.toast-container {
+  /* container đã có từ PHẦN 20 */
+}
+
+.toast-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 320px;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 18px 22px;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e5e9ef);
+  border-radius: 16px;
+  box-shadow:
+    0 20px 50px rgba(15, 23, 42, 0.18),
+    0 4px 12px rgba(15, 23, 42, 0.08);
+  pointer-events: auto;
+  animation: toastCardIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.toast-card.toast-exit {
+  animation: toastCardOut 0.2s ease forwards;
+}
+
+.toast-card__icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.toast-card__icon svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.5;
+}
+
+.toast-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.toast-card__title {
+  font-family: var(--font-sans, inherit);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary, #172033);
+  word-break: break-word;
+}
+
+.toast-card__desc {
+  font-family: var(--font-sans, inherit);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted, #64748b);
+  word-break: break-word;
+}
+
+@keyframes toastCardIn {
+  0%   { opacity: 0; transform: scale(0.9) translateY(-8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes toastCardOut {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.94); }
+}
+
+html.dark-mode .toast-card {
+  background: #1e293b;
+  border-color: #334155;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+html.dark-mode .toast-card__title {
+  color: #f1f5f9;
+}
+
+html.dark-mode .toast-card__desc {
+  color: #94a3b8;
+}
+
+@media (max-width: 480px) {
+  .toast-card {
+    min-width: 0;
+    width: calc(100vw - 32px);
+    padding: 16px 18px;
+  }
+  .toast-card__icon {
+    width: 40px;
+    height: 40px;
+  }
+  .toast-card__icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .toast-card__title { font-size: 14px; }
+  .toast-card__desc { font-size: 12.5px; }
+}
+
 /* ============================================================
    KẾT THÚC FILE
    ============================================================ */

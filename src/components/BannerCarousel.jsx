@@ -1,17 +1,25 @@
 // ============================================================
-// BANNERCAROUSEL.JSX — Component carousel banner
+// BANNERCAROUSEL.JSX — Carousel banner khuyến mãi (Customer)
+// ============================================================
+// ✅ 3 slide, tự động chuyển sau 4s (AUTO_INTERVAL)
+// ✅ Nút chuyển slide thủ công (trái/phải) + dots điều hướng
+// ✅ Tạm dừng khi hover chuột hoặc khi tab bị ẩn
+// ✅ i18n: nội dung slide dịch qua t() (nguồn tiếng Việt ở bannerSlides.js)
+// ✅ buttonLink dạng "#anchor" → cuộn mượt tới section trong trang
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
-  ChevronLeft, ChevronRight,
-  Clock, Utensils, Gift, Sparkles, Zap,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Utensils,
+  Gift,
+  Sparkles,
+  Zap,
 } from "lucide-react";
-import {
-  bannerSlides,
-  DEFAULT_BANNER_OVERLAY,
-} from "../bannerSlides";
+import { bannerSlides, DEFAULT_BANNER_OVERLAY } from "../bannerSlides";
 import { useI18n } from "../hooks/useI18n";
 
 const AUTO_INTERVAL = 4000;
@@ -19,11 +27,16 @@ const TRANSITION_MS = 500;
 
 function renderChipIcon(name, size = 13) {
   switch (name) {
-    case "clock":    return <Clock size={size} />;
-    case "utensils": return <Utensils size={size} />;
-    case "gift":     return <Gift size={size} />;
-    case "sparkles": return <Sparkles size={size} />;
-    default:         return <Zap size={size} />;
+    case "clock":
+      return <Clock size={size} />;
+    case "utensils":
+      return <Utensils size={size} />;
+    case "gift":
+      return <Gift size={size} />;
+    case "sparkles":
+      return <Sparkles size={size} />;
+    default:
+      return <Zap size={size} />;
   }
 }
 
@@ -127,36 +140,57 @@ export default function BannerCarousel({ slides = bannerSlides }) {
         ))}
       </div>
 
+      {/* Nút chuyển slide thủ công */}
       {total > 1 && (
         <>
           <button
+            type="button"
             onClick={prev}
             aria-label={t("Slide trước")}
             className="banner-nav banner-nav-left"
-            type="button"
             style={{
-              position: "absolute", top: "50%", left: 16,
-              transform: "translateY(-50%)", zIndex: 10,
-              width: 44, height: 44, borderRadius: "50%", border: 0,
-              background: "rgba(255,255,255,0.9)", color: "#0f172a",
-              cursor: "pointer", display: "grid", placeItems: "center",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.25)", opacity: 0.85,
+              position: "absolute",
+              top: "50%",
+              left: 16,
+              transform: "translateY(-50%)",
+              zIndex: 10,
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              border: 0,
+              background: "rgba(255,255,255,0.9)",
+              color: "#0f172a",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+              opacity: 0.85,
             }}
           >
             <ChevronLeft size={22} />
           </button>
           <button
+            type="button"
             onClick={next}
             aria-label={t("Slide tiếp theo")}
             className="banner-nav banner-nav-right"
-            type="button"
             style={{
-              position: "absolute", top: "50%", right: 16,
-              transform: "translateY(-50%)", zIndex: 10,
-              width: 44, height: 44, borderRadius: "50%", border: 0,
-              background: "rgba(255,255,255,0.9)", color: "#0f172a",
-              cursor: "pointer", display: "grid", placeItems: "center",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.25)", opacity: 0.85,
+              position: "absolute",
+              top: "50%",
+              right: 16,
+              transform: "translateY(-50%)",
+              zIndex: 10,
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              border: 0,
+              background: "rgba(255,255,255,0.9)",
+              color: "#0f172a",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+              opacity: 0.85,
             }}
           >
             <ChevronRight size={22} />
@@ -164,15 +198,23 @@ export default function BannerCarousel({ slides = bannerSlides }) {
         </>
       )}
 
+      {/* Dots điều hướng */}
       {total > 1 && (
         <div
           role="tablist"
           aria-label={t("Chọn slide")}
           className="banner-dots"
           style={{
-            position: "absolute", bottom: 16, left: 0, right: 0,
-            zIndex: 10, display: "flex", justifyContent: "center",
-            alignItems: "center", gap: 8, pointerEvents: "none",
+            position: "absolute",
+            bottom: 16,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 8,
+            pointerEvents: "none",
           }}
         >
           {slides.map((s, i) => {
@@ -180,11 +222,11 @@ export default function BannerCarousel({ slides = bannerSlides }) {
             return (
               <button
                 key={s.id || i}
+                type="button"
                 onClick={() => goTo(i)}
                 role="tab"
                 aria-selected={active}
-                aria-label={t("Đi đến slide {n}").replace("{n}", i + 1)}
-                type="button"
+                aria-label={t("Đi đến slide {n}", { n: i + 1 })}
                 style={{
                   width: active ? 28 : 10,
                   height: 10,
@@ -208,9 +250,25 @@ export default function BannerCarousel({ slides = bannerSlides }) {
   );
 }
 
+// ============================================================
+// SLIDE — 1 slide đơn lẻ (ảnh nền + overlay + nội dung)
+// ============================================================
+
 function Slide({ slide, isActive }) {
+  const { t } = useI18n();
   const [linkHover, setLinkHover] = useState(false);
+
   const overlay = slide.overlay || DEFAULT_BANNER_OVERLAY;
+  const isAnchor =
+    typeof slide.buttonLink === "string" && slide.buttonLink.startsWith("#");
+
+  // buttonLink dạng "#anchor" → cuộn mượt tới section trong trang
+  const handleCtaClick = (e) => {
+    if (!isAnchor) return;
+    e.preventDefault();
+    const el = document.getElementById(slide.buttonLink.slice(1));
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <div
@@ -242,9 +300,10 @@ function Slide({ slide, isActive }) {
         }}
       />
 
-      <div style={{ maxWidth: 680, position: "relative", zIndex: 2 }}>
+      <div className="banner-content" style={{ maxWidth: 680, position: "relative", zIndex: 2 }}>
         {slide.badge && (
           <span
+            className="banner-badge"
             style={{
               display: "inline-block",
               background: "rgba(245, 158, 11, 0.3)",
@@ -257,11 +316,12 @@ function Slide({ slide, isActive }) {
               marginBottom: 10,
             }}
           >
-            {slide.badge}
+            {t(slide.badge)}
           </span>
         )}
 
         <h2
+          className="banner-title"
           style={{
             fontSize: 30,
             fontWeight: 800,
@@ -272,10 +332,11 @@ function Slide({ slide, isActive }) {
             textShadow: "0 2px 10px rgba(0,0,0,0.5)",
           }}
         >
-          {slide.title}
+          {t(slide.title)}
         </h2>
 
         <p
+          className="banner-desc"
           style={{
             fontSize: 14,
             lineHeight: 1.55,
@@ -286,11 +347,12 @@ function Slide({ slide, isActive }) {
             textShadow: "0 1px 4px rgba(0,0,0,0.4)",
           }}
         >
-          {slide.description}
+          {t(slide.description)}
         </p>
 
         {slide.chips && slide.chips.length > 0 && (
           <div
+            className="banner-chips"
             style={{
               display: "flex",
               gap: 10,
@@ -315,7 +377,7 @@ function Slide({ slide, isActive }) {
                 }}
               >
                 {renderChipIcon(c.icon)}
-                {c.text}
+                {t(c.text)}
               </span>
             ))}
           </div>
@@ -325,6 +387,7 @@ function Slide({ slide, isActive }) {
           to={slide.buttonLink}
           className="banner-btn"
           tabIndex={isActive ? 0 : -1}
+          onClick={handleCtaClick}
           onMouseEnter={() => setLinkHover(true)}
           onMouseLeave={() => setLinkHover(false)}
           style={{
@@ -343,9 +406,10 @@ function Slide({ slide, isActive }) {
             transform: linkHover ? "translateY(-3px)" : "translateY(0)",
           }}
         >
-          {slide.buttonText}
+          {t(slide.buttonText)}
         </Link>
       </div>
     </div>
   );
 }
+

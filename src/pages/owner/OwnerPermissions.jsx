@@ -6,10 +6,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Shield, Check, Search, Save, RotateCcw, Users, Edit, X,
-  Loader2, AlertCircle,
-  Utensils, ClipboardList, Warehouse, UserCog, UserRound,
-  CalendarCheck, BarChart3, Database, Settings as SettingsIcon,
+  Shield, Check, Search, Save, RotateCcw, Users, Pencil, X, Loader2, AlertCircle, Utensils, ClipboardList, Warehouse, UserCog, UserRound, CalendarCheck, BarChart3, Database, Settings as SettingsIcon, Edit,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";

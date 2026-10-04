@@ -6,8 +6,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  CreditCard, Save, QrCode, Building2, Phone, Mail, MapPin,
-  CheckCircle2, Loader2, AlertCircle, RefreshCw, X,
+  CreditCard, Save, QrCode, Building2, Phone, Mail, MapPin, CheckCircle2, Loader2, AlertCircle, RefreshCw, X,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";

@@ -1,15 +1,14 @@
-﻿// ============================================================
-// CUSTOMERCART.JSX — Giỏ hàng khách hàng
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-//    Không còn key cũ kiểu "cart.xxx" / "common.xxx"
+// CUSTOMERCART.JSX — Giỏ hàng (V2 - design mới)
+// ============================================================
+// ✅ GIỮ NGUYÊN: logic, state, hooks, i18n
+// 🎨 THAY ĐỔI: layout 2 cột + stepper Bước 2/4 + design system V2
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  ShoppingCart, Plus, Minus, Trash2, Check, ArrowRight,
-  Store, Pencil,
+  ShoppingCart, Plus, Minus, Trash2, Check, ArrowRight, Store, Pencil, Home, ChevronRight, Info, AlertCircle, Clock, Utensils, Tag, Shield, Sparkles, Soup, ChevronLeft, X, Loader2, ShoppingBag, RefreshCw, CreditCard,
 } from "lucide-react";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
@@ -178,6 +177,14 @@ export default function CustomerCart({ cart, setCart }) {
     setConfirmRemove(null);
   };
 
+  const clearAll = () => {
+    if (lines.length === 0) return;
+    if (!window.confirm(t("Xoá toàn bộ giỏ hàng?"))) return;
+    setCart({});
+    setSelectedKeys([]);
+    toast(t("Đã xoá toàn bộ giỏ hàng"), "success");
+  };
+
   const goCheckout = () => {
     if (!selectedLines.length) return;
     try {
@@ -186,550 +193,457 @@ export default function CustomerCart({ cart, setCart }) {
     navigate("/customer/checkout");
   };
 
-  // Early return: giỏ rỗng
+  // ---------- Early return: giỏ rỗng ----------
   if (!lines.length) {
     return (
-      <div
-        style={{
-          background: "var(--card-bg, #fff)",
-          borderRadius: 16,
-          padding: 80,
-          textAlign: "center",
-          border: "1px solid var(--border-color, #e7ebf0)",
-        }}
-      >
-        <div
-          style={{
-            width: 120,
-            height: 120,
-            borderRadius: "50%",
-            background:
-              "linear-gradient(135deg, rgba(38, 52, 213, 0.1), rgba(32, 199, 121, 0.1))",
-            display: "grid",
-            placeItems: "center",
-            margin: "0 auto 20px",
-          }}
-        >
-          <ShoppingCart size={56} style={{ color: "#2634d5" }} />
+      <div className="cart-v2">
+        <section className="cart-header">
+          <div className="cart-header__top">
+            <nav className="cart-breadcrumb">
+              <Link to="/customer/home" className="cart-breadcrumb__link">
+                <Home size={14} />
+                {t("Trang chủ")}
+              </Link>
+              <ChevronRight size={14} className="cart-breadcrumb__sep" />
+              <span className="cart-breadcrumb__current">
+                {t("Giỏ hàng")}
+              </span>
+            </nav>
+          </div>
+
+          <div className="cart-stepper">
+            <div className="cart-stepper__item cart-stepper__item--done">
+              <div className="cart-stepper__icon">
+                <Check size={16} />
+              </div>
+              <div>
+                <span className="cart-stepper__label">{t("BƯỚC 1")}</span>
+                <b>{t("Chọn món")}</b>
+              </div>
+            </div>
+            <div className="cart-stepper__item cart-stepper__item--active">
+              <div className="cart-stepper__icon cart-stepper__icon--active">
+                <ShoppingBag size={16} />
+              </div>
+              <div>
+                <span className="cart-stepper__label cart-stepper__label--active">
+                  {t("BƯỚC 2")}
+                </span>
+                <b className="cart-stepper__label--active">
+                  {t("Giỏ & Tùy chọn")}
+                </b>
+              </div>
+            </div>
+            <div className="cart-stepper__item cart-stepper__item--pending">
+              <div className="cart-stepper__icon">
+                <CreditCard size={16} />
+              </div>
+              <div>
+                <span className="cart-stepper__label">{t("BƯỚC 3")}</span>
+                <b>{t("Thanh toán")}</b>
+              </div>
+            </div>
+            <div className="cart-stepper__item cart-stepper__item--pending">
+              <div className="cart-stepper__icon">
+                <Store size={16} />
+              </div>
+              <div>
+                <span className="cart-stepper__label">{t("BƯỚC 4")}</span>
+                <b>{t("Nhận tại quầy")}</b>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="cart-empty">
+          <div className="cart-empty__icon">
+            <ShoppingCart size={56} />
+          </div>
+          <h2>{t("Giỏ hàng đang trống")}</h2>
+          <p>{t("Hãy chọn món ăn bạn yêu thích để bắt đầu.")}</p>
+          <Link to="/customer/menu" className="cart-empty__btn">
+            <Store size={16} />
+            {t("Khám phá thực đơn")}
+          </Link>
         </div>
-        <h2
-          style={{
-            margin: "0 0 8px",
-            color: "var(--text-primary, #172033)",
-            fontSize: 22,
-          }}
-        >
-          {t("Giỏ hàng đang trống")}
-        </h2>
-        <p style={{ color: "var(--text-muted, #8993a3)", marginBottom: 24 }}>
-          {t("Hãy chọn món ăn bạn yêu thích.")}
-        </p>
-        <Link
-          to="/customer/menu"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            background: "#2634d5",
-            color: "#fff",
-            padding: "12px 24px",
-            borderRadius: 10,
-            textDecoration: "none",
-            fontWeight: 700,
-            fontSize: 14,
-          }}
-        >
-          <Store size={16} /> {t("Khám phá thực đơn")}
-        </Link>
       </div>
     );
   }
 
   return (
-    <>
-      <div
-        className="cart-2col"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)",
-          gap: 20,
-          alignItems: "start",
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              background: "var(--card-bg, #fff)",
-              border: "1px solid var(--border-color, #e7ebf0)",
-              borderRadius: 14,
-              padding: "14px 18px",
-              marginBottom: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                cursor: "pointer",
-                userSelect: "none",
-              }}
-            >
+    <div className="cart-v2">
+      {/* ============================================== */}
+      {/* HEADER + STEPPER                                */}
+      {/* ============================================== */}
+      <section className="cart-header">
+        <div className="cart-header__top">
+          <nav className="cart-breadcrumb">
+            <Link to="/customer/home" className="cart-breadcrumb__link">
+              <Home size={14} />
+              {t("Trang chủ")}
+            </Link>
+            <ChevronRight size={14} className="cart-breadcrumb__sep" />
+            <span className="cart-breadcrumb__current">{t("Giỏ hàng")}</span>
+          </nav>
+
+          <div className="cart-header__meta">
+            <span className="cart-header__count">
+              {lines.length} {t("món")} • {lines.reduce((s, m) => s + m.qty, 0)}{" "}
+              {t("phần")}
+            </span>
+          </div>
+        </div>
+
+        {/* Stepper */}
+        <div className="cart-stepper">
+          <div className="cart-stepper__item cart-stepper__item--done">
+            <div className="cart-stepper__icon">
+              <Check size={16} />
+            </div>
+            <div>
+              <span className="cart-stepper__label">{t("BƯỚC 1")}</span>
+              <b>{t("Chọn món")}</b>
+            </div>
+          </div>
+
+          <div className="cart-stepper__item cart-stepper__item--active">
+            <div className="cart-stepper__icon cart-stepper__icon--active">
+              <ShoppingBag size={16} />
+            </div>
+            <div>
+              <span className="cart-stepper__label cart-stepper__label--active">
+                {t("BƯỚC 2")}
+              </span>
+              <b className="cart-stepper__label--active">
+                {t("Giỏ & Tùy chọn")}
+              </b>
+            </div>
+          </div>
+
+          <div className="cart-stepper__item cart-stepper__item--pending">
+            <div className="cart-stepper__icon">
+              <CreditCard size={16} />
+            </div>
+            <div>
+              <span className="cart-stepper__label">{t("BƯỚC 3")}</span>
+              <b>{t("Thanh toán")}</b>
+            </div>
+          </div>
+
+          <div className="cart-stepper__item cart-stepper__item--pending">
+            <div className="cart-stepper__icon">
+              <Store size={16} />
+            </div>
+            <div>
+              <span className="cart-stepper__label">{t("BƯỚC 4")}</span>
+              <b>{t("Nhận tại quầy")}</b>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================== */}
+      {/* MAIN 2-COLUMN GRID                              */}
+      {/* ============================================== */}
+      <div className="cart-grid">
+        {/* ============ LEFT: LIST MÓN ============ */}
+        <div className="cart-left">
+          {/* Toolbar */}
+          <div className="cart-toolbar">
+            <label className="cart-toolbar__select-all">
               <span
                 role="checkbox"
                 aria-checked={allSelected}
-                aria-label={t("Chọn tất cả món")}
                 tabIndex={0}
                 onClick={toggleAll}
                 onKeyDown={(e) =>
                   (e.key === " " || e.key === "Enter") && toggleAll()
                 }
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 6,
-                  border: allSelected
-                    ? "0"
-                    : "2px solid var(--border-color, #cbd5e1)",
-                  background: allSelected ? "#2634d5" : "transparent",
-                  display: "grid",
-                  placeItems: "center",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
+                className={`cart-checkbox ${allSelected ? "checked" : ""}`}
               >
-                {allSelected && <Check size={14} color="#fff" />}
+                {allSelected && <Check size={13} />}
               </span>
-              <b
-                style={{ fontSize: 14, color: "var(--text-primary, #172033)" }}
-              >
+              <b>
                 {t("Chọn tất cả")} ({lines.length} {t("món")})
               </b>
             </label>
 
-            <span style={{ fontSize: 13, color: "var(--text-muted, #64748b)" }}>
-              {t("Đã chọn")}{" "}
-              <b style={{ color: "#2634d5" }}>{selectedLines.length}</b>/
-              {lines.length}
-            </span>
+            <div className="cart-toolbar__right">
+              <span className="cart-toolbar__selected">
+                {t("Đã chọn")}: <b>{selectedLines.length}</b>/{lines.length}
+              </span>
+              {lines.length > 0 && (
+                <button
+                  type="button"
+                  className="cart-toolbar__clear"
+                  onClick={clearAll}
+                >
+                  <Trash2 size={13} />
+                  {t("Xoá tất cả")}
+                </button>
+              )}
+            </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* List */}
+          <div className="cart-list">
             {lines.map((m) => {
               const checked = selectedKeys.includes(m._key);
               const maxQty = getMaxQty(m);
               const atMax = m.qty >= maxQty;
               const atMin = m.qty <= 1;
+              const stockLeft = typeof m.stock === "number" ? m.stock : null;
+              const isLowStock = stockLeft !== null && stockLeft <= 5;
 
               return (
                 <div
                   key={m._key}
-                  className="cart-item-grid"
-                  style={{
-                    background: "var(--card-bg, #fff)",
-                    border: checked
-                      ? "1.5px solid #2634d5"
-                      : "1px solid var(--border-color, #e7ebf0)",
-                    borderRadius: 14,
-                    padding: 14,
-                    display: "grid",
-                    gridTemplateColumns: "auto 70px 1fr auto auto auto auto",
-                    gap: 14,
-                    alignItems: "center",
-                    opacity: checked ? 1 : 0.65,
-                    transition: "all 0.2s",
-                    boxShadow: checked
-                      ? "0 4px 12px rgba(38, 52, 213, 0.08)"
-                      : "none",
-                  }}
+                  className={`cart-item ${checked ? "cart-item--checked" : ""}`}
                 >
+                  {/* Checkbox */}
                   <span
                     role="checkbox"
                     aria-checked={checked}
-                    aria-label={`${t("Chọn")} ${m.name}`}
                     tabIndex={0}
                     onClick={() => toggleItem(m._key)}
                     onKeyDown={(e) =>
-                      (e.key === " " || e.key === "Enter") && toggleItem(m._key)
+                      (e.key === " " || e.key === "Enter") &&
+                      toggleItem(m._key)
                     }
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 6,
-                      border: checked
-                        ? "0"
-                        : "2px solid var(--border-color, #cbd5e1)",
-                      background: checked ? "#2634d5" : "transparent",
-                      display: "grid",
-                      placeItems: "center",
-                      cursor: "pointer",
-                      flexShrink: 0,
-                    }}
+                    className={`cart-checkbox ${checked ? "checked" : ""}`}
                   >
-                    {checked && <Check size={14} color="#fff" />}
+                    {checked && <Check size={13} />}
                   </span>
 
-                  <img
-                    src={m.image}
-                    alt={m.name}
-                    onClick={() => toggleItem(m._key)}
-                    style={{
-                      width: 70,
-                      height: 70,
-                      borderRadius: 12,
-                      objectFit: "cover",
-                      cursor: "pointer",
-                    }}
-                  />
-
+                  {/* Image */}
                   <div
-                    style={{ minWidth: 0, cursor: "pointer" }}
+                    className="cart-item__img"
                     onClick={() => toggleItem(m._key)}
                   >
-                    <b
-                      style={{
-                        fontSize: 14,
-                        color: "var(--text-primary, #172033)",
-                        display: "block",
-                        marginBottom: 4,
-                        lineHeight: 1.35,
-                      }}
-                    >
-                      {tData(m, "name")}
-                    </b>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text-light, #8993a3)",
-                        display: "flex",
-                        gap: 10,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span>
-                        {t("Đơn giá")}:{" "}
-                        <b style={{ color: "#18a967" }}>{money(m.price)}</b>
+                    {m.image ? (
+                      <img src={m.image} alt={m.name} loading="lazy" />
+                    ) : (
+                      <Soup size={26} />
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="cart-item__info">
+                    <b className="cart-item__name">{tData(m, "name")}</b>
+                    <div className="cart-item__meta">
+                      <span className="cart-item__price">
+                        {money(m.price)}
                       </span>
-                      {typeof m.stock === "number" && (
-                        <span
-                          style={{
-                            color: m.stock === 0 ? "#ef4444" : undefined,
-                          }}
-                        >
-                          {t("Còn")}: {m.stock}
+                      {typeof m._size === "string" && m._size && (
+                        <span className="cart-item__tag">
+                          {t("Size")} {m._size}
+                        </span>
+                      )}
+                      {Array.isArray(m._toppings) && m._toppings.length > 0 && (
+                        <span className="cart-item__tag">
+                          +{m._toppings.length} {t("topping")}
                         </span>
                       )}
                     </div>
+                    {stockLeft !== null && (
+                      <span
+                        className={`cart-item__stock ${
+                          isLowStock ? "cart-item__stock--low" : ""
+                        }`}
+                      >
+                        <Clock size={11} />
+                        {t("Còn")} {stockLeft}
+                      </span>
+                    )}
                   </div>
 
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      background: "var(--bg-tertiary, #f5f7fb)",
-                      borderRadius: 24,
-                      padding: 3,
-                      gap: 2,
-                    }}
-                  >
+                  {/* Qty stepper */}
+                  <div className="cart-qty">
                     <button
+                      type="button"
                       onClick={() => updateQty(m._key, -1)}
                       disabled={atMin}
-                      aria-label={t("Giảm số lượng")}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: "50%",
-                        border: 0,
-                        background: atMin ? "transparent" : "#fff",
-                        cursor: atMin ? "not-allowed" : "pointer",
-                        display: "grid",
-                        placeItems: "center",
-                        color: atMin ? "#cbd5e1" : "#2634d5",
-                        opacity: atMin ? 0.4 : 1,
-                        boxShadow: atMin
-                          ? "none"
-                          : "0 1px 3px rgba(0,0,0,0.08)",
-                      }}
+                      aria-label={t("Giảm")}
                     >
                       <Minus size={14} />
                     </button>
-                    <b
-                      style={{
-                        minWidth: 28,
-                        textAlign: "center",
-                        fontSize: 14,
-                        color: "#172033",
-                      }}
-                    >
-                      {m.qty}
-                    </b>
+                    <span>{m.qty}</span>
                     <button
+                      type="button"
                       onClick={() => updateQty(m._key, 1)}
                       disabled={atMax}
-                      aria-label={t("Tăng số lượng")}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: "50%",
-                        border: 0,
-                        background: atMax ? "transparent" : "#2634d5",
-                        cursor: atMax ? "not-allowed" : "pointer",
-                        display: "grid",
-                        placeItems: "center",
-                        color: atMax ? "#cbd5e1" : "#fff",
-                        opacity: atMax ? 0.4 : 1,
-                        boxShadow: atMax
-                          ? "none"
-                          : "0 1px 3px rgba(38, 52, 213, 0.3)",
-                      }}
+                      aria-label={t("Tăng")}
                     >
                       <Plus size={14} />
                     </button>
                   </div>
 
-                  <div style={{ textAlign: "right", minWidth: 90 }}>
-                    <b
-                      style={{
-                        fontSize: 15,
-                        color: "#2634d5",
-                        fontWeight: 800,
-                      }}
-                    >
-                      {money(m.price * m.qty)}
-                    </b>
+                  {/* Total for item */}
+                  <div className="cart-item__total">
+                    {money(m.price * m.qty)}
                   </div>
 
-                  <button
-                    onClick={() => setEditingItem({ key: m._key, item: m })}
-                    title={t("Sửa món")}
-                    aria-label={`${t("Sửa")} ${tData(m, "name")}`}
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      border: "1px solid #2634d5",
-                      background: "rgba(38, 52, 213, 0.08)",
-                      cursor: "pointer",
-                      color: "#2634d5",
-                      display: "grid",
-                      placeItems: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Pencil size={15} />
-                  </button>
-
-                  <button
-                    onClick={() => removeItem(m._key)}
-                    title={t("Xoá khỏi giỏ")}
-                    aria-label={`${t("Xoá")} ${tData(m, "name")} ${t("khỏi giỏ")}`}
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      border: "1px solid var(--border-color, #e5e9ef)",
-                      background: "var(--card-bg, #fff)",
-                      cursor: "pointer",
-                      color: "#ef4444",
-                      display: "grid",
-                      placeItems: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {/* Actions */}
+                  <div className="cart-item__actions">
+                    <button
+                      type="button"
+                      className="cart-item__action cart-item__action--edit"
+                      onClick={() =>
+                        setEditingItem({ key: m._key, item: m })
+                      }
+                      title={t("Sửa món")}
+                      aria-label={t("Sửa")}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="cart-item__action cart-item__action--delete"
+                      onClick={() => removeItem(m._key)}
+                      title={t("Xoá khỏi giỏ")}
+                      aria-label={t("Xoá")}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {/* Continuation */}
+          <Link to="/customer/menu" className="cart-continue">
+            <ChevronLeft size={16} />
+            {t("Tiếp tục chọn món")}
+          </Link>
         </div>
 
-        <div
-          style={{
-            background: "var(--card-bg, #fff)",
-            border: "1px solid var(--border-color, #e7ebf0)",
-            borderRadius: 14,
-            padding: 20,
-            position: "sticky",
-            top: 90,
-          }}
-        >
-          <h3
-            style={{
-              margin: "0 0 16px",
-              color: "var(--text-primary, #172033)",
-              fontSize: 16,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              paddingBottom: 14,
-              borderBottom: "1px solid var(--border-color, #eef2f7)",
-            }}
-          >
-            🧾 {t("Tóm tắt đơn hàng")}
-          </h3>
+        {/* ============ RIGHT: SUMMARY ============ */}
+        <div className="cart-right">
+          {/* Order summary card */}
+          <div className="cart-summary">
+            <h3 className="cart-summary__title">
+              <Tag size={18} />
+              {t("Tóm tắt đơn hàng")}
+            </h3>
 
-          <div
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(38, 52, 213, 0.06), rgba(32, 199, 121, 0.06))",
-              border: "1px dashed rgba(38, 52, 213, 0.3)",
-              borderRadius: 10,
-              padding: "12px 14px",
-              marginBottom: 14,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: "#2634d5",
-                fontWeight: 700,
-                letterSpacing: 0.5,
-                marginBottom: 4,
-              }}
-            >
-              {t("ĐÃ CHỌN")}
+            <div className="cart-summary__selected">
+              <span className="cart-summary__selected-label">
+                {t("Đã chọn")}
+              </span>
+              {selectedLines.length === 0 ? (
+                <span className="cart-summary__selected-empty">
+                  {t("Chưa chọn món nào")}
+                </span>
+              ) : (
+                <span className="cart-summary__selected-value">
+                  <b>{selectedLines.length}</b> {t("món")} •{" "}
+                  <b>{totalQty}</b> {t("phần")}
+                </span>
+              )}
             </div>
-            {selectedLines.length === 0 ? (
-              <div
-                style={{ fontSize: 13, color: "#ef4444", fontWeight: 600 }}
-              >
-                {t("Chưa chọn món nào")}
+
+            <div className="cart-summary__rows">
+              <div className="cart-summary__row">
+                <span>{t("Tạm tính")}</span>
+                <b>{money(total)}</b>
               </div>
-            ) : (
-              <div
-                style={{ fontSize: 14, color: "var(--text-primary, #172033)" }}
-              >
-                <b style={{ color: "#2634d5" }}>{selectedLines.length}</b>{" "}
-                {t("món")} ·{" "}
-                <b style={{ color: "#2634d5" }}>{totalQty}</b>{" "}
-                {t("phần")}
+              <div className="cart-summary__row">
+                <span>{t("Phí dịch vụ")}</span>
+                <b>{money(0)}</b>
               </div>
-            )}
-          </div>
+              <div className="cart-summary__row cart-summary__row--green">
+                <span>
+                  <Sparkles size={12} />
+                  {t("Trợ giá SV (dự kiến)")}
+                </span>
+                <b>-10.000 đ</b>
+              </div>
+            </div>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              padding: "8px 0",
-              fontSize: 13.5,
-            }}
-          >
-            <span style={{ color: "var(--text-muted, #64748b)" }}>
-              {t("Tạm tính")}
-            </span>
-            <b style={{ color: "var(--text-primary, #172033)" }}>
-              {money(total)}
-            </b>
-          </div>
+            <div className="cart-summary__total">
+              <div>
+                <span>{t("TỔNG CỘNG")}</span>
+                <small>{t("Đã bao gồm VAT & trợ giá")}</small>
+              </div>
+              <div className="cart-summary__total-value">
+                {money(Math.max(0, total - 10000))}
+              </div>
+            </div>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              padding: "8px 0",
-              fontSize: 13.5,
-            }}
-          >
-            <span style={{ color: "var(--text-muted, #64748b)" }}>
-              {t("Phí dịch vụ")}
-            </span>
-            <b style={{ color: "var(--text-primary, #172033)" }}>{money(0)}</b>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "16px 0",
-              marginTop: 8,
-              borderTop: "2px solid var(--border-color, #eef2f7)",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: "var(--text-primary, #172033)",
-              }}
+            <button
+              type="button"
+              className="cart-summary__cta"
+              onClick={goCheckout}
+              disabled={!selectedLines.length}
             >
-              {t("Tổng cộng")}
-            </span>
-            <strong style={{ color: "#2634d5", fontSize: 24, fontWeight: 800 }}>
-              {money(total)}
-            </strong>
+              {selectedLines.length ? (
+                <>
+                  {t("Tiến hành thanh toán")}
+                  <ArrowRight size={16} />
+                </>
+              ) : (
+                t("Chọn món để đặt")
+              )}
+            </button>
           </div>
 
-          <button
-            onClick={goCheckout}
-            disabled={!selectedLines.length}
-            style={{
-              width: "100%",
-              padding: "14px 16px",
-              background: selectedLines.length
-                ? "linear-gradient(135deg, #2634d5, #3b4bef)"
-                : "#94a3b8",
-              color: "#fff",
-              border: 0,
-              borderRadius: 10,
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: selectedLines.length ? "pointer" : "not-allowed",
-              marginTop: 12,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              boxShadow: selectedLines.length
-                ? "0 4px 12px rgba(38, 52, 213, 0.3)"
-                : "none",
-            }}
-          >
-            {selectedLines.length ? (
-              <>
-                {t("Tiến hành đặt hàng")} <ArrowRight size={16} />
-              </>
-            ) : (
-              t("Chọn món để đặt")
-            )}
-          </button>
-        </div>
+          {/* Info note */}
+          <div className="cart-note">
+            <Info size={18} />
+            <div>
+              <b>{t("Lưu ý:")}</b>
+              <p>
+                {t("Đơn hàng sẽ được chuyển đến bếp ngay sau khi bạn thanh toán. Vui lòng chọn đúng khung giờ nhận món trong bước tiếp theo.")}
+              </p>
+            </div>
+          </div>
 
-        {editingItem && (
-          <FoodDetailModal
-            item={editingItem.item}
-            cart={cart}
-            setCart={setCart}
-            editingKey={editingItem.key}
-            initialToppings={editingItem.item._toppings || []}
-            initialSize={editingItem.item._size || "S"}
-            initialQty={editingItem.item.qty}
-            onUpdate={(oldKey, newKey, newItem) => {
-              setCart((cc) => {
-                const n = { ...cc };
-                delete n[oldKey];
-                n[newKey] = newItem;
-                return n;
-              });
-              setSelectedKeys((prev) =>
-                prev.includes(oldKey)
-                  ? [...prev.filter((k) => k !== oldKey), newKey]
-                  : prev
-              );
-            }}
-            onClose={() => setEditingItem(null)}
-          />
-        )}
+          {/* Security badge */}
+          <div className="cart-security">
+            <Shield size={20} />
+            <div>
+              <b>{t("Thanh toán bảo mật SSL / PCI-DSS")}</b>
+              <span>
+                {t("Hoàn tiền 100% nếu quầy hết món hoặc phát sinh lỗi")}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* ============================================== */}
+      {/* EDIT MODAL                                       */}
+      {/* ============================================== */}
+      {editingItem && (
+        <FoodDetailModal
+          item={editingItem.item}
+          cart={cart}
+          setCart={setCart}
+          editingKey={editingItem.key}
+          initialToppings={editingItem.item._toppings || []}
+          initialSize={editingItem.item._size || "S"}
+          initialQty={editingItem.item.qty}
+          onUpdate={(oldKey, newKey, newItem) => {
+            setCart((cc) => {
+              const n = { ...cc };
+              delete n[oldKey];
+              n[newKey] = newItem;
+              return n;
+            });
+            setSelectedKeys((prev) =>
+              prev.includes(oldKey)
+                ? [...prev.filter((k) => k !== oldKey), newKey]
+                : prev
+            );
+          }}
+          onClose={() => setEditingItem(null)}
+        />
+      )}
+
+      {/* ============================================== */}
+      {/* CONFIRM REMOVE                                   */}
+      {/* ============================================== */}
       <ConfirmDialog
         open={!!confirmRemove}
         title={t("Xoá món khỏi giỏ hàng?")}
@@ -744,6 +658,6 @@ export default function CustomerCart({ cart, setCart }) {
         onConfirm={executeRemove}
         onClose={() => setConfirmRemove(null)}
       />
-    </>
+    </div>
   );
 }

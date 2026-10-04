@@ -167,6 +167,7 @@ Tạo file `.env` ở thư mục gốc dự án (đã có template `.env.example
 - `npm run server`: Chỉ backend. Khi frontend đã chạy terminal khác.
 - `npm run build`: Build production frontend. Trước khi deploy.
 - `npm run preview`: Preview bản build. Kiểm tra bản production.
+- `npm run db:migrate-images`: Tách ảnh món ăn đang nhúng base64 trong document chính sang collection `menu_images` (chạy trên server, có tự động sao lưu). Xem mục **8. Database → Ảnh món ăn**.
 
 ---
 
@@ -212,6 +213,37 @@ PORT            = 10000
 4. Network Access, Add IP `0.0.0.0/0` (cho phép mọi IP)
 5. Connect → chọn Drivers → copy connection string
 6. Dán vào biến `MONGO_URI` trên Render
+
+### Ảnh món ăn — collection `menu_images`
+
+Toàn bộ DB nằm trong **1 document** `canteen_db.main` (`data` là Mixed). Nếu ảnh món ăn
+được nhúng thẳng dạng base64 vào document này thì mỗi lần khởi động server phải tải
+**cả document** về → rất chậm (đã từng gặp: 15.47 MB, mỗi lần boot mất hàng phút và
+thường treo ở dòng `⏳ Đang tải DB từ MongoDB...`), mỗi lần lưu DB cũng phải upload lại
+từng đó dữ liệu.
+
+Vì vậy ảnh món ăn được tách riêng:
+
+| | |
+|---|---|
+| `canteen_db.main.data.menu_items[].image` | chỉ lưu đường dẫn ngắn `/api/uploads/menu/<id>?v=<rev>` |
+| `menu_images` (collection) | mỗi ảnh 1 document `{ _id: "<id món>", image: "data:image/...", rev, contentType }` |
+| `GET /api/uploads/menu/:id` | phục vụ ảnh (cache RAM 64 MB + cache trình duyệt theo `?v=<rev>`) |
+| `canteen_db_backup_main` | bản sao document gốc, tạo tự động trước khi di trú (xoá được khi không cần) |
+
+- Server **tự kiểm tra và tự di trú** mỗi lần khởi động (`migrateInlineMenuImages`), chạy
+  **hoàn toàn trên server** bằng aggregation + `$merge` nên không phải tải 15 MB về máy.
+  Document chính sau khi sạch ảnh chỉ còn ~0.15 MB → boot ~1-4 giây.
+- Lệnh thủ công (khi cần làm ngay, có `--no-backup` để bỏ qua sao lưu):
+  ```bash
+  npm run db:migrate-images
+  ```
+- **Nén ảnh cũ (chạy 1 lần):** ảnh upload trước đây còn rất nặng (500-800 KB/ảnh). Mở
+  `http://localhost:5173/shrink-menu-images.html` (khi app đang chạy), đăng nhập tài khoản
+  ADMIN/EMPLOYEE rồi bấm **Bắt đầu nén** — trình duyệt sẽ resize + nén JPEG rồi lưu lại
+  (nhẹ hơn ~6-10 lần). Chạy lại nhiều lần cũng an toàn.
+- Ảnh upload **mới** đã được nén sẵn ở frontend (`ImageUploader` → canvas, tối đa 1280px)
+  và server tự tách sang `menu_images` nên document chính không bao giờ phình lại.
 
 ---
 
@@ -290,6 +322,9 @@ Yêu cầu: PowerShell + đã login được admin.
 | `Cannot find module 'xxx'` | Chưa cài dependencies | Chạy `npm install` |
 | Render cold start (~30s) | Free tier spin down sau 15 phút idle | Chờ 30s cho lần request đầu |
 | Mongo connect timeout | Chưa whitelist IP trên Atlas | Vào Network Access → Add `0.0.0.0/0` |
+| Server treo ở `⏳ Đang tải DB từ MongoDB...` | Document chính chứa ảnh base64 (~15 MB) nên mỗi lần boot phải tải cả 15 MB | Server tự tách ảnh khi khởi động; nếu vẫn treo: `npm run db:migrate-images` |
+| Ảnh món ăn tải rất chậm / trang thực đơn lâu hiện ảnh | Ảnh cũ chưa nén (500-800 KB/ảnh) | Mở `http://localhost:5173/shrink-menu-images.html` → **Bắt đầu nén** |
+| Đổi ảnh món nhưng trình duyệt vẫn thấy ảnh cũ | Cache theo `?v=<rev>` | F5; ảnh mới đã có `?v` mới nên không cần xoá cache |
 | Data mất sau redeploy | Đang dùng file JSON trên Render | Set `MONGO_URI` để dùng MongoDB |
 | `chmod: command not found` (Windows) | Lệnh Linux trên PowerShell | Dùng `bash script.sh` qua Git Bash |
 

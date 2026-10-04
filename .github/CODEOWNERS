@@ -11,19 +11,12 @@
 /src/components/ToppingSelector.jsx @lan464244-design
 /src/components/CustomerOrderDetail.jsx @lan464244-design
 /src/components/PaymentModal.jsx @lan464244-design
-/src/components/PaymentSelector.jsx @lan464244-design
-/src/components/QRCodeCard.jsx @lan464244-design
 
 # ---------- Employee ----------
 /src/pages/employee/ @thiminhhadoan15-hub
-/src/components/CheckInOutCard.jsx @thiminhhadoan15-hub
-/src/components/StaffOrderDetailModal.jsx @thiminhhadoan15-hub
-/src/components/OrderDetailModal.jsx @thiminhhadoan15-hub
-/src/components/PrintReceipt.jsx @thiminhhadoan15-hub
 
 # ---------- Owner (Admin) ----------
 /src/pages/owner/ @bdahong205-max
-/src/components/Pagination.jsx @bdahong205-max
 
 # ---------- Backend + Chatbot ----------
 /server-json.js @tranthanhthu2607-creator

@@ -3,7 +3,9 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Image as ImageIcon, X, Loader2 } from "lucide-react";
+import {
+  Image as ImageIcon, X, Loader2,
+} from "lucide-react";
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
 
@@ -19,6 +21,84 @@ const FALLBACK_PREVIEW =
       <text x='50' y='58' font-size='40' text-anchor='middle'>🖼️</text>
     </svg>`
   );
+
+// ============================================================
+// ✅ NÉN ẢNH TRƯỚC KHI GỬI LÊN SERVER
+// ------------------------------------------------------------
+// Ảnh chụp từ điện thoại thường 3-8 MP (~1-3 MB). Nếu gửi nguyên
+// dạng base64, mỗi món chiếm 0.5-1 MB trong DB → document chính
+// phình lên rất nhanh và làm server khởi động / lưu DB chậm
+// (đúng nguyên nhân lỗi localhost:3000 không lên trước đây).
+// Ở đây ảnh được resize về tối đa 1280px cạnh dài và nén lại:
+// nhẹ hơn ~10 lần, chất lượng xem trên web gần như không đổi.
+// Server vẫn tách ảnh ra collection menu_images nên DB luôn nhẹ.
+// ============================================================
+const MAX_DIMENSION = 1280;
+const QUALITY = 0.82;
+const SKIP_COMPRESS_BELOW = 250 * 1024; // ảnh đã nhẹ sẵn thì để nguyên
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("read-error"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("decode-error"));
+    img.src = src;
+  });
+}
+
+async function compressImageFile(file) {
+  const original = await readFileAsDataUrl(file);
+  if (typeof original !== "string") return original;
+
+  // PNG/WebP giữ định dạng (có thể có nền trong suốt), còn lại dùng JPEG
+  const targetType =
+    file.type === "image/png" || file.type === "image/webp"
+      ? "image/webp"
+      : "image/jpeg";
+
+  try {
+    const img = await loadImageElement(original);
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return original;
+
+    const scale = Math.min(1, MAX_DIMENSION / Math.max(w, h));
+    if (scale === 1 && original.length < SKIP_COMPRESS_BELOW) return original;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return original;
+
+    if (targetType === "image/jpeg") {
+      // JPEG không có kênh trong suốt → tô nền trắng để không bị đen
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const out = canvas.toDataURL(targetType, QUALITY);
+    // Trình duyệt không hỗ trợ webp sẽ trả về png — vẫn hợp lệ.
+    // Chỉ dùng bản nén khi nó thực sự nhẹ hơn ảnh gốc.
+    return out && out.startsWith("data:image/") && out.length < original.length
+      ? out
+      : original;
+  } catch {
+    return original; // không nén được thì gửi ảnh gốc
+  }
+}
 
 export default function ImageUploader({
   value,
@@ -83,7 +163,7 @@ export default function ImageUploader({
   );
 
   const handleFile = useCallback(
-    (file) => {
+    async (file) => {
       setError("");
 
       const check = validateFile(file);
@@ -95,31 +175,25 @@ export default function ImageUploader({
 
       setLoading(true);
 
-      const reader = new FileReader();
-
-      reader.onload = () => {
+      try {
+        // ✅ Nén/resize trước khi gửi lên server (xem compressImageFile)
+        const dataUri = await compressImageFile(file);
         if (!mountedRef.current) return;
 
-        const dataUri = reader.result;
         if (typeof dataUri !== "string") {
           setError(t("upload.readError"));
-          setLoading(false);
           return;
         }
 
         setPreview(dataUri);
         onChange?.(dataUri);
-        setLoading(false);
         toast(t("upload.success"), "success");
-      };
-
-      reader.onerror = () => {
+      } catch {
         if (!mountedRef.current) return;
         setError(t("upload.readError"));
-        setLoading(false);
-      };
-
-      reader.readAsDataURL(file);
+      } finally {
+        if (mountedRef.current) setLoading(false);
+      }
     },
     [onChange, validateFile, t]
   );

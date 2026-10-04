@@ -1,12 +1,14 @@
 // ============================================================
-// BOTTOMNAV.JSX — Bottom navigation cho Customer (mobile)
+// BOTTOMNAV.JSX — Bottom navigation cho Customer (V2 - design mới)
+// ============================================================
+// ✅ GIỮ NGUYÊN: logic badge, poll orders, more menu, logout
+// 🎨 THAY ĐỔI: CSS classes mới theo design system
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
-  Home, UtensilsCrossed, ShoppingCart, Package, User, Menu,
-  Wallet, Gift, LogOut, X,
+  Home, UtensilsCrossed, ShoppingCart, Package, User, Menu, Wallet, Gift, LogOut, X,
 } from "lucide-react";
 import { api, setToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
@@ -14,13 +16,14 @@ import ConfirmDialog, { LogoutIcon } from "./ConfirmDialog";
 
 const CART_KEY = "canteen_cart";
 const ORDERS_SEEN_KEY = "orders_last_seen";
+const POLL_MS = 30000;
+const BADGE_MAX = 99;
 
-// ✅ SOURCE-TEXT: Dùng tiếng Việt trực tiếp
 const TABS = [
-  { key: "home",   label: "Trang chủ",   icon: Home,            path: "/customer" },
-  { key: "menu",   label: "Thực đơn",     icon: UtensilsCrossed, path: "/customer/menu" },
-  { key: "cart",   label: "Giỏ hàng",     icon: ShoppingCart,    path: "/customer/cart",   badge: "cart" },
-  { key: "orders", label: "Đơn hàng",     icon: Package,         path: "/customer/orders", badge: "orders" },
+  { key: "home",   label: "Trang chủ",  icon: Home,            path: "/customer/home" },
+  { key: "menu",   label: "Thực đơn",   icon: UtensilsCrossed, path: "/customer/menu" },
+  { key: "cart",   label: "Giỏ hàng",   icon: ShoppingCart,    path: "/customer/cart",   badge: "cart" },
+  { key: "orders", label: "Đơn hàng",   icon: Package,         path: "/customer/orders", badge: "orders" },
 ];
 
 const MORE_ITEMS = [
@@ -35,9 +38,6 @@ const ACTIVE_ORDER_STATUSES = [
   "Đang chuẩn bị",
   "Sẵn sàng nhận",
 ];
-
-const POLL_MS = 30000;
-const BADGE_MAX = 99;
 
 function readCartFromStorage() {
   try {
@@ -191,7 +191,7 @@ export default function BottomNav({ onLogout }) {
   const renderBadge = (count) => {
     if (!count || count <= 0) return null;
     return (
-      <span className="bottom-nav-badge" aria-hidden="true">
+      <span className="customer-bottomnav__badge" aria-hidden="true">
         {count > BADGE_MAX ? `${BADGE_MAX}+` : count}
       </span>
     );
@@ -201,21 +201,21 @@ export default function BottomNav({ onLogout }) {
     <>
       {showMore && (
         <div
-          className="bottom-nav-more-overlay"
+          className="customer-bottomnav__more-overlay"
           onClick={() => setShowMore(false)}
           role="dialog"
           aria-modal="true"
           aria-label={t("Menu mở rộng")}
         >
           <div
-            className="bottom-nav-more-menu"
+            className="customer-bottomnav__more-menu"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bottom-nav-more-head">
+            <div className="customer-bottomnav__more-head">
               <span>{t("Thực đơn")}</span>
               <button
                 onClick={() => setShowMore(false)}
-                className="bottom-nav-more-close"
+                className="customer-bottomnav__more-close"
                 aria-label={t("Đóng menu")}
                 type="button"
               >
@@ -231,7 +231,9 @@ export default function BottomNav({ onLogout }) {
                 <button
                   key={item.key}
                   type="button"
-                  className={"bottom-nav-more-item" + (active ? " active" : "")}
+                  className={`customer-bottomnav__more-item ${
+                    active ? "active" : ""
+                  }`}
                   onClick={() => {
                     setShowMore(false);
                     navigate(item.path);
@@ -243,11 +245,11 @@ export default function BottomNav({ onLogout }) {
               );
             })}
 
-            <div className="bottom-nav-more-sep" />
+            <div className="customer-bottomnav__more-sep" />
 
             <button
               type="button"
-              className="bottom-nav-more-item danger"
+              className="customer-bottomnav__more-item customer-bottomnav__more-item--danger"
               onClick={openLogoutConfirm}
             >
               <LogOut size={20} />
@@ -257,7 +259,10 @@ export default function BottomNav({ onLogout }) {
         </div>
       )}
 
-      <nav className="bottom-nav" aria-label={t("Điều hướng chính")}>
+      <nav
+        className="customer-bottomnav"
+        aria-label={t("Điều hướng chính")}
+      >
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const badge = getBadge(tab.badge);
@@ -266,34 +271,36 @@ export default function BottomNav({ onLogout }) {
             <NavLink
               key={tab.key}
               to={tab.path}
-              end={tab.path === "/customer"}
+              end={tab.path === "/customer/home"}
               className={({ isActive }) =>
-                "bottom-nav-item" + (isActive ? " active" : "")
+                `customer-bottomnav__item ${isActive ? "active" : ""}`
               }
             >
-              <div className="bottom-nav-icon">
+              <div className="customer-bottomnav__icon">
                 <Icon size={22} />
                 {renderBadge(badge)}
               </div>
-              <span className="bottom-nav-label">{t(tab.label)}</span>
+              <span className="customer-bottomnav__label">
+                {t(tab.label)}
+              </span>
             </NavLink>
           );
         })}
 
         <button
           type="button"
-          className={
-            "bottom-nav-item" + (isMoreActive || showMore ? " active" : "")
-          }
+          className={`customer-bottomnav__item ${
+            isMoreActive || showMore ? "active" : ""
+          }`}
           onClick={handleMoreToggle}
           aria-label={t("Mở menu thêm")}
           aria-expanded={showMore}
           aria-haspopup="menu"
         >
-          <div className="bottom-nav-icon">
+          <div className="customer-bottomnav__icon">
             <Menu size={22} />
           </div>
-          <span className="bottom-nav-label">{t("Thêm")}</span>
+          <span className="customer-bottomnav__label">{t("Thêm")}</span>
         </button>
       </nav>
 

@@ -7,7 +7,18 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import crypto from "crypto";
 import { translateOne } from "./autoTranslate.js";
+import {
+  MENU_IMAGE_PREFIX,
+  MAIN_DOC_ID,
+  countInlineMenuImages,
+  applyMenuImageToItem,
+  extractInlineImagesFromData,
+  migrateInlineMenuImages,
+  getMenuImage,
+  deleteMenuImage,
+} from "./menuImageStore.js";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -145,6 +156,24 @@ function generateOrderCode(db) {
 }
 
 // ============================================================
+// ✅ GIAI ĐOẠN 2 — Mật khẩu tạm cho tài khoản admin cấp
+// ============================================================
+// Bỏ các ký tự dễ nhầm (0/O, 1/l/I) để admin đọc và gửi lại được.
+const TEMP_PASSWORD_CHARS =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+function generateTempPassword(len = 8) {
+  const bytes = crypto.randomBytes(len);
+  let out = "";
+
+  for (let i = 0; i < len; i++) {
+    out += TEMP_PASSWORD_CHARS[bytes[i] % TEMP_PASSWORD_CHARS.length];
+  }
+
+  return out;
+}
+
+// ============================================================
 // MONGODB
 // ============================================================
 const MONGO_URI = process.env.MONGO_URI;
@@ -196,6 +225,94 @@ function getTimeSlots(db) {
     return db.settings.timeSlots;
   }
   return db.settings.timeSlots;
+}
+
+// ============================================================
+// NUTRITION — Thông tin dinh dưỡng món ăn
+// (prep_time / calories / is_cool / is_healthy / is_spicy)
+// Bộ lọc "Tiêu chí ưu tiên" + "Mức năng lượng" ở trang khách hàng
+// dựa vào các field này → mọi món đều phải có giá trị.
+// ============================================================
+
+// Giá trị mặc định theo danh mục
+const NUTRITION_BY_CATEGORY = {
+  "Cơm":               { prep_time: 12, calories: 620, is_cool: false, is_healthy: false, is_spicy: false },
+  "Bún - Phở - Cháo":  { prep_time: 10, calories: 520, is_cool: false, is_healthy: false, is_spicy: false },
+  "Bánh mì - Xôi":     { prep_time: 6,  calories: 460, is_cool: false, is_healthy: false, is_spicy: false },
+  "Đồ ăn nhanh":       { prep_time: 8,  calories: 640, is_cool: false, is_healthy: false, is_spicy: false },
+  "Ăn vặt":            { prep_time: 7,  calories: 320, is_cool: false, is_healthy: false, is_spicy: false },
+  "Đồ chay":           { prep_time: 12, calories: 380, is_cool: false, is_healthy: true,  is_spicy: false },
+  "Món chay":          { prep_time: 12, calories: 380, is_cool: false, is_healthy: true,  is_spicy: false },
+  "Combo 1 người":     { prep_time: 15, calories: 780, is_cool: false, is_healthy: false, is_spicy: false },
+  "Combo siêu hời":    { prep_time: 18, calories: 950, is_cool: false, is_healthy: false, is_spicy: false },
+  "Coffee & Tea":      { prep_time: 5,  calories: 180, is_cool: true,  is_healthy: false, is_spicy: false },
+  "Nước ép - Sinh tố": { prep_time: 5,  calories: 150, is_cool: true,  is_healthy: true,  is_spicy: false },
+  "Đồ uống":           { prep_time: 3,  calories: 140, is_cool: true,  is_healthy: false, is_spicy: false },
+};
+const NUTRITION_FALLBACK = { prep_time: 10, calories: 500, is_cool: false, is_healthy: false, is_spicy: false };
+
+// Bỏ dấu tiếng Việt để so khớp từ khoá trong tên món
+function normalizeVN(str) {
+  return String(str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+}
+
+// Từ khoá trong tên món → tinh chỉnh lại giá trị mặc định của danh mục
+const COOL_NAME_RE = /\b(da xay|cold brew|nuoc ep|sinh to|smoothie)\b/;
+const SPICY_NAME_RE = /\b(cay|sa te|kimchi|tom yum|han quoc|thai|hue)\b/;
+const HEALTHY_NAME_RE = /\b(chay|salad|goi cuon|rau|dau hu|dau phu|yen mach|ngu coc|nuoc ep|sinh to)\b/;
+
+/**
+ * Điền thông tin dinh dưỡng còn thiếu cho 1 món — KHÔNG ghi đè giá trị đã có.
+ * Giá trị do quản lý nhập (kể cả false) luôn được giữ nguyên.
+ * @returns {boolean} true nếu có field vừa được bổ sung
+ */
+function fillMenuNutrition(item) {
+  if (!item || typeof item !== "object") return false;
+  const base = NUTRITION_BY_CATEGORY[item.category] || NUTRITION_FALLBACK;
+  const name = normalizeVN(item.name);
+  let changed = false;
+
+  const setIfMissing = (key, value) => {
+    const cur = item[key];
+    if (cur === undefined || cur === null || cur === "") {
+      item[key] = value;
+      changed = true;
+    }
+  };
+
+  setIfMissing("prep_time", base.prep_time);
+  setIfMissing("calories", base.calories);
+  setIfMissing("is_cool", base.is_cool || COOL_NAME_RE.test(name));
+  setIfMissing("is_healthy", base.is_healthy || HEALTHY_NAME_RE.test(name));
+  setIfMissing("is_spicy", base.is_spicy || SPICY_NAME_RE.test(name));
+  return changed;
+}
+
+/**
+ * Bổ sung dinh dưỡng cho toàn bộ món đã có trong DB (chạy 1 lần lúc khởi động).
+ * Idempotent: chạy lại không thay đổi gì thêm.
+ */
+function migrateMenuNutrition() {
+  try {
+    const db = loadDB();
+    if (!Array.isArray(db.menu_items) || db.menu_items.length === 0) return;
+    let changed = 0;
+    for (const item of db.menu_items) {
+      if (fillMenuNutrition(item)) changed++;
+    }
+    if (changed > 0) {
+      saveDB(db);
+      console.log(`🥗 Đã bổ sung dinh dưỡng cho ${changed}/${db.menu_items.length} món`);
+    } else {
+      console.log("🥗 Dinh dưỡng món ăn: đầy đủ");
+    }
+  } catch (e) {
+    console.error("migrateMenuNutrition lỗi:", e.message);
+  }
 }
 
 // ============================================================
@@ -254,17 +371,53 @@ async function initMongo() {
     await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10000 });
     console.log("✅ Đã kết nối MongoDB");
 
-    let doc = await MongoModel.findById("main");
+    // ============================================================
+    // ✅ FIX "SERVER TREO KHI KHỞI ĐỘNG"
+    // ------------------------------------------------------------
+    // Trước đây initMongo() đọc NGUYÊN document canteen_db.main.
+    // Document đó có chứa ảnh base64 của món ăn (36 ảnh ≈ 15.33 MB),
+    // nên mỗi lần boot server phải tải 15.5 MB từ Atlas (~90 KB/s
+    // theo đo thực tế) → vài phút, thường treo hẳn ở
+    // "Đang tải DB từ MongoDB..." và localhost:3000 không bao giờ lên.
+    //
+    // Ảnh được tách sang collection menu_images NGAY TẠI SERVER
+    // (aggregation + $merge) nên không phải tải ảnh về máy.
+    // Sau đó document chính chỉ còn ≈ 200 KB → boot trong ~1 giây.
+    // ============================================================
+    console.log("🖼️  Kiểm tra ảnh món ăn trong document chính...");
+    let migration;
+    try {
+      migration = await migrateInlineMenuImages({ log: (m) => console.log("   " + m) });
+    } catch (e) {
+      migration = { ok: false, error: e.message };
+      console.error("❌ Di trú ảnh lỗi:", e.message);
+    }
+
+    if (!migration.ok) {
+      // Còn ảnh base64 trong document chính → TUYỆT ĐỐI không đọc/ghi
+      // full document (rất chậm và có thể làm mất ảnh). Chạy file JSON
+      // local để app vẫn dùng được và báo rõ cách xử lý.
+      throw new Error(
+        "Không tách được ảnh base64 khỏi document chính (" +
+          (migration.error || "không rõ nguyên nhân") +
+          ") → chạy: npm run db:migrate-images"
+      );
+    }
+
+    console.log("⏳ Đang tải DB từ MongoDB...");
+    const t0 = Date.now();
+    const doc = await MongoModel.findById(MAIN_DOC_ID).lean();
+
     if (!doc) {
       console.log("📦 DB chưa có trên MongoDB → khởi tạo seed...");
       const seed = buildSeedData();
-      await MongoModel.create({ _id: "main", data: seed });
+      await MongoModel.create({ _id: MAIN_DOC_ID, data: seed });
       dbCache = seed;
       console.log("✅ Đã seed DB lên MongoDB");
     } else {
       dbCache = doc.data;
       console.log(
-        "✅ Đã load DB từ MongoDB: " +
+        "✅ Đã load DB từ MongoDB trong " + (Date.now() - t0) + "ms: " +
           (dbCache.menu_items?.length || 0) + " món, " +
           (dbCache.users?.length || 0) + " users"
       );
@@ -274,6 +427,22 @@ async function initMongo() {
   } catch (e) {
     console.error("❌ MongoDB lỗi:", e.message);
     mongoReady = false;
+
+    // ✅ Không đọc/ghi được MongoDB → vẫn cho app chạy bằng file JSON
+    // local để localhost:3000 lên được, dữ liệu Mongo không bị ghi đè.
+    try {
+      if (!fs.existsSync(DB_FILE)) {
+        const seed = buildSeedData();
+        fs.writeFileSync(DB_FILE, JSON.stringify(seed, null, 2), "utf-8");
+        dbCache = seed;
+        console.log("✅ Đã tạo file DB seed local");
+      } else if (!dbCache) {
+        dbCache = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+      }
+      console.log("⚠️  Đang chạy bằng file local " + path.basename(DB_FILE) + " (MongoDB không khả dụng)");
+    } catch (e2) {
+      console.error("❌ Không đọc được cả file DB local:", e2.message);
+    }
     return false;
   }
 }
@@ -286,8 +455,18 @@ function loadDB() {
 function saveDB(data) {
   dbCache = data;
   if (mongoReady && MongoModel) {
+    // ⚠️ Ảnh món ăn phải nằm riêng trong collection menu_images — nếu vẫn
+    // nhúng base64 trong document chính thì document phình ~15 MB và mỗi
+    // lần lưu lại phải upload cả 15 MB lên Atlas.
+    const inlineCount = countInlineMenuImages(data);
+    if (inlineCount > 0) {
+      console.warn(
+        "⚠️  Còn " + inlineCount + " ảnh base64 trong menu_items → sẽ được tách sang menu_images " +
+          "ở lần khởi động sau (hoặc chạy ngay: npm run db:migrate-images)"
+      );
+    }
     MongoModel.updateOne(
-      { _id: "main" },
+      { _id: MAIN_DOC_ID },
       { $set: { data: data } },
       { upsert: true }
     ).catch((e) => console.error("Mongo save error:", e.message));
@@ -357,7 +536,86 @@ app.use(cors({
   ],
   credentials: true
 }));
-app.use(express.json({ limit: "10mb" }));
+// limit 25mb: đủ cho file backup cũ (có thể chứa ảnh base64 ~15 MB);
+// ảnh trong file import được tách sang collection menu_images ngay.
+app.use(express.json({ limit: "25mb" }));
+
+// ============================================================
+// ✅ ẢNH MÓN ĂN — tách khỏi document chính (xem menuImageStore.js)
+// ------------------------------------------------------------
+// DB chỉ lưu đường dẫn ngắn "/api/uploads/menu/<id>?v=<rev>".
+// Khi trả JSON, đường dẫn được ghép với host của chính request nên
+// frontend luôn load được ảnh dù API nằm khác domain (dev proxy,
+// Vercel + Render...). Chỉ chuỗi bắt đầu bằng /api/uploads/ bị đổi,
+// và không sửa vào object trong dbCache (chỉ tạo bản copy khi cần).
+// ============================================================
+function requestOrigin(req) {
+  const proto =
+    String(req.get("x-forwarded-proto") || req.protocol || "http").split(",")[0].trim() || "http";
+  const host = req.get("host");
+  return host ? proto + "://" + host : "";
+}
+
+function absolutizeUploadUrls(value, origin) {
+  if (typeof value === "string") {
+    return value.startsWith(MENU_IMAGE_PREFIX) ? origin + value : value;
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const out = value.map((v) => {
+      const r = absolutizeUploadUrls(v, origin);
+      if (r !== v) changed = true;
+      return r;
+    });
+    return changed ? out : value;
+  }
+  if (value && typeof value === "object") {
+    // Bỏ qua Date / Buffer / class instance (chỉ xử lý object thuần)
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value;
+
+    let changed = false;
+    const out = {};
+    for (const k of Object.keys(value)) {
+      const r = absolutizeUploadUrls(value[k], origin);
+      if (r !== value[k]) changed = true;
+      out[k] = r;
+    }
+    return changed ? out : value;
+  }
+  return value;
+}
+
+app.use((req, res, next) => {
+  const origin = requestOrigin(req);
+  if (!origin) return next();
+  const sendJson = res.json.bind(res);
+  res.json = (body) => sendJson(absolutizeUploadUrls(body, origin));
+  next();
+});
+
+// ============================================================
+// ✅ GET /api/uploads/menu/:id — phục vụ ảnh món ăn
+// ============================================================
+// Ảnh nằm trong collection menu_images. URL có ?v=<rev> nên đổi ảnh
+// là đổi URL → cache trình duyệt vĩnh viễn vẫn an toàn.
+app.get("/api/uploads/menu/:id", async (req, res) => {
+  try {
+    const image = await getMenuImage(req.params.id);
+    if (!image) return res.status(404).json({ message: "Không tìm thấy ảnh" });
+
+    // Ảnh ngoài (http/https) → để trình duyệt tự tải
+    if (image.redirectTo) return res.redirect(302, image.redirectTo);
+
+    res.setHeader("Content-Type", image.contentType || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("ETag", '"' + req.params.id + "-" + image.rev + '"');
+    res.send(image.buffer);
+  } catch (e) {
+    console.error("GET /api/uploads/menu/" + req.params.id + " lỗi:", e.message);
+    res.status(500).json({ message: "Lỗi tải ảnh: " + e.message });
+  }
+});
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -398,7 +656,18 @@ app.post("/api/auth/login", (req, res) => {
     const ok = bcrypt.compareSync(password, user.password);
     if (!ok) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    // Giai đoạn 2 — trả kèm cờ buộc đổi mật khẩu lần đầu (nếu có)
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+      },
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -438,8 +707,17 @@ app.put("/api/auth/password", auth(), (req, res) => {
     const ok = bcrypt.compareSync(currentPassword, u.password);
     if (!ok) return res.status(401).json({ message: "Mật khẩu hiện tại không đúng" });
     u.password = bcrypt.hashSync(newPassword, 10);
+
+    // Giai đoạn 2 — đổi mật khẩu xong → tắt cờ buộc đổi lần đầu
+    u.must_change_password = false;
+    u.password_changed_at = new Date().toISOString();
+
     saveDB(db);
-    res.json({ ok: true, message: "Đổi mật khẩu thành công" });
+    res.json({
+      ok: true,
+      message: "Đổi mật khẩu thành công",
+      must_change_password: false,
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -449,7 +727,18 @@ app.get("/api/auth/me", auth(), (req, res) => {
   const db = loadDB();
   const u = db.users.find(x => x.id === req.user.id);
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
-  res.json({ id: u.id, email: u.email, name: u.name, role: u.role, points: u.points || 0, phone: u.phone || "", address: u.address || "", avatar: u.avatar || "" });
+  // Giai đoạn 2 — trả kèm must_change_password để FE chặn vào hệ thống
+  res.json({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    points: u.points || 0,
+    phone: u.phone || "",
+    address: u.address || "",
+    avatar: u.avatar || "",
+    must_change_password: !!u.must_change_password,
+  });
 });
 
 app.put("/api/auth/profile", auth(), (req, res) => {
@@ -518,7 +807,7 @@ app.post("/api/auth/google/callback", async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "" } });
+    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
   } catch (e) {
     res.status(500).json({ message: "Lỗi xác thực Google: " + e.message });
   }
@@ -554,7 +843,7 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "" } });
+    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
   } catch (e) {
     res.status(500).json({ message: "Lỗi xác thực Facebook: " + e.message });
   }
@@ -581,7 +870,7 @@ app.get("/api/menu", (req, res) => {
   }
 });
 
-app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
     const id = Math.max(0, ...db.menu_items.map(m => m.id)) + 1;
@@ -601,7 +890,14 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
         : body.original_price;
     }
 
-    const item = { id, active: 1, sold: 0, ...body };
+    const item = { id, active: 1, sold: 0, image: "", ...body };
+
+    // ✅ Ảnh: base64 → lưu riêng trong collection menu_images, document chính
+    // chỉ giữ đường dẫn /api/uploads/menu/<id>?v=<rev> (nhẹ, boot/lưu nhanh)
+    await applyMenuImageToItem(item, body.image, { persist: mongoReady });
+
+    // ✅ Món mới luôn có sẵn thông tin dinh dưỡng để bộ lọc của khách hoạt động
+    fillMenuNutrition(item);
 
     // ✅ FIRE-AND-FORGET — không await
     autoTranslateMenuItem(db, item, null);
@@ -614,7 +910,7 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   }
 });
 
-app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
     const i = db.menu_items.findIndex(m => m.id == req.params.id);
@@ -649,6 +945,15 @@ app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
 
     const updated = { ...oldItem, ...newData };
 
+    // ✅ Ảnh: chỉ xử lý khi client THỰC SỰ gửi field image
+    // (nếu không gửi → giữ nguyên ảnh cũ, tránh xoá nhầm).
+    if (Object.prototype.hasOwnProperty.call(req.body, "image")) {
+      await applyMenuImageToItem(updated, req.body.image, { persist: mongoReady });
+    }
+
+    // ✅ Bù các field dinh dưỡng bị bỏ trống (không ghi đè giá trị quản lý đã nhập)
+    fillMenuNutrition(updated);
+
     // ✅ FIRE-AND-FORGET — không await
     autoTranslateMenuItem(db, updated, oldItem);
 
@@ -669,11 +974,17 @@ app.get("/api/price-history", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   res.json(list);
 });
 
-app.delete("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
-  const db = loadDB();
-  db.menu_items = db.menu_items.filter(m => m.id != req.params.id);
-  saveDB(db);
-  res.json({ ok: true });
+app.delete("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
+  try {
+    const db = loadDB();
+    db.menu_items = db.menu_items.filter(m => m.id != req.params.id);
+    saveDB(db);
+    // ✅ Xoá luôn ảnh riêng của món để không bỏ rơi dữ liệu trong menu_images
+    if (mongoReady) await deleteMenuImage(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 // ============ USERS ============
@@ -691,12 +1002,47 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
     if (!emailNorm) return res.status(400).json({ message: "Thiếu email" });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) return res.status(400).json({ message: "Email không hợp lệ" });
     if (db.users.find(u => u.email === emailNorm)) return res.status(400).json({ message: "Email đã được sử dụng" });
+
+    const role = req.body.role || "EMPLOYEE";
     const id = Math.max(0, ...db.users.map(u => u.id)) + 1;
-    const hash = bcrypt.hashSync(req.body.password || "123456", 10);
-    const user = { id, email: emailNorm, password: hash, name: req.body.name, phone: req.body.phone || "", role: req.body.role || "EMPLOYEE", status: "Hoạt động", points: 0 };
+
+    // Giai đoạn 2 — admin không nhập mật khẩu → server tự sinh mật khẩu tạm
+    const useTempPassword = !req.body.password;
+    const tempPassword = useTempPassword
+      ? generateTempPassword()
+      : String(req.body.password);
+    const hash = bcrypt.hashSync(tempPassword, 10);
+
+    // Tài khoản do admin cấp (nhân viên / quản trị) PHẢI đổi mật khẩu ở
+    // lần đăng nhập đầu tiên. Tài khoản khách hàng thì không cần.
+    const mustChange =
+      req.body.must_change_password !== undefined
+        ? req.body.must_change_password === true ||
+          req.body.must_change_password === "true"
+        : role !== "CUSTOMER";
+
+    const user = {
+      id,
+      email: emailNorm,
+      password: hash,
+      name: req.body.name,
+      phone: req.body.phone || "",
+      role,
+      status: "Hoạt động",
+      points: 0,
+      must_change_password: mustChange,
+      created_at: new Date().toISOString(),
+    };
     db.users.push(user);
     saveDB(db);
-    res.status(201).json({ ...user, password: undefined });
+
+    // tempPassword chỉ trả về khi server tự sinh → admin gửi cho nhân viên
+    res.status(201).json({
+      ...user,
+      password: undefined,
+      tempPassword: useTempPassword ? tempPassword : undefined,
+      must_change_password: mustChange,
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -716,8 +1062,23 @@ app.put("/api/users/:id", auth(["ADMIN"]), (req, res) => {
       if (dup) return res.status(400).json({ message: "Email đã được sử dụng" });
       data.email = emailNorm;
     }
-    if (data.password) data.password = bcrypt.hashSync(data.password, 10);
-    else delete data.password;
+    if (data.password) {
+      data.password = bcrypt.hashSync(data.password, 10);
+
+      // Giai đoạn 2 — admin đặt lại mật khẩu → buộc đổi ở lần đăng nhập tới
+      if (data.must_change_password === undefined) {
+        data.must_change_password = true;
+      }
+    } else {
+      delete data.password;
+    }
+
+    // Chuẩn hóa cờ (form có thể gửi chuỗi "true" / "false")
+    if (data.must_change_password !== undefined) {
+      data.must_change_password =
+        data.must_change_password === true ||
+        data.must_change_password === "true";
+    }
 
     db.users[i] = { ...db.users[i], ...data };
     saveDB(db);
@@ -735,6 +1096,36 @@ app.delete("/api/users/:id", auth(["ADMIN"]), (req, res) => {
 });
 
 // ============================================================
+// ✅ GIAI ĐOẠN 2 — ADMIN CẤP LẠI MẬT KHẨU TẠM CHO USER
+// ============================================================
+// POST /api/users/:id/reset-password
+// → server sinh mật khẩu tạm ngẫu nhiên + bật cờ must_change_password
+// → user đăng nhập bằng mật khẩu tạm này sẽ bị buộc đổi ngay.
+app.post("/api/users/:id/reset-password", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const u = db.users.find((x) => x.id == req.params.id);
+    if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
+
+    const tempPassword = generateTempPassword();
+    u.password = bcrypt.hashSync(tempPassword, 10);
+    u.must_change_password = true;
+    u.password_reset_at = new Date().toISOString();
+
+    saveDB(db);
+
+    res.json({
+      ok: true,
+      tempPassword,
+      must_change_password: true,
+      message: "Đã cấp lại mật khẩu tạm — người dùng phải đổi khi đăng nhập",
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
 // ORDERS
 // ============================================================
 app.post("/api/orders", auth(), (req, res) => {
@@ -748,7 +1139,7 @@ app.post("/api/orders", auth(), (req, res) => {
   let walletTx = null;
 
   try {
-    const { items, payment = "Tiền mặt", note = "", discount = 0, voucherCode } = req.body;
+    const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
 
     let subtotal = 0;
@@ -768,15 +1159,21 @@ app.post("/api/orders", auth(), (req, res) => {
       touchedItems.push({ m, q });
     }
 
-    if (note) {
-      const match = String(note).match(/Nhận lúc\s+(\d{2}:\d{2}\s*-\s*\d{2}:\d{2})/);
-      if (match) {
-        const slotId = match[1].replace(/\s/g, "");
-        const slots = getTimeSlots(db);
-        const slot = slots.find((s) => s.id === slotId);
-        if (slot && !slot.enabled) {
-          return res.status(400).json({ message: `Khung giờ ${slotId} đã kín hoặc tạm ngưng. Vui lòng chọn khung giờ khác.` });
-        }
+    // Khung giờ nhận món: client gửi field `pickupTime` ("11:00 - 11:30") và
+    // đồng thời ghép vào `note` dạng "Nhận hàng: 11:00 - 11:30" (trước đây server
+    // chỉ đọc dạng cũ "Nhận lúc …" nên khung giờ đã tắt/kín vẫn đặt được).
+    const pickupSlotId = (() => {
+      const direct = String(pickupTime || "").replace(/\s/g, "");
+      if (/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(direct)) return direct;
+      const match = String(note).match(/Nhận (?:lúc|hàng)\s*:?\s*(\d{2}:\d{2}\s*-\s*\d{2}:\d{2})/);
+      return match ? match[1].replace(/\s/g, "") : "";
+    })();
+
+    if (pickupSlotId) {
+      const slots = getTimeSlots(db);
+      const slot = slots.find((s) => s.id === pickupSlotId);
+      if (slot && !slot.enabled) {
+        return res.status(400).json({ message: `Khung giờ ${pickupSlotId} đã kín hoặc tạm ngưng. Vui lòng chọn khung giờ khác.` });
       }
     }
     total = Math.max(0, subtotal - Number(discount) || 0);
@@ -1837,7 +2234,7 @@ app.get("/api/backup/export", auth(["ADMIN"]), (req, res) => {
   res.json({ version: "1.0", exported_at: new Date().toISOString(), exported_by: req.user.name, data: db });
 });
 
-app.post("/api/backup/import", auth(["ADMIN"]), (req, res) => {
+app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
   try {
     const { data } = req.body;
     if (!data) return res.status(400).json({ message: "File backup không hợp lệ" });
@@ -1845,6 +2242,13 @@ app.post("/api/backup/import", auth(["ADMIN"]), (req, res) => {
     const current = loadDB();
     const backupFile = path.join(__dirname, "canteen-db-auto-backup-" + Date.now() + ".json");
     try { fs.writeFileSync(backupFile, JSON.stringify(current, null, 2), "utf-8"); } catch {}
+
+    // ✅ Backup cũ có thể chứa ảnh base64 → tách sang menu_images TRƯỚC khi lưu,
+    // nếu không document chính sẽ phình ~15 MB và làm server khởi động rất chậm.
+    if (mongoReady) {
+      await extractInlineImagesFromData(data, { log: (m) => console.log(m) });
+    }
+
     saveDB(data);
     res.json({ message: "Import thành công!", stats: { users: data.users?.length || 0, menu_items: data.menu_items?.length || 0, orders: data.orders?.length || 0, inventory: data.inventory?.length || 0 }, auto_backup_saved: path.basename(backupFile) });
   } catch (e) {
@@ -2289,6 +2693,8 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
 });
 
 initMongo().then(() => {
+  // Bổ sung dinh dưỡng cho món cũ (nếu thiếu) trước khi mở API
+  migrateMenuNutrition();
   app.listen(PORT, () =>
     console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE)
   );

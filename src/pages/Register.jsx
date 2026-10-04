@@ -16,15 +16,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Eye,
-  EyeOff,
-  LockKeyhole,
-  Mail,
-  ArrowRight,
-  Loader2,
-  User as UserIcon,
-  Phone,
-  Check,
+  Eye, EyeOff, LockKeyhole, Mail, ArrowRight, Loader2, User as UserIcon, Phone, Check,
 } from "lucide-react";
 import { api, setToken } from "../api";
 import { useI18n } from "../hooks/useI18n";

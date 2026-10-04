@@ -1,11 +1,13 @@
 // ============================================================
 // PAYMENTMODAL.JSX — Modal chọn phương thức thanh toán
 // ============================================================
+// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+//    Không còn key cũ kiểu "payment.xxx" / "cart.xxx" / "common.xxx"
+// ============================================================
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  X, Banknote, QrCode, CreditCard, Printer, Check,
-  Wallet, Loader2, AlertTriangle,
+  X, Banknote, QrCode, CreditCard, Printer, Check, Wallet, Loader2, AlertTriangle,
 } from "lucide-react";
 import { money } from "./UI";
 import { api } from "../api";
@@ -14,11 +16,38 @@ import { useI18n } from "../hooks/useI18n";
 
 const MODAL_Z = 2147483600;
 
-const METHOD_IDS = [
-  { id: "Tiền mặt", labelKey: "payment.cash",       descKey: "checkout.cashDesc", icon: Banknote,   color: "#18a967" },
-  { id: "QR",       labelKey: "payment.qr",         descKey: "checkout.qrDesc",   icon: QrCode,     color: "#2634d5", needsBank: true },
-  { id: "Thẻ",      labelKey: "payment.card",       descKey: "checkout.cardDesc", icon: CreditCard, color: "#f59e0b" },
-  { id: "Ví Canteen", labelKey: "payment.wallet",   descKey: "checkout.walletDesc", icon: Wallet,   color: "#8b5cf6", needsWallet: true },
+// Phương thức thanh toán — dùng source-text tiếng Việt
+const PAYMENT_METHODS = [
+  {
+    id: "Tiền mặt",
+    label: "Tiền mặt",
+    desc: "Thanh toán trực tiếp khi nhận hàng",
+    icon: Banknote,
+    color: "#18a967",
+  },
+  {
+    id: "QR",
+    label: "Chuyển khoản QR",
+    desc: "Quét mã VietQR bằng ứng dụng ngân hàng",
+    icon: QrCode,
+    color: "#2634d5",
+    needsBank: true,
+  },
+  {
+    id: "Thẻ",
+    label: "Thẻ sinh viên",
+    desc: "Chạm thẻ tại quầy POS",
+    icon: CreditCard,
+    color: "#f59e0b",
+  },
+  {
+    id: "Ví Canteen",
+    label: "Ví Canteen",
+    desc: "Trừ trực tiếp số dư ví VWA Pay",
+    icon: Wallet,
+    color: "#8b5cf6",
+    needsWallet: true,
+  },
 ];
 
 function escapeHtml(str) {
@@ -74,7 +103,6 @@ export default function PaymentModal({
 
   useEffect(() => {
     if (!order) return;
-
     const handler = (e) => {
       if (e.key !== "Escape") return;
       if (confirmed) return;
@@ -94,9 +122,7 @@ export default function PaymentModal({
   }, [order]);
 
   const total = useMemo(() => Number(order?.total) || 0, [order?.total]);
-
   const hasBankInfo = !!(settings && settings.bank && settings.account);
-
   const transferContent = order ? `CANTEEN ${order.code || ""}` : "";
 
   const vietQR = useMemo(() => {
@@ -120,7 +146,7 @@ export default function PaymentModal({
 
     const w = window.open("", "_blank", "width=420,height=640");
     if (!w) {
-      toast(t("payment.popupBlocked"), "error");
+      toast(t("Trình duyệt chặn popup. Vui lòng bật popup và thử lại."), "error");
       return;
     }
 
@@ -180,17 +206,15 @@ export default function PaymentModal({
 
     if (method === "Ví Canteen" && !walletEnough) {
       toast(
-        t("payment.walletInsufficient").replace(
-          "{amount}",
-          money(walletShortfall)
-        ),
+        t("Số dư ví không đủ. Bạn còn thiếu {amount}.")
+          .replace("{amount}", money(walletShortfall)),
         "error"
       );
       return;
     }
 
     if (method === "QR" && !hasBankInfo) {
-      toast(t("payment.noBankInfo"), "error");
+      toast(t("Chưa cấu hình tài khoản ngân hàng để nhận chuyển khoản."), "error");
       return;
     }
 
@@ -214,7 +238,7 @@ export default function PaymentModal({
       onClick={() => !confirmed && onClose?.()}
       role="dialog"
       aria-modal="true"
-      aria-label={t("payment.selectMethod")}
+      aria-label={t("Chọn phương thức thanh toán")}
       style={{
         position: "fixed",
         inset: 0,
@@ -254,13 +278,13 @@ export default function PaymentModal({
               fontSize: 16,
             }}
           >
-            {t("payment.selectMethod")}
+            {t("Chọn phương thức thanh toán")}
           </h3>
           <button
             onClick={() => !confirmed && onClose?.()}
             disabled={confirmed}
             type="button"
-            aria-label={t("common.close")}
+            aria-label={t("Đóng")}
             style={{
               background: "transparent",
               border: 0,
@@ -277,7 +301,7 @@ export default function PaymentModal({
           </button>
         </div>
 
-        {/* ORDER SUMMARY */}
+        {/* Tóm tắt đơn */}
         <div
           style={{
             background: "var(--bg-tertiary, #f5f7fb)",
@@ -296,14 +320,9 @@ export default function PaymentModal({
             }}
           >
             <span style={{ color: "var(--text-muted, #64748b)" }}>
-              {t("orders.orderCode")}
+              {t("Mã đơn hàng")}
             </span>
-            <b
-              style={{
-                color: "#2634d5",
-                fontFamily: "monospace",
-              }}
-            >
+            <b style={{ color: "#2634d5", fontFamily: "monospace" }}>
               {order.code}
             </b>
           </div>
@@ -315,7 +334,7 @@ export default function PaymentModal({
             }}
           >
             <span style={{ color: "var(--text-muted, #64748b)" }}>
-              {t("cart.total")}
+              {t("Tổng cộng")}
             </span>
             <b style={{ color: "#18a967", fontSize: 18 }}>
               {money(total)}
@@ -323,9 +342,9 @@ export default function PaymentModal({
           </div>
         </div>
 
-        {/* METHODS */}
+        {/* Danh sách phương thức */}
         <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
-          {METHOD_IDS.map((m) => {
+          {PAYMENT_METHODS.map((m) => {
             const Icon = m.icon;
             const active = method === m.id;
             const disabled =
@@ -350,8 +369,7 @@ export default function PaymentModal({
                     ? `2px solid ${m.color}`
                     : "1px solid var(--border-color, #e5e9ef)",
                   borderRadius: 12,
-                  cursor:
-                    disabled || confirmed ? "not-allowed" : "pointer",
+                  cursor: disabled || confirmed ? "not-allowed" : "pointer",
                   textAlign: "left",
                   opacity: disabled ? 0.55 : 1,
                   transition: "all 0.15s",
@@ -379,7 +397,7 @@ export default function PaymentModal({
                       color: "var(--text-primary, #172033)",
                     }}
                   >
-                    {t(m.labelKey)}
+                    {m.label}
                   </div>
                   <div
                     style={{
@@ -387,7 +405,7 @@ export default function PaymentModal({
                       color: "var(--text-light, #8993a3)",
                     }}
                   >
-                    {t(m.descKey)}
+                    {m.desc}
                     {m.needsWallet && (
                       <span
                         style={{
@@ -396,9 +414,9 @@ export default function PaymentModal({
                           fontWeight: 700,
                         }}
                       >
-                        · {t("wallet.balance")}: {money(walletBalance)}
+                        · {t("Số dư ví")}: {money(walletBalance)}
                         {!walletEnough &&
-                          ` (${t("payment.shortBy").replace(
+                          ` (${t("Thiếu {amount}").replace(
                             "{amount}",
                             money(walletShortfall)
                           )})`}
@@ -412,7 +430,7 @@ export default function PaymentModal({
                           fontWeight: 700,
                         }}
                       >
-                        · {t("payment.noAccount")}
+                        · {t("Chưa có tài khoản nhận")}
                       </span>
                     )}
                   </div>
@@ -438,7 +456,7 @@ export default function PaymentModal({
           })}
         </div>
 
-        {/* QR BLOCK */}
+        {/* Khối QR */}
         {method === "QR" && !confirmed && (
           <div
             style={{
@@ -461,7 +479,7 @@ export default function PaymentModal({
                     marginBottom: 8,
                   }}
                 />
-                <div>{t("payment.loadingBankInfo")}</div>
+                <div>{t("Đang tải thông tin ngân hàng...")}</div>
               </div>
             ) : !hasBankInfo ? (
               <div
@@ -474,7 +492,7 @@ export default function PaymentModal({
               >
                 <AlertTriangle size={28} style={{ marginBottom: 8 }} />
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                  {t("payment.noBankTitle")}
+                  {t("Chưa cấu hình tài khoản ngân hàng")}
                 </div>
                 <div
                   style={{
@@ -482,7 +500,7 @@ export default function PaymentModal({
                     color: "var(--text-muted, #64748b)",
                   }}
                 >
-                  {t("payment.noBankDesc")}
+                  {t("Vui lòng liên hệ quản trị viên để được hỗ trợ.")}
                 </div>
               </div>
             ) : (
@@ -494,7 +512,7 @@ export default function PaymentModal({
                     marginBottom: 10,
                   }}
                 >
-                  {t("payment.scanQr")}
+                  {t("Quét mã QR để thanh toán đơn hàng")}
                 </div>
                 <img
                   src={vietQR}
@@ -521,7 +539,7 @@ export default function PaymentModal({
                     padding: 20,
                   }}
                 >
-                  {t("payment.qrLoadFail")}
+                  {t("Không tải được mã QR. Vui lòng thử lại sau.")}
                 </div>
 
                 <div
@@ -536,10 +554,10 @@ export default function PaymentModal({
                     <b>{settings.bank}</b> · {settings.account}
                   </div>
                   <div>
-                    {t("qr.ownerLabel")}: <b>{settings.accountName}</b>
+                    {t("Chủ tài khoản")}: <b>{settings.accountName}</b>
                   </div>
                   <div>
-                    {t("qr.contentLabel")}: <b>{transferContent}</b>
+                    {t("Nội dung chuyển khoản")}: <b>{transferContent}</b>
                   </div>
                 </div>
                 <button
@@ -560,14 +578,14 @@ export default function PaymentModal({
                     gap: 6,
                   }}
                 >
-                  <Printer size={14} /> {t("payment.printQr")}
+                  <Printer size={14} /> {t("In mã QR")}
                 </button>
               </>
             )}
           </div>
         )}
 
-        {/* ACTIONS */}
+        {/* Nút hành động */}
         <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={() => !confirmed && onClose?.()}
@@ -586,7 +604,7 @@ export default function PaymentModal({
               opacity: confirmed ? 0.5 : 1,
             }}
           >
-            {t("common.cancel")}
+            {t("Hủy")}
           </button>
           <button
             onClick={confirm}
@@ -614,10 +632,10 @@ export default function PaymentModal({
                   size={16}
                   style={{ animation: "paySpin 1s linear infinite" }}
                 />
-                {t("common.processing")}
+                {t("Đang xử lý...")}
               </>
             ) : (
-              t("payment.confirmOrder")
+              t("Xác nhận đặt hàng")
             )}
           </button>
         </div>

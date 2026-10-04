@@ -4,8 +4,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import {
-  Phone, Mail, MapPin, Facebook, Youtube, Instagram,
-  Send, Globe,
+  Phone, Mail, MapPin, Facebook, Youtube, Instagram, Send, Globe,
 } from "lucide-react";
 import { api } from "../api";
 import { useI18n } from "../hooks/useI18n";
@@ -120,7 +119,7 @@ export default function Footer() {
             {t(labelKey)}
           </span>
           <b style={{ fontStyle: "italic", fontWeight: 500 }}>
-            {t("footer.notConfigured")}
+            {t("Đang cập nhật")}
           </b>
         </div>
       </div>
@@ -139,18 +138,22 @@ export default function Footer() {
               <small>SMART MANAGEMENT</small>
             </div>
           </div>
-          <p className="footer-desc">{t("footer.description")}</p>
+          <p className="footer-desc">
+            {t(
+              "Hệ thống quản lý căng tin thông minh dành cho Học viện Phụ nữ Việt Nam: đặt món trước, nhận đúng ca, không phải xếp hàng."
+            )}
+          </p>
         </div>
 
         {/* CỘT 2: LIÊN HỆ */}
         <div className="footer-col">
-          <h4 className="footer-heading">{t("footer.contact")}</h4>
+          <h4 className="footer-heading">{t("Liên hệ Canteen VWA")}</h4>
 
           {renderContact({
             has: hasHotline,
             href: telHref,
             icon: <Phone size={14} />,
-            labelKey: "footer.hotline",
+            labelKey: "Hotline",
             value: contact.hotline,
           })}
 
@@ -158,7 +161,7 @@ export default function Footer() {
             has: hasEmail,
             href: `mailto:${contact.email}`,
             icon: <Mail size={14} />,
-            labelKey: "footer.email",
+            labelKey: "Email",
             value: contact.email,
           })}
 
@@ -166,7 +169,7 @@ export default function Footer() {
             has: hasAddress,
             href: mapsUrl,
             icon: <MapPin size={14} />,
-            labelKey: "footer.address",
+            labelKey: "Địa chỉ",
             value: contact.address,
             external: true,
           })}
@@ -194,7 +197,9 @@ export default function Footer() {
           {hasAddress ? (
             <div className="footer-map" style={{ position: "relative" }}>
               <iframe
-                title={t("footer.mapTitle").replace("{address}", contact.address)}
+                title={t("Bản đồ tới Canteen VWA — {address}", {
+                  address: contact.address,
+                })}
                 src={mapsEmbedUrl}
                 width="100%"
                 height="100%"
@@ -212,7 +217,7 @@ export default function Footer() {
                 href={mapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={t("footer.openMaps")}
+                aria-label={t("Mở trong Google Maps")}
                 style={{
                   position: "absolute",
                   inset: 0,
@@ -232,14 +237,15 @@ export default function Footer() {
                 fontStyle: "italic",
               }}
             >
-              {t("footer.noAddress")}
+              {t("Đang cập nhật địa chỉ")}
             </div>
           )}
         </div>
       </div>
 
       <div className="footer-copyright">
-        © {new Date().getFullYear()} Canteen VWA · {t("footer.copyright")}
+        © {new Date().getFullYear()} Canteen VWA ·{" "}
+        {t("Hệ thống quản lý căng tin thông minh.")}
       </div>
     </footer>
   );

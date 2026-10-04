@@ -34,8 +34,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const DB_FILE = path.join(__dirname, "canteen-db.json");
-const DATA_DIR = path.join(__dirname, "data");
+const DB_FILE = path.join(__dirname, "..", "canteen-db.json");
+const DATA_DIR = path.join(__dirname, "..", "data");
 
 // ============================================================
 // SPLIT

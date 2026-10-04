@@ -5,8 +5,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Bell, Check, ShoppingBag, Package, Gift, Wallet,
-  MessageCircle, Info, Loader2,
+  Bell, Check, ShoppingBag, Package, Gift, Wallet, MessageCircle, Info, Loader2,
 } from "lucide-react";
 import { api } from "../api";
 import { useI18n } from "../hooks/useI18n";

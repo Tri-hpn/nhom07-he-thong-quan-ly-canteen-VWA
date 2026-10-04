@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // OWNERMENU.JSX — Quản lý thực đơn + danh mục (Admin)
 // ============================================================
 // Nhóm khung giờ nhận món (Time Slots) ở đầu trang.
@@ -11,10 +11,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Plus, Search, Edit, Trash2, FolderPlus, Folder,
-  X, Save, Loader2, AlertCircle,
-  UtensilsCrossed, EyeOff, Eye, Star,
-  Clock, Sunrise, Sun, Sunset, RotateCcw,
+  Plus, Search, Pencil, Trash2, FolderPlus, Folder, X, Save, Loader2, AlertCircle, UtensilsCrossed, EyeOff, Eye, Star, Clock, Sunrise, Sun, Sunset, RotateCcw, Edit,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -99,6 +96,13 @@ export default function OwnerMenu() {
 
   // ---------- ✅ Signature checkbox state ----------
   const [isSignature, setIsSignature] = useState(false);
+
+  // ---------- ✅ Dinh dưỡng (dùng cho bộ lọc bên khách hàng) ----------
+  const [nutrition, setNutrition] = useState({
+    is_cool: false,
+    is_healthy: false,
+    is_spicy: false,
+  });
 
   // ---------- Confirm dialog ----------
   const [confirm, setConfirm] = useState(null);
@@ -220,6 +224,11 @@ export default function OwnerMenu() {
       discountPercent: Number(modal.discount_percent) || 0,
     });
     setIsSignature(!!modal.is_signature);
+    setNutrition({
+      is_cool: !!modal.is_cool,
+      is_healthy: !!modal.is_healthy,
+      is_spicy: !!modal.is_spicy,
+    });
   }, [modal]);
 
   // ============================================================
@@ -305,6 +314,7 @@ export default function OwnerMenu() {
       discountPercent: 0,
     });
     setIsSignature(false);
+    setNutrition({ is_cool: false, is_healthy: false, is_spicy: false });
   };
 
   const saveItem = async (e) => {
@@ -351,6 +361,14 @@ export default function OwnerMenu() {
       return toast("Số lượng không được âm", "error");
     }
 
+    // Dinh dưỡng: bỏ trống → null để server tự gán mặc định theo danh mục
+    const numOrNull = (v) => {
+      const s = String(v ?? "").trim();
+      if (s === "") return null;
+      const n = Number(s);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+
     const data = {
       name,
       category,
@@ -363,6 +381,12 @@ export default function OwnerMenu() {
       reason: f.get("reason")?.trim() || "",
       // ✅ Lưu field is_signature
       is_signature: isSignature,
+      // ✅ Dinh dưỡng — dùng cho bộ lọc "Tiêu chí ưu tiên" + "Mức năng lượng"
+      prep_time: numOrNull(f.get("prep_time")),
+      calories: numOrNull(f.get("calories")),
+      is_cool: nutrition.is_cool,
+      is_healthy: nutrition.is_healthy,
+      is_spicy: nutrition.is_spicy,
     };
 
     setSaving(true);
@@ -451,7 +475,7 @@ export default function OwnerMenu() {
     });
   };
 
-  // ---------- Category handlers ----------
+  // ---------- LayoutGrid handlers ----------
 
   const openAddCat = () => {
     setEditingCat(null);
@@ -749,7 +773,7 @@ export default function OwnerMenu() {
             </div>
           )}
 
-          {/* Groups */}
+          {/* Users */}
           {!slotsLoading &&
             groupedSlots.map((group) => {
               const Icon = group.icon;
@@ -1792,6 +1816,117 @@ export default function OwnerMenu() {
                 style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
                 disabled={saving}
               />
+
+              <label style={labelStyle}>Dinh dưỡng &amp; phục vụ</label>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, 1fr)",
+                  gap: 12,
+                  marginBottom: 8,
+                }}
+              >
+                <div>
+                  <label style={{ ...labelStyle, marginTop: 0 }}>
+                    ⏱ Thời gian làm (phút)
+                  </label>
+                  <input
+                    name="prep_time"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={modal.prep_time ?? ""}
+                    placeholder="VD: 10"
+                    style={{ ...inputStyle, marginBottom: 0 }}
+                    disabled={saving}
+                  />
+                </div>
+                <div>
+                  <label style={{ ...labelStyle, marginTop: 0 }}>
+                    🔥 Năng lượng (kcal)
+                  </label>
+                  <input
+                    name="calories"
+                    type="number"
+                    min="0"
+                    step="10"
+                    defaultValue={modal.calories ?? ""}
+                    placeholder="VD: 520"
+                    style={{ ...inputStyle, marginBottom: 0 }}
+                    disabled={saving}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  marginBottom: 14,
+                }}
+              >
+                {[
+                  { key: "is_cool", icon: "❄️", label: "Mát lạnh" },
+                  { key: "is_healthy", icon: "🥗", label: "Lành mạnh" },
+                  { key: "is_spicy", icon: "🌶️", label: "Cay" },
+                ].map((c) => (
+                  <label
+                    key={c.key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      fontSize: 12.5,
+                      cursor: saving ? "not-allowed" : "pointer",
+                      background: nutrition[c.key]
+                        ? "rgba(16, 185, 129, 0.12)"
+                        : "var(--bg-tertiary, #f8fafc)",
+                      border: nutrition[c.key]
+                        ? "1px solid rgba(16, 185, 129, 0.4)"
+                        : "1px solid var(--border-color, #e5e9ef)",
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!nutrition[c.key]}
+                      onChange={(e) =>
+                        setNutrition((p) => ({ ...p, [c.key]: e.target.checked }))
+                      }
+                      disabled={saving}
+                      style={{
+                        width: 16,
+                        height: 16,
+                        accentColor: "#10b981",
+                        cursor: "inherit",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <b style={{ color: "var(--text-primary, #172033)", fontWeight: 600 }}>
+                      {c.icon} {c.label}
+                    </b>
+                  </label>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  background: "var(--bg-tertiary, #f8fafc)",
+                  border: "1px solid var(--border-color, #e5e9ef)",
+                  color: "var(--text-muted, #64748b)",
+                }}
+              >
+                💡 Để trống Thời gian / Năng lượng → hệ thống tự gán mặc định theo
+                danh mục. Các tiêu chí này dùng cho bộ lọc "Tiêu chí ưu tiên" và
+                "Mức năng lượng" ở trang thực đơn của khách hàng.
+              </div>
 
               <label style={labelStyle}>Lý do đổi giá (nếu có sửa giá)</label>
               <input

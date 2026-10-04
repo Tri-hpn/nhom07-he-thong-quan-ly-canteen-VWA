@@ -14,7 +14,9 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { Loader2, AlertCircle } from "lucide-react";
+import {
+  Loader2, AlertCircle,
+} from "lucide-react";
 import { api, setToken } from "../api";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";

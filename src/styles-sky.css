@@ -232,25 +232,6 @@ header[style*="sticky"] {
   color: var(--sky-ink-900) !important;
 }
 
-.global-search-input {
-  background: var(--sky-50) !important;
-  border-radius: 999px !important;
-}
-
-.global-search-input:focus-within {
-  background: #FFFFFF !important;
-  border-color: var(--sky-500) !important;
-  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.12) !important;
-}
-
-.global-search-dropdown {
-  border-color: var(--sky-border) !important;
-}
-
-.dropdown-item:hover {
-  background: var(--sky-50) !important;
-}
-
 /* ============================================================
    5. CARDS & PANELS
    ============================================================ */
@@ -479,24 +460,6 @@ html.dark-mode .topbar-logo-text b {
   color: #F1F5F9 !important;
 }
 
-html.dark-mode .global-search-input {
-  background: #1E293B !important;
-}
-
-html.dark-mode .global-search-input:focus-within {
-  background: #0B1220 !important;
-  border-color: var(--sky-500) !important;
-}
-
-html.dark-mode .global-search-dropdown {
-  background: #111A2B !important;
-  border-color: #1E293B !important;
-}
-
-html.dark-mode .dropdown-item:hover {
-  background: #1E293B !important;
-}
-
 /* --- Cards --- */
 html.dark-mode .panel,
 html.dark-mode .card {
@@ -696,22 +659,6 @@ header[style*="sticky"] {
 .topbar-logo-text small {
   font-size: 10.5px !important;
   letter-spacing: 2.5px !important;
-}
-
-.global-search {
-  max-width: 560px !important;
-}
-
-.global-search-input {
-  height: 46px !important;
-  padding: 0 20px !important;
-  border-radius: 999px !important;
-  font-size: 14px !important;
-  background: var(--sky-50) !important;
-}
-
-.global-search-input input {
-  font-size: 14px !important;
 }
 
 .topbar-profile-btn {
@@ -1006,12 +953,6 @@ html.dark-mode .app-stat-delta.down { color: #F87171 !important; }
     height: 36px !important;
   }
 
-  .global-search-input {
-    height: 40px !important;
-    padding: 0 14px !important;
-    font-size: 13px !important;
-  }
-
   .profile-avatar-img,
   .profile-avatar-initials {
     width: 34px !important;
@@ -1110,7 +1051,6 @@ th {
    FIX-B. LOẠI BỎ VIỀN KÉP (DOUBLE BORDER) TRÊN INPUT WRAPPER
    ------------------------------------------------------------
    Áp dụng cho MỌI ô input nằm trong wrapper:
-     - .global-search-input  (thanh tìm kiếm topbar)
      - .v8-input-wrap        (trang login)
      - .input-icon           (form khác)
      - [class*="input-wrap"] (mọi wrapper khác)
@@ -1120,10 +1060,7 @@ th {
    ============================================================ */
 
 /* ---------- B1. Reset mọi input nằm trong wrapper ---------- */
-.global-search-input input,
-.global-search-input input:hover,
-.global-search-input input:focus,
-.global-search-input input:active,
+
 .v8-input-wrap input,
 .v8-input-wrap input:hover,
 .v8-input-wrap input:focus,
@@ -1147,13 +1084,6 @@ th {
   -webkit-box-shadow: none !important;
 }
 
-/* ---------- B2. Focus ring nằm ở wrapper ---------- */
-.global-search-input:focus-within {
-  background: var(--card-bg, #fff) !important;
-  border-color: #2634d5 !important;
-  box-shadow: 0 0 0 4px rgba(38, 52, 213, 0.1) !important;
-}
-
 .v8-input-wrap:focus-within {
   border-color: #1f2937 !important;
   box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.08) !important;
@@ -1165,9 +1095,7 @@ th {
 }
 
 /* ---------- B3. Autofill fix (tránh nền vàng + viền kép) ---------- */
-.global-search-input input:-webkit-autofill,
-.global-search-input input:-webkit-autofill:hover,
-.global-search-input input:-webkit-autofill:focus,
+
 .v8-input-wrap input:-webkit-autofill,
 .v8-input-wrap input:-webkit-autofill:hover,
 .v8-input-wrap input:-webkit-autofill:focus,
@@ -1187,18 +1115,12 @@ select:focus {
   outline: 0 !important;
 }
 
-/* ---------- B5. Dark mode fix ---------- */
-html.dark-mode .global-search-input:focus-within {
-  background: #0B1220 !important;
-  border-color: var(--sky-500, #0EA5E9) !important;
-}
-
 html.dark-mode .v8-input-wrap:focus-within {
   border-color: #f1f5f9 !important;
   box-shadow: 0 0 0 3px rgba(241, 245, 249, 0.1) !important;
 }
 
-html.dark-mode .global-search-input input:focus,
+
 html.dark-mode .v8-input-wrap input:focus,
 html.dark-mode .input-icon input:focus {
   border: 0 !important;

@@ -3,7 +3,9 @@
 // ============================================================
 
 import { useState, useMemo, useCallback, useRef } from "react";
-import { Star } from "lucide-react";
+import {
+  Star,
+} from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 
 const STARS = [1, 2, 3, 4, 5];

@@ -7,9 +7,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Plus, Search, Edit, Trash2, KeyRound, Eye, EyeOff,
-  Pencil, X, Save, User as UserIcon, Mail, Phone,
-  Lock, Shield, Loader2, AlertCircle, Users,
+  Plus, Search, Pencil, Trash2, KeyRound, Eye, EyeOff, X, Save, User as UserIcon, Mail, Phone, Lock, Shield, Loader2, AlertCircle, Users,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -220,7 +218,12 @@ export default function OwnerEmployees() {
         status: f.get("status") || "Hoạt động",
         password,
       });
-      toast(t("Đã thêm nhân viên mới"), "success");
+      toast(
+        t("Đã thêm nhân viên mới") +
+          " — " +
+          t("nhân viên sẽ phải đổi mật khẩu khi đăng nhập lần đầu"),
+        "success"
+      );
       setAddModal(false);
       load();
       loadAllUsers(); // Refresh email set
@@ -272,14 +275,19 @@ export default function OwnerEmployees() {
       title: `${t("Reset mật khẩu của")} "${emp.name}"?`,
       message:
         `${t("Mật khẩu sẽ được đặt lại về")} "${DEFAULT_PASSWORD}".\n\n` +
-        t("Hãy thông báo mật khẩu mới cho nhân viên sau khi reset."),
+        t("Hãy thông báo mật khẩu mới cho nhân viên sau khi reset.") +
+        "\n\n" +
+        t("Nhân viên sẽ được yêu cầu đổi mật khẩu ngay khi đăng nhập lần tới."),
       confirmText: t("Reset mật khẩu"),
       cancelText: t("Hủy"),
       danger: false,
       onConfirm: async () => {
+        // Giai đoạn 2 — backend tự bật cờ must_change_password khi
+        // admin đặt lại mật khẩu (xem PUT /api/users/:id)
         await api.users.update(emp.id, { password: DEFAULT_PASSWORD });
         toast(
-          `${t("Đã reset mật khẩu về")} "${DEFAULT_PASSWORD}"`,
+          `${t("Đã reset mật khẩu về")} "${DEFAULT_PASSWORD}" — ` +
+            t("nhân viên phải đổi mật khẩu khi đăng nhập"),
           "success"
         );
         setConfirm(null);

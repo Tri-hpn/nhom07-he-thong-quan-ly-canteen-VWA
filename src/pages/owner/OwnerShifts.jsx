@@ -13,10 +13,7 @@
 import { Skeleton, SkeletonStats } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Calendar, Clock, Users, CheckCircle2, AlertTriangle, UserX,
-  Plus, Trash2, Sun, Sunrise, Save, X, Search, Check,
-  ChevronLeft, ChevronRight, CalendarDays, Edit, Loader2,
-  AlertCircle, Bell,
+  Calendar, Clock, Users, CheckCircle2, AlertTriangle, UserX, Plus, Trash2, Sun, Sunrise, Save, X, Search, Check, ChevronLeft, ChevronRight, CalendarDays, Pencil, Loader2, AlertCircle, Bell, Edit,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -1597,7 +1594,7 @@ export default function OwnerShifts() {
                                   {s.employee_name}
                                 </b>
 
-                                {/* Badge status */}
+                                {/* BadgeCheck status */}
                                 <span
                                   style={{
                                     padding: "2px 8px",
@@ -1618,7 +1615,7 @@ export default function OwnerShifts() {
                                     : t("Đã duyệt")}
                                 </span>
 
-                                {/* Badge shift */}
+                                {/* BadgeCheck shift */}
                                 <span
                                   style={{
                                     padding: "2px 10px",

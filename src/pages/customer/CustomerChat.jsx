@@ -1,14 +1,16 @@
-﻿// ============================================================
-// CUSTOMERCHAT.JSX — Chat khách hàng
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-//    Không còn key cũ kiểu "chat.xxx" / "common.xxx"
+// CUSTOMERCHAT.JSX — Chat khách hàng (V3)
+// ============================================================
+// ✅ V3:
+//   - Badge ngày ở giữa chat (Hôm nay/Hôm qua/X ngày/dd/mm)
+//   - Smart scroll: KHÔNG tự cuộn khi user đang kéo tay
+//   - Immediate lần đầu, smooth khi có tin mới (chỉ khi ở gần cuối)
+//   - pendingScrollRef: chỉ scroll khi user vừa gửi tin
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Send, RefreshCw, Bot, Store, ShoppingCart,
-  Loader2, AlertCircle,
+  Send, RefreshCw, Bot, Store, ShoppingCart, Loader2, AlertCircle,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -16,6 +18,11 @@ import { toast } from "../../components/Effects";
 import { getBotReply } from "../../components/ChatBot";
 import { useI18n } from "../../hooks/useI18n";
 import FoodDetailModal from "../../components/FoodDetailModal";
+import {
+  fmtTime,
+  fmtDateLabel,
+  getDateLabelVariant,
+} from "../../lib/datetime";
 
 // ============================================================
 // CONSTANTS
@@ -40,16 +47,37 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${rand}`;
 }
 
-function fmtTime(iso) {
-  if (!iso) return "";
+function sameDay(iso1, iso2) {
+  if (!iso1 || !iso2) return false;
   try {
-    return new Date(iso).toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const d1 = new Date(iso1);
+    const d2 = new Date(iso2);
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
   } catch {
-    return "";
+    return false;
   }
+}
+
+// ============================================================
+// SUB: DateDivider
+// ============================================================
+
+function DateDivider({ iso }) {
+  const label = fmtDateLabel(iso);
+  const variant = getDateLabelVariant(iso);
+  if (!label) return null;
+
+  return (
+    <div className={`chat-date-divider chat-date-divider--${variant}`}>
+      <span className="chat-date-divider__line" />
+      <span className="chat-date-divider__label">{label}</span>
+      <span className="chat-date-divider__line" />
+    </div>
+  );
 }
 
 // ============================================================
@@ -111,9 +139,7 @@ function TabButton({ active, onClick, icon, title, subtitle, color }) {
         padding: "14px 16px",
         background: active ? "var(--bg-tertiary, #f5f7fb)" : "transparent",
         border: 0,
-        borderBottom: active
-          ? "3px solid " + color
-          : "3px solid transparent",
+        borderBottom: active ? "3px solid " + color : "3px solid transparent",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
@@ -171,7 +197,6 @@ function TabButton({ active, onClick, icon, title, subtitle, color }) {
 export default function CustomerChat({ cart, setCart, user }) {
   const { t } = useI18n();
 
-  // ✅ SOURCE-TEXT: quick replies dùng tiếng Việt trực tiếp
   const QUICK_REPLIES = [
     t("Dưới 30k"),
     t("Món chay"),
@@ -204,13 +229,25 @@ export default function CustomerChat({ cart, setCart, user }) {
   const staffBottomRef = useRef(null);
 
   const staffReqIdRef = useRef(0);
+  const aiTimerRef = useRef(null);
+
+  // ✅ Refs cho smart scroll
   const lastAiCountRef = useRef(0);
   const lastStaffCountRef = useRef(0);
-  const aiTimerRef = useRef(null);
+  const aiInitializedRef = useRef(false);
+  const staffInitializedRef = useRef(false);
+
+  // ✅ Cờ "user đang chạm feed" — không auto-scroll khi true
+  const aiTouchingRef = useRef(false);
+  const staffTouchingRef = useRef(false);
+  // ✅ Cờ "user vừa bấm gửi" — cần scroll xuống để thấy tin mình
+  const aiPendingScrollRef = useRef(false);
+  const staffPendingScrollRef = useRef(false);
 
   // Load menu 1 lần
   useEffect(() => {
-    api.menu.listActive("", "Tất cả", "popular")
+    api.menu
+      .listActive("", "Tất cả", "popular")
       .then((d) => setMenuItems(Array.isArray(d) ? d : []))
       .catch(() => setMenuItems([]));
   }, []);
@@ -223,24 +260,27 @@ export default function CustomerChat({ cart, setCart, user }) {
   }, []);
 
   // Load staff
-  const loadStaff = useCallback(async (silent = false) => {
-    const myReqId = ++staffReqIdRef.current;
+  const loadStaff = useCallback(
+    async (silent = false) => {
+      const myReqId = ++staffReqIdRef.current;
 
-    if (!silent) setLoading(true);
-    if (!silent) setStaffError("");
+      if (!silent) setLoading(true);
+      if (!silent) setStaffError("");
 
-    try {
-      const data = await api.chat.myMessages();
-      if (myReqId !== staffReqIdRef.current) return;
-      setMessages(Array.isArray(data) ? data : []);
-    } catch (e) {
-      if (myReqId === staffReqIdRef.current && !silent) {
-        setStaffError(e.message || t("Không tải được tin nhắn"));
+      try {
+        const data = await api.chat.myMessages();
+        if (myReqId !== staffReqIdRef.current) return;
+        setMessages(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (myReqId === staffReqIdRef.current && !silent) {
+          setStaffError(e.message || t("Không tải được tin nhắn"));
+        }
+      } finally {
+        if (myReqId === staffReqIdRef.current) setLoading(false);
       }
-    } finally {
-      if (myReqId === staffReqIdRef.current) setLoading(false);
-    }
-  }, [t]);
+    },
+    [t]
+  );
 
   useEffect(() => {
     if (tab !== "staff") return;
@@ -250,25 +290,115 @@ export default function CustomerChat({ cart, setCart, user }) {
     return () => clearInterval(timer);
   }, [tab, loadStaff]);
 
-  // Smart scroll AI
+  // ============================================================
+  // AI SCROLL — SMART V3
+  // ============================================================
+  // Quy tắc:
+  //   1. Lần đầu vào tab AI → scroll IMMEDIATE xuống cuối
+  //   2. User vừa gửi tin → scroll SMOOTH xuống cuối
+  //   3. Có tin mới + user gần cuối + user KHÔNG đang chạm → scroll SMOOTH
+  //   4. Mọi trường hợp khác → KHÔNG scroll
+
+  // --- AI: listener chạm feed ---
   useEffect(() => {
     if (tab !== "ai") return;
     const container = aiScrollRef.current;
     if (!container) return;
 
-    const isInitial = lastAiCountRef.current === 0;
-    const grew = aiMessages.length > lastAiCountRef.current;
-    const last = aiMessages[aiMessages.length - 1];
-    const isOwn = last?.from === "user";
+    const onTouchStart = () => {
+      aiTouchingRef.current = true;
+    };
+    const onTouchEnd = () => {
+      setTimeout(() => {
+        aiTouchingRef.current = false;
+      }, 300);
+    };
+    const onWheel = () => {
+      aiTouchingRef.current = true;
+      clearTimeout(onWheel._t);
+      onWheel._t = setTimeout(() => {
+        aiTouchingRef.current = false;
+      }, 300);
+    };
+    const onMouseDown = () => {
+      aiTouchingRef.current = true;
+    };
+    const onMouseUp = () => {
+      aiTouchingRef.current = false;
+    };
 
+    container.addEventListener("touchstart", onTouchStart, { passive: true });
+    container.addEventListener("touchend", onTouchEnd, { passive: true });
+    container.addEventListener("wheel", onWheel, { passive: true });
+    container.addEventListener("mousedown", onMouseDown);
+    container.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchend", onTouchEnd);
+      container.removeEventListener("wheel", onWheel);
+      container.removeEventListener("mousedown", onMouseDown);
+      container.removeEventListener("mouseup", onMouseUp);
+      clearTimeout(onWheel._t);
+    };
+  }, [tab]);
+
+  // --- AI: auto scroll ---
+  useEffect(() => {
+    if (tab !== "ai") return;
+    const container = aiScrollRef.current;
+    if (!container) return;
+
+    const isInitialLoad = !aiInitializedRef.current;
+
+    // Rule 1: lần đầu → immediate
+    if (isInitialLoad && aiMessages.length > 0) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      });
+      aiInitializedRef.current = true;
+      lastAiCountRef.current = aiMessages.length;
+      aiPendingScrollRef.current = false;
+      return;
+    }
+
+    const grew = aiMessages.length > lastAiCountRef.current;
+    if (!grew && !aiTyping) {
+      lastAiCountRef.current = aiMessages.length;
+      return;
+    }
+
+    // Rule 2: user vừa gửi → scroll
+    if (aiPendingScrollRef.current) {
+      aiPendingScrollRef.current = false;
+      requestAnimationFrame(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      });
+      lastAiCountRef.current = aiMessages.length;
+      return;
+    }
+
+    // Rule 3: user đang chạm → không scroll
+    if (aiTouchingRef.current) {
+      lastAiCountRef.current = aiMessages.length;
+      return;
+    }
+
+    // Rule 4: gần cuối → scroll
     const dist =
       container.scrollHeight - container.scrollTop - container.clientHeight;
     const nearBottom = dist < SCROLL_THRESHOLD_PX;
 
-    if (isInitial || isOwn || (grew && nearBottom) || aiTyping) {
+    if (nearBottom || aiTyping) {
       requestAnimationFrame(() => {
-        aiBottomRef.current?.scrollIntoView({
-          behavior: isInitial ? "auto" : "smooth",
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
         });
       });
     }
@@ -276,31 +406,121 @@ export default function CustomerChat({ cart, setCart, user }) {
     lastAiCountRef.current = aiMessages.length;
   }, [tab, aiMessages, aiTyping]);
 
-  // Smart scroll Staff
+  // ============================================================
+  // STAFF SCROLL — SMART V3
+  // ============================================================
+
+  // --- Staff: listener chạm feed ---
   useEffect(() => {
     if (tab !== "staff") return;
     const container = staffScrollRef.current;
     if (!container) return;
 
-    const isInitial = lastStaffCountRef.current === 0;
+    const onTouchStart = () => {
+      staffTouchingRef.current = true;
+    };
+    const onTouchEnd = () => {
+      setTimeout(() => {
+        staffTouchingRef.current = false;
+      }, 300);
+    };
+    const onWheel = () => {
+      staffTouchingRef.current = true;
+      clearTimeout(onWheel._t);
+      onWheel._t = setTimeout(() => {
+        staffTouchingRef.current = false;
+      }, 300);
+    };
+    const onMouseDown = () => {
+      staffTouchingRef.current = true;
+    };
+    const onMouseUp = () => {
+      staffTouchingRef.current = false;
+    };
+
+    container.addEventListener("touchstart", onTouchStart, { passive: true });
+    container.addEventListener("touchend", onTouchEnd, { passive: true });
+    container.addEventListener("wheel", onWheel, { passive: true });
+    container.addEventListener("mousedown", onMouseDown);
+    container.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchend", onTouchEnd);
+      container.removeEventListener("wheel", onWheel);
+      container.removeEventListener("mousedown", onMouseDown);
+      container.removeEventListener("mouseup", onMouseUp);
+      clearTimeout(onWheel._t);
+    };
+  }, [tab]);
+
+  // --- Staff: auto scroll ---
+  useEffect(() => {
+    if (tab !== "staff") return;
+    const container = staffScrollRef.current;
+    if (!container) return;
+
+    const isInitialLoad = !staffInitializedRef.current;
+
+    if (isInitialLoad && messages.length > 0) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      });
+      staffInitializedRef.current = true;
+      lastStaffCountRef.current = messages.length;
+      staffPendingScrollRef.current = false;
+      return;
+    }
+
     const grew = messages.length > lastStaffCountRef.current;
-    const last = messages[messages.length - 1];
-    const isOwn = last?.from === "customer";
+    if (!grew) {
+      lastStaffCountRef.current = messages.length;
+      return;
+    }
+
+    if (staffPendingScrollRef.current) {
+      staffPendingScrollRef.current = false;
+      requestAnimationFrame(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      });
+      lastStaffCountRef.current = messages.length;
+      return;
+    }
+
+    if (staffTouchingRef.current) {
+      lastStaffCountRef.current = messages.length;
+      return;
+    }
 
     const dist =
       container.scrollHeight - container.scrollTop - container.clientHeight;
     const nearBottom = dist < SCROLL_THRESHOLD_PX;
 
-    if (isInitial || isOwn || (grew && nearBottom)) {
+    if (nearBottom) {
       requestAnimationFrame(() => {
-        staffBottomRef.current?.scrollIntoView({
-          behavior: isInitial ? "auto" : "smooth",
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
         });
       });
     }
 
     lastStaffCountRef.current = messages.length;
   }, [tab, messages]);
+
+  // Reset init ref khi đổi tab
+  useEffect(() => {
+    if (tab === "ai") {
+      staffInitializedRef.current = false;
+    } else {
+      aiInitializedRef.current = false;
+    }
+  }, [tab]);
 
   const sendStaff = async () => {
     const val = text.trim();
@@ -314,6 +534,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       return;
     }
 
+    staffPendingScrollRef.current = true;
     setSending(true);
     try {
       const msg = await api.chat.send({ content: val });
@@ -321,6 +542,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       setMessages((m) => [...m, msg]);
     } catch (e) {
       toast(e.message || t("Không gửi được tin nhắn"), "error");
+      staffPendingScrollRef.current = false;
     } finally {
       setSending(false);
     }
@@ -338,6 +560,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       return;
     }
 
+    aiPendingScrollRef.current = true;
     setAiText("");
     setAiMessages((m) => [
       ...m,
@@ -405,10 +628,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       return;
     }
 
-    toast(
-      t("Đã thêm {name} vào giỏ").replace("{name}", m.name),
-      "success"
-    );
+    toast(t("Đã thêm {name} vào giỏ").replace("{name}", m.name), "success");
   };
 
   const onAiKey = (e) => {
@@ -501,170 +721,178 @@ export default function CustomerChat({ cart, setCart, user }) {
                     🤖 {t("Trợ lý Canteen")}
                   </div>
                   <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                    {t("Xin chào {name}! Mình có thể giúp gì cho bạn?")
-                      .replace("{name}", user?.name || t("bạn"))}
+                    {t("Xin chào {name}! Mình có thể giúp gì cho bạn?").replace(
+                      "{name}",
+                      user?.name || t("bạn")
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {aiMessages.map((m) => {
+            {aiMessages.map((m, idx) => {
               const isUser = m.from === "user";
+              const prev = aiMessages[idx - 1];
+              const showDate =
+                !prev || !sameDay(prev.created_at, m.created_at);
+
               return (
-                <div
-                  key={m.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: isUser ? "flex-end" : "flex-start",
-                    gap: 8,
-                    marginBottom: 12,
-                  }}
-                >
-                  {!isUser && <BotAvatar />}
+                <div key={m.id}>
+                  {showDate && <DateDivider iso={m.created_at} />}
+
                   <div
                     style={{
-                      maxWidth: "75%",
-                      padding: "10px 14px",
-                      borderRadius: isUser
-                        ? "16px 16px 4px 16px"
-                        : "16px 16px 16px 4px",
-                      background: isUser ? "#2634d5" : "#eef2ff",
-                      color: isUser ? "#fff" : "#172033",
-                      fontSize: 13,
-                      border: isUser ? "none" : "1px solid #c7d2fe",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                      display: "flex",
+                      justifyContent: isUser ? "flex-end" : "flex-start",
+                      gap: 8,
+                      marginBottom: 12,
                     }}
                   >
-                    {!isUser && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#2634d5",
-                          marginBottom: 4,
-                        }}
-                      >
-                        🤖 {t("Trợ lý")}
-                      </div>
-                    )}
-                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                      {m.content}
-                    </div>
-
-                    {!isUser && m.items && m.items.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 6,
-                        }}
-                      >
-                        {m.items.map((it) => (
-                          <div
-                            key={it.id || it._id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              padding: 6,
-                              background: "#fff",
-                              borderRadius: 10,
-                              border: "1px solid #c7d2fe",
-                            }}
-                          >
-                            <img
-                              src={it.image}
-                              alt={it.name}
-                              style={{
-                                width: 44,
-                                height: 44,
-                                borderRadius: 8,
-                                objectFit: "cover",
-                                flexShrink: 0,
-                              }}
-                            />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  color: "#172033",
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                }}
-                              >
-                                {it.name}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#18a967",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {money(it.price)}
-                              </div>
-                            </div>
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 4,
-                                flexShrink: 0,
-                              }}
-                            >
-                              <button
-                                onClick={() => quickAdd(it)}
-                                aria-label={t("Thêm vào giỏ {name}").replace(
-                                  "{name}",
-                                  it.name
-                                )}
-                                style={{
-                                  background: "#2634d5",
-                                  color: "#fff",
-                                  border: 0,
-                                  width: 30,
-                                  height: 30,
-                                  borderRadius: 7,
-                                  cursor: "pointer",
-                                  display: "grid",
-                                  placeItems: "center",
-                                }}
-                              >
-                                <ShoppingCart size={13} />
-                              </button>
-                              <button
-                                onClick={() => setSelected(it)}
-                                style={{
-                                  background: "#f59e0b",
-                                  color: "#fff",
-                                  border: 0,
-                                  padding: "0 10px",
-                                  height: 30,
-                                  borderRadius: 7,
-                                  cursor: "pointer",
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {t("Xem")}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
+                    {!isUser && <BotAvatar />}
                     <div
                       style={{
-                        fontSize: 10,
-                        opacity: 0.7,
-                        marginTop: 4,
-                        textAlign: "right",
+                        maxWidth: "75%",
+                        padding: "10px 14px",
+                        borderRadius: isUser
+                          ? "16px 16px 4px 16px"
+                          : "16px 16px 16px 4px",
+                        background: isUser ? "#2634d5" : "#eef2ff",
+                        color: isUser ? "#fff" : "#172033",
+                        fontSize: 13,
+                        border: isUser ? "none" : "1px solid #c7d2fe",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
                       }}
                     >
-                      {fmtTime(m.created_at)}
+                      {!isUser && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#2634d5",
+                            marginBottom: 4,
+                          }}
+                        >
+                          🤖 {t("Trợ lý")}
+                        </div>
+                      )}
+                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                        {m.content}
+                      </div>
+
+                      {!isUser && m.items && m.items.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: 10,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
+                          {m.items.map((it) => (
+                            <div
+                              key={it.id || it._id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: 6,
+                                background: "#fff",
+                                borderRadius: 10,
+                                border: "1px solid #c7d2fe",
+                              }}
+                            >
+                              <img
+                                src={it.image}
+                                alt={it.name}
+                                style={{
+                                  width: 44,
+                                  height: 44,
+                                  borderRadius: 8,
+                                  objectFit: "cover",
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: "#172033",
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {it.name}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    color: "#18a967",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {money(it.price)}
+                                </div>
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 4,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <button
+                                  onClick={() => quickAdd(it)}
+                                  aria-label={t(
+                                    "Thêm vào giỏ {name}"
+                                  ).replace("{name}", it.name)}
+                                  style={{
+                                    background: "#2634d5",
+                                    color: "#fff",
+                                    border: 0,
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 7,
+                                    cursor: "pointer",
+                                    display: "grid",
+                                    placeItems: "center",
+                                  }}
+                                >
+                                  <ShoppingCart size={13} />
+                                </button>
+                                <button
+                                  onClick={() => setSelected(it)}
+                                  style={{
+                                    background: "#f59e0b",
+                                    color: "#fff",
+                                    border: 0,
+                                    padding: "0 10px",
+                                    height: 30,
+                                    borderRadius: 7,
+                                    cursor: "pointer",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {t("Xem")}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          fontSize: 10,
+                          opacity: 0.7,
+                          marginTop: 4,
+                          textAlign: "right",
+                        }}
+                      >
+                        {fmtTime(m.created_at)}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -883,63 +1111,70 @@ export default function CustomerChat({ cart, setCart, user }) {
               </div>
             )}
 
-            {messages.map((m) => {
+            {messages.map((m, idx) => {
               const isOwn = m.from === "customer";
+              const prev = messages[idx - 1];
+              const showDate =
+                !prev || !sameDay(prev.created_at, m.created_at);
+
               return (
-                <div
-                  key={m.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: isOwn ? "flex-end" : "flex-start",
-                    marginBottom: 10,
-                  }}
-                >
+                <div key={m.id}>
+                  {showDate && <DateDivider iso={m.created_at} />}
+
                   <div
                     style={{
-                      maxWidth: "70%",
-                      padding: "10px 14px",
-                      borderRadius: isOwn
-                        ? "16px 16px 4px 16px"
-                        : "16px 16px 16px 4px",
-                      background: isOwn
-                        ? "#2634d5"
-                        : "var(--card-bg, #fff)",
-                      color: isOwn
-                        ? "#fff"
-                        : "var(--text-primary, #172033)",
-                      fontSize: 13,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                      display: "flex",
+                      justifyContent: isOwn ? "flex-end" : "flex-start",
+                      marginBottom: 10,
                     }}
                   >
-                    {m.from === "staff" && (
+                    <div
+                      style={{
+                        maxWidth: "70%",
+                        padding: "10px 14px",
+                        borderRadius: isOwn
+                          ? "16px 16px 4px 16px"
+                          : "16px 16px 16px 4px",
+                        background: isOwn
+                          ? "#2634d5"
+                          : "var(--card-bg, #fff)",
+                        color: isOwn
+                          ? "#fff"
+                          : "var(--text-primary, #172033)",
+                        fontSize: 13,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                      }}
+                    >
+                      {m.from === "staff" && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#2634d5",
+                            marginBottom: 4,
+                          }}
+                        >
+                          {m.from_name || t("Nhân viên Canteen")}
+                        </div>
+                      )}
                       <div
                         style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#2634d5",
-                          marginBottom: 4,
+                          wordBreak: "break-word",
+                          whiteSpace: "pre-wrap",
                         }}
                       >
-                        {m.from_name || t("Nhân viên Canteen")}
+                        {m.content}
                       </div>
-                    )}
-                    <div
-                      style={{
-                        wordBreak: "break-word",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {m.content}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        opacity: 0.7,
-                        marginTop: 4,
-                        textAlign: "right",
-                      }}
-                    >
-                      {fmtTime(m.created_at)}
+                      <div
+                        style={{
+                          fontSize: 10,
+                          opacity: 0.7,
+                          marginTop: 4,
+                          textAlign: "right",
+                        }}
+                      >
+                        {fmtTime(m.created_at)}
+                      </div>
                     </div>
                   </div>
                 </div>

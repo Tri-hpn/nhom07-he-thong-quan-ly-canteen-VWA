@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // OWNERCUSTOMERS.JSX — Quản lý khách hàng (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
@@ -6,9 +6,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Search, Lock, Unlock, Trash2, Eye, Edit, Mail, Phone,
-  Ticket, Gift, Ban, X, Copy, Check, Users, Globe,
-  User as UserIcon, Loader2, AlertCircle,
+  Search, Lock, Unlock, Trash2, Eye, Pencil, Mail, Phone, Ticket, Gift, Ban, X, Copy, Check, Users, Globe, User as UserIcon, Loader2, AlertCircle, Edit,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";

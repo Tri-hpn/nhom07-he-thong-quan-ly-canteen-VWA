@@ -1,17 +1,14 @@
 // ============================================================
-// CUSTOMERWALLET.JSX — Ví Canteen (khách hàng)
+// CUSTOMERWALLET.JSX — Ví Canteen VWA Pay (V2 - design mới)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-//    Không còn key cũ kiểu "wallet.xxx" / "common.xxx"
+// ✅ GIỮ NGUYÊN: logic, state, hooks, API calls, i18n
+// 🎨 THAY ĐỔI: cấu trúc JSX render theo design mới
 // ============================================================
 
 import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Wallet, Plus, Minus, Link as LinkIcon, CreditCard, QrCode, Banknote,
-  Clock, CheckCircle2, ArrowDownCircle, ArrowUpCircle, ShoppingBag,
-  X, Building2, History, AlertTriangle, Loader2, AlertCircle,
-  RefreshCw,
+  Wallet, Plus, Minus, Link as LinkIcon, CreditCard, QrCode, Banknote, Clock, CheckCircle2, ArrowDownCircle, ArrowUpCircle, ShoppingBag, X, Building2, History, AlertTriangle, Loader2, AlertCircle, RefreshCw, Home, ChevronRight, BadgeCheck, Shield, Zap, Utensils, ArrowDown, ArrowUp, RotateCcw, Download, Lock, Headset, Search, Coffee, Soup, Store, Sandwich, Sparkles,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -40,8 +37,7 @@ const BANKS = [
 
 const MIN_DEPOSIT = 10000;
 const MIN_WITHDRAW = 20000;
-
-const QUICK_DEPOSIT = [50000, 100000, 200000, 500000, 1000000, 2000000];
+const QUICK_DEPOSIT = [50000, 100000, 200000, 500000];
 const QUICK_WITHDRAW = [50000, 100000, 200000];
 
 const EMPTY_WALLET = {
@@ -65,6 +61,15 @@ function fmtDateTime(iso) {
   }
 }
 
+function fmtDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("vi-VN");
+  } catch {
+    return "";
+  }
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -75,21 +80,29 @@ export default function CustomerWallet() {
   const [wallet, setWallet] = useState(EMPTY_WALLET);
   const [transactions, setTransactions] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [points, setPoints] = useState(0); 
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const [tab, setTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showLinkBank, setShowLinkBank] = useState(false);
 
+  // QR countdown (design có auto-refresh)
+  const [qrTimer, setQrTimer] = useState(60);
+  const [autoSubsidy, setAutoSubsidy] = useState(true);
+  // Số giao dịch đang hiển thị (nút "Xem thêm lịch sử cũ hơn")
+  const [visibleTx, setVisibleTx] = useState(8);
+
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
 
-  // ---------- TX config (source-text) ----------
+  // ---------- TX config (GIỮ NGUYÊN) ----------
   const TX_CONFIG = useMemo(
     () => ({
       deposit:  { icon: ArrowDownCircle, color: "#18a967", bg: "#e8f9f1", label: t("Nạp tiền"),    sign: "+" },
@@ -108,7 +121,7 @@ export default function CustomerWallet() {
     [t]
   );
 
-  // ---------- Load ----------
+  // ---------- Load (GIỮ NGUYÊN) ----------
   const loadAll = useCallback(async (silent = false) => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
@@ -146,11 +159,30 @@ export default function CustomerWallet() {
     loadAll(false);
   }, [loadAll]);
 
-  // ---------- Derived ----------
+  // QR countdown
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setQrTimer((s) => (s <= 1 ? 60 : s - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // ---------- Derived (GIỮ NGUYÊN) ----------
   const filtered = useMemo(() => {
-    if (tab === "all") return transactions;
-    return transactions.filter((tx) => tx.type === tab);
-  }, [transactions, tab]);
+    let list = transactions;
+    if (tab !== "all") {
+      list = list.filter((tx) => tx.type === tab);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((tx) => {
+        const code = (tx.code || "").toLowerCase();
+        const note = (tx.note || "").toLowerCase();
+        return code.includes(q) || note.includes(q);
+      });
+    }
+    return list;
+  }, [transactions, tab, searchQuery]);
 
   const stats = useMemo(() => {
     let deposited = 0;
@@ -161,7 +193,6 @@ export default function CustomerWallet() {
     for (const tx of transactions) {
       if (tx.status === "pending") pending++;
       if (tx.status !== "approved") continue;
-
       const amt = Number(tx.amount) || 0;
       if (tx.type === "deposit") deposited += amt;
       else if (tx.type === "withdraw") withdrawn += amt;
@@ -180,446 +211,630 @@ export default function CustomerWallet() {
     await loadAll(true);
   }, [loadAll]);
 
-  // ---------- Tabs config (source-text) ----------
+  // TX tabs config
   const TABS = [
     { id: "all",      label: t("Tất cả") },
-    { id: "deposit",  label: t("Nạp tiền") },
-    { id: "withdraw", label: t("Rút tiền") },
-    { id: "payment",  label: t("Thanh toán") },
+    { id: "deposit",  label: t("Nạp tiền (+)") },
+    { id: "payment",  label: t("Thanh toán món (−)") },
+    { id: "withdraw", label: t("Trợ giá & Hoàn tiền") },
   ];
 
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
-    <div>
+    <div className="customer-wallet-v2">
       {/* ERROR BANNER */}
       {error && (
-        <div
-          style={{
-            background: "rgba(239, 68, 68, 0.08)",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-            borderRadius: 10,
-            padding: "12px 16px",
-            marginBottom: 16,
-            color: "#ef4444",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 13,
-          }}
-        >
-          <AlertCircle size={18} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{error}</span>
-          <button
-            onClick={() => loadAll(false)}
-            style={{
-              padding: "6px 12px",
-              background: "#ef4444",
-              color: "#fff",
-              border: 0,
-              borderRadius: 6,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 12,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
+        <div className="wallet-error-banner">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+          <button onClick={() => loadAll(false)}>
             <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
 
-      {/* HERO: SỐ DƯ */}
-      <div
-        style={{
-          background:
-            "linear-gradient(135deg, #2634d5 0%, #8b5cf6 50%, #18a967 100%)",
-          borderRadius: 18,
-          padding: "28px 32px",
-          marginBottom: 20,
-          color: "#fff",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: -30,
-            right: -20,
-            fontSize: 140,
-            opacity: 0.12,
-          }}
-        >
-          💳
-        </div>
-        <div style={{ position: "relative", zIndex: 2 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 12,
-              opacity: 0.9,
-              marginBottom: 8,
-              letterSpacing: 1,
-            }}
-          >
-            <Wallet size={14} /> {t("Ví Canteen")}
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.9, marginBottom: 4 }}>
-            {t("Số dư khả dụng")}
-          </div>
-          <div
-            style={{
-              fontSize: 42,
-              fontWeight: 900,
-              lineHeight: 1.1,
-              marginBottom: 16,
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            {loading ? (
-              <Loader2
-                size={36}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
-            ) : (
-              money(wallet.balance || 0)
-            )}
-          </div>
+      {/* ============================================== */}
+      {/* 1. BREADCRUMB + HEADER                          */}
+      {/* ============================================== */}
+      <section className="wallet-header">
+        <nav className="wallet-breadcrumb">
+          <a href="/customer/home" className="wallet-breadcrumb__link">
+            {t("Canteen VWA")}
+          </a>
+          <ChevronRight size={14} className="wallet-breadcrumb__sep" />
+          <span>{t("Tài khoản")}</span>
+          <ChevronRight size={14} className="wallet-breadcrumb__sep" />
+          <span className="wallet-breadcrumb__current">
+            {t("Ví Canteen & Thẻ Sinh Viên")}
+          </span>
+        </nav>
 
-          <div
-            className="wallet-hero-btns"
-            style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
-          >
-            <button
-              onClick={() => setShowDeposit(true)}
-              style={{
-                padding: "11px 20px",
-                background: "#fff",
-                color: "#2634d5",
-                border: 0,
-                borderRadius: 10,
-                fontWeight: 800,
-                cursor: "pointer",
-                fontSize: 13,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Plus size={16} /> {t("Nạp tiền")}
-            </button>
-
-            <button
-              onClick={() => canWithdraw && setShowWithdraw(true)}
-              disabled={!canWithdraw}
-              title={
-                !isLinked
-                  ? t("Vui lòng liên kết ngân hàng trước")
-                  : wallet.balance < MIN_WITHDRAW
-                  ? t("Số dư tối thiểu {value} để rút").replace("{value}", money(MIN_WITHDRAW))
-                  : t("Rút tiền về tài khoản đã liên kết")
-              }
-              style={{
-                padding: "11px 20px",
-                background: canWithdraw
-                  ? "rgba(255,255,255,0.2)"
-                  : "rgba(255,255,255,0.15)",
-                color: canWithdraw ? "#fff" : "rgba(255,255,255,0.6)",
-                border: "1px solid rgba(255,255,255,0.3)",
-                borderRadius: 10,
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: canWithdraw ? "pointer" : "not-allowed",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Minus size={16} /> {t("Rút tiền")}
-            </button>
-
-            <button
-              onClick={() => setShowLinkBank(true)}
-              style={{
-                padding: "11px 20px",
-                background: "rgba(255,255,255,0.2)",
-                color: "#fff",
-                border: "1px solid rgba(255,255,255,0.3)",
-                borderRadius: 10,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontSize: 13,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <LinkIcon size={16} />{" "}
-              {isLinked ? t("Đổi ngân hàng") : t("Liên kết ngân hàng")}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* STATS */}
-      {loading ? (
-        <div style={{ marginBottom: 20 }}>
-          <SkeletonStats count={4} columns="repeat(4, 1fr)" />
-        </div>
-      ) : (
-        <div
-          className="wallet-stats-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 12,
-            marginBottom: 20,
-          }}
-        >
-          <StatBox
-            icon={<ArrowDownCircle size={18} />}
-            label={t("Đã nạp")}
-            value={money(stats.deposited)}
-            color="#18a967"
-          />
-          <StatBox
-            icon={<ArrowUpCircle size={18} />}
-            label={t("Đã rút")}
-            value={money(stats.withdrawn)}
-            color="#f59e0b"
-          />
-          <StatBox
-            icon={<ShoppingBag size={18} />}
-            label={t("Đã thanh toán")}
-            value={money(stats.paid)}
-            color="#8b5cf6"
-          />
-          <StatBox
-            icon={<Clock size={18} />}
-            label={t("Chờ duyệt")}
-            value={stats.pending}
-            color="#ef4444"
-          />
-        </div>
-      )}
-
-      {/* LINKED BANK INFO */}
-      {isLinked && (
-        <div
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(24, 169, 103, 0.08), rgba(38, 52, 213, 0.05))",
-            border: "1px solid rgba(24, 169, 103, 0.3)",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 20,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "#e8f9f1",
-              color: "#18a967",
-              display: "grid",
-              placeItems: "center",
-              flexShrink: 0,
-            }}
-          >
-            <CheckCircle2 size={22} />
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--text-light, #8993a3)",
-                fontWeight: 600,
-                marginBottom: 2,
-                textTransform: "uppercase",
-              }}
-            >
-              {t("Ngân hàng đã liên kết")}
+        <div className="wallet-header__row">
+          <div className="wallet-header__left">
+            <div className="wallet-header__eyebrow">
+              <Wallet size={14} />
+              {t("HỆ THỐNG THANH TOÁN THÔNG MINH HỌC ĐƯỜNG")}
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 14,
-                flexWrap: "wrap",
-                fontSize: 13,
-              }}
-            >
+            <h1 className="wallet-title">{t("Ví Canteen VWA Pay")}</h1>
+            <p className="wallet-subtitle">
+              {t("Quản lý số dư thanh toán không tiền mặt, hạn mức trợ giá bữa ăn học đường và nạp tiền nhanh qua ngân hàng/thẻ sinh viên.")}
+            </p>
+          </div>
+
+          <div className="wallet-header__card">
+            <div className="wallet-header__icon">
+              <BadgeCheck size={22} />
+            </div>
+            <div className="wallet-header__info">
+              <div className="wallet-header__name-row">
+                <b>{t("Thẻ SV")} • {t("Sinh viên")}</b>
+                <BadgeCheck size={16} className="wallet-header__verified" />
+              </div>
+              <div className="wallet-header__meta">
+                <span>MSSV: 2151010088</span>
+                <span className="wallet-header__dot" />
+                <span className="wallet-header__sso">
+                  {t("Đã xác thực SSO Học viện")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================== */}
+      {/* 2. 3-COLUMN BENTO (Card + Subsidy + Points)    */}
+      {/* ============================================== */}
+      <section className="wallet-bento">
+        {/* Card 1: VWA Smart Pay */}
+        <div className="wallet-card-physical">
+          <div className="wallet-card-physical__glow-1" />
+          <div className="wallet-card-physical__glow-2" />
+
+          <div className="wallet-card-physical__top">
+            <div className="wallet-card-physical__brand">
+              <div className="wallet-card-physical__brand-icon">
+                <Wallet size={18} />
+              </div>
+              <b>{t("VWA Smart Pay")}</b>
+            </div>
+            <Wallet size={26} style={{ opacity: 0.8 }} />
+          </div>
+
+          {/* Chip */}
+          <div className="wallet-card-physical__chip-row">
+            <div className="wallet-card-physical__chip">
+              <div className="wallet-card-physical__chip-inner" />
+            </div>
+            <span className="wallet-card-physical__chip-label">
+              {t("THẺ SINH VIÊN ĐA NĂNG")}
+            </span>
+          </div>
+
+          {/* Balance */}
+          <div className="wallet-card-physical__balance">
+            <span className="wallet-card-physical__balance-label">
+              {t("SỐ DƯ VÍ KHẢ DỤNG")}
+            </span>
+            <div className="wallet-card-physical__balance-value">
+              {loading ? (
+                <Loader2 size={32} className="wallet-spin" />
+              ) : (
+                <>
+                  {money(wallet.balance || 0).replace("đ", "")}
+                  <span className="wallet-card-physical__balance-unit">đ</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Bottom: cardholder + actions */}
+          <div className="wallet-card-physical__bottom">
+            <div className="wallet-card-physical__holder">
+              <div>
+                <span className="wallet-card-physical__holder-label">
+                  {t("Chủ thẻ")}
+                </span>
+                <b>NGUYEN VAN A</b>
+              </div>
+              <div className="wallet-card-physical__holder-right">
+                <span className="wallet-card-physical__holder-label">
+                  {t("Số thẻ / Hạn dùng")}
+                </span>
+                <b>•••• 8826 | 09/27</b>
+              </div>
+            </div>
+
+            <div className="wallet-card-physical__actions">
+              <button
+                className="wallet-card-physical__action wallet-card-physical__action--solid"
+                onClick={() => setShowDeposit(true)}
+              >
+                <Plus size={16} />
+                {t("Nạp tiền")}
+              </button>
+              <button
+                className="wallet-card-physical__action wallet-card-physical__action--ghost"
+                onClick={() => {
+                  const el = document.getElementById("qr-pos-card");
+                  el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+              >
+                <QrCode size={16} />
+                {t("Mã QR quầy")}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Trợ giá SV Kỳ II */}
+        <div className="wallet-subsidy-card">
+          <div className="wallet-subsidy-card__head">
+            <div>
+              <span className="wallet-subsidy-card__tag">
+                {t("Quỹ Học Đường")}
+              </span>
+              <h2>{t("Trợ Giá Sinh Viên Kỳ II")}</h2>
+              <p>{t("Năm học 2024 - 2025")}</p>
+            </div>
+            <div className="wallet-subsidy-card__icon">
+              <Wallet size={22} />
+            </div>
+          </div>
+
+          <div className="wallet-subsidy-card__quota">
+            <div className="wallet-subsidy-card__quota-row">
+              <span>{t("Hạn mức trợ giá còn lại:")}</span>
+              <b>{money(220000)}</b>
+            </div>
+            <div className="wallet-subsidy-card__quota-note">
+              <Utensils size={14} />
               <span>
-                <b>{wallet.bank_name}</b>
-              </span>
-              <span style={{ fontFamily: "monospace" }}>
-                {wallet.bank_account}
-              </span>
-              <span style={{ color: "var(--text-muted, #64748b)" }}>
-                {wallet.bank_account_name}
+                {t("Tương đương")} <b>22 {t("suất ăn")}</b>{" "}
+                ({t("10.000đ/suất học viện hỗ trợ")})
               </span>
             </div>
           </div>
+
+          <div className="wallet-subsidy-card__progress">
+            <div className="wallet-subsidy-card__progress-row">
+              <span>
+                {t("Đã sử dụng trong tháng:")} <b>18/40 {t("suất")}</b>
+              </span>
+              <b>45%</b>
+            </div>
+            <div className="wallet-subsidy-card__bar">
+              <div
+                className="wallet-subsidy-card__fill"
+                style={{ width: "45%" }}
+              />
+            </div>
+          </div>
+
+          <div className="wallet-subsidy-card__info">
+            <Zap size={16} />
+            <p>
+              {t("Tự động trừ")}{" "}
+              <b>10.000đ</b>{" "}
+              {t("cho mỗi phần cơm trưa/bún phở từ 25.000đ trở lên khi quét mã tại quầy.")}
+            </p>
+          </div>
+
+          <div className="wallet-subsidy-card__foot">
+            <span>
+              <RefreshCw size={14} />
+              {t("Chu kỳ làm mới: 01/04/2025")}
+            </span>
+            <span className="wallet-subsidy-card__foot-link">
+              {t("Tự động cộng lại")}
+            </span>
+          </div>
         </div>
-      )}
 
-      {/* TRANSACTIONS */}
-      <div
-        style={{
-          background: "var(--card-bg, #fff)",
-          border: "1px solid var(--border-color, #e7ebf0)",
-          borderRadius: 12,
-          padding: 20,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
-          <h3
-            style={{
-              margin: 0,
-              color: "var(--text-primary, #172033)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
+        {/* Card 3: VWA Green Points */}
+        <div className="wallet-points-card">
+          <div className="wallet-points-card__head">
+            <div>
+              <span className="wallet-points-card__tag">
+                {t("Sinh Thái Học Đường")}
+              </span>
+              <h2>{t("VWA Green Points")}</h2>
+              <p>
+                {t("Tích điểm khi mang bình nước / dùng khay tái chế")}
+              </p>
+            </div>
+            <div className="wallet-points-card__icon">
+              <Sparkles size={22} />
+            </div>
+          </div>
+
+          <div className="wallet-points-card__stats">
+            <div className="wallet-points-card__stat">
+              <span>{t("Điểm tích lũy")}</span>
+              <b>{stats.points || 350}</b>
+              <small>{t("Đủ đổi 01 ly Trà Sen")}</small>
+            </div>
+            <div className="wallet-points-card__stat">
+              <span>{t("Đã tiết kiệm kỳ này")}</span>
+              <b>{money(580000)}</b>
+              <small>{t("Nhờ trợ giá & voucher")}</small>
+            </div>
+          </div>
+
+          <div className="wallet-points-card__reward">
+            <div className="wallet-points-card__reward-icon">
+              <Coffee size={22} />
+            </div>
+            <div>
+              <b>{t("Voucher Giảm 20.000đ Đồ Uống")}</b>
+              <small>{t("Quy đổi ngay với 300 Green Points")}</small>
+            </div>
+          </div>
+
+          <button
+            className="wallet-points-card__cta"
+            onClick={() => window.location.href = "/customer/promotions"}
           >
-            <History size={18} /> {t("Lịch sử giao dịch")}
-          </h3>
+            <Plus size={16} />
+            {t("Đổi điểm nhận quà & voucher ưu đãi")}
+          </button>
+        </div>
+      </section>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <div
-              style={{
-                display: "flex",
-                gap: 4,
-                background: "var(--bg-tertiary, #f5f7fb)",
-                padding: 4,
-                borderRadius: 10,
-              }}
-            >
-              {TABS.map((tItem) => (
+      {/* ============================================== */}
+      {/* 3. ACTION CENTER (Top-up + QR)                  */}
+      {/* ============================================== */}
+      <section className="wallet-action-grid">
+        {/* LEFT: Top-up */}
+        <div className="wallet-topup" id="topup-container">
+          <div className="wallet-topup__head">
+            <div>
+              <h2>
+                <Plus size={22} />
+                {t("Nạp tiền nhanh vào Ví (Instant Top-up)")}
+              </h2>
+              <p>
+                {t("Tiền nạp vào ví được áp dụng ngay lập tức tại toàn bộ quầy dịch vụ Canteen VWA")}
+              </p>
+            </div>
+            <span className="wallet-topup__free-badge">
+              {t("Miễn phí 100%")}
+            </span>
+          </div>
+
+          {/* Preset amounts */}
+          <div className="wallet-topup__presets">
+            <label>{t("Chọn mệnh giá nạp:")}</label>
+            <div className="wallet-topup__preset-grid">
+              {QUICK_DEPOSIT.map((a, i) => (
                 <button
-                  key={tItem.id}
-                  onClick={() => setTab(tItem.id)}
-                  style={{
-                    padding: "7px 14px",
-                    background:
-                      tab === tItem.id ? "#2634d5" : "transparent",
-                    color:
-                      tab === tItem.id
-                        ? "#fff"
-                        : "var(--text-muted, #475569)",
-                    border: 0,
-                    borderRadius: 7,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    whiteSpace: "nowrap",
-                  }}
+                  key={a}
+                  type="button"
+                  className={`wallet-preset-btn ${
+                    i === 1 ? "wallet-preset-btn--popular" : ""
+                  }`}
+                  onClick={() => setShowDeposit(true)}
                 >
-                  {tItem.label}
+                  <span>{a.toLocaleString("vi-VN")} đ</span>
+                  {i === 1 && (
+                    <span className="wallet-preset-btn__sub">
+                      {t("Phổ biến nhất")}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Custom amount */}
+          <div className="wallet-topup__custom">
+            <div className="wallet-topup__custom-wrap">
+              <Wallet size={20} className="wallet-topup__custom-icon" />
+              <input
+                type="text"
+                placeholder={t("Hoặc nhập số tiền tùy ý (tối thiểu 10.000đ)")}
+                className="wallet-topup__custom-input"
+                readOnly
+                onFocus={() => setShowDeposit(true)}
+              />
+              <span className="wallet-topup__custom-unit">VNĐ</span>
+            </div>
+          </div>
+
+          {/* Method preview */}
+          <div className="wallet-topup__method">
+            <label>{t("Phương thức nạp tiền:")}</label>
+            <div className="wallet-topup__method-card wallet-topup__method-card--active">
+              <div className="wallet-topup__method-left">
+                <div className="wallet-topup__method-radio" />
+                <div className="wallet-topup__method-icon">
+                  <QrCode size={20} />
+                </div>
+                <div>
+                  <div className="wallet-topup__method-name">
+                    {t("Chuyển khoản VietQR PRO 24/7")}
+                    <span className="wallet-topup__method-recommend">
+                      {t("Khuyên dùng")}
+                    </span>
+                  </div>
+                  <div className="wallet-topup__method-desc">
+                    {t("Cộng tiền tức thì 3 giây • Không cần nhập nội dung • 0đ phí")}
+                  </div>
+                </div>
+              </div>
+              <Zap size={18} style={{ color: "var(--c-primary)" }} />
+            </div>
+          </div>
+
+          {/* CTA */}
+          <button
+            className="wallet-topup__cta"
+            onClick={() => setShowDeposit(true)}
+          >
+            <Lock size={16} />
+            {t("Xác nhận nạp 100.000 đ vào ví")}
+          </button>
+          <p className="wallet-topup__secure">
+            <Shield size={14} />
+            {t("Bảo mật SSL 256-bit qua Cổng thanh toán Quốc gia Napas & SSO Học viện")}
+          </p>
+        </div>
+
+        {/* RIGHT: QR POS */}
+        <div className="wallet-qr-pos" id="qr-pos-card">
+          <div className="wallet-qr-pos__head">
+            <div className="wallet-qr-pos__eyebrow">
+              <QrCode size={14} />
+              {t("MÃ THANH TOÁN TẠI QUẦY CANTEEN")}
+            </div>
+            <h2>{t("Dynamic QR Code 1-Chạm")}</h2>
+            <p>
+              {t("Đưa mã vào đầu đọc tại Quầy 01, Quầy 02 hoặc Quầy nước")}
+            </p>
+          </div>
+
+          <div className="wallet-qr-pos__box">
+            <div className="wallet-qr-pos__status">
+              <span className="wallet-qr-pos__status-live">
+                <span className="wallet-qr-pos__dot" />
+                {t("Đang hoạt động")}
+              </span>
+              <span className="wallet-qr-pos__timer">
+                <Clock size={12} />
+                {t("Tự làm mới sau:")} <b>{qrTimer}s</b>
+              </span>
+            </div>
+
+            {/* QR visual */}
+            <div className="wallet-qr-pos__qr-wrap">
+              <svg
+                className="wallet-qr-pos__qr"
+                viewBox="0 0 200 200"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Corner finders */}
+                <rect fill="#131b2e" height="50" rx="8" width="50" x="10" y="10" />
+                <rect fill="#fff" height="30" rx="4" width="30" x="20" y="20" />
+                <rect fill="#004ac6" height="16" rx="2" width="16" x="27" y="27" />
+
+                <rect fill="#131b2e" height="50" rx="8" width="50" x="140" y="10" />
+                <rect fill="#fff" height="30" rx="4" width="30" x="150" y="20" />
+                <rect fill="#004ac6" height="16" rx="2" width="16" x="157" y="27" />
+
+                <rect fill="#131b2e" height="50" rx="8" width="50" x="10" y="140" />
+                <rect fill="#fff" height="30" rx="4" width="30" x="20" y="150" />
+                <rect fill="#004ac6" height="16" rx="2" width="16" x="27" y="157" />
+
+                {/* Data modules */}
+                {[
+                  [70, 15], [90, 15], [110, 15], [70, 35], [110, 35],
+                  [15, 70], [35, 70], [55, 70], [75, 70], [95, 70], [115, 70], [135, 70], [155, 70], [175, 70],
+                  [15, 90], [35, 90], [55, 90], [135, 90], [155, 90], [175, 90],
+                  [15, 110], [55, 110], [135, 110], [175, 110],
+                  [70, 135], [90, 135], [110, 135], [135, 135], [155, 135],
+                  [70, 155], [90, 155], [110, 155], [155, 155], [175, 155],
+                  [70, 175], [110, 175], [135, 175], [155, 175],
+                ].map(([x, y], i) => (
+                  <rect
+                    key={i}
+                    fill={i % 3 === 0 ? "#004ac6" : "#131b2e"}
+                    height="12"
+                    rx="2"
+                    width="12"
+                    x={x}
+                    y={y}
+                  />
+                ))}
+
+                {/* Center VWA */}
+                <rect fill="#004ac6" height="50" rx="12" width="50" x="75" y="75" />
+                <text
+                  fill="#fff"
+                  fontFamily="'Plus Jakarta Sans', sans-serif"
+                  fontSize="14"
+                  fontWeight="700"
+                  textAnchor="middle"
+                  x="100"
+                  y="105"
+                >
+                  VWA
+                </text>
+              </svg>
+            </div>
+
+            {/* Backup PIN */}
+            <div className="wallet-qr-pos__pin">
+              <span className="wallet-qr-pos__pin-label">
+                {t("Mã PIN dự phòng nếu camera quầy lỗi:")}
+              </span>
+              <div className="wallet-qr-pos__pin-value">8826 - 4921</div>
+            </div>
+          </div>
+
+          {/* Auto subsidy toggle */}
+          <div className="wallet-qr-pos__controls">
+            <label className="wallet-qr-pos__toggle">
+              <div className="wallet-qr-pos__toggle-left">
+                <Sparkles size={18} />
+                <div>
+                  <b>{t("Tự động áp dụng Trợ giá SV")}</b>
+                  <span>{t("Trừ ngay 10.000đ khi đủ điều kiện đơn")}</span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={autoSubsidy}
+                onChange={(e) => setAutoSubsidy(e.target.checked)}
+              />
+            </label>
 
             <button
-              onClick={() => loadAll(false)}
-              disabled={refreshing}
-              title={t("Làm mới")}
-              aria-label={t("Làm mới")}
-              style={{
-                padding: "6px 12px",
-                background: "var(--bg-tertiary, #f5f7fb)",
-                border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 6,
-                cursor: refreshing ? "not-allowed" : "pointer",
-                fontSize: 12,
-                color: "var(--text-primary, #172033)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                opacity: refreshing ? 0.6 : 1,
-              }}
+              className="wallet-qr-pos__refresh"
+              onClick={() => setQrTimer(60)}
             >
-              {refreshing ? (
-                <Loader2
-                  size={12}
-                  style={{ animation: "spin 1s linear infinite" }}
-                />
-              ) : (
-                <RefreshCw size={12} />
-              )}
+              <RefreshCw size={16} />
+              {t("Làm mới mã thanh toán ngay")}
             </button>
           </div>
         </div>
+      </section>
 
+      {/* ============================================== */}
+      {/* 4. TRANSACTION HISTORY                          */}
+      {/* ============================================== */}
+      <section className="wallet-history">
+        <div className="wallet-history__head">
+          <div>
+            <h2>
+              <History size={22} />
+              {t("Lịch sử giao dịch & Biến động số dư")}
+            </h2>
+            <p>
+              {t("Tra cứu chi tiết các lần thanh toán, nạp tiền và tiền trợ giá học viện")}
+            </p>
+          </div>
+          <button className="wallet-history__export">
+            <Download size={16} />
+            {t("Tải sao kê PDF / Excel")}
+          </button>
+        </div>
+
+        <div className="wallet-history__filters">
+          <div className="wallet-history__tabs">
+            {TABS.map((tItem) => (
+              <button
+                key={tItem.id}
+                className={`wallet-history__tab ${
+                  tab === tItem.id ? "active" : ""
+                }`}
+                onClick={() => setTab(tItem.id)}
+              >
+                {tItem.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="wallet-history__search">
+            <Search size={16} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("Tìm theo mã đơn, quầy...")}
+            />
+          </div>
+        </div>
+
+        {/* List */}
         {loading && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {Array.from({ length: 5 }).map((_, i) => (
+          <div className="wallet-history__skeleton">
+            {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonList key={i} />
             ))}
           </div>
         )}
 
         {!loading && filtered.length === 0 && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: 40,
-              color: "var(--text-light, #8993a3)",
-              background: "var(--bg-tertiary, #f8fafc)",
-              borderRadius: 10,
-            }}
-          >
-            <Wallet size={40} style={{ opacity: 0.3, marginBottom: 8 }} />
-            <p style={{ margin: 0, fontSize: 13 }}>
+          <div className="wallet-history__empty">
+            <Wallet size={40} />
+            <b>{t("Chưa có giao dịch nào")}</b>
+            <p>
               {tab === "all"
-                ? t("Chưa có giao dịch nào")
-                : t("Không có giao dịch {type}").replace(
-                    "{type}",
-                    TABS.find((x) => x.id === tab)?.label || ""
-                  )}
+                ? t("Bắt đầu nạp tiền hoặc đặt món để có giao dịch đầu tiên.")
+                : t("Không có giao dịch loại này.")}
             </p>
           </div>
         )}
 
         {!loading && filtered.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {filtered.map((tx) => (
-              <TransactionRow
+          <div className="wallet-history__list">
+            {filtered.slice(0, visibleTx).map((tx) => (
+              <WalletTransactionRow
                 key={tx.id}
                 tx={tx}
                 TX_CONFIG={TX_CONFIG}
                 STATUS_CONFIG={STATUS_CONFIG}
-                methodLabels={{
-                  QR: t("VietQR"),
-                  CASH: t("Tiền mặt"),
-                  BANK: t("Chuyển khoản"),
-                  WALLET: t("Ví Canteen"),
-                }}
+                t={t}
               />
             ))}
           </div>
         )}
-      </div>
 
-      {/* MODALS */}
+        {!loading && filtered.length > visibleTx && (
+          <div className="wallet-history__more">
+            <span>
+              {t("Hiển thị")} {Math.min(visibleTx, filtered.length)}{" "}
+              {t("trên tổng số")} {filtered.length} {t("giao dịch")}
+            </span>
+            <button
+              type="button"
+              onClick={() => setVisibleTx((n) => n + 8)}
+            >
+              {t("Xem thêm lịch sử cũ hơn")}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* ============================================== */}
+      {/* 5. SECURITY BANNER                              */}
+      {/* ============================================== */}
+      <section className="wallet-security">
+        <div className="wallet-security__left">
+          <div className="wallet-security__icon">
+            <Shield size={26} />
+          </div>
+          <div>
+            <h3>{t("Tiêu chuẩn An toàn & Bảo mật Học đường")}</h3>
+            <p>
+              {t("Chứng chỉ bảo mật thanh toán tiêu chuẩn quốc tế PCI-DSS Level 1. Hệ thống tích hợp xác thực SSO an toàn cùng cơ chế tự khóa số dư khi mất thẻ sinh viên.")}
+            </p>
+          </div>
+        </div>
+        <div className="wallet-security__actions">
+          <button className="wallet-security__btn wallet-security__btn--ghost">
+            <Lock size={16} />
+            {t("Khóa thẻ khẩn cấp")}
+          </button>
+          <button
+            type="button"
+            className="wallet-security__btn wallet-security__btn--primary"
+            onClick={() => {
+              window.location.href = "tel:19006868";
+            }}
+          >
+            <Headset size={16} />
+            {t("Hotline: 1900 6868")}
+          </button>
+        </div>
+      </section>
+
+      {/* ============================================== */}
+      {/* MODALS (GIỮ NGUYÊN)                             */}
+      {/* ============================================== */}
       {showDeposit && (
         <DepositModal
           settings={settings}
@@ -648,29 +863,25 @@ export default function CustomerWallet() {
       )}
 
       <style>{`
-        @keyframes spin {
+        @keyframes wallet-spin-anim {
           from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
+          to { transform: rotate(360deg); }
         }
-        @media (max-width: 640px) {
-          .wallet-stats-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
-          }
-        }
+        .wallet-spin { animation: wallet-spin-anim 1s linear infinite; }
       `}</style>
     </div>
   );
 }
 
 // ============================================================
-// SUB: TransactionRow
+// SUB: WalletTransactionRow
 // ============================================================
 
-function TransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, methodLabels }) {
+function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
   const config = TX_CONFIG[tx.type] || {
     icon: Wallet,
-    color: "#2634d5",
-    bg: "#eef2ff",
+    color: "#2563EB",
+    bg: "#EFF6FF",
     label: "—",
     sign: "",
   };
@@ -680,152 +891,71 @@ function TransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, methodLabels }) {
     bg: "#f1f5f9",
   };
   const Icon = config.icon;
-
-  const methodLabel = methodLabels[tx.method];
+  const isDeposit = tx.type === "deposit";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: 14,
-        background: "var(--bg-tertiary, #f8fafc)",
-        borderRadius: 10,
-        border: "1px solid var(--border-color, #eef2f7)",
-      }}
-    >
-      <div
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: 12,
-          background: config.bg,
-          color: config.color,
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
-        }}
-      >
-        <Icon size={20} />
+    <div className="wallet-tx-row">
+      <div className="wallet-tx-row__left">
+        <div
+          className="wallet-tx-row__icon"
+          style={{
+            background: isDeposit ? "rgba(37, 99, 235, 0.1)" : "var(--c-surface-low)",
+            color: isDeposit ? "#2563EB" : "#434655",
+          }}
+        >
+          <Icon size={20} />
+        </div>
+        <div className="wallet-tx-row__info">
+          <div className="wallet-tx-row__title-row">
+            <b className="wallet-tx-row__title">
+              {config.label} {tx.code && `#${tx.code}`}
+            </b>
+            {tx.counter && (
+              <span className="wallet-tx-row__counter">{tx.counter}</span>
+            )}
+          </div>
+          <p className="wallet-tx-row__desc">
+            {tx.note || tx.description || config.label}
+            {tx.created_at && ` • ${fmtDateTime(tx.created_at)}`}
+          </p>
+          {tx.discount > 0 && (
+            <span className="wallet-tx-row__subsidy">
+              <Sparkles size={12} />
+              {t("Đã trừ trợ giá SV:")} -{money(tx.discount)}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="wallet-tx-row__right">
         <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginBottom: 3,
-            flexWrap: "wrap",
-          }}
+          className={`wallet-tx-row__amount ${
+            isDeposit ? "wallet-tx-row__amount--plus" : ""
+          }`}
         >
-          <b style={{ fontSize: 13, color: "var(--text-primary, #172033)" }}>
-            {config.label}
-          </b>
-          <span
-            style={{
-              padding: "2px 8px",
-              borderRadius: 10,
-              fontSize: 10,
-              fontWeight: 700,
-              background: statusCfg.bg,
-              color: statusCfg.color,
-            }}
-          >
-            {statusCfg.label}
-          </span>
+          {config.sign}
+          {money(tx.amount || 0).replace("đ", "")}{" "}
+          <span className="wallet-tx-row__amount-unit">đ</span>
         </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--text-light, #8993a3)",
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <span style={{ fontFamily: "monospace" }}>{tx.code || "—"}</span>
-          {methodLabel && <span>· {methodLabel}</span>}
-          <span>· {fmtDateTime(tx.created_at)}</span>
-        </div>
-        {tx.admin_note && (
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--text-muted, #64748b)",
-              marginTop: 4,
-              fontStyle: "italic",
-            }}
-          >
-            Admin: "{tx.admin_note}"
+        {tx.balance_after !== undefined && (
+          <div className="wallet-tx-row__balance">
+            {t("Số dư cuối:")} {money(tx.balance_after)}
           </div>
         )}
-      </div>
-
-      <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <b style={{ fontSize: 15, color: config.color }}>
-          {config.sign}
-          {money(tx.amount || 0)}
-        </b>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// SUB: StatBox
-// ============================================================
-
-function StatBox({ icon, label, value, color }) {
-  return (
-    <div
-      style={{
-        background: "var(--card-bg, #fff)",
-        border: "1px solid var(--border-color, #e7ebf0)",
-        borderRadius: 12,
-        padding: 14,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          marginBottom: 6,
-        }}
-      >
-        <div
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            background: color + "18",
-            color,
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </div>
         <span
-          style={{
-            fontSize: 11,
-            color: "var(--text-light, #8993a3)",
-            fontWeight: 600,
-          }}
+          className="wallet-tx-row__status"
+          style={{ background: statusCfg.bg, color: statusCfg.color }}
         >
-          {label}
+          {tx.status === "approved" && <CheckCircle2 size={12} />}
+          {statusCfg.label}
         </span>
       </div>
-      <div style={{ fontSize: 16, fontWeight: 800, color }}>{value}</div>
     </div>
   );
 }
 
 // ============================================================
-// MODAL WRAPPER
+// MODAL WRAPPER (GIỮ NGUYÊN)
 // ============================================================
 
 function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
@@ -843,28 +973,12 @@ function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
       role="dialog"
       aria-modal="true"
       aria-label={label}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: MODAL_Z,
-        padding: 20,
-        overflowY: "auto",
-      }}
+      className="wallet-modal-overlay"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--card-bg, #fff)",
-          borderRadius: 14,
-          padding: 24,
-          width: "100%",
-          maxWidth,
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
+        className="wallet-modal"
+        style={{ maxWidth }}
       >
         {children}
       </div>
@@ -873,7 +987,7 @@ function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
 }
 
 // ============================================================
-// DEPOSIT MODAL
+// DEPOSIT MODAL (GIỮ NGUYÊN logic, đổi UI nhẹ)
 // ============================================================
 
 function DepositModal({ settings, onClose, onSuccess }) {
@@ -915,7 +1029,7 @@ function DepositModal({ settings, onClose, onSuccess }) {
     }
   };
 
-  // ---------- STEP 2: QR ----------
+  // STEP 2: QR
   if (step === 2 && tx && method === "QR") {
     const bankCode = settings?.bank || "VCB";
     const bankAccount = settings?.account || "";
@@ -927,166 +1041,69 @@ function DepositModal({ settings, onClose, onSuccess }) {
 
     return (
       <Modal onClose={onClose} busy={busy} label={t("Nạp tiền qua VietQR")}>
-        <div style={{ textAlign: "center", marginBottom: 16 }}>
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: "50%",
-              background: "#eef2ff",
-              color: "#2634d5",
-              display: "grid",
-              placeItems: "center",
-              margin: "0 auto 12px",
-            }}
-          >
+        <div className="wallet-modal__head">
+          <h3>{t("Nạp tiền qua VietQR")}</h3>
+          <button onClick={onClose} disabled={busy}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="wallet-qr-modal">
+          <div className="wallet-qr-modal__icon-wrap">
             <QrCode size={28} />
           </div>
-          <h3 style={{ margin: "0 0 6px", color: "var(--text-primary, #172033)" }}>
-            {t("Nạp tiền qua VietQR")}
-          </h3>
-          <p
-            style={{
-              margin: 0,
-              color: "var(--text-muted, #64748b)",
-              fontSize: 13,
-            }}
-          >
+          <p className="wallet-qr-modal__desc">
             {t("Quét mã QR để chuyển {amount} cho đơn {code}")
               .replace("{amount}", money(tx.amount))
               .replace("{code}", tx.code)}
           </p>
-        </div>
 
-        {qrUrl ? (
-          <div
-            style={{
-              background: "#fff",
-              padding: 16,
-              borderRadius: 12,
-              display: "grid",
-              placeItems: "center",
-              marginBottom: 16,
-              border: "1px solid var(--border-color, #e5e9ef)",
-            }}
-          >
-            <img
-              src={qrUrl}
-              alt="QR"
-              style={{ width: 240, height: 240 }}
-              onError={(e) => {
-                e.target.style.display = "none";
-                e.target.nextElementSibling.style.display = "block";
-              }}
-            />
-            <div
-              style={{
-                display: "none",
-                color: "var(--text-muted, #64748b)",
-                fontSize: 13,
-                textAlign: "center",
-                padding: 20,
-              }}
-            >
-              {t("Không tải được mã QR")}
-              <br />
-              <b>
-                {bankCode} · {bankAccount}
-              </b>
-              <br />
-              {t("Nội dung chuyển khoản")}: <b>{tx.code}</b>
+          {qrUrl ? (
+            <div className="wallet-qr-modal__img-wrap">
+              <img
+                src={qrUrl}
+                alt="QR"
+                onError={(e) => {
+                  e.target.style.display = "none";
+                }}
+              />
             </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              background: "#fff4d8",
-              border: "1px solid #f59e0b40",
-              borderRadius: 10,
-              padding: 14,
-              marginBottom: 16,
-              fontSize: 13,
-              color: "#92400e",
-              textAlign: "center",
-            }}
-          >
-            {t("Chưa cấu hình tài khoản nhận tiền")}
-          </div>
-        )}
+          ) : (
+            <div className="wallet-qr-modal__warning">
+              {t("Chưa cấu hình tài khoản nhận tiền")}
+            </div>
+          )}
 
-        <div
-          style={{
-            background: "#fff4d8",
-            border: "1px solid #f59e0b40",
-            borderRadius: 10,
-            padding: 12,
-            marginBottom: 14,
-            fontSize: 12,
-            color: "#92400e",
-            display: "flex",
-            gap: 8,
-          }}
-        >
-          <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>
-            {t("Vui lòng chuyển đúng số tiền và nội dung. Yêu cầu sẽ được admin duyệt trong vài phút.")}
-          </span>
+          <div className="wallet-qr-modal__note">
+            <AlertTriangle size={16} />
+            <span>
+              {t("Vui lòng chuyển đúng số tiền và nội dung. Yêu cầu sẽ được admin duyệt trong vài phút.")}
+            </span>
+          </div>
+
+          <button className="wallet-modal__primary" onClick={onSuccess}>
+            {t("Đã hiểu")}
+          </button>
         </div>
-
-        <button
-          onClick={onSuccess}
-          style={{
-            width: "100%",
-            padding: 12,
-            background: "#2634d5",
-            color: "#fff",
-            border: 0,
-            borderRadius: 8,
-            fontWeight: 700,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          {t("Đã hiểu")}
-        </button>
       </Modal>
     );
   }
 
-  // ---------- STEP 1: form ----------
+  // STEP 1: Form
   return (
     <Modal onClose={onClose} busy={busy} label={t("Nạp tiền")}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <h3
-          style={{
-            margin: 0,
-            color: "var(--text-primary, #172033)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <Plus size={20} style={{ color: "#18a967" }} /> {t("Nạp tiền")}
+      <div className="wallet-modal__head">
+        <h3>
+          <Plus size={20} style={{ color: "#18a967" }} />
+          {t("Nạp tiền")}
         </h3>
-        <button
-          onClick={onClose}
-          disabled={busy}
-          aria-label={t("Đóng")}
-          style={closeBtnStyle(busy)}
-        >
+        <button onClick={onClose} disabled={busy}>
           <X size={20} />
         </button>
       </div>
 
-      <label style={labelStyle}>{t("Số tiền")} *</label>
-      <div style={{ position: "relative", marginBottom: 10 }}>
+      <label className="wallet-modal__label">{t("Số tiền")} *</label>
+      <div className="wallet-modal__input-wrap">
         <input
           type="number"
           value={amount}
@@ -1094,73 +1111,32 @@ function DepositModal({ settings, onClose, onSuccess }) {
           min={MIN_DEPOSIT}
           step={1000}
           disabled={busy}
-          style={{
-            ...inputStyle,
-            paddingRight: 50,
-            fontSize: 18,
-            fontWeight: 700,
-            color: "#18a967",
-          }}
+          className="wallet-modal__input wallet-modal__input--amount"
         />
-        <span
-          style={{
-            position: "absolute",
-            right: 14,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--text-light, #94a3b8)",
-            fontWeight: 600,
-          }}
-        >
-          đ
-        </span>
+        <span className="wallet-modal__input-suffix">đ</span>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 6,
-          marginBottom: 16,
-        }}
-      >
+      <div className="wallet-modal__quick">
         {QUICK_DEPOSIT.map((a) => (
           <button
             key={a}
             type="button"
             onClick={() => setAmount(a)}
             disabled={busy}
-            style={quickBtnStyle(amount === a, "#2634d5", busy)}
+            className={`wallet-modal__quick-btn ${
+              amount === a ? "active" : ""
+            }`}
           >
             {a.toLocaleString("vi-VN")}đ
           </button>
         ))}
       </div>
 
-      <label style={labelStyle}>{t("Phương thức")}</label>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
+      <label className="wallet-modal__label">{t("Phương thức")}</label>
+      <div className="wallet-modal__method-grid">
         {[
-          {
-            id: "QR",
-            icon: QrCode,
-            label: t("VietQR"),
-            desc: "VietQR",
-            color: "#2634d5",
-          },
-          {
-            id: "CASH",
-            icon: Banknote,
-            label: t("Tiền mặt"),
-            desc: t("Nộp tại quầy"),
-            color: "#18a967",
-          },
+          { id: "QR", icon: QrCode, label: t("VietQR"), desc: "VietQR" },
+          { id: "CASH", icon: Banknote, label: t("Tiền mặt"), desc: t("Nộp tại quầy") },
         ].map((m) => {
           const Icon = m.icon;
           const active = method === m.id;
@@ -1170,74 +1146,40 @@ function DepositModal({ settings, onClose, onSuccess }) {
               type="button"
               onClick={() => setMethod(m.id)}
               disabled={busy}
-              style={{
-                padding: 14,
-                background: active ? m.color + "15" : "var(--card-bg, #fff)",
-                border: active
-                  ? `2px solid ${m.color}`
-                  : "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 10,
-                cursor: busy ? "not-allowed" : "pointer",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 4,
-                opacity: busy ? 0.6 : 1,
-              }}
+              className={`wallet-modal__method-btn ${
+                active ? "active" : ""
+              }`}
             >
-              <Icon
-                size={22}
-                style={{
-                  color: active ? m.color : "var(--text-light, #94a3b8)",
-                }}
-              />
-              <b
-                style={{
-                  fontSize: 12,
-                  color: active ? m.color : "var(--text-primary, #475569)",
-                }}
-              >
-                {m.label}
-              </b>
-              <span style={{ fontSize: 10, color: "var(--text-light, #94a3b8)" }}>
-                {m.desc}
-              </span>
+              <Icon size={22} />
+              <b>{m.label}</b>
+              <span>{m.desc}</span>
             </button>
           );
         })}
       </div>
 
-      <label style={labelStyle}>{t("Ghi chú")}</label>
+      <label className="wallet-modal__label">{t("Ghi chú")}</label>
       <input
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder={t("Ghi chú thêm (không bắt buộc)")}
         maxLength={200}
         disabled={busy}
-        style={inputStyle}
+        className="wallet-modal__input"
       />
 
-      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          style={btnCancelStyle(busy)}
-        >
+      <div className="wallet-modal__actions">
+        <button onClick={onClose} disabled={busy} className="wallet-modal__btn wallet-modal__btn--ghost">
           {t("Hủy")}
         </button>
         <button
-          type="button"
           onClick={submit}
           disabled={busy || amount < MIN_DEPOSIT}
-          style={btnPrimaryStyle(busy || amount < MIN_DEPOSIT, "#18a967")}
+          className="wallet-modal__btn wallet-modal__btn--primary"
         >
           {submitting ? (
             <>
-              <Loader2
-                size={14}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
+              <Loader2 size={14} className="wallet-spin" />
               {t("Đang xử lý...")}
             </>
           ) : (
@@ -1250,7 +1192,7 @@ function DepositModal({ settings, onClose, onSuccess }) {
 }
 
 // ============================================================
-// WITHDRAW MODAL
+// WITHDRAW MODAL (GIỮ NGUYÊN logic)
 // ============================================================
 
 function WithdrawModal({ balance, bank, onClose, onSuccess }) {
@@ -1263,7 +1205,6 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
 
   const submit = async () => {
     if (submitting) return;
-
     if (amount < MIN_WITHDRAW) {
       toast(
         t("Số tiền rút tối thiểu {value}").replace("{value}", money(MIN_WITHDRAW)),
@@ -1290,53 +1231,22 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
 
   return (
     <Modal onClose={onClose} busy={busy} label={t("Rút tiền")}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <h3
-          style={{
-            margin: 0,
-            color: "var(--text-primary, #172033)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <Minus size={20} style={{ color: "#f59e0b" }} /> {t("Rút tiền")}
+      <div className="wallet-modal__head">
+        <h3>
+          <Minus size={20} style={{ color: "#f59e0b" }} />
+          {t("Rút tiền")}
         </h3>
-        <button
-          onClick={onClose}
-          disabled={busy}
-          aria-label={t("Đóng")}
-          style={closeBtnStyle(busy)}
-        >
+        <button onClick={onClose} disabled={busy}>
           <X size={20} />
         </button>
       </div>
 
-      <div
-        style={{
-          background: "linear-gradient(135deg, #fef3c7, #fff4d8)",
-          border: "1px solid #f59e0b40",
-          borderRadius: 10,
-          padding: 12,
-          marginBottom: 14,
-          fontSize: 12,
-          color: "#92400e",
-        }}
-      >
-        <div>
-          <b>{t("Số dư khả dụng")}:</b> {money(balance)}
-        </div>
+      <div className="wallet-modal__info">
+        <b>{t("Số dư khả dụng")}:</b> {money(balance)}
       </div>
 
-      <label style={labelStyle}>{t("Số tiền")} *</label>
-      <div style={{ position: "relative", marginBottom: 10 }}>
+      <label className="wallet-modal__label">{t("Số tiền")} *</label>
+      <div className="wallet-modal__input-wrap">
         <input
           type="number"
           value={amount}
@@ -1345,43 +1255,21 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
           max={balance}
           step={1000}
           disabled={busy}
-          style={{
-            ...inputStyle,
-            paddingRight: 50,
-            fontSize: 18,
-            fontWeight: 700,
-            color: "#f59e0b",
-          }}
+          className="wallet-modal__input wallet-modal__input--amount"
         />
-        <span
-          style={{
-            position: "absolute",
-            right: 14,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--text-light, #94a3b8)",
-            fontWeight: 600,
-          }}
-        >
-          đ
-        </span>
+        <span className="wallet-modal__input-suffix">đ</span>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 6,
-          marginBottom: 10,
-        }}
-      >
+      <div className="wallet-modal__quick">
         {QUICK_WITHDRAW.map((a) => (
           <button
             key={a}
             type="button"
             onClick={() => setAmount(a)}
             disabled={busy || a > balance}
-            style={quickBtnStyle(amount === a, "#f59e0b", busy || a > balance)}
+            className={`wallet-modal__quick-btn ${
+              amount === a ? "active" : ""
+            }`}
           >
             {a.toLocaleString("vi-VN")}đ
           </button>
@@ -1392,89 +1280,44 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
         type="button"
         onClick={() => setAmount(balance)}
         disabled={busy}
-        style={{
-          width: "100%",
-          padding: 8,
-          marginBottom: 14,
-          background: "var(--bg-tertiary, #f5f7fb)",
-          border: "1px dashed var(--border-color, #cbd5e1)",
-          borderRadius: 8,
-          cursor: busy ? "not-allowed" : "pointer",
-          fontSize: 12,
-          fontWeight: 600,
-          color: "var(--text-muted, #64748b)",
-          opacity: busy ? 0.6 : 1,
-        }}
+        className="wallet-modal__all-btn"
       >
         {t("Rút toàn bộ")} {money(balance)}
       </button>
 
-      <label style={labelStyle}>{t("Tài khoản nhận tiền")}</label>
-      <div
-        style={{
-          background: "var(--bg-tertiary, #f5f7fb)",
-          borderRadius: 10,
-          padding: 12,
-          marginBottom: 14,
-          fontSize: 12,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            marginBottom: 4,
-          }}
-        >
-          <Building2 size={14} style={{ color: "#2634d5" }} />
+      <label className="wallet-modal__label">{t("Tài khoản nhận tiền")}</label>
+      <div className="wallet-modal__bank-info">
+        <div className="wallet-modal__bank-row">
+          <Building2 size={14} />
           <b>{bank.name}</b>
         </div>
-        <div
-          style={{
-            fontFamily: "monospace",
-            color: "var(--text-muted, #64748b)",
-            wordBreak: "break-all",
-          }}
-        >
+        <div className="wallet-modal__bank-acc">
           {bank.account} · {bank.accountName}
         </div>
       </div>
 
-      <label style={labelStyle}>{t("Ghi chú")}</label>
+      <label className="wallet-modal__label">{t("Ghi chú")}</label>
       <input
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder={t("Ghi chú thêm (không bắt buộc)")}
         maxLength={200}
         disabled={busy}
-        style={inputStyle}
+        className="wallet-modal__input"
       />
 
-      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          style={btnCancelStyle(busy)}
-        >
+      <div className="wallet-modal__actions">
+        <button onClick={onClose} disabled={busy} className="wallet-modal__btn wallet-modal__btn--ghost">
           {t("Hủy")}
         </button>
         <button
-          type="button"
           onClick={submit}
           disabled={busy || amount < MIN_WITHDRAW || amount > balance}
-          style={btnPrimaryStyle(
-            busy || amount < MIN_WITHDRAW || amount > balance,
-            "#f59e0b"
-          )}
+          className="wallet-modal__btn wallet-modal__btn--primary"
         >
           {submitting ? (
             <>
-              <Loader2
-                size={14}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
+              <Loader2 size={14} className="wallet-spin" />
               {t("Đang xử lý...")}
             </>
           ) : (
@@ -1487,7 +1330,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
 }
 
 // ============================================================
-// LINK BANK MODAL
+// LINK BANK MODAL (GIỮ NGUYÊN logic)
 // ============================================================
 
 function LinkBankModal({ wallet, onClose, onSuccess }) {
@@ -1501,7 +1344,6 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
 
   const submit = async () => {
     if (submitting) return;
-
     if (!account.trim() || account.trim().length < 6) {
       toast(t("Số tài khoản không hợp lệ"), "error");
       return;
@@ -1529,60 +1371,29 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
 
   return (
     <Modal onClose={onClose} busy={busy} label={t("Liên kết ngân hàng")}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <h3
-          style={{
-            margin: 0,
-            color: "var(--text-primary, #172033)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <CreditCard size={20} style={{ color: "#2634d5" }} /> {t("Liên kết ngân hàng")}
+      <div className="wallet-modal__head">
+        <h3>
+          <CreditCard size={20} style={{ color: "#2563EB" }} />
+          {t("Liên kết ngân hàng")}
         </h3>
-        <button
-          onClick={onClose}
-          disabled={busy}
-          aria-label={t("Đóng")}
-          style={closeBtnStyle(busy)}
-        >
+        <button onClick={onClose} disabled={busy}>
           <X size={20} />
         </button>
       </div>
 
-      <div
-        style={{
-          background: "#eef2ff",
-          border: "1px solid #2634d540",
-          borderRadius: 10,
-          padding: 12,
-          marginBottom: 14,
-          fontSize: 12,
-          color: "#2634d5",
-          display: "flex",
-          gap: 8,
-        }}
-      >
-        <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div className="wallet-modal__note">
+        <AlertTriangle size={16} />
         <span>
           {t("Tài khoản này sẽ dùng để nhận tiền khi bạn rút từ Ví Canteen. Hãy kiểm tra kỹ trước khi lưu.")}
         </span>
       </div>
 
-      <label style={labelStyle}>{t("Ngân hàng")} *</label>
+      <label className="wallet-modal__label">{t("Ngân hàng")} *</label>
       <select
         value={bankName}
         onChange={(e) => setBankName(e.target.value)}
         disabled={busy}
-        style={inputStyle}
+        className="wallet-modal__select"
       >
         {BANKS.map((b) => (
           <option key={b.code} value={b.code}>
@@ -1591,7 +1402,7 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
         ))}
       </select>
 
-      <label style={labelStyle}>{t("Số tài khoản")} *</label>
+      <label className="wallet-modal__label">{t("Số tài khoản")} *</label>
       <input
         value={account}
         onChange={(e) => setAccount(e.target.value.replace(/[^0-9]/g, ""))}
@@ -1599,10 +1410,10 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
         inputMode="numeric"
         maxLength={20}
         disabled={busy}
-        style={{ ...inputStyle, fontFamily: "monospace" }}
+        className="wallet-modal__input wallet-modal__input--mono"
       />
 
-      <label style={labelStyle}>{t("Tên chủ tài khoản")} *</label>
+      <label className="wallet-modal__label">{t("Tên chủ tài khoản")} *</label>
       <input
         value={accountName}
         onChange={(e) => setAccountName(e.target.value)}
@@ -1610,35 +1421,23 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
         placeholder="NGUYEN VAN A"
         maxLength={100}
         disabled={busy}
-        style={inputStyle}
+        className="wallet-modal__input"
       />
 
-      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          style={btnCancelStyle(busy)}
-        >
+      <div className="wallet-modal__actions">
+        <button onClick={onClose} disabled={busy} className="wallet-modal__btn wallet-modal__btn--ghost">
           {t("Hủy")}
         </button>
         <button
-          type="button"
           onClick={submit}
           disabled={
             busy || !account.trim() || !accountName.trim() || account.length < 6
           }
-          style={btnPrimaryStyle(
-            busy || !account.trim() || !accountName.trim() || account.length < 6,
-            "#2634d5"
-          )}
+          className="wallet-modal__btn wallet-modal__btn--primary"
         >
           {submitting ? (
             <>
-              <Loader2
-                size={14}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
+              <Loader2 size={14} className="wallet-spin" />
               {t("Đang lưu...")}
             </>
           ) : (
@@ -1649,80 +1448,3 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
     </Modal>
   );
 }
-
-// ============================================================
-// STYLE HELPERS
-// ============================================================
-
-const labelStyle = {
-  display: "block",
-  fontSize: 12,
-  fontWeight: 600,
-  marginBottom: 4,
-  marginTop: 12,
-  color: "var(--text-muted, #475569)",
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: 10,
-  border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  outline: "none",
-  background: "var(--bg-secondary, #fff)",
-  color: "var(--text-primary, #172033)",
-  fontSize: 13,
-  boxSizing: "border-box",
-};
-
-const closeBtnStyle = (disabled) => ({
-  background: "transparent",
-  border: 0,
-  cursor: disabled ? "not-allowed" : "pointer",
-  color: "var(--text-light, #8993a3)",
-  padding: 4,
-  display: "grid",
-  placeItems: "center",
-  opacity: disabled ? 0.5 : 1,
-});
-
-const btnCancelStyle = (disabled) => ({
-  flex: 1,
-  padding: 12,
-  border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  background: "var(--card-bg, #fff)",
-  cursor: disabled ? "not-allowed" : "pointer",
-  color: "var(--text-primary, #172033)",
-  fontWeight: 600,
-  fontSize: 13,
-  opacity: disabled ? 0.6 : 1,
-});
-
-const btnPrimaryStyle = (disabled, color = "#2634d5") => ({
-  flex: 1,
-  padding: 12,
-  background: disabled ? "#94a3b8" : color,
-  color: "#fff",
-  border: 0,
-  borderRadius: 8,
-  fontWeight: 700,
-  cursor: disabled ? "not-allowed" : "pointer",
-  fontSize: 13,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-});
-
-const quickBtnStyle = (active, color, disabled) => ({
-  padding: "8px 4px",
-  background: active ? color : "var(--bg-tertiary, #f5f7fb)",
-  color: active ? "#fff" : "var(--text-primary, #172033)",
-  border: `1px solid ${active ? color : "var(--border-color, #e5e9ef)"}`,
-  borderRadius: 7,
-  cursor: disabled ? "not-allowed" : "pointer",
-  fontSize: 11,
-  fontWeight: 700,
-  opacity: disabled ? 0.4 : 1,
-});

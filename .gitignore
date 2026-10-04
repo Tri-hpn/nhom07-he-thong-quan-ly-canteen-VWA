@@ -27,3 +27,30 @@ translate-cache.json
 .backup-quickfix/
 *.bak
 
+# Dependencies
+node_modules/
+
+# Build / Vite cache
+dist/
+.vite/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local database backups
+canteen-db-auto-backup-*.json
+*.bak
+*.bak2
+*.old
+*.tmp
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*.log

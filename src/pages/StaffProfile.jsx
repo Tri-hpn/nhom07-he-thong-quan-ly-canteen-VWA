@@ -11,8 +11,7 @@
 
 import { useState, useEffect } from "react";
 import {
-  User, Mail, Phone, MapPin, Save, Shield, Camera,
-  Pencil, X, Check, Lock, KeyRound, Eye, EyeOff,
+  User, Mail, Phone, MapPin, Save, Shield, Camera, Pencil, X, Check, Lock, KeyRound, Eye, EyeOff,
 } from "lucide-react";
 import { api } from "../api";
 import { toast } from "../components/Effects";
@@ -248,7 +247,7 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
           {user?.email}
         </p>
 
-        {/* Badge role */}
+        {/* BadgeCheck role */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
           <div
             style={{

@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // OWNERPRICEHISTORY.JSX — Lịch sử thay đổi giá (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
@@ -6,8 +6,7 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  TrendingUp, TrendingDown, Search, Calendar, X,
-  Loader2, AlertCircle, History, Minus,
+  TrendingUp, TrendingDown, Search, Calendar, X, Loader2, AlertCircle, History, Minus,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";

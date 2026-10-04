@@ -5,7 +5,9 @@
 // ============================================================
 
 import { useEffect, useRef } from "react";
-import { AlertTriangle, LogOut, Loader2 } from "lucide-react";
+import {
+  AlertTriangle, LogOut, Loader2,
+} from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 
 const MODAL_Z = 2147483600;

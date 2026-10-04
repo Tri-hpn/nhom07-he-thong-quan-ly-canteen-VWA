@@ -11,8 +11,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
-  Mail, LockKeyhole, ArrowRight, ShieldCheck, CheckCircle2,
-  Eye, EyeOff, Loader2, RefreshCw,
+  Mail, LockKeyhole, ArrowRight, ShieldCheck, CheckCircle2, Eye, EyeOff, Loader2, RefreshCw,
 } from "lucide-react";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";

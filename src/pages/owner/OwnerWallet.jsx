@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // OWNERWALLET.JSX — Quản lý Ví Canteen (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
@@ -7,10 +7,7 @@
 import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingBag,
-  Check, Ban, Search, AlertTriangle, Eye, Building2, X,
-  Loader2, AlertCircle, RefreshCw, CheckSquare, Square,
-  Clock,
+  Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingBag, Check, Ban, Search, AlertTriangle, Eye, Building2, X, Loader2, AlertCircle, RefreshCw, CheckSquare, Square, Clock,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";

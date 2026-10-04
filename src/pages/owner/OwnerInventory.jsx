@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // OWNERINVENTORY.JSX — Quản lý kho nguyên liệu (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
@@ -7,8 +7,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Plus, Search, Edit, Trash2, AlertTriangle, Package,
-  History, X, Loader2, AlertCircle, PackageX, Boxes,
+  Plus, Search, Pencil, Trash2, AlertTriangle, Package, History, X, Loader2, AlertCircle, PackageX, Boxes, Edit,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";

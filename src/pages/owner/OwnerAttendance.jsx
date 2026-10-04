@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // OWNERATTENDANCE.JSX — Bảng chấm công nhân viên (Admin)
 // ============================================================
 // Tính năng:
@@ -11,8 +11,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Calendar, Clock, TrendingUp, AlertTriangle, Search, X,
-  Loader2, CalendarX,
+  Calendar, Clock, TrendingUp, AlertTriangle, Search, X, Loader2, CalendarX,
 } from "lucide-react";
 import { api } from "../../api";
 import { SkeletonTable, SkeletonStats } from "../../components/Skeleton";

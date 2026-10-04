@@ -1,24 +1,27 @@
-﻿// ============================================================
-// APP.JSX — Root component + Routing
 // ============================================================
-// Cấu trúc:
-//   1. Imports (tách rõ theo nhóm: auth, customer, employee, owner)
-//   2. State: user (từ JWT), cart (persist localStorage), loading
-//   3. Effects: auto-login, refresh-user, cart persistence, role redirect
-//   4. Handlers: login, logout
-//   5. Render:
-//        - Nếu chưa login → chỉ hiện Login/Register/Forgot + OAuth callback
-//        - Nếu đã login → routes theo role + Layout
+// APP.JSX — Root component + Routing (V3)
+// ============================================================
+// ✅ V3:
+//   - Thêm route /employee/prep   → EmployeeOrdersPrep (layout mới)
+//   - Gộp /employee/shifts        → EmployeeShifts (check-in + history + đăng ký ca)
+//   - Xoá /employee/attendance    → redirect về /employee/shifts
+//   - Bỏ import EmployeeCheckInOut + EmployeeShiftHistory
 // ============================================================
 
 import { useState, useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import {
+  Routes, Route, Navigate, useNavigate, useLocation,
+} from "react-router-dom";
 
 // ---------- Core ----------
 import Layout from "./components/Layout";
 import CardHoverEffect from "./components/CardHoverEffect";
-import { api, setToken, getToken } from "./api";
+import { setToken } from "./api";
 import { toast } from "./components/Effects";
+
+// ---------- Auth / Phân quyền (Giai đoạn 2) ----------
+import { useAuth } from "./contexts/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 // ---------- Auth pages ----------
 import Login from "./pages/Login";
@@ -27,6 +30,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import PaymentResult from "./pages/PaymentResult";
 import StaffProfile from "./pages/StaffProfile";
 import OAuthCallback from "./pages/OAuthCallback";
+import ForcePasswordChange from "./pages/ForcePasswordChange";
 
 // ---------- Customer pages ----------
 import CustomerHome from "./pages/customer/CustomerHome";
@@ -42,10 +46,11 @@ import CustomerChat from "./pages/customer/CustomerChat";
 
 // ---------- Employee pages ----------
 import EmployeeHome from "./pages/employee/EmployeeHome";
-import EmployeeCheckInOut from "./pages/employee/EmployeeCheckInOut";
 import EmployeeOrders from "./pages/employee/EmployeeOrders";
+import EmployeeOrdersPrep from "./pages/employee/EmployeeOrdersPrep";
 import EmployeeMenu from "./pages/employee/EmployeeMenu";
 import EmployeeChat from "./pages/employee/EmployeeChat";
+import EmployeeShifts from "./pages/employee/EmployeeShifts";
 
 // ---------- Owner (Admin) pages ----------
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
@@ -70,10 +75,9 @@ import OwnerSettings from "./pages/owner/OwnerSettings";
 // ============================================================
 
 export default function App() {
-  // ---------- State ----------
-  const [user, setUser] = useState(null);
+  const { user, loading, login, logout, setUser, mustChangePassword } =
+    useAuth();
 
-  // Cart persist vào localStorage — key "canteen_cart"
   const [cart, setCart] = useState(() => {
     try {
       const saved = localStorage.getItem("canteen_cart");
@@ -83,13 +87,12 @@ export default function App() {
     }
   });
 
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 
   // ---------- Effects ----------
 
-  // 1. Tự động lưu cart vào localStorage mỗi khi đổi
+  // Tự động lưu cart vào localStorage
   useEffect(() => {
     try {
       localStorage.setItem("canteen_cart", JSON.stringify(cart));
@@ -97,34 +100,7 @@ export default function App() {
     } catch {}
   }, [cart]);
 
-  // 2. Auto-login: nếu có token → lấy info user từ API
-  useEffect(() => {
-    if (getToken()) {
-      api
-        .me()
-        .then(setUser)
-        .catch(() => setToken(null))
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  // 3. Lắng nghe event "refresh-user" để cập nhật user info
-  //    (được phát từ các component sau khi update profile)
-  useEffect(() => {
-    const handler = () => {
-      if (getToken()) {
-        api.me().then(setUser).catch(() => {});
-      }
-    };
-    window.addEventListener("refresh-user", handler);
-    return () => window.removeEventListener("refresh-user", handler);
-  }, []);
-
-  // ✅ FIX M2: Lắng nghe "auth-expired" từ api.js khi gặp 401
-  //    → clear user + cart, đá về trang login.
-  //    Tránh user kẹt ở trang trắng / lỗi khi token hết hạn.
+  // Lắng nghe "auth-expired" từ api.js khi gặp 401
   useEffect(() => {
     const handler = () => {
       setToken(null);
@@ -137,7 +113,6 @@ export default function App() {
         localStorage.removeItem("points_last_seen");
       } catch {}
 
-      // Clean body state (giống handleLogout)
       document.body.style.overflow = "";
       document.body.style.paddingRight = "";
       document.documentElement.style.overflow = "";
@@ -152,10 +127,10 @@ export default function App() {
     return () => window.removeEventListener("auth-expired", handler);
   }, [navigate]);
 
-  // 4. Redirect nếu user đang ở path không khớp với role
-  //    VD: ADMIN vào /customer → tự chuyển sang /owner
+  // Redirect nếu user đang ở path không khớp với role
   useEffect(() => {
     if (!user) return;
+    if (mustChangePassword) return;
     const rolePrefix =
       user.role === "ADMIN"
         ? "/owner"
@@ -164,26 +139,26 @@ export default function App() {
         : "/customer";
     const path = location.pathname;
     if (!path.startsWith(rolePrefix)) {
-      navigate(rolePrefix, { replace: true });
+      const target =
+        user.role === "CUSTOMER" ? "/customer/home" : rolePrefix;
+      navigate(target, { replace: true });
     }
-  }, [user, location.pathname, navigate]);
+  }, [user, mustChangePassword, location.pathname, navigate]);
 
   // ---------- Handlers ----------
 
   const handleLogin = async (email, password) => {
     try {
-      const res = await api.login(email, password);
-      setToken(res.token);
-      setUser(res.user);
+      const u = await login(email, password);
 
       const home =
-        res.user.role === "ADMIN"
+        u.role === "ADMIN"
           ? "/owner"
-          : res.user.role === "EMPLOYEE"
+          : u.role === "EMPLOYEE"
           ? "/employee"
-          : "/customer";
+          : "/customer/home";
       navigate(home);
-      toast("Xin chào " + res.user.name + "!", "success", { center: true });
+      toast("Xin chào " + u.name + "!", "success");
       return true;
     } catch (e) {
       return false;
@@ -191,20 +166,19 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setToken(null);
-    setUser(null);
+    logout();
     setCart({});
     localStorage.removeItem("canteen_cart");
 
-    // ✅ Force clean body state — tránh scroll lock/class còn sót
-    // từ ConfirmDialog / Sidebar mobile / ChatBot chưa kịp cleanup
     document.body.style.overflow = "";
     document.body.style.paddingRight = "";
     document.documentElement.style.overflow = "";
     document.body.classList.remove("has-bottom-nav");
     document.body.classList.remove("mobile-open");
 
-    try { window.dispatchEvent(new CustomEvent("logout")); } catch {}
+    try {
+      window.dispatchEvent(new CustomEvent("logout"));
+    } catch {}
 
     navigate("/");
   };
@@ -218,8 +192,13 @@ export default function App() {
     );
   }
 
+  // Bắt buộc đổi mật khẩu
+  if (mustChangePassword) {
+    return <ForcePasswordChange />;
+  }
+
   // ============================================================
-  // CHƯA ĐĂNG NHẬP — Chỉ hiện Login/Register/Forgot + OAuth callback
+  // CHƯA ĐĂNG NHẬP — Login/Register/Forgot + OAuth callback
   // ============================================================
   if (!user) {
     return (
@@ -231,7 +210,6 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/payment-result" element={<PaymentResult />} />
 
-          {/* ✅ OAuth callback — Google + Facebook */}
           <Route
             path="/auth/google/callback"
             element={
@@ -258,15 +236,37 @@ export default function App() {
   }
 
   // ============================================================
-  // HELPER — wrap page trong Layout (dùng cho đa số route)
+  // HELPER — wrap page trong Layout (EMPLOYEE/OWNER)
   // ============================================================
-  const wrap = (title, subtitle, node) => (
+  const wrap = (title, subtitle, node, options = {}) => (
     <Layout
       role={user.role}
       title={title}
       subtitle={subtitle}
       onLogout={handleLogout}
       user={user}
+      cart={cart}
+      setCart={setCart}
+      {...options}
+    >
+      {node}
+    </Layout>
+  );
+
+  // ============================================================
+  // HELPER — wrap customer page
+  // ============================================================
+  const wrapCustomer = (node, options = {}) => (
+    <Layout
+      role="CUSTOMER"
+      title=""
+      subtitle=""
+      onLogout={handleLogout}
+      user={user}
+      cart={cart}
+      setCart={setCart}
+      hideHeading
+      {...options}
     >
       {node}
     </Layout>
@@ -281,378 +281,324 @@ export default function App() {
       <Routes>
 
         {/* ==================== CUSTOMER ==================== */}
-
-        {/* Trang chủ — không tiêu đề, có footer */}
         <Route
           path="/customer"
-          element={
-            <Layout
-              role={user.role}
-              title=""
-              subtitle=""
-              onLogout={handleLogout}
-              user={user}
-              hideHeading
-              showFooter
-            >
-              <CustomerHome user={user} cart={cart} setCart={setCart} />
-            </Layout>
-          }
+          element={<Navigate to="/customer/home" replace />}
         />
 
-        {/* Thực đơn — không tiêu đề (tự có heading riêng) */}
+        <Route
+          path="/customer/home"
+          element={wrapCustomer(
+            <CustomerHome user={user} cart={cart} setCart={setCart} />,
+            { showFooter: true }
+          )}
+        />
+
         <Route
           path="/customer/menu"
-          element={
-            <Layout
-              role={user.role}
-              title=""
-              subtitle=""
-              onLogout={handleLogout}
-              user={user}
-              hideHeading
-            >
-              <CustomerMenu cart={cart} setCart={setCart} user={user} />
-            </Layout>
-          }
+          element={wrapCustomer(
+            <CustomerMenu cart={cart} setCart={setCart} user={user} />
+          )}
         />
 
-        {/* Giỏ hàng */}
         <Route
           path="/customer/cart"
-          element={wrap(
-            "Giỏ hàng",
-            "Món bạn đã chọn",
+          element={wrapCustomer(
             <CustomerCart cart={cart} setCart={setCart} />
           )}
         />
 
-        {/* Thanh toán */}
         <Route
           path="/customer/checkout"
-          element={wrap(
-            "Thanh toán",
-            "Hoàn tất đơn hàng",
+          element={wrapCustomer(
             <CustomerCheckout cart={cart} setCart={setCart} user={user} />
           )}
         />
 
-        {/* Điểm tích lũy → chuyển sang promotions (đã gộp tính năng) */}
-<Route
-  path="/customer/points"
-  element={<Navigate to="/customer/promotions" replace />}
-/>
-
-        {/* Đơn hàng */}
         <Route
-          path="/customer/orders"
-          element={wrap(
-            "Đơn hàng",
-            "Lịch sử đơn hàng",
-            <CustomerOrders user={user} />
-          )}
+          path="/customer/points"
+          element={<Navigate to="/customer/promotions" replace />}
         />
 
-        {/* Hồ sơ */}
+        <Route
+          path="/customer/orders"
+          element={wrapCustomer(<CustomerOrders user={user} />)}
+        />
+
         <Route
           path="/customer/profile"
-          element={wrap(
-            "Hồ sơ cá nhân",
-            "Thông tin tài khoản",
+          element={wrapCustomer(
             <CustomerProfile user={user} setUser={setUser} />
           )}
         />
 
-        {/* Khuyến mãi */}
         <Route
           path="/customer/promotions"
-          element={wrap(
-            "Khuyến mãi",
-            "Ưu đãi dành cho bạn",
-            <CustomerPromotions />
-          )}
+          element={wrapCustomer(<CustomerPromotions />)}
         />
 
-        {/* Ví Canteen */}
         <Route
           path="/customer/wallet"
-          element={wrap(
-            "Ví Canteen",
-            "Nạp tiền & thanh toán nhanh",
-            <CustomerWallet user={user} />
-          )}
+          element={wrapCustomer(<CustomerWallet user={user} />)}
         />
 
-        {/* Chat hỗ trợ */}
         <Route
           path="/customer/chat"
-          element={wrap(
-            "Chat hỗ trợ",
-            "Nhắn tin với Canteen",
+          element={wrapCustomer(
             <CustomerChat user={user} cart={cart} setCart={setCart} />
           )}
         />
 
-        {/* Đặt hàng thành công */}
         <Route
           path="/customer/success"
-          element={wrap(
-            "Đặt hàng thành công",
-            "Cảm ơn bạn!",
-            <CustomerSuccess />
-          )}
+          element={wrapCustomer(<CustomerSuccess />)}
         />
 
-        {/* Kết quả thanh toán */}
         <Route
           path="/customer/payment-result"
-          element={wrap(
-            "Kết quả thanh toán",
-            "",
-            <PaymentResult />
-          )}
+          element={wrapCustomer(<PaymentResult />)}
         />
 
         {/* ==================== EMPLOYEE ==================== */}
+        <Route element={<ProtectedRoute allow={["EMPLOYEE"]} />}>
 
-        {/* Trang chủ nhân viên */}
-        <Route
-          path="/employee"
-          element={
-            <Layout
-              role={user.role}
-              title=""
-              subtitle=""
-              onLogout={handleLogout}
-              user={user}
-              hideHeading
-            >
-              <EmployeeHome />
-            </Layout>
-          }
-        />
+          {/* Tổng quan */}
+          <Route
+            path="/employee"
+            element={
+              <Layout
+                role={user.role}
+                title=""
+                subtitle=""
+                onLogout={handleLogout}
+                user={user}
+                hideHeading
+              >
+                <EmployeeHome />
+              </Layout>
+            }
+          />
 
-        {/* Chấm công */}
-        <Route
-          path="/employee/attendance"
-          element={wrap(
-            "Chấm công",
-            "Check-in / Check-out",
-            <EmployeeCheckInOut />
-          )}
-        />
+          {/* Chuẩn bị đơn — layout dọc mới */}
+          <Route
+            path="/employee/prep"
+            element={wrap(
+              "Chuẩn bị đơn",
+              "Danh sách đơn bếp cần xử lý",
+              <EmployeeOrdersPrep />,
+              { hideHeading: true }
+            )}
+          />
 
-        {/* Đơn hàng */}
-        <Route
-          path="/employee/orders"
-          element={wrap(
-            "Đơn hàng",
-            "Xử lý đơn khách",
-            <EmployeeOrders />
-          )}
-        />
+          {/* Ca làm việc — gộp check-in + lịch sử + đăng ký ca */}
+          <Route
+            path="/employee/shifts"
+            element={wrap(
+              "Ca làm việc",
+              "Chấm công & lịch sử ca",
+              <EmployeeShifts />,
+              { hideHeading: true }
+            )}
+          />
 
-        {/* Thực đơn */}
-        <Route
-          path="/employee/menu"
-          element={wrap(
-            "Thực đơn",
-            "Xem tình trạng món",
-            <EmployeeMenu />
-          )}
-        />
+          {/* Redirect cũ → mới */}
+          <Route
+            path="/employee/attendance"
+            element={<Navigate to="/employee/shifts" replace />}
+          />
 
-        {/* Hồ sơ (không sửa email) */}
-        <Route
-          path="/employee/profile"
-          element={wrap(
-            "Hồ sơ cá nhân",
-            "Thông tin tài khoản",
-            <StaffProfile user={user} setUser={setUser} canEditEmail={false} />
-          )}
-        />
+          {/* Kanban */}
+          <Route
+            path="/employee/orders"
+            element={wrap("Đơn hàng", "Xử lý đơn khách", <EmployeeOrders />)}
+          />
 
-        {/* Chat khách */}
-        <Route
-          path="/employee/chat"
-          element={wrap(
-            "Chat khách hàng",
-            "Hỗ trợ khách hàng",
-            <EmployeeChat />
-          )}
-        />
+          {/* Menu 86 */}
+          <Route
+            path="/employee/menu"
+            element={wrap("Thực đơn", "Xem tình trạng món", <EmployeeMenu />)}
+          />
+
+          {/* Profile */}
+          <Route
+            path="/employee/profile"
+            element={wrap(
+              "Hồ sơ cá nhân",
+              "Thông tin tài khoản",
+              <StaffProfile
+                user={user}
+                setUser={setUser}
+                canEditEmail={false}
+              />
+            )}
+          />
+
+          {/* Chat */}
+          <Route
+            path="/employee/chat"
+            element={wrap(
+              "Chat khách hàng",
+              "Hỗ trợ khách hàng",
+              <EmployeeChat />
+            )}
+          />
+
+        </Route>
 
         {/* ==================== OWNER (ADMIN) ==================== */}
+        <Route element={<ProtectedRoute allow={["ADMIN"]} />}>
 
-        {/* Tổng quan */}
-        <Route
-          path="/owner"
-          element={wrap(
-            "Tổng quan",
-            "Theo dõi hoạt động Canteen",
-            <OwnerDashboard />
-          )}
-        />
+          <Route
+            path="/owner"
+            element={wrap(
+              "Tổng quan",
+              "Theo dõi hoạt động Canteen",
+              <OwnerDashboard />
+            )}
+          />
 
-        {/* Quản lý nhân viên */}
-        <Route
-          path="/owner/employees"
-          element={wrap(
-            "Quản lý nhân viên",
-            "Danh sách nhân viên",
-            <OwnerEmployees />
-          )}
-        />
+          <Route
+            path="/owner/employees"
+            element={wrap(
+              "Quản lý nhân viên",
+              "Danh sách nhân viên",
+              <OwnerEmployees />
+            )}
+          />
 
-        {/* Quản lý ca */}
-        <Route
-          path="/owner/shifts"
-          element={wrap(
-            "Quản lý ca",
-            "Phân ca + theo dõi chấm công",
-            <OwnerShifts />
-          )}
-        />
+          <Route
+            path="/owner/shifts"
+            element={wrap(
+              "Quản lý ca",
+              "Phân ca + theo dõi chấm công",
+              <OwnerShifts />
+            )}
+          />
 
-        {/* Chấm công */}
-        <Route
-          path="/owner/attendance"
-          element={wrap(
-            "Chấm công",
-            "Lịch sử chấm công nhân viên",
-            <OwnerAttendance />
-          )}
-        />
+          <Route
+            path="/owner/attendance"
+            element={wrap(
+              "Chấm công",
+              "Lịch sử chấm công nhân viên",
+              <OwnerAttendance />
+            )}
+          />
 
-        {/* Quản lý khách hàng */}
-        <Route
-          path="/owner/customers"
-          element={wrap(
-            "Quản lý khách hàng",
-            "Danh sách khách hàng",
-            <OwnerCustomers />
-          )}
-        />
+          <Route
+            path="/owner/customers"
+            element={wrap(
+              "Quản lý khách hàng",
+              "Danh sách khách hàng",
+              <OwnerCustomers />
+            )}
+          />
 
-        {/* Quản lý thực đơn */}
-        <Route
-          path="/owner/menu"
-          element={wrap(
-            "Quản lý thực đơn",
-            "Món ăn",
-            <OwnerMenu />
-          )}
-        />
+          <Route
+            path="/owner/menu"
+            element={wrap("Quản lý thực đơn", "Món ăn", <OwnerMenu />)}
+          />
 
-        {/* Lịch sử giá */}
-        <Route
-          path="/owner/price-history"
-          element={wrap(
-            "Lịch sử giá",
-            "Theo dõi thay đổi giá món ăn",
-            <OwnerPriceHistory />
-          )}
-        />
+          <Route
+            path="/owner/price-history"
+            element={wrap(
+              "Lịch sử giá",
+              "Theo dõi thay đổi giá món ăn",
+              <OwnerPriceHistory />
+            )}
+          />
 
-        {/* Kho hàng */}
-        <Route
-          path="/owner/inventory"
-          element={wrap(
-            "Kho hàng",
-            "Nguyên liệu",
-            <OwnerInventory />
-          )}
-        />
+          <Route
+            path="/owner/inventory"
+            element={wrap("Kho hàng", "Nguyên liệu", <OwnerInventory />)}
+          />
 
-        {/* Báo cáo */}
-        <Route
-          path="/owner/reports"
-          element={wrap(
-            "Báo cáo",
-            "Doanh thu & thống kê",
-            <OwnerReports />
-          )}
-        />
+          <Route
+            path="/owner/reports"
+            element={wrap(
+              "Báo cáo",
+              "Doanh thu & thống kê",
+              <OwnerReports />,
+              { hideHeading: true }
+            )}
+          />
 
-        {/* Phân quyền */}
-        <Route
-          path="/owner/permissions"
-          element={wrap(
-            "Phân quyền",
-            "Phân quyền chi tiết cho từng user",
-            <OwnerPermissions />
-          )}
-        />
+          <Route
+            path="/owner/permissions"
+            element={wrap(
+              "Phân quyền",
+              "Phân quyền chi tiết cho từng user",
+              <OwnerPermissions />
+            )}
+          />
 
-        {/* Đơn hàng (dùng chung component với Employee) */}
-        <Route
-          path="/owner/orders"
-          element={wrap(
-            "Quản lý đơn hàng",
-            "Xử lý đơn khách như nhân viên",
-            <OwnerOrders />
-          )}
-        />
+          <Route
+            path="/owner/orders"
+            element={wrap(
+              "Quản lý đơn hàng",
+              "Xử lý đơn khách như nhân viên",
+              <OwnerOrders />
+            )}
+          />
 
-        {/* Voucher */}
-        <Route
-          path="/owner/vouchers"
-          element={wrap(
-            "Quản lý Voucher",
-            "Tạo / sửa / xóa voucher cho khách",
-            <OwnerVouchers />
-          )}
-        />
+          <Route
+            path="/owner/vouchers"
+            element={wrap(
+              "Quản lý Voucher",
+              "Tạo / sửa / xóa voucher cho khách",
+              <OwnerVouchers />
+            )}
+          />
 
-        {/* Tài chính */}
-        <Route
-          path="/owner/finance"
-          element={wrap(
-            "Quản lý tài chính",
-            "Tài khoản nhận tiền, doanh thu, chi phí",
-            <OwnerFinance />
-          )}
-        />
+          <Route
+            path="/owner/finance"
+            element={wrap(
+              "Quản lý tài chính",
+              "Tài khoản nhận tiền, doanh thu, chi phí",
+              <OwnerFinance />
+            )}
+          />
 
-        {/* Ví Canteen (admin) */}
-        <Route
-          path="/owner/wallet"
-          element={wrap(
-            "Quản lý Ví Canteen",
-            "Duyệt nạp / rút / thanh toán của khách",
-            <OwnerWallet />
-          )}
-        />
+          <Route
+            path="/owner/wallet"
+            element={wrap(
+              "Quản lý Ví Canteen",
+              "Duyệt nạp / rút / thanh toán của khách",
+              <OwnerWallet />
+            )}
+          />
 
-        {/* Cài đặt */}
-        <Route
-          path="/owner/settings"
-          element={wrap(
-            "Cài đặt",
-            "Tài khoản nhận tiền + thông tin liên hệ",
-            <OwnerSettings />
-          )}
-        />
+          <Route
+            path="/owner/settings"
+            element={wrap(
+              "Cài đặt",
+              "Tài khoản nhận tiền + thông tin liên hệ",
+              <OwnerSettings />
+            )}
+          />
 
-        {/* Hồ sơ (được sửa email) */}
-        <Route
-          path="/owner/profile"
-          element={wrap(
-            "Hồ sơ cá nhân",
-            "Thông tin tài khoản",
-            <StaffProfile user={user} setUser={setUser} canEditEmail={true} />
-          )}
-        />
+          <Route
+            path="/owner/profile"
+            element={wrap(
+              "Hồ sơ cá nhân",
+              "Thông tin tài khoản",
+              <StaffProfile
+                user={user}
+                setUser={setUser}
+                canEditEmail={true}
+              />
+            )}
+          />
 
-        {/* Backup dữ liệu */}
-        <Route
-          path="/owner/backup"
-          element={wrap(
-            "Backup dữ liệu",
-            "Xuất / nhập / reset database",
-            <OwnerBackup />
-          )}
-        />
+          <Route
+            path="/owner/backup"
+            element={wrap(
+              "Backup dữ liệu",
+              "Xuất / nhập / reset database",
+              <OwnerBackup />
+            )}
+          />
+
+        </Route>
 
         {/* ==================== FALLBACK ==================== */}
         <Route
@@ -664,7 +610,7 @@ export default function App() {
                   ? "/owner"
                   : user.role === "EMPLOYEE"
                   ? "/employee"
-                  : "/customer"
+                  : "/customer/home"
               }
             />
           }

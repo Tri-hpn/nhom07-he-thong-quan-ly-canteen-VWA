@@ -2,7 +2,7 @@
 // OWNERDASHBOARD.JSX — Tổng quan hoạt động Canteen (Admin)
 // ============================================================
 // Tách nhiệm vụ với OwnerReports:
-//   - Dashboard: OPERATIONAL (cần xử lý gì hôm nay, trend nhanh)
+//   - LayoutDashboard: OPERATIONAL (cần xử lý gì hôm nay, trend nhanh)
 //   - Reports: ANALYTICAL (báo cáo chuyên sâu, so sánh kỳ)
 //
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
@@ -11,10 +11,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  DollarSign, ShoppingBag, Users, AlertTriangle,
-  Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown,
-  Check, ChevronRight, Package, Ticket, Utensils, BarChart3,
-  ClipboardList, Warehouse, Wallet, ArrowRight,
+  DollarSign, ShoppingBag, Users, AlertTriangle, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Check, ChevronRight, Package, Ticket, Utensils, BarChart3, ClipboardList, Warehouse, Wallet, ArrowRight,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -477,7 +474,7 @@ export default function OwnerDashboard() {
         >
           {QUICK_ACTIONS.map((a) => {
             const Icon = a.icon;
-            // Badge cho orders nếu có pending
+            // BadgeCheck cho orders nếu có pending
             const badge =
               a.key === "orders" && pendingCount > 0
                 ? pendingCount
@@ -998,7 +995,7 @@ function ActionCard({ icon, label, value, color, to }) {
 }
 
 // ============================================================
-// SUB-COMPONENT: Order Status Badge
+// SUB-COMPONENT: Order Status BadgeCheck
 // ============================================================
 
 function OrderStatusBadge({ status }) {
@@ -1049,7 +1046,7 @@ function EmptyChart({ message }) {
 }
 
 // ============================================================
-// SUB-COMPONENT: Dashboard Skeleton
+// SUB-COMPONENT: LayoutDashboard Skeleton
 // ============================================================
 
 function DashboardSkeleton() {

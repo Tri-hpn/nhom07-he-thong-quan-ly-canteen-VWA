@@ -40,7 +40,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: true, // Cho phép truy cập từ LAN
-      strictPort: false,
+      // ✅ strictPort: true → KHÔNG tự nhảy sang 5174 khi 5173 bận.
+      // Nếu 5173 bị chiếm, Vite sẽ báo lỗi rõ ràng để biết ngay có
+      // tiến trình cũ đang giữ cổng (trước đây bị "im lặng" đổi cổng).
+      strictPort: true,
       open: false,
       proxy: {
         // Dev: proxy /api → Express backend

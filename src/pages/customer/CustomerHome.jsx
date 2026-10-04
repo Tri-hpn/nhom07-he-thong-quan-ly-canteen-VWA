@@ -1,26 +1,18 @@
-﻿// ============================================================
-// CUSTOMERHOME.JSX — Trang chủ khách hàng
 // ============================================================
-// Gồm:
-//   - Banner carousel (data từ ../../bannerSlides)
-//   - Flash marquee (chạy chữ khuyến mãi)
-//   - Flash sale (voucher vuông + món giảm giá)
-//   - ✅ Món Signature (section mới, dưới Flash Sale)
-//   - Bán chạy nhất (top 5 sold)
-//   - Món mới lên kệ (4 món mới nhất)
-//   - Testimonials
-//   - QR truy cập menu (auto-detect origin)
-//
-// ✅ FIX #6: Bỏ hết keys "customer.xxx" self-reference (bug i18n)
-//           → dùng text tiếng Việt trực tiếp làm key
-// ✅ BANNER: bọc t(s.title) để dịch theo source-text i18n
+// CUSTOMERHOME.JSX — Trang chủ khách hàng (V2 - đồng bộ)
+// ============================================================
+// ✅ Tất cả khối món (Flash Sale / Nổi bật / Món mới) dùng
+//    CÙNG component HomeFoodCard với class .home-flash-card
+// ✅ Ô tìm kiếm: gợi ý realtime (debounce 300ms) + dropdown
+// ✅ Danh mục: ấn pill → điều hướng sang /customer/menu?category=...
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  ChevronLeft, ChevronRight, Star, Clock, Utensils, Gift,
-  Sparkles, Zap, Quote, AlertCircle, RefreshCw, Plus, Flame,
+  Clock, Utensils, Gift, Sparkles, Zap, AlertCircle, RefreshCw, Plus,
+  Flame, Search, TrendingUp, Wallet, Info, ShoppingBag, ArrowRight,
+  ShoppingCart, X, Star,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -28,64 +20,209 @@ import { SkeletonCard } from "../../components/Skeleton";
 import FoodDetailModal from "../../components/FoodDetailModal";
 import ChatBotWidget from "../../components/ChatBotWidget";
 import { useI18n } from "../../hooks/useI18n";
-import { bannerSlides as SLIDES } from "../../bannerSlides";
 
 // ============================================================
 // CONSTANTS
 // ============================================================
 
-const CAROUSEL_INTERVAL_MS = 4000;
-const BEST_SELLERS_LIMIT = 5;
-const NEW_ITEMS_LIMIT = 4;
-const FLASH_PROMOS_LIMIT = 4;
-const FLASH_VOUCHERS_LIMIT = 2;
-const SIGNATURE_LIMIT = 5;
-const SIGNATURE_ALL_LIMIT = 20;
-const SKELETON_COUNT = 5;
+const BEST_SELLERS_LIMIT = 6;
+const NEW_ITEMS_LIMIT = 6;
+const FLASH_PROMOS_LIMIT = 3;
+const FLASH_QTY_MAX = 20;
+const SIGNATURE_LIMIT = 6;
+const SKELETON_COUNT = 6;
 
-// ✅ FIX #6: Testimonials dùng text VI trực tiếp (không dùng key)
-const TESTIMONIAL_DATA = [
-  {
-    name: "Nguyễn Minh Anh",
-    role: "Sinh viên VWA",
-    rating: 5,
-    text: "Món ăn ngon, giao diện đặt món nhanh và tiện. Mình đặt mỗi ngày luôn!",
-  },
-  {
-    name: "Trần Quốc Bảo",
-    role: "Sinh viên năm 3",
-    rating: 5,
-    text: "Đặt món trên app rất tiện, lại tích được điểm đổi voucher nữa. Recommend!",
-  },
-  {
-    name: "Lê Thu Hà",
-    role: "Cán bộ VWA",
-    rating: 4,
-    text: "Canteen sạch sẽ, đồ ăn tươi ngon. Mình hay đặt cho cả nhóm.",
-  },
+const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_SUGGEST_LIMIT = 6;
+
+const FALLBACK_IMG =
+  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=70";
+
+// Quick search chips — ấn để điền vào ô + tự tìm
+const QUICK_SEARCH_CHIPS = [
+  { label: "Cơm tấm sườn", query: "Cơm tấm sườn" },
+  { label: "Bún bò Huế", query: "Bún bò Huế" },
+  { label: "Trà đào cam sả", query: "Trà đào cam sả" },
+  { label: "Bánh mì chảo", query: "Bánh mì chảo" },
+  { label: "Combo 25k ⚡", query: "Combo", highlight: true },
+];
+
+// Danh mục — value = tên category trong DB (để filter đúng)
+const HOME_CATEGORIES = [
+  { id: "all",     label: "Tất cả món",              icon: "🍽️", value: "" },
+  { id: "com",     label: "Cơm & Món chính",         icon: "🍚", value: "Cơm" },
+  { id: "bun",     label: "Bún - Phở - Mì",          icon: "🍜", value: "Bún - Phở - Cháo" },
+  { id: "anvat",   label: "Ăn vặt & Fastfood",       icon: "🥐", value: "Đồ ăn nhanh" },
+  { id: "douong",  label: "Đồ uống & Tráng miệng",   icon: "☕", value: "Đồ uống" },
+  { id: "chay",    label: "Món chay",                icon: "🥗", value: "Món chay" },
 ];
 
 // ============================================================
 // HELPERS
 // ============================================================
 
-function getPublicMenuUrl() {
-  if (typeof window === "undefined") return "";
-  return `${window.location.origin}/customer/menu`;
-}
-
-function renderChipIcon(iconName, size = 13) {
-  switch (iconName) {
-    case "clock":    return <Clock size={size} />;
-    case "utensils": return <Utensils size={size} />;
-    case "gift":     return <Gift size={size} />;
-    case "sparkles": return <Sparkles size={size} />;
-    default:         return <Zap size={size} />;
-  }
-}
-
 function fmtNumber(n) {
   return typeof n === "number" ? n.toLocaleString("vi-VN") : String(n ?? "");
+}
+
+function normalizeVi(str) {
+  return (str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .trim();
+}
+
+// ============================================================
+// SUB-COMPONENT: HomeFoodCard
+// ------------------------------------------------------------
+// Dùng chung cho Món nổi bật / Món mới / Flash Sale
+// Style 100% từ .home-flash-card (styles-customer.css)
+// ============================================================
+
+function HomeFoodCard({
+  m,
+  qty = 1,
+  onQtyChange,
+  onAdd,
+  onView,
+  t,
+  tData,
+}) {
+  const id = m.id || m._id;
+  const isOutOfStock = m.stock === 0;
+  const isHot = (m.sold || 0) >= 50;
+  const hasDiscount = m.discount_percent > 0 && m.original_price > m.price;
+  const sold = m.sold || 0;
+  const total = m.total || Math.max(sold * 2, 50);
+  const remaining = Math.max(0, total - sold);
+  const percent = Math.min(100, (total > 0 ? (sold / total) * 100 : 0));
+
+  return (
+    <div
+      className="home-flash-card"
+      onClick={() => !isOutOfStock && onView(m)}
+      style={{ cursor: isOutOfStock ? "not-allowed" : "pointer" }}
+    >
+      <div className="home-flash-card__row">
+        <div className="home-flash-card__img-wrap">
+          <img
+            src={m.image || FALLBACK_IMG}
+            alt={tData(m, "name")}
+            loading="lazy"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = FALLBACK_IMG;
+            }}
+          />
+          {hasDiscount && (
+            <span className="home-flash-card__discount">
+              -{m.discount_percent}%
+            </span>
+          )}
+          {!hasDiscount && isHot && (
+            <span className="home-flash-card__discount">
+              <Flame size={10} /> HOT
+            </span>
+          )}
+          {isOutOfStock && (
+            <span
+              className="home-flash-card__discount"
+              style={{ background: "#6B7280" }}
+            >
+              {t("Hết")}
+            </span>
+          )}
+        </div>
+
+        <div className="home-flash-card__info">
+          <span className="home-flash-card__cat">
+            {m.category || t("Món ăn")}
+          </span>
+          <h4 className="home-flash-card__name">{tData(m, "name")}</h4>
+          <div className="home-flash-card__price">
+            <span className="home-flash-card__price-now">
+              {money(m.price)}
+            </span>
+            {hasDiscount && m.original_price > m.price && (
+              <span className="home-flash-card__price-old">
+                {money(m.original_price)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {!isOutOfStock ? (
+        <>
+          <div className="home-flash-card__progress-wrap">
+            <div className="home-flash-card__progress-info">
+              <span>
+                {t("Đã bán")} {sold}/{total} {t("suất")}
+              </span>
+              <span className="home-flash-card__remain">
+                {t("Còn")} {remaining} {t("suất")}
+              </span>
+            </div>
+            <div className="home-flash-card__progress-bar">
+              <div
+                className="home-flash-card__progress-fill"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="home-flash-card__actions">
+            <div
+              className="home-flash-card__qty"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                aria-label={t("Giảm số lượng")}
+                disabled={qty <= 1}
+                onClick={() => onQtyChange(id, Math.max(1, qty - 1))}
+              >
+                −
+              </button>
+              <span>{qty}</span>
+              <button
+                type="button"
+                aria-label={t("Tăng số lượng")}
+                onClick={() =>
+                  onQtyChange(id, Math.min(FLASH_QTY_MAX, qty + 1))
+                }
+              >
+                +
+              </button>
+            </div>
+            <button
+              className="home-flash-card__add"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd(m);
+              }}
+            >
+              <ShoppingCart size={16} />
+              {t("Thêm")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="home-flash-card__progress-wrap">
+          <div className="home-flash-card__progress-info">
+            <span style={{ color: "#dc2626", fontWeight: 700 }}>
+              {t("Tạm hết món")}
+            </span>
+            <span className="home-flash-card__remain">
+              {t("Vui lòng chọn món khác")}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ============================================================
@@ -96,41 +233,32 @@ export default function CustomerHome({ user, cart, setCart }) {
   const navigate = useNavigate();
   const { t, tData } = useI18n();
 
-  const [items, setItems] = useState([]);
-  const [newItems, setNewItems] = useState([]);
+  const [items, setItems] = useState([]);           // best sellers
+  const [newItems, setNewItems] = useState([]);     // món mới
   const [signatureItems, setSignatureItems] = useState([]);
-  const [promotions, setPromotions] = useState([]);
-  const [publicVouchers, setPublicVouchers] = useState([]);
-  const [flashItems, setFlashItems] = useState([]);
+  const [promotions, setPromotions] = useState([]); // flash sale
+  const [allMenu, setAllMenu] = useState([]);       // toàn bộ menu (để search)
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const [idx, setIdx] = useState(0);
-  const [paused, setPaused] = useState(false);
   const [selected, setSelected] = useState(null);
   const [mode, setMode] = useState("cart");
-  const [showAllSignature, setShowAllSignature] = useState(false);
+  const [flashQty, setFlashQty] = useState({});
 
-  const [tabVisible, setTabVisible] = useState(
-    typeof document === "undefined" || !document.hidden
-  );
+  // Search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+
+  // Countdown flash sale
+  const [countdown, setCountdown] = useState({ h: 1, m: 24, s: 15 });
 
   const inFlightRef = useRef(false);
+  const searchBoxRef = useRef(null);
 
-  // ---------- Default flash promos (i18n source-text VI) ----------
-  // ✅ FIX #6: dùng text VI trực tiếp thay vì t("flash.default.1")
-  const defaultFlashItems = useMemo(
-    () => [
-      { text: t("🎁 Giảm giá sốc mỗi ngày — Nhận voucher ngay!") },
-      { text: t("🔥 Combo tiết kiệm — Tiết kiệm đến 30%") },
-      { text: t("⭐ Món ngon mỗi ngày — Đặt nhanh gọn lẹ") },
-    ],
-    [t]
-  );
-
-  // ---------- Load ----------
+  // ---------- Load data ----------
   const load = useCallback(
     async (silent = false) => {
       if (inFlightRef.current) return;
@@ -140,45 +268,33 @@ export default function CustomerHome({ user, cart, setCart }) {
       setError("");
 
       try {
-        const [menuRes, promoRes, pubVoucherRes] = await Promise.all([
+        const [menuRes, promoRes] = await Promise.all([
           api.menu.listActive("", "Tất cả", "popular").catch(() => []),
           api.promotions.list().catch(() => []),
-          api.vouchers.public().catch(() => []),
         ]);
 
         const rawList = Array.isArray(menuRes) ? menuRes : [];
         const list = rawList.filter((m) => m.active);
+        setAllMenu(list);
 
         // Best sellers
         const bestSellers = [...list]
           .filter((m) => (m.sold || 0) > 0)
           .sort((a, b) => (b.sold || 0) - (a.sold || 0))
           .slice(0, BEST_SELLERS_LIMIT);
-        setItems(bestSellers);
+        setItems(bestSellers.length > 0 ? bestSellers : list.slice(0, BEST_SELLERS_LIMIT));
 
-        // New items
-        const sortedById = [...list].sort((a, b) => (b.id || 0) - (a.id || 0));
+        // Món mới (sort theo id giảm dần)
+        const sortedById = [...list].sort(
+          (a, b) => (b.id || 0) - (a.id || 0)
+        );
         setNewItems(sortedById.slice(0, NEW_ITEMS_LIMIT));
 
-        // ✅ Signature items — filter `is_signature === true`
+        // Signature
         const sig = list.filter((m) => m.is_signature === true);
         setSignatureItems(sig);
 
         setPromotions(Array.isArray(promoRes) ? promoRes : []);
-        setPublicVouchers(Array.isArray(pubVoucherRes) ? pubVoucherRes : []);
-
-        const flash = [];
-        (Array.isArray(pubVoucherRes) ? pubVoucherRes : []).forEach((v) => {
-          flash.push({
-            text: `🎁 GIẢM ${fmtNumber(v.value || 0)}đ — Mã ${v.code}`,
-          });
-        });
-        (Array.isArray(promoRes) ? promoRes : []).forEach((m) => {
-          flash.push({
-            text: `🔥 ${m.name} GIẢM ${m.discount_percent}% (còn ${fmtNumber(m.price || 0)}đ)`,
-          });
-        });
-        setFlashItems(flash.length > 0 ? flash : []);
       } catch (e) {
         if (!silent) setError(e.message || t("Không tải được dữ liệu"));
       } finally {
@@ -195,137 +311,150 @@ export default function CustomerHome({ user, cart, setCart }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- Carousel autoplay ----------
+  // ---------- Countdown ----------
   useEffect(() => {
-    if (paused || !tabVisible) return;
-
     const timer = setInterval(() => {
-      setIdx((i) => (i + 1) % SLIDES.length);
-    }, CAROUSEL_INTERVAL_MS);
-
+      setCountdown((c) => {
+        let { h, m, s } = c;
+        if (s > 0) s--;
+        else if (m > 0) { m--; s = 59; }
+        else if (h > 0) { h--; m = 59; s = 59; }
+        return { h, m, s };
+      });
+    }, 1000);
     return () => clearInterval(timer);
-  }, [paused, tabVisible]);
-
-  useEffect(() => {
-    const handler = () => setTabVisible(!document.hidden);
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
   }, []);
 
-  // ---------- Carousel controls ----------
-  const goNext = () => setIdx((i) => (i + 1) % SLIDES.length);
-  const goPrev = () => setIdx((i) => (i - 1 + SLIDES.length) % SLIDES.length);
+  // ---------- Debounce search ----------
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
 
-  // ---------- Derived ----------
-  const publicMenuUrl = useMemo(() => getPublicMenuUrl(), []);
-
-  const qrImageSrc = useMemo(() => {
-    if (!publicMenuUrl) return "";
-    return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-      publicMenuUrl
-    )}&margin=0`;
-  }, [publicMenuUrl]);
-
-  const effectiveFlashItems = useMemo(() => {
-    if (flashItems.length > 0) return flashItems;
-    return defaultFlashItems;
-  }, [flashItems, defaultFlashItems]);
-
-  const flashTrack = useMemo(() => {
-    if (!effectiveFlashItems.length) return [];
-    const out = [];
-    for (let round = 0; round < 3; round++) {
-      effectiveFlashItems.forEach((item, i) => {
-        out.push({ ...item, _key: `${round}-${i}` });
-      });
-    }
-    return out;
-  }, [effectiveFlashItems]);
-
-  // ✅ Signature visible items — dựa vào showAllSignature
-  const visibleSignature = useMemo(() => {
-    if (showAllSignature) return signatureItems.slice(0, SIGNATURE_ALL_LIMIT);
-    return signatureItems.slice(0, SIGNATURE_LIMIT);
-  }, [signatureItems, showAllSignature]);
-
-  // ✅ Handle banner button click — nếu link bắt đầu bằng "#" thì scroll
-  const handleBannerClick = useCallback(
-    (link) => {
-      if (!link) return;
-
-      if (link.startsWith("#")) {
-        const id = link.slice(1);
-        const el = document.getElementById(id);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-        return;
+  // ---------- Click outside → đóng dropdown ----------
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
+        setSearchFocused(false);
       }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
-      navigate(link);
+  // ---------- Search suggestions ----------
+  const searchSuggestions = useMemo(() => {
+    const q = normalizeVi(debouncedQuery);
+    if (!q || q.length < 1) return [];
+    return allMenu
+      .filter((m) => {
+        const name = normalizeVi(m.name || "");
+        const cat = normalizeVi(m.category || "");
+        return name.includes(q) || cat.includes(q);
+      })
+      .sort((a, b) => (b.sold || 0) - (a.sold || 0))
+      .slice(0, SEARCH_SUGGEST_LIMIT);
+  }, [debouncedQuery, allMenu]);
+
+  const showSuggestions =
+    searchFocused && debouncedQuery.length >= 1 && searchSuggestions.length > 0;
+
+  // ---------- Cart stats ----------
+  const cartStats = useMemo(() => {
+    const lines = Object.values(cart || {});
+    const totalQty = lines.reduce((s, m) => s + (Number(m.qty) || 0), 0);
+    const totalPrice = lines.reduce(
+      (s, m) => s + (Number(m.price) || 0) * (Number(m.qty) || 0),
+      0
+    );
+    const preview = lines.slice(0, 2).map((m) => m.name).join(" + ");
+    return { totalQty, totalPrice, preview };
+  }, [cart]);
+
+  // ---------- Handlers ----------
+  const handleSearch = useCallback(
+    (e) => {
+      e?.preventDefault?.();
+      const q = searchQuery.trim();
+      if (!q) return;
+      navigate(`/customer/menu?q=${encodeURIComponent(q)}`);
+      setSearchFocused(false);
+    },
+    [searchQuery, navigate]
+  );
+
+  const handleQuickSearch = useCallback(
+    (query) => {
+      setSearchQuery(query);
+      navigate(`/customer/menu?q=${encodeURIComponent(query)}`);
     },
     [navigate]
   );
 
-  // ============================================================
-  // RENDER FOOD CARD
-  // ============================================================
+  const handleSuggestionClick = useCallback(
+    (m) => {
+      setSearchFocused(false);
+      setMode("cart");
+      setSelected(m);
+    },
+    []
+  );
 
-  const renderFoodCard = useCallback(
+  const openModal = useCallback((m) => {
+    setMode("cart");
+    setSelected(m);
+  }, []);
+
+  const addToCart = useCallback(
     (m) => {
       const id = m.id || m._id;
-      const isOutOfStock = m.stock === 0;
-      const isHot = (m.sold || 0) >= 50;
+      const key = `${id}-S-`;
+      const qty = flashQty[id] || 1;
+      const maxStock = typeof m.stock === "number" ? m.stock : 99;
 
-      return (
-        <div
-          key={id}
-          className="grab-food-card"
-          onClick={() => {
-            if (isOutOfStock) return;
-            setMode("cart");
-            setSelected(m);
-          }}
-        >
-          <div className="grab-food-card__image-wrap">
-            <img src={m.image} alt={m.name} loading="lazy" />
+      setCart((c) => {
+        const existing = c[key];
+        const currentQty = Number(existing?.qty) || 0;
+        const newQty = Math.min(maxStock, currentQty + qty);
+        if (existing && currentQty >= maxStock) return c;
+        return {
+          ...c,
+          [key]: {
+            ...m,
+            name: m.name,
+            price: m.price,
+            qty: newQty,
+            stock: m.stock ?? 99,
+            _originalId: id,
+          },
+        };
+      });
 
-            {isOutOfStock ? (
-              <span className="grab-food-card__badge grab-food-card__badge--out">
-                {t("Hết hàng")}
-              </span>
-            ) : isHot ? (
-              <span className="grab-food-card__badge grab-food-card__badge--hot">
-                <Flame size={10} /> {t("Bán chạy")}
-              </span>
-            ) : null}
-
-            {!isOutOfStock && (
-              <button
-                type="button"
-                className="grab-food-card__add-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMode("cart");
-                  setSelected(m);
-                }}
-                aria-label={`${t("Thêm vào giỏ")} ${m.name}`}
-              >
-                <Plus size={20} strokeWidth={3} />
-              </button>
-            )}
-          </div>
-
-          <div className="grab-food-card__info">
-            <h4 className="grab-food-card__name">{tData(m, "name")}</h4>
-            <div className="grab-food-card__price-row">
-              <span className="grab-food-card__price">{money(m.price)}</span>
-            </div>
-          </div>
-        </div>
-      );
+      // reset qty về 1 sau khi thêm
+      setFlashQty((q) => ({ ...q, [id]: 1 }));
     },
-    [t, tData]
+    [flashQty, setCart]
+  );
+
+  const handleQtyChange = useCallback((id, newQty) => {
+    setFlashQty((q) => ({ ...q, [id]: newQty }));
+  }, []);
+
+  const handleCategoryClick = useCallback(
+    (catId) => {
+      const cat = HOME_CATEGORIES.find((c) => c.id === catId);
+      if (!cat) return;
+      if (cat.id === "all" || !cat.value) {
+        navigate("/customer/menu");
+      } else {
+        navigate(
+          `/customer/menu?category=${encodeURIComponent(cat.value)}`
+        );
+      }
+    },
+    [navigate]
   );
 
   // ============================================================
@@ -333,786 +462,522 @@ export default function CustomerHome({ user, cart, setCart }) {
   // ============================================================
 
   return (
-    <div>
-      {/* ERROR BANNER */}
+    <div className="customer-home-v2">
+      {/* ===== ERROR ===== */}
       {error && (
-        <div
-          style={{
-            background: "rgba(239, 68, 68, 0.08)",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-            borderRadius: 10,
-            padding: "12px 16px",
-            marginBottom: 16,
-            color: "#ef4444",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 13,
-          }}
-        >
+        <div className="home-error-banner">
           <AlertCircle size={18} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>{error}</span>
-          <button
-            onClick={() => load(false)}
-            style={{
-              padding: "6px 12px",
-              background: "#ef4444",
-              color: "#fff",
-              border: 0,
-              borderRadius: 6,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 12,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
+          <button onClick={() => load(false)} className="home-error-btn">
             <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
 
-      {/* BANNER CAROUSEL */}
-      <div
-        className="banner-carousel"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        role="region"
-        aria-label={t("Banner khuyến mãi")}
-      >
-        <div
-          style={{
-            display: "flex",
-            width: `${SLIDES.length * 100}%`,
-            height: "100%",
-            maxWidth: "none",
-            transform: `translateX(-${idx * (100 / SLIDES.length)}%)`,
-            transition: "transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-          }}
-        >
-          {SLIDES.map((s) => (
-            <div
-              key={s.id}
-              style={{
-                width: `${100 / SLIDES.length}%`,
-                minWidth: `${100 / SLIDES.length}%`,
-                height: "100%",
-                flexShrink: 0,
-                boxSizing: "border-box",
-                backgroundImage: s.overlay
-                  ? `${s.overlay}, url(${s.image})`
-                  : `url(${s.image})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                color: "#fff",
-                display: "flex",
-                alignItems: "center",
-                padding: "0 70px",
-                position: "relative",
-              }}
+      {/* ===== HERO WELCOME ===== */}
+      <div className="home-welcome-hero">
+        <div className="home-welcome-glow" />
+        <div className="home-welcome-content">
+          <div className="home-welcome-left">
+            <div className="home-welcome-badge">
+              <Sparkles size={14} />
+              {t("Học kỳ II")} | 2024-2025
+            </div>
+            <h1 className="home-welcome-title">
+              {t("Xin chào,")}{" "}
+              <span className="home-welcome-name">
+                {user?.name || t("bạn")}
+              </span>{" "}
+              {user?.studentId && (
+                <span className="home-welcome-id">
+                  (MSSV: {user.studentId})
+                </span>
+              )}{" "}
+              👋
+            </h1>
+            <p className="home-welcome-desc">
+              {t(
+                "Hôm nay bạn muốn thưởng thức món gì tại Căng tin VWA? Đặt trước ngay để nhận món đúng ca nghỉ!"
+              )}
+            </p>
+          </div>
+
+          <div className="home-wallet-pill">
+            <div className="home-wallet-icon">
+              <Wallet size={22} />
+            </div>
+            <div className="home-wallet-info">
+              <span className="home-wallet-label">
+                {t("Thẻ sinh viên VWA Pay")}
+              </span>
+              <span className="home-wallet-value">
+                {money(user?.balance || 0)}{" "}
+                <span className="home-wallet-unit">VNĐ</span>
+              </span>
+            </div>
+            <button
+              className="home-wallet-add"
+              title={t("Nạp thêm")}
+              onClick={() => navigate("/customer/wallet")}
             >
-              <div
-                className="banner-content"
-                style={{ maxWidth: 680, position: "relative", zIndex: 2 }}
+              <Plus size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Search box + dropdown */}
+        <div
+          className="home-search-box"
+          ref={searchBoxRef}
+          style={{ position: "relative" }}
+        >
+          <form
+            onSubmit={handleSearch}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            <Search className="home-search-icon" size={22} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              placeholder={t(
+                "Tìm món ngon, cơm sinh viên, phở, bún chả, nước ép..."
+              )}
+              className="home-search-input"
+              autoComplete="off"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSearchFocused(false);
+                }}
+                aria-label={t("Xoá")}
+                style={{
+                  position: "absolute",
+                  right: 130,
+                  background: "transparent",
+                  border: 0,
+                  cursor: "pointer",
+                  color: "#94a3b8",
+                  padding: 4,
+                  display: "grid",
+                  placeItems: "center",
+                }}
               >
-                {s.badge && (
-                  <span
-                    className="banner-badge"
-                    style={{
-                      display: "inline-block",
-                      background: "rgba(245, 158, 11, 0.3)",
-                      border: "1px solid rgba(245, 158, 11, 0.6)",
-                      padding: "6px 14px",
-                      borderRadius: 20,
-                      fontSize: 12,
-                      color: "#fff",
-                      fontWeight: 600,
-                      marginBottom: 10,
-                    }}
+                <X size={16} />
+              </button>
+            )}
+            <button type="submit" className="home-search-btn">
+              {t("Tìm kiếm")}
+            </button>
+          </form>
+
+          {/* Dropdown gợi ý */}
+          {showSuggestions && (
+            <div className="home-search-suggest">
+              <div className="home-search-suggest__head">
+                <span>
+                  {t("Gợi ý cho")} "<b>{debouncedQuery}</b>"
+                </span>
+                <span className="home-search-suggest__count">
+                  {searchSuggestions.length} {t("kết quả")}
+                </span>
+              </div>
+
+              {searchSuggestions.map((m) => {
+                const id = m.id || m._id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="home-search-suggest__item"
+                    onClick={() => handleSuggestionClick(m)}
                   >
-                    {t(s.badge)}
-                  </span>
-                )}
-
-                <h2
-                  className="banner-title"
-                  style={{
-                    margin: "6px 0 10px",
-                    fontSize: 28,
-                    color: "#fff",
-                    fontWeight: 800,
-                    lineHeight: 1.2,
-                    textShadow: "0 2px 10px rgba(0,0,0,0.5)",
-                  }}
-                >
-                  {s.useName && user?.name ? `${user.name} ơi, ` : ""}
-                  {t(s.title)}
-                </h2>
-
-                <p
-                  className="banner-desc"
-                  style={{
-                    margin: "0 0 14px",
-                    opacity: 0.95,
-                    color: "#e5e7eb",
-                    fontSize: 14,
-                    lineHeight: 1.6,
-                    maxWidth: 620,
-                    textShadow: "0 1px 4px rgba(0,0,0,0.4)",
-                  }}
-                >
-                  {t(s.description)}
-                </p>
-
-                {s.chips && s.chips.length > 0 && (
-                  <div
-                    className="banner-chips"
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      marginBottom: 18,
-                      alignItems: "center",
-                    }}
-                  >
-                    {s.chips.map((c, i) => (
-                      <span
-                        key={i}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          background: "rgba(255,255,255,0.15)",
-                          border: "1px solid rgba(255,255,255,0.25)",
-                          padding: "6px 12px",
-                          borderRadius: 20,
-                          fontSize: 12,
-                          color: "#fff",
-                        }}
-                      >
-                        {renderChipIcon(c.icon)}
-                        {t(c.text)}
+                    <img
+                      src={m.image || FALLBACK_IMG}
+                      alt={m.name}
+                      loading="lazy"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = FALLBACK_IMG;
+                      }}
+                    />
+                    <div className="home-search-suggest__info">
+                      <span className="home-search-suggest__name">
+                        {tData(m, "name")}
                       </span>
-                    ))}
-                  </div>
-                )}
+                      <span className="home-search-suggest__meta">
+                        {m.category} • {money(m.price)}
+                      </span>
+                    </div>
+                    <ArrowRight size={16} className="home-search-suggest__arrow" />
+                  </button>
+                );
+              })}
 
-                {/* ✅ FIX: dùng handleBannerClick để hỗ trợ scroll anchor */}
+              <button
+                type="button"
+                className="home-search-suggest__all"
+                onClick={handleSearch}
+              >
+                {t("Xem tất cả kết quả cho")} "{debouncedQuery}"
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Quick chips */}
+        <div className="home-quick-chips">
+          <span className="home-quick-label">
+            <TrendingUp size={14} />
+            {t("Mẹo gợi ý:")}
+          </span>
+          {QUICK_SEARCH_CHIPS.map((c, i) => (
+            <button
+              key={i}
+              type="button"
+              className={`home-quick-chip ${
+                c.highlight ? "home-quick-chip--highlight" : ""
+              }`}
+              onClick={() => handleQuickSearch(c.query)}
+            >
+              {t(c.label)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ===== FLASH SALE HERO ===== */}
+      {promotions.length > 0 && (
+        <div className="home-flash-hero">
+          <div className="home-flash-glow" />
+          <div className="home-flash-content">
+            <div className="home-flash-left">
+              <div className="home-flash-badge">
+                <Zap size={14} className="home-flash-badge-icon" />
+                {t("Flash Sale Ca Trưa Sinh Viên")}
+              </div>
+              <h2 className="home-flash-title">
+                {t("GIẢM 30% MÓN CƠM TẤM SƯỜN NƯỚNG ĐẶC BIỆT")}
+              </h2>
+              <p className="home-flash-desc">
+                {t(
+                  "Sườn cốt lết tẩm ướp mật ong nướng than hồng, kèm chả trứng hấp, bì tươi, canh rau dền thanh mát. Chỉ áp dụng cho đơn đặt trước 11:30!"
+                )}
+              </p>
+
+              <div className="home-flash-bottom">
+                <div className="home-flash-timer-wrap">
+                  <span className="home-flash-timer-label">
+                    {t("Kết thúc sau:")}
+                  </span>
+                  <div className="home-flash-timer">
+                    <span className="home-flash-timer-num">
+                      {String(countdown.h).padStart(2, "0")}
+                    </span>
+                    <span>:</span>
+                    <span className="home-flash-timer-num">
+                      {String(countdown.m).padStart(2, "0")}
+                    </span>
+                    <span>:</span>
+                    <span className="home-flash-timer-num">
+                      {String(countdown.s).padStart(2, "0")}
+                    </span>
+                  </div>
+                </div>
                 <button
-                  type="button"
-                  className="banner-btn"
-                  onClick={() => handleBannerClick(s.buttonLink)}
-                  style={{
-                    display: "inline-block",
-                    background: "#fff",
-                    color: "#2634d5",
-                    padding: "12px 24px",
-                    borderRadius: 10,
-                    border: 0,
-                    fontWeight: 700,
-                    fontSize: 13,
-                    boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
-                    transition: "all 0.2s",
-                    cursor: "pointer",
-                  }}
+                  className="home-flash-cta"
+                  onClick={() => navigate("/customer/menu")}
                 >
-                  {t(s.buttonText)}
+                  <ShoppingCart size={18} />
+                  {t("Đặt món ngay")} •{" "}
+                  {money(promotions[0]?.price || 28000)}
                 </button>
               </div>
             </div>
+
+            <div className="home-flash-right">
+              <div className="home-flash-image-wrap">
+                <img
+                  src={promotions[0]?.image || FALLBACK_IMG}
+                  alt={promotions[0]?.name || "Flash"}
+                  className="home-flash-image"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = FALLBACK_IMG;
+                  }}
+                />
+                <span className="home-flash-discount-badge">-30% OFF</span>
+                <span className="home-flash-stock-badge">
+                  {t("Chỉ còn 18 suất")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== CATEGORY SELECTOR ===== */}
+      <div className="home-cat-section">
+        <div className="home-cat-header">
+          <h3 className="home-cat-title">{t("Danh mục món ăn")}</h3>
+          <span className="home-cat-count">{t("6 nhóm thực đơn")}</span>
+        </div>
+        <div className="home-cat-pills">
+          {HOME_CATEGORIES.map((c) => (
+            <button
+              key={c.id}
+              className="home-cat-pill"
+              onClick={() => handleCategoryClick(c.id)}
+            >
+              <span className="home-cat-pill-icon">{c.icon}</span>
+              {t(c.label)}
+            </button>
           ))}
         </div>
+      </div>
 
-        <button
-          onClick={goPrev}
-          aria-label={t("Slide trước")}
-          className="banner-nav banner-nav-left"
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <button
-          onClick={goNext}
-          aria-label={t("Slide tiếp theo")}
-          className="banner-nav banner-nav-right"
-        >
-          <ChevronRight size={20} />
-        </button>
+      {/* ===== FLASH SALE GRID ===== */}
+      {promotions.length > 0 && (
+        <div className="home-flash-section">
+          <div className="home-section-head">
+            <div className="home-section-title-wrap">
+              <span className="home-section-icon home-section-icon--error">
+                <Flame size={20} />
+              </span>
+              <div>
+                <h3 className="home-section-title">
+                  {t("Flash Sale Giới Hạn Hôm Nay")}
+                </h3>
+                <p className="home-section-sub">
+                  {t("Suất trợ giá sinh viên - Cập nhật trực tiếp số lượng")}
+                </p>
+              </div>
+            </div>
+            <div className="home-section-live">
+              <span className="home-live-dot" />
+              {t("Đang diễn ra ca trưa")}
+            </div>
+          </div>
 
-        <div className="banner-dots">
-          {SLIDES.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setIdx(i)}
-              aria-label={t("Đi đến slide {n}").replace("{n}", i + 1)}
-              aria-current={i === idx ? "true" : "false"}
-              style={{
-                width: i === idx ? 28 : 10,
-                height: 10,
-                borderRadius: 20,
-                border: 0,
-                cursor: "pointer",
-                background: i === idx ? "#fff" : "rgba(255,255,255,0.5)",
-                transition: "all 0.3s ease",
-                padding: 0,
-              }}
+          <div className="home-flash-grid">
+            {promotions.slice(0, FLASH_PROMOS_LIMIT).map((m) => (
+              <HomeFoodCard
+                key={m.id}
+                m={m}
+                qty={flashQty[m.id] || 1}
+                onQtyChange={handleQtyChange}
+                onAdd={addToCart}
+                onView={openModal}
+                t={t}
+                tData={tData}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ===== MÓN NỔI BẬT (đồng bộ style với Flash Sale) ===== */}
+      <div className="home-picks-section" id="signature-section">
+        <div className="home-section-head">
+          <div className="home-section-title-wrap">
+            <span className="home-section-icon">
+              <Star size={20} fill="#2563eb" color="#2563eb" />
+            </span>
+            <div>
+              <h3 className="home-section-title">
+                {t("Món nổi bật sinh viên VWA phải thử")}
+              </h3>
+              <p className="home-section-sub">
+                {t("Được bình chọn và đặt nhiều nhất trong tháng qua")}
+              </p>
+            </div>
+          </div>
+          <Link to="/customer/menu" className="home-section-link">
+            {t("Xem tất cả")} <ArrowRight size={16} />
+          </Link>
+        </div>
+
+        <div className="home-picks-grid home-picks-grid--flash-style">
+          {loading && items.length === 0 && (
+            <>
+              {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                <SkeletonCard key={`sk-${i}`} />
+              ))}
+            </>
+          )}
+          {items.map((m) => (
+            <HomeFoodCard
+              key={m.id || m._id}
+              m={m}
+              qty={flashQty[m.id || m._id] || 1}
+              onQtyChange={handleQtyChange}
+              onAdd={addToCart}
+              onView={openModal}
+              t={t}
+              tData={tData}
             />
           ))}
         </div>
       </div>
 
-      {/* FLASH MARQUEE */}
-      {flashTrack.length > 0 && (
-        <Link
-          to="/customer/promotions"
-          className="flash-marquee"
-          style={{
-            display: "block",
-            background: "linear-gradient(90deg, #ef4444, #f59e0b, #ef4444)",
-            color: "#fff",
-            padding: "10px 0",
-            borderRadius: 12,
-            marginBottom: 16,
-            overflow: "hidden",
-            textDecoration: "none",
-            position: "relative",
-          }}
-        >
-          <div className="flash-track">
-            {flashTrack.map((item) => (
-              <span key={item._key} className="flash-item">
-                <span className="flash-dot" />
-                {item.text}
-                <span className="flash-sep">•</span>
+      {/* ===== MÓN MỚI (đồng bộ style) ===== */}
+      {newItems.length > 0 && (
+        <div className="home-picks-section">
+          <div className="home-section-head">
+            <div className="home-section-title-wrap">
+              <span className="home-section-icon">
+                <Sparkles size={20} color="#2563eb" />
               </span>
-            ))}
-          </div>
-          <span className="flash-label">
-            <Sparkles size={12} /> {t("Flash Sale")}
-          </span>
-        </Link>
-      )}
-
-      {/* FLASH SALE */}
-      {(promotions.length > 0 || publicVouchers.length > 0) && (
-        <>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 14,
-            }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 18,
-                color: "var(--text-primary, #172033)",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span style={{ fontSize: 22 }}>⚡</span> {t("Flash Sale")}
-              <span
-                style={{
-                  background: "linear-gradient(135deg, #ef4444, #f59e0b)",
-                  color: "#fff",
-                  padding: "3px 10px",
-                  borderRadius: 12,
-                  fontSize: 10,
-                  fontWeight: 800,
-                }}
-              >
-                {t("HOT")}
-              </span>
-            </h3>
-
-            <Link
-              to="/customer/promotions"
-              style={{
-                color: "#2634d5",
-                fontSize: 13,
-                textDecoration: "none",
-                fontWeight: 600,
-              }}
-            >
-              {t("Xem tất cả")} →
+              <div>
+                <h3 className="home-section-title">
+                  {t("Món mới lên kệ hôm nay")}
+                </h3>
+                <p className="home-section-sub">
+                  {t("Những món vừa được cập nhật vào thực đơn")}
+                </p>
+              </div>
+            </div>
+            <Link to="/customer/menu" className="home-section-link">
+              {t("Xem tất cả")} <ArrowRight size={16} />
             </Link>
           </div>
 
-          <div style={{ marginBottom: 26 }}>
-            <div className="home-food-grid-5">
-              {publicVouchers.slice(0, FLASH_VOUCHERS_LIMIT).map((v) => (
-                <Link
-                  key={`voucher-${v.id}`}
-                  to="/customer/promotions"
-                  className="grab-food-card voucher-card"
-                  style={{ textDecoration: "none" }}
-                >
-                  <div className="voucher-card__icon">
-                    <div className="voucher-card__icon-inner">
-                      <span className="voucher-card__emoji">🎟️</span>
-                      <span className="voucher-card__value">
-                        {fmtNumber(v.value || 0)}đ
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grab-food-card__info">
-                    <span className="voucher-card__label">
-                      {t("Voucher")}
-                    </span>
-                    <h4
-                      className="grab-food-card__name"
-                      style={{ textAlign: "center" }}
-                    >
-                      {t("Giảm giá")} {fmtNumber(v.value || 0)}đ
-                    </h4>
-                    <div className="voucher-card__code">{v.code}</div>
-                    <div className="voucher-card__cta">
-                      {t("Nhận ngay")}
-                    </div>
-                  </div>
-                </Link>
-              ))}
-
-              {promotions.slice(0, FLASH_PROMOS_LIMIT).map((m) => (
-                <div
-                  key={`promo-${m.id}`}
-                  className="grab-food-card"
-                  onClick={() => {
-                    setMode("buy");
-                    setSelected(m);
-                  }}
-                >
-                  <div className="grab-food-card__image-wrap">
-                    <img src={m.image} alt={m.name} loading="lazy" />
-
-                    <span className="grab-food-card__badge grab-food-card__badge--hot grab-food-card__badge--right">
-                      -{m.discount_percent}%
-                    </span>
-
-                    <button
-                      type="button"
-                      className="grab-food-card__add-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMode("buy");
-                        setSelected(m);
-                      }}
-                      aria-label={`${t("Đặt món")} ${m.name}`}
-                    >
-                      <Zap size={18} strokeWidth={3} />
-                    </button>
-                  </div>
-
-                  <div className="grab-food-card__info">
-                    <h4 className="grab-food-card__name">{tData(m, "name")}</h4>
-                    <div className="grab-food-card__price-row">
-                      <span
-                        className="grab-food-card__price"
-                        style={{ color: "#ef4444" }}
-                      >
-                        {money(m.price)}
-                      </span>
-                      {m.original_price > m.price && (
-                        <span className="grab-food-card__price-old">
-                          {money(m.original_price)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="home-picks-grid home-picks-grid--flash-style">
+            {newItems.map((m) => (
+              <HomeFoodCard
+                key={m.id || m._id}
+                m={m}
+                qty={flashQty[m.id || m._id] || 1}
+                onQtyChange={handleQtyChange}
+                onAdd={addToCart}
+                onView={openModal}
+                t={t}
+                tData={tData}
+              />
+            ))}
           </div>
-        </>
-      )}
-
-      {/* ✅ SIGNATURE SECTION — Dưới Flash Sale */}
-      {!loading && signatureItems.length > 0 && (
-        <div
-          id="signature-section"
-          style={{
-            marginBottom: 26,
-            scrollMarginTop: 80,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 14,
-            }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 18,
-                color: "var(--text-primary, #172033)",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span style={{ fontSize: 22 }}>⭐</span> {t("Món Signature")}
-              <span
-                style={{
-                  background: "linear-gradient(135deg, #f59e0b, #ef4444)",
-                  color: "#fff",
-                  padding: "3px 10px",
-                  borderRadius: 12,
-                  fontSize: 10,
-                  fontWeight: 800,
-                }}
-              >
-                {t("Đặc sản")}
-              </span>
-            </h3>
-
-            {/* ✅ Nút Xem thêm / Thu gọn */}
-            {signatureItems.length > SIGNATURE_LIMIT && (
-              <button
-                type="button"
-                onClick={() => setShowAllSignature((s) => !s)}
-                style={{
-                  background: "transparent",
-                  border: 0,
-                  color: "#2634d5",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: 0,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                {showAllSignature ? `${t("Thu gọn")} ↑` : `${t("Xem tất cả")} →`}
-              </button>
-            )}
-          </div>
-
-          <div className="home-food-grid-5">
-            {visibleSignature.map(renderFoodCard)}
-          </div>
-
-          {/* Nút "Xem tất cả" bên dưới (khi đã show all, có nút đóng) */}
-          {showAllSignature && signatureItems.length > SIGNATURE_LIMIT && (
-            <div style={{ textAlign: "center", marginTop: 16 }}>
-              <button
-                type="button"
-                onClick={() => setShowAllSignature(false)}
-                style={{
-                  padding: "10px 20px",
-                  background: "var(--bg-tertiary, #f5f7fb)",
-                  border: "1px solid var(--border-color, #e5e9ef)",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--text-muted, #475569)",
-                }}
-              >
-                ↑ {t("Thu gọn")}
-              </button>
-            </div>
-          )}
         </div>
       )}
 
-      {/* BÁN CHẠY NHẤT */}
-      <h3
-        style={{
-          marginBottom: 14,
-          fontSize: 16,
-          color: "var(--text-primary, #172033)",
-        }}
-      >
-        🔥 {t("Bán chạy nhất")}
-      </h3>
-
-      <div className="home-food-grid-5" style={{ marginBottom: 26 }}>
-        {loading && items.length === 0 && (
-          <>
-            {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
-              <SkeletonCard key={`skeleton-${i}`} />
-            ))}
-          </>
-        )}
-
-        {!loading && items.length === 0 && (
-          <div
-            style={{
-              gridColumn: "1 / -1",
-              textAlign: "center",
-              padding: 40,
-              color: "#8993a3",
-              background: "var(--card-bg, #fff)",
-              borderRadius: 14,
-              border: "1px solid var(--border-color, #e7ebf0)",
-            }}
-          >
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🍽️</div>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-              {t("Chưa có dữ liệu bán chạy")}
+      {/* ===== SIGNATURE (nếu có) ===== */}
+      {signatureItems.length > 0 && (
+        <div className="home-picks-section">
+          <div className="home-section-head">
+            <div className="home-section-title-wrap">
+              <span className="home-section-icon">
+                <Gift size={20} color="#2563eb" />
+              </span>
+              <div>
+                <h3 className="home-section-title">
+                  {t("Món Signature của Canteen")}
+                </h3>
+                <p className="home-section-sub">
+                  {t("Đặc sản được đầu bếp chọn lọc mỗi ngày")}
+                </p>
+              </div>
             </div>
-            <div style={{ fontSize: 12 }}>
-              {t("Bạn xem thực đơn nhé!")}
-            </div>
-            <Link
-              to="/customer/menu"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 14,
-                padding: "10px 20px",
-                background: "#2634d5",
-                color: "#fff",
-                borderRadius: 10,
-                textDecoration: "none",
-                fontWeight: 700,
-                fontSize: 13,
-              }}
-            >
-              <Utensils size={15} /> {t("Khám phá thực đơn")}
+            <Link to="/customer/menu" className="home-section-link">
+              {t("Xem tất cả")} <ArrowRight size={16} />
             </Link>
           </div>
-        )}
 
-        {items.map(renderFoodCard)}
+          <div className="home-picks-grid home-picks-grid--flash-style">
+            {signatureItems.slice(0, SIGNATURE_LIMIT).map((m) => (
+              <HomeFoodCard
+                key={m.id || m._id}
+                m={m}
+                qty={flashQty[m.id || m._id] || 1}
+                onQtyChange={handleQtyChange}
+                onAdd={addToCart}
+                onView={openModal}
+                t={t}
+                tData={tData}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ===== ADVISORY BOX ===== */}
+      <div className="home-advisory-box">
+        <div className="home-advisory-icon">
+          <Info size={24} />
+        </div>
+        <div className="home-advisory-content">
+          <h4 className="home-advisory-title">
+            {t("Lưu ý nhận món vào giờ cao điểm tại Căng tin VWA")}
+          </h4>
+          <p className="home-advisory-desc">
+            {t("Căng tin mở cửa từ")} <b>06:30 - 18:30</b>.{" "}
+            {t("Khung giờ nhận đông nhất:")}{" "}
+            <b style={{ color: "#dc2626" }}>11:30 - 12:30</b>.{" "}
+            {t(
+              "Vui lòng đặt món trước tối thiểu 15 phút để nhà bếp chuẩn bị sẵn, không cần xếp hàng đợi lấy số!"
+            )}
+          </p>
+        </div>
+        <Link to="/customer/orders" className="home-advisory-btn">
+          {t("Kiểm tra đơn của tôi")}
+        </Link>
       </div>
 
-      {/* MÓN MỚI */}
-      {newItems.length > 0 && (
-        <div style={{ marginBottom: 26 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 14,
-            }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 16,
-                color: "var(--text-primary, #172033)",
-              }}
-            >
-              ✨ {t("Món mới lên kệ")}
-            </h3>
-            <Link
-              to="/customer/menu"
-              style={{
-                color: "#2634d5",
-                fontSize: 13,
-                textDecoration: "none",
-                fontWeight: 600,
-              }}
-            >
-              {t("Xem tất cả")} →
-            </Link>
-          </div>
-          <div className="home-food-grid-5">
-            {newItems.map(renderFoodCard)}
-          </div>
-        </div>
-      )}
-
-      {/* ĐÁNH GIÁ KHÁCH HÀNG */}
-      <div style={{ marginBottom: 26 }}>
-        <h3
-          style={{
-            marginBottom: 14,
-            fontSize: 16,
-            color: "var(--text-primary, #172033)",
-          }}
-        >
-          ⭐ {t("Khách hàng nói gì")}
-        </h3>
-        <div className="home-testi-grid">
-          {TESTIMONIAL_DATA.map((tm, i) => (
-            <div
-              key={i}
-              style={{
-                background: "var(--card-bg, #fff)",
-                border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 14,
-                padding: 18,
-                position: "relative",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <Quote
-                size={28}
-                style={{
-                  color: "#2634d5",
-                  opacity: 0.15,
-                  position: "absolute",
-                  top: 12,
-                  right: 12,
-                }}
-              />
-              <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <Star
-                    key={s}
-                    size={14}
-                    fill={s <= tm.rating ? "#f59e0b" : "none"}
-                    color={s <= tm.rating ? "#f59e0b" : "#cbd5e1"}
-                  />
-                ))}
+      {/* ===== STICKY CART BAR ===== */}
+      {cartStats.totalQty > 0 && (
+        <div className="home-sticky-cart">
+          <div className="home-sticky-cart__inner">
+            <div className="home-sticky-cart__left">
+              <div className="home-sticky-cart__icon-wrap">
+                <ShoppingBag size={24} />
+                <span className="home-sticky-cart__badge">
+                  {cartStats.totalQty}
+                </span>
               </div>
-              <p
-                style={{
-                  margin: "0 0 14px",
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                  color: "var(--text-muted, #64748b)",
-                  fontStyle: "italic",
-                  flex: 1,
-                }}
-              >
-                "{t(tm.text)}"
-              </p>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  paddingTop: 12,
-                  borderTop: "1px solid var(--border-color, #eef2f7)",
-                }}
-              >
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: "50%",
-                    background: "linear-gradient(135deg, #2634d5, #20c779)",
-                    color: "#fff",
-                    display: "grid",
-                    placeItems: "center",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  {tm.name
-                    .split(" ")
-                    .map((w) => w[0])
-                    .slice(-2)
-                    .join("")
-                    .toUpperCase()}
-                </div>
-                <div>
-                  <b
-                    style={{
-                      fontSize: 13,
-                      color: "var(--text-primary, #172033)",
-                      display: "block",
-                    }}
-                  >
-                    {tm.name}
+              <div className="home-sticky-cart__info">
+                <span className="home-sticky-cart__title">
+                  {t("Giỏ hàng của bạn")}
+                </span>
+                <span className="home-sticky-cart__preview">
+                  ({cartStats.preview || t("Chưa có món")})
+                </span>
+                <div className="home-sticky-cart__total-row">
+                  <span className="home-sticky-cart__label">
+                    {t("Tạm tính:")}
+                  </span>
+                  <b className="home-sticky-cart__total">
+                    {money(cartStats.totalPrice)}
                   </b>
-                  <span
-                    style={{ fontSize: 11, color: "var(--text-light, #8993a3)" }}
-                  >
-                    {t(tm.role)}
+                  <span className="home-sticky-cart__tag">
+                    {t("Đã áp dụng trợ giá SV")}
                   </span>
                 </div>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* QR XEM MENU */}
-      <div
-        style={{
-          marginBottom: 26,
-          background:
-            "linear-gradient(135deg, rgba(38, 52, 213, 0.06), rgba(32, 199, 121, 0.06))",
-          border: "1px solid rgba(38, 52, 213, 0.2)",
-          borderRadius: 16,
-          padding: "24px 28px",
-          display: "flex",
-          alignItems: "center",
-          gap: 24,
-          flexWrap: "wrap",
-        }}
-      >
-        <div
-          style={{
-            width: 100,
-            height: 100,
-            background: "#fff",
-            borderRadius: 12,
-            padding: 6,
-            display: "grid",
-            placeItems: "center",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-            flexShrink: 0,
-          }}
-        >
-          {qrImageSrc && (
-            <img
-              src={qrImageSrc}
-              alt={t("QR truy cập menu")}
-              loading="lazy"
-              style={{ width: "100%", height: "100%", objectFit: "contain" }}
-            />
-          )}
+            <div className="home-sticky-cart__right">
+              <div className="home-sticky-cart__time">
+                <span>{t("Khung giờ nhận đề xuất")}</span>
+                <b>11:45 - 12:00</b>
+              </div>
+              <Link to="/customer/cart" className="home-sticky-cart__cta">
+                {t("Thanh toán & Chọn giờ")}
+                <ArrowRight size={18} />
+              </Link>
+            </div>
+          </div>
         </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <h3
-            style={{
-              margin: "0 0 6px",
-              fontSize: 17,
-              color: "var(--text-primary, #172033)",
-              fontWeight: 800,
-            }}
-          >
-            📱 {t("Quét QR để xem menu")}
-          </h3>
-          <p
-            style={{
-              margin: "0 0 12px",
-              fontSize: 13,
-              lineHeight: 1.6,
-              color: "var(--text-muted, #64748b)",
-            }}
-          >
-            {t("Quét mã QR bằng điện thoại để mở thực đơn nhanh chóng. Hoặc bấm nút bên dưới.")}
-          </p>
-          <Link
-            to="/customer/menu"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              background: "#2634d5",
-              color: "#fff",
-              padding: "10px 18px",
-              borderRadius: 8,
-              textDecoration: "none",
-              fontWeight: 600,
-              fontSize: 13,
-            }}
-          >
-            {t("Mở thực đơn")}
-          </Link>
-        </div>
-      </div>
+      )}
 
-      {/* MODAL */}
+      {/* ===== MODAL ===== */}
       {selected && (
         <FoodDetailModal
           item={selected}
@@ -1120,11 +985,12 @@ export default function CustomerHome({ user, cart, setCart }) {
           setCart={setCart}
           user={user}
           mode={mode}
+          initialQty={flashQty[selected.id || selected._id] || 1}
           onClose={() => setSelected(null)}
         />
       )}
 
-      {/* CHATBOT WIDGET */}
+      {/* ===== CHATBOT ===== */}
       <ChatBotWidget cart={cart} setCart={setCart} user={user} />
     </div>
   );

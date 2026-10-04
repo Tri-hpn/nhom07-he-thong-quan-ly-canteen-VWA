@@ -14,8 +14,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_FILE = path.join(__dirname, "canteen-db.json");
+const DB_FILE = path.join(__dirname, "..", "canteen-db.json");
 const BACKUP_FILE = path.join(
+  "..",
   __dirname,
   `canteen-db.backup-${Date.now()}.json`
 );

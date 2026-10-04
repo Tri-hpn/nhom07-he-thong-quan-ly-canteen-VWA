@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // FOODDETAILMODAL.JSX — Modal chi tiết món ăn
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
@@ -6,7 +6,9 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Star, Plus, ShoppingBag, Save, X } from "lucide-react";
+import {
+  Star, Plus, ShoppingBag, Save, X,
+} from "lucide-react";
 import { money } from "./UI";
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";

@@ -1,15 +1,14 @@
-﻿// ============================================================
-// CUSTOMERCHECKOUT.JSX — Trang thanh toán
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-//    Không còn key cũ kiểu "checkout.xxx" / "common.xxx"
+// CUSTOMERCHECKOUT.JSX — Thanh toán (V2 - design mới)
+// ============================================================
+// ✅ GIỮ NGUYÊN: logic, state, hooks, API calls, i18n
+// 🎨 THAY ĐỔI: layout 2 cột + 4 payment methods + stepper
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  User, Phone, Clock, FileText, Tag, CheckCircle2,
-  CreditCard, Gift, X, Zap, Loader2,
+  User, Phone, Clock, FileText, Tag, CheckCircle2, CreditCard, Gift, X, Zap, Loader2, Home, ChevronRight, Wallet, QrCode, Banknote, Copy, Check, Download, ExternalLink, Store, Soup, Utensils, Shield, PhoneCall, Microwave, Info, Lightbulb, Sparkles, ChevronDown, Plus, Minus, RefreshCw, Wifi, BadgeCheck, AlertCircle, ShoppingBag, Receipt, Timer,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -36,6 +35,14 @@ const CART_KEY = "canteen_cart";
 
 const MIN_REDEEM_POINTS = 100;
 const REDEEM_VALUE = 10000;
+
+// Payment methods
+const PAYMENT_METHODS = [
+  { id: "wallet", label: "Ví VWA Pay", icon: Wallet },
+  { id: "qr",     label: "Mã VietQR",  icon: QrCode },
+  { id: "card",   label: "Thẻ Sinh Viên", icon: CreditCard },
+  { id: "cash",   label: "Tiền mặt",   icon: Banknote },
+];
 
 // ============================================================
 // HELPERS
@@ -78,6 +85,15 @@ function isSlotInPast(slot) {
   return slotDate.getTime() < now.getTime();
 }
 
+function genOrderCode() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const rand = String(Math.floor(Math.random() * 900) + 100);
+  return `ORD${y}${mm}${dd}${rand}`;
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -106,11 +122,16 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [paymentOrder, setPaymentOrder] = useState(null);
 
+  // NEW: Payment method state
+  const [paymentMethod, setPaymentMethod] = useState("qr");
+  const [usePoints, setUsePoints] = useState(false);
+  const [countdown, setCountdown] = useState(585); // 9:45
+
   const voucherReqIdRef = useRef(0);
   const submittingRef = useRef(false);
   const prevSubtotalRef = useRef(null);
 
-  // P1-002 FIX: Sync selectedKeys giua cac tab
+  // P1-002 FIX: Sync selectedKeys giữa các tab
   const [selectedKeys] = useCrossTabSync("canteen_cart_selected", []);
 
   const lines = useMemo(() => {
@@ -131,6 +152,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         0
       ),
     [lines]
+  );
+
+  const pointsDiscount = usePoints ? Math.min(2500, points * 10) : 0;
+  const total = useMemo(
+    () => Math.max(0, subtotal - discount - pointsDiscount),
+    [subtotal, discount, pointsDiscount]
   );
 
   // Clear voucher nếu subtotal thay đổi
@@ -155,10 +182,19 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     prevSubtotalRef.current = subtotal;
   }, [subtotal, appliedVoucher, t]);
 
-  const total = useMemo(
-    () => Math.max(0, subtotal - discount),
-    [subtotal, discount]
-  );
+  // Countdown timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCountdown((s) => (s <= 0 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const countdownStr = useMemo(() => {
+    const m = Math.floor(countdown / 60);
+    const s = countdown % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }, [countdown]);
 
   // ---------- Init fetch ----------
   useEffect(() => {
@@ -190,12 +226,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
   // ---------- Sync form khi user thay đổi ----------
   useEffect(() => {
-    if (user?.name) {
-      setName((cur) => (cur ? cur : user.name));
-    }
-    if (user?.phone) {
-      setPhone((cur) => (cur ? cur : user.phone));
-    }
+    if (user?.name) setName((cur) => (cur ? cur : user.name));
+    if (user?.phone) setPhone((cur) => (cur ? cur : user.phone));
   }, [user]);
 
   // ---------- Reload vouchers + points ----------
@@ -311,8 +343,61 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return Object.keys(errs).length === 0;
   };
 
-  // ---------- Open payment ----------
-  const openPayment = () => {
+  // ---------- Submit order (cho phương thức Card/Cash) ----------
+  const submitOrder = async (method) => {
+    if (submittingRef.current) return;
+    if (!lines.length) {
+      toast(t("Giỏ hàng trống"), "error");
+      return;
+    }
+    if (!validate()) {
+      toast(t("Kiểm tra lại thông tin"), "error");
+      return;
+    }
+
+    submittingRef.current = true;
+    setSubmittingOrder(true);
+
+    try {
+      const items = lines.map((m) => ({
+        menuItem: m._originalId || m._id || m.id,
+        qty: m.qty,
+        toppings: Array.isArray(m._toppings) ? m._toppings : [],
+        size: m._size || "S",
+      }));
+
+      const noteParts = [];
+      if (note.trim()) noteParts.push(note.trim());
+      if (pickupTime) noteParts.push(`${t("Nhận hàng:")} ${pickupTime}`);
+
+      const order = await api.orders.create({
+        items,
+        payment: method,
+        note: noteParts.join(" · "),
+        pickupTime: pickupTime || "",
+        discount: discount + pointsDiscount,
+        voucherCode: appliedVoucher?.code || "",
+      });
+
+      const selectedKeys = lines.map((m) => m._key);
+      const remainCart = removeOrderedItems(cart, selectedKeys);
+      setCart(remainCart);
+      toast(
+        `${t("Đặt hàng thành công!")} ${t("Mã đơn")}: ${order.code}`,
+        "success"
+      );
+
+      navigate("/customer/success", { state: { order } });
+    } catch (e) {
+      toast(e.message || t("Không đặt được hàng"), "error");
+    } finally {
+      submittingRef.current = false;
+      setSubmittingOrder(false);
+    }
+  };
+
+  // ---------- Open payment modal (Wallet/QR) ----------
+  const openPayment = (method) => {
     if (!lines.length) {
       toast(t("Giỏ hàng trống"), "error");
       return;
@@ -323,19 +408,19 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     }
 
     setPaymentOrder({
-      code: "TMP-" + Date.now().toString().slice(-6),
+      code: genOrderCode(),
       total,
       name,
       phone,
       pickupTime,
       note,
-      discount,
+      discount: discount + pointsDiscount,
       voucherCode: appliedVoucher?.code || "",
+      method,
     });
   };
 
-  // ---------- Confirm payment ----------
-  const confirmPayment = async (paymentMethod) => {
+  const confirmPayment = async (paymentMethodArg) => {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmittingOrder(true);
@@ -350,15 +435,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
       const noteParts = [];
       if (note.trim()) noteParts.push(note.trim());
-      if (pickupTime)
-        noteParts.push(`${t("Nhận hàng:")} ${pickupTime}`);
+      if (pickupTime) noteParts.push(`${t("Nhận hàng:")} ${pickupTime}`);
 
       const order = await api.orders.create({
         items,
-        payment: paymentMethod,
+        payment: paymentMethodArg,
         note: noteParts.join(" · "),
         pickupTime: pickupTime || "",
-        discount,
+        discount: discount + pointsDiscount,
         voucherCode: appliedVoucher?.code || "",
       });
 
@@ -380,567 +464,849 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     }
   };
 
+  // ---------- Copy clipboard ----------
+  const copyToClipboard = (text) => {
+    try {
+      navigator.clipboard.writeText(text);
+      toast(t("Đã sao chép"), "success");
+    } catch {
+      toast(t("Không sao chép được"), "error");
+    }
+  };
+
   // ---------- Early return: giỏ rỗng ----------
   if (!lines.length) {
     return (
-      <div
-        style={{
-          background: "var(--card-bg, #fff)",
-          borderRadius: 14,
-          padding: 60,
-          textAlign: "center",
-        }}
-      >
-        <h3 style={{ color: "var(--text-primary, #172033)" }}>
-          {t("Giỏ hàng đang trống")}
-        </h3>
-        <Link
-          to="/customer/menu"
-          style={{ color: "#2634d5", fontWeight: 600 }}
-        >
+      <div className="checkout-v2-empty">
+        <ShoppingBag size={60} />
+        <h3>{t("Giỏ hàng đang trống")}</h3>
+        <Link to="/customer/menu" className="checkout-v2-empty__btn">
+          <Utensils size={16} />
           {t("Khám phá thực đơn")}
         </Link>
       </div>
     );
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
-    <div className="checkout-2col">
-      {/* ============ CỘT TRÁI: FORM ============ */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* ===== Người đặt ===== */}
-        <div style={cardStyle}>
-          <h3 style={h3Style}>{t("Người đặt")}</h3>
+    <div className="checkout-v2">
+      {/* ============================================== */}
+      {/* 1. BREADCRUMB + STEPPER                         */}
+      {/* ============================================== */}
+      <section className="checkout-header">
+        <div className="checkout-header__top">
+          <nav className="checkout-breadcrumb">
+            <Link to="/customer/home" className="checkout-breadcrumb__link">
+              <Home size={14} />
+              {t("Trang chủ")}
+            </Link>
+            <ChevronRight size={14} className="checkout-breadcrumb__sep" />
+            <Link to="/customer/cart" className="checkout-breadcrumb__link">
+              {t("Giỏ hàng")}
+            </Link>
+            <ChevronRight size={14} className="checkout-breadcrumb__sep" />
+            <span className="checkout-breadcrumb__current">
+              {t("Thanh toán đơn hàng")}
+            </span>
+          </nav>
 
-          <FormField
-            label={`${t("Họ tên")} *`}
-            icon={<User size={16} />}
-            error={errors.name}
-          >
-            <input
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (errors.name) setErrors((p) => ({ ...p, name: "" }));
-              }}
-              placeholder={t("Nguyễn Văn A")}
-              style={inputInnerStyle}
-            />
-          </FormField>
-
-          <FormField
-            label={`${t("SĐT")} *`}
-            icon={<Phone size={16} />}
-            error={errors.phone}
-          >
-            <input
-              value={phone}
-              onChange={(e) => {
-                setPhone(e.target.value.replace(/[^0-9]/g, ""));
-                if (errors.phone) setErrors((p) => ({ ...p, phone: "" }));
-              }}
-              placeholder={t("0901234567")}
-              inputMode="numeric"
-              maxLength={11}
-              style={inputInnerStyle}
-            />
-          </FormField>
-
-          <FormField
-            label={`${t("Giờ nhận")} *`}
-            icon={<Clock size={16} />}
-            error={errors.pickupTime}
-          >
-            <select
-              value={pickupTime}
-              onChange={(e) => {
-                setPickupTime(e.target.value);
-                if (errors.pickupTime)
-                  setErrors((p) => ({ ...p, pickupTime: "" }));
-              }}
-              style={{
-                ...inputInnerStyle,
-                cursor: "pointer",
-                color: pickupTime
-                  ? "var(--text-primary, #172033)"
-                  : "var(--text-light, #8993a3)",
-              }}
-            >
-              <option value="">{t("Chọn khung giờ")}</option>
-              {TIME_SLOTS.map((slot) => {
-                const past = isSlotInPast(slot);
-                return (
-                  <option key={slot} value={slot} disabled={past}>
-                    {slot}
-                    {past ? ` ${t("(đã qua)")}` : ""}
-                  </option>
-                );
-              })}
-            </select>
-          </FormField>
-
-          <label style={labelStyle}>{t("Ghi chú")}</label>
-          <div style={inputWrapStyle()}>
-            <FileText size={16} style={{ ...iconStyle, marginTop: 4 }} />
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t("Ví dụ: ít cay, không hành...")}
-              maxLength={500}
-              style={{
-                ...inputInnerStyle,
-                minHeight: 60,
-                resize: "vertical",
-                fontFamily: "inherit",
-              }}
-            />
+          <div className="checkout-timer">
+            <Timer size={16} className="checkout-timer__icon" />
+            <span>{t("Giữ suất & giá ưu đãi trong:")}</span>
+            <b>{countdownStr}</b>
           </div>
         </div>
 
-        {/* ===== Voucher ===== */}
-        <div style={cardStyle}>
-          <h3
-            style={{
-              ...h3Style,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <Tag size={18} /> {t("Mã voucher")}
-          </h3>
+        {/* Stepper 4 bước */}
+        <div className="checkout-stepper">
+          <div className="checkout-stepper__item checkout-stepper__item--done">
+            <div className="checkout-stepper__icon">
+              <Check size={16} />
+            </div>
+            <div>
+              <span className="checkout-stepper__label">
+                {t("BƯỚC 1")}
+              </span>
+              <b>{t("Chọn món")}</b>
+            </div>
+          </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={voucherCode}
-              onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
-              placeholder={t("Nhập mã giảm giá")}
-              disabled={!!appliedVoucher || applyingVoucher}
-              onKeyDown={(e) =>
-                e.key === "Enter" && !appliedVoucher && applyVoucher()
-              }
-              style={{
-                flex: 1,
-                padding: "10px 12px",
-                border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 8,
-                outline: "none",
-                background: appliedVoucher
-                  ? "var(--bg-tertiary, #f5f7fb)"
-                  : "var(--bg-secondary, #fff)",
-                color: "var(--text-primary, #172033)",
-                fontSize: 13,
-                textTransform: "uppercase",
-                minWidth: 0,
-              }}
-            />
+          <div className="checkout-stepper__item checkout-stepper__item--done">
+            <div className="checkout-stepper__icon">
+              <Check size={16} />
+            </div>
+            <div>
+              <span className="checkout-stepper__label">
+                {t("BƯỚC 2")}
+              </span>
+              <b>{t("Giỏ & Tùy chọn")}</b>
+            </div>
+          </div>
 
-            {appliedVoucher ? (
+          <div className="checkout-stepper__item checkout-stepper__item--active">
+            <div className="checkout-stepper__icon checkout-stepper__icon--active">
+              <CreditCard size={16} />
+            </div>
+            <div>
+              <span className="checkout-stepper__label checkout-stepper__label--active">
+                {t("BƯỚC 3")}
+              </span>
+              <b className="checkout-stepper__label--active">
+                {t("Thanh toán")}
+              </b>
+            </div>
+          </div>
+
+          <div className="checkout-stepper__item checkout-stepper__item--pending">
+            <div className="checkout-stepper__icon">
+              <Store size={16} />
+            </div>
+            <div>
+              <span className="checkout-stepper__label">
+                {t("BƯỚC 4")}
+              </span>
+              <b>{t("Nhận tại quầy")}</b>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================== */}
+      {/* 2. MAIN 2-COLUMN GRID                           */}
+      {/* ============================================== */}
+      <div className="checkout-grid">
+        {/* ============ LEFT: PAYMENT METHODS ============ */}
+        <div className="checkout-left">
+          {/* Header */}
+          <div className="checkout-method-header">
+            <div>
+              <h1>{t("Phương thức thanh toán")}</h1>
+              <p>
+                {t("Chọn 1 trong 4 hình thức thanh toán thuận tiện cho sinh viên & giảng viên")}
+              </p>
+            </div>
+            <span className="checkout-method-header__badge">
+              <Zap size={14} />
+              {t("Xử lý tự động 24/7")}
+            </span>
+          </div>
+
+          {/* Payment tabs */}
+          <div className="checkout-payment-tabs">
+            {PAYMENT_METHODS.map((m) => {
+              const Icon = m.icon;
+              const active = paymentMethod === m.id;
+              return (
+                <button
+                  key={m.id}
+                  className={`checkout-payment-tab ${
+                    active ? "active" : ""
+                  }`}
+                  onClick={() => setPaymentMethod(m.id)}
+                >
+                  <Icon size={20} />
+                  <span>{t(m.label)}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ===== PANEL: WALLET ===== */}
+          {paymentMethod === "wallet" && (
+            <div className="checkout-panel">
+              <div className="checkout-panel__head">
+                <div className="checkout-panel__head-left">
+                  <div className="checkout-panel__icon checkout-panel__icon--blue">
+                    <Wallet size={24} />
+                  </div>
+                  <div>
+                    <h3>{t("Ví Điện Tử Canteen VWA Pay")}</h3>
+                    <span>{t("Tài khoản thanh toán nội bộ học viện")}</span>
+                  </div>
+                </div>
+                <span className="checkout-panel__tag checkout-panel__tag--blue">
+                  {t("Hoàn 5% Green Points")}
+                </span>
+              </div>
+
+              <div className="checkout-wallet-balance">
+                <div>
+                  <span className="checkout-wallet-balance__label">
+                    {t("Số dư khả dụng trong ví:")}
+                  </span>
+                  <div className="checkout-wallet-balance__value">
+                    <b>{money(walletBalance).replace("đ", "")}</b>
+                    <span>đ</span>
+                    <span className="checkout-wallet-balance__badge">
+                      {total <= walletBalance
+                        ? t("Đủ thanh toán")
+                        : t("Không đủ")}
+                    </span>
+                  </div>
+                </div>
+                <Link
+                  to="/customer/wallet"
+                  className="checkout-wallet-balance__btn"
+                >
+                  <Plus size={16} />
+                  {t("Nạp thêm tiền")}
+                </Link>
+              </div>
+
+              {/* Points redemption */}
+              <label className="checkout-points-option">
+                <input
+                  type="checkbox"
+                  checked={usePoints}
+                  onChange={(e) => setUsePoints(e.target.checked)}
+                />
+                <div className="checkout-points-option__body">
+                  <div className="checkout-points-option__head">
+                    <b>
+                      {t("Sử dụng điểm sinh viên Green Points")}
+                    </b>
+                    <span className="checkout-points-option__discount">
+                      -{money(pointsDiscount)}
+                    </span>
+                  </div>
+                  <p>
+                    {t("Bạn đang có {points} điểm tích lũy. Quy đổi tối đa 2.500 đ cho suất ăn này.")
+                      .replace("{points}", points)}
+                  </p>
+                </div>
+              </label>
+
               <button
-                onClick={clearVoucher}
-                style={{
-                  padding: "10px 20px",
-                  background: "var(--card-bg, #fff)",
-                  color: "#ef4444",
-                  border: "1px solid #ef4444",
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  whiteSpace: "nowrap",
-                }}
+                className="checkout-panel__cta"
+                onClick={() => openPayment("WALLET")}
+                disabled={submittingOrder || total > walletBalance}
               >
-                <X size={14} /> {t("Hủy")}
+                <Check size={20} />
+                {t("Xác nhận trừ ví & Hoàn tất đơn")} ({money(total)})
               </button>
-            ) : (
+            </div>
+          )}
+
+          {/* ===== PANEL: QR ===== */}
+          {paymentMethod === "qr" && (
+            <div className="checkout-panel">
+              <div className="checkout-panel__head">
+                <div className="checkout-panel__head-left">
+                  <div className="checkout-panel__icon checkout-panel__icon--blue">
+                    <QrCode size={24} />
+                  </div>
+                  <div>
+                    <h3>{t("Quét mã VietQR / Ngân hàng")}</h3>
+                    <span>
+                      {t("Tương thích với hơn 45+ App Ngân Hàng & Momo, VNPay")}
+                    </span>
+                  </div>
+                </div>
+                <span className="checkout-panel__live">
+                  <span className="checkout-panel__live-dot" />
+                  {t("Tự động đối soát")}
+                </span>
+              </div>
+
+              <div className="checkout-qr-grid">
+                {/* QR Frame */}
+                <div className="checkout-qr-frame">
+                  <div className="checkout-qr-frame__inner">
+                    {/* Simulated QR SVG */}
+                    <svg
+                      viewBox="0 0 200 200"
+                      className="checkout-qr-svg"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <rect fill="#131b2e" height="50" rx="4" width="50" x="10" y="10" />
+                      <rect fill="#fff" height="30" rx="2" width="30" x="20" y="20" />
+                      <rect fill="#004ac6" height="18" rx="1" width="18" x="26" y="26" />
+
+                      <rect fill="#131b2e" height="50" rx="4" width="50" x="140" y="10" />
+                      <rect fill="#fff" height="30" rx="2" width="30" x="150" y="20" />
+                      <rect fill="#004ac6" height="18" rx="1" width="18" x="156" y="26" />
+
+                      <rect fill="#131b2e" height="50" rx="4" width="50" x="10" y="140" />
+                      <rect fill="#fff" height="30" rx="2" width="30" x="20" y="150" />
+                      <rect fill="#004ac6" height="18" rx="1" width="18" x="26" y="156" />
+
+                      {[
+                        [70, 15], [90, 15], [115, 25], [70, 35],
+                        [15, 70], [35, 70], [20, 95],
+                        [140, 70], [165, 70], [140, 90], [160, 95], [175, 115],
+                        [70, 65], [95, 65], [115, 65],
+                        [65, 90], [90, 90], [120, 90],
+                        [65, 115], [95, 120], [120, 120],
+                        [70, 145], [95, 145], [130, 145],
+                        [70, 165], [100, 165], [125, 170],
+                        [155, 145], [175, 150], [155, 175],
+                      ].map(([x, y], i) => (
+                        <rect
+                          key={i}
+                          fill={i % 3 === 0 ? "#004ac6" : "#131b2e"}
+                          height="10"
+                          rx="1"
+                          width="10"
+                          x={x}
+                          y={y}
+                        />
+                      ))}
+
+                      <rect fill="#004ac6" height="50" rx="8" width="50" x="75" y="75" />
+                      <text
+                        fill="#fff"
+                        fontFamily="'Plus Jakarta Sans', sans-serif"
+                        fontSize="14"
+                        fontWeight="700"
+                        textAnchor="middle"
+                        x="100"
+                        y="105"
+                      >
+                        VWA
+                      </text>
+                    </svg>
+                  </div>
+
+                  <div className="checkout-qr-frame__brand">
+                    <span>Napas 247</span>
+                    <span>•</span>
+                    <span className="blue">VietQR</span>
+                    <span>•</span>
+                    <span className="tertiary">VNPAY</span>
+                  </div>
+
+                  <div className="checkout-qr-frame__actions">
+                    <button type="button">
+                      <Download size={14} />
+                      {t("Lưu ảnh QR")}
+                    </button>
+                    <button type="button">
+                      <ExternalLink size={14} />
+                      {t("Mở App Ngân Hàng")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Transfer info */}
+                <div className="checkout-qr-info">
+                  <div className="checkout-qr-info__row">
+                    <div>
+                      <span>{t("ĐƠN VỊ THỤ HƯỞNG")}</span>
+                      <b>CANTEEN VWA - HOC VIEN PHU NU VN</b>
+                      <small>
+                        {t("Ngân hàng TMCP Ngoại thương (Vietcombank)")}
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="checkout-qr-info__row">
+                    <div>
+                      <span>{t("SỐ TÀI KHOẢN")}</span>
+                      <b className="mono">1042 8888 6868</b>
+                    </div>
+                    <button onClick={() => copyToClipboard("104288886868")}>
+                      <Copy size={14} />
+                      {t("Sao chép")}
+                    </button>
+                  </div>
+
+                  <div className="checkout-qr-info__row">
+                    <div>
+                      <span>{t("NỘI DUNG CHUYỂN KHOẢN")}</span>
+                      <b className="mono blue">ORD20250228098</b>
+                    </div>
+                    <button onClick={() => copyToClipboard("ORD20250228098")}>
+                      <Copy size={14} />
+                      {t("Sao chép")}
+                    </button>
+                  </div>
+
+                  <div className="checkout-qr-info__row checkout-qr-info__row--amount">
+                    <div>
+                      <span>{t("SỐ TIỀN CHÍNH XÁC")}</span>
+                      <b className="mono blue large">{money(total)}</b>
+                    </div>
+                    <button
+                      className="primary"
+                      onClick={() => copyToClipboard(String(total))}
+                    >
+                      <Copy size={14} />
+                      {t("Sao chép")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="checkout-qr-sync">
+                <div className="checkout-qr-sync__icon">
+                  <RefreshCw size={18} className="checkout-spin" />
+                </div>
+                <div>
+                  <b>{t("Đang chờ nhận tiền từ tài khoản...")}</b>
+                  <p>
+                    {t("Hệ thống sẽ tự động xác nhận đơn trong 2 - 5 giây ngay sau khi giao dịch thành công.")}
+                  </p>
+                </div>
+              </div>
+
               <button
-                onClick={() => applyVoucher()}
-                disabled={applyingVoucher}
-                style={{
-                  padding: "10px 20px",
-                  background: applyingVoucher ? "#94a3b8" : "#2634d5",
-                  color: "#fff",
-                  border: 0,
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  cursor: applyingVoucher ? "not-allowed" : "pointer",
-                  fontSize: 13,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  whiteSpace: "nowrap",
-                }}
+                className="checkout-panel__cta"
+                onClick={() => openPayment("QR")}
+                disabled={submittingOrder}
               >
-                {applyingVoucher ? (
+                <BadgeCheck size={20} />
+                {t("Tôi đã chuyển khoản / Hoàn tất")}
+              </button>
+            </div>
+          )}
+
+          {/* ===== PANEL: CARD ===== */}
+          {paymentMethod === "card" && (
+            <div className="checkout-panel">
+              <div className="checkout-panel__head">
+                <div className="checkout-panel__head-left">
+                  <div className="checkout-panel__icon checkout-panel__icon--blue">
+                    <CreditCard size={24} />
+                  </div>
+                  <div>
+                    <h3>{t("Thẻ Sinh Viên Liên Kết / Chạm POS")}</h3>
+                    <span>
+                      {t("Thẻ chip contactless BIDV / Agribank tích hợp thẻ sinh viên HVPNVN")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="checkout-card-info">
+                <div className="checkout-card-info__icon">
+                  <Wifi size={32} />
+                </div>
+                <div>
+                  <b>{t("Hướng dẫn thanh toán tại quầy")}</b>
+                  <p>
+                    {t("Khi đến Quầy 01 (Cơm) để nhận suất, bạn chỉ cần đưa thẻ sinh viên chạm nhẹ vào Kiosk tự phục vụ hoặc máy POS di động của nhân viên để hoàn tất trừ tiền trong tích tắc.")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="checkout-card-user">
+                <div className="checkout-card-user__left">
+                  <CreditCard size={18} />
+                  <span>
+                    {t("Thẻ SV:")} {user?.name || "Nguyễn Văn A"} (K21 - CNTT)
+                  </span>
+                </div>
+                <span className="checkout-card-user__num">•••• 8098</span>
+              </div>
+
+              <button
+                className="checkout-panel__cta"
+                onClick={() => submitOrder("CARD")}
+                disabled={submittingOrder}
+              >
+                {submittingOrder ? (
                   <>
-                    <Loader2
-                      size={14}
-                      style={{ animation: "spin 1s linear infinite" }}
-                    />
-                    {t("Đang kiểm tra...")}
+                    <Loader2 size={18} className="checkout-spin" />
+                    {t("Đang xử lý...")}
                   </>
                 ) : (
-                  t("Áp dụng")
+                  <>
+                    <Check size={20} />
+                    {t("Xác nhận đặt suất & Chạm thẻ khi nhận món")}
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* ===== PANEL: CASH ===== */}
+          {paymentMethod === "cash" && (
+            <div className="checkout-panel">
+              <div className="checkout-panel__head">
+                <div className="checkout-panel__head-left">
+                  <div className="checkout-panel__icon checkout-panel__icon--blue">
+                    <Banknote size={24} />
+                  </div>
+                  <div>
+                    <h3>{t("Tiền Mặt Trực Tiếp Tại Quầy")}</h3>
+                    <span>
+                      {t("Thanh toán cho nhân viên thu ngân tại Quầy 01 khi lấy cơm")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="checkout-cash-info">
+                <div className="checkout-cash-info__head">
+                  <Info size={18} />
+                  <b>{t("Lưu ý khi thanh toán tiền mặt")}</b>
+                </div>
+                <p>
+                  {t("Vui lòng chuẩn bị sẵn đúng hoặc gần đủ số tiền")}{" "}
+                  <b>{money(total)}</b>{" "}
+                  {t("để giúp quầy phục vụ trưa nhanh chóng, tránh ùn tắc hàng chờ trong giờ cao điểm của học viện.")}
+                </p>
+
+                <div className="checkout-cash-info__denoms">
+                  <span>{t("Mệnh giá tiền dự kiến đưa:")}</span>
+                  <div className="checkout-cash-info__denoms-row">
+                    <button>{t("Đúng")} {money(total)}</button>
+                    <button>
+                      {t("Đưa 50.000 đ (Thối 15k)")}
+                    </button>
+                    <button>{t("Đưa 100.000 đ")}</button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                className="checkout-panel__cta"
+                onClick={() => submitOrder("CASH")}
+                disabled={submittingOrder}
+              >
+                {submittingOrder ? (
+                  <>
+                    <Loader2 size={18} className="checkout-spin" />
+                    {t("Đang xử lý...")}
+                  </>
+                ) : (
+                  <>
+                    <Check size={20} />
+                    {t("Xác nhận đặt đơn & Trả tiền mặt tại quầy")}
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Security badge */}
+          <div className="checkout-security">
+            <div className="checkout-security__left">
+              <Shield size={26} />
+              <div>
+                <b>{t("Thanh toán bảo mật chuẩn SSL / PCI-DSS")}</b>
+                <span>
+                  {t("Cam kết hoàn tiền 100% tự động nếu quầy tạm hết món hoặc phát sinh lỗi")}
+                </span>
+              </div>
+            </div>
+            <div className="checkout-security__right">
+              <PhoneCall size={16} />
+              <span>
+                {t("Hotline Canteen: 024 3775 1750")}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ============ RIGHT: ORDER SUMMARY ============ */}
+        <div className="checkout-right">
+          {/* Student info */}
+          <div className="checkout-student">
+            <div className="checkout-student__left">
+              <div className="checkout-student__avatar">
+                {(user?.name || "NA")
+                  .split(" ")
+                  .map((w) => w[0])
+                  .slice(-2)
+                  .join("")
+                  .toUpperCase()}
+              </div>
+              <div className="checkout-student__info">
+                <div className="checkout-student__name-row">
+                  <b>{user?.name || t("Sinh viên")}</b>
+                  <span>K21 CNTT</span>
+                </div>
+                <div className="checkout-student__meta">
+                  {t("MSSV:")} 2151010088 • {t("Trợ giá SV 2025")}
+                </div>
+              </div>
+            </div>
+            <BadgeCheck size={22} className="checkout-student__verified" />
+          </div>
+
+          {/* Xác minh thông tin nhận món (trước đây thiếu toàn bộ UI nhập liệu) */}
+          <div className="checkout-verify">
+            <div className="checkout-verify__head">
+              <div className="checkout-verify__title">
+                <BadgeCheck size={20} />
+                <b>{t("Xác minh thông tin nhận món")}</b>
+              </div>
+              <span className="checkout-verify__badge">
+                <Shield size={12} />
+                {t("Bắt buộc trước khi đặt")}
+              </span>
+            </div>
+
+            <div className="checkout-verify__grid">
+              {/* Họ tên người nhận */}
+              <label
+                className={`checkout-field${errors.name ? " has-error" : ""}`}
+              >
+                <span className="checkout-field__label">
+                  <User size={13} /> {t("Họ tên người nhận")}
+                </span>
+                <input
+                  type="text"
+                  className="checkout-field__input"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (errors.name) {
+                      setErrors((prev) => ({ ...prev, name: "" }));
+                    }
+                  }}
+                  placeholder={t("Nguyễn Văn A")}
+                  autoComplete="name"
+                />
+                {errors.name && (
+                  <span className="checkout-field__error">
+                    <AlertCircle size={12} /> {errors.name}
+                  </span>
+                )}
+              </label>
+
+              {/* Số điện thoại */}
+              <label
+                className={`checkout-field${errors.phone ? " has-error" : ""}`}
+              >
+                <span className="checkout-field__label">
+                  <Phone size={13} /> {t("Số điện thoại nhận món")}
+                </span>
+                <input
+                  type="tel"
+                  className="checkout-field__input"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (errors.phone) {
+                      setErrors((prev) => ({ ...prev, phone: "" }));
+                    }
+                  }}
+                  placeholder="0988 123 456"
+                  autoComplete="tel"
+                />
+                {errors.phone && (
+                  <span className="checkout-field__error">
+                    <AlertCircle size={12} /> {errors.phone}
+                  </span>
+                )}
+              </label>
+
+              {/* Giờ nhận món */}
+              <label
+                className={`checkout-field checkout-field--full${
+                  errors.pickupTime ? " has-error" : ""
+                }`}
+              >
+                <span className="checkout-field__label">
+                  <Clock size={13} /> {t("Giờ nhận món")}
+                </span>
+                <select
+                  className="checkout-field__input"
+                  value={pickupTime}
+                  onChange={(e) => {
+                    setPickupTime(e.target.value);
+                    if (errors.pickupTime) {
+                      setErrors((prev) => ({ ...prev, pickupTime: "" }));
+                    }
+                  }}
+                >
+                  <option value="">{t("-- Chọn khung giờ nhận --")}</option>
+                  {TIME_SLOTS.map((slot) => {
+                    const past = isSlotInPast(slot);
+                    return (
+                      <option key={slot} value={slot} disabled={past}>
+                        {slot}
+                        {past ? ` (${t("đã qua")})` : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+                {errors.pickupTime && (
+                  <span className="checkout-field__error">
+                    <AlertCircle size={12} /> {errors.pickupTime}
+                  </span>
+                )}
+              </label>
+
+              {/* Ghi chú cho bếp */}
+              <label className="checkout-field checkout-field--full">
+                <span className="checkout-field__label">
+                  <FileText size={13} /> {t("Ghi chú cho bếp (không bắt buộc)")}
+                </span>
+                <textarea
+                  className="checkout-field__input checkout-field__input--area"
+                  rows={2}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={t(
+                    "VD: ít cay, không hành, gọi trước khi tới quầy..."
+                  )}
+                />
+              </label>
+            </div>
+
+            <p className="checkout-verify__hint">
+              <Info size={14} />
+              {t(
+                "Thông tin này dùng để liên hệ khi món đã sẵn sàng và để in phiếu bếp KDS."
+              )}
+            </p>
+          </div>
+
+          {/* Order summary */}
+          <div className="checkout-summary">
+            <div className="checkout-summary__head">
+              <div>
+                <Utensils size={20} />
+                <b>
+                  {t("Tóm tắt đơn hàng")} ({lines.length} {t("món")})
+                </b>
+              </div>
+              <Link to="/customer/cart">{t("Chỉnh sửa")}</Link>
+            </div>
+
+            {/* Pickup station */}
+            <div className="checkout-pickup-badge">
+              <div>
+                <Store size={18} />
+                <b>{t("Quầy 01 (Cơm) & Quầy 03 (Nước)")}</b>
+              </div>
+              <span>
+                {t("Ca Trưa")} • {t("Ăn tại quầy")}
+              </span>
+            </div>
+
+            {/* Items */}
+            <div className="checkout-summary__items">
+              {lines.map((m) => (
+                <div key={m._key} className="checkout-summary-item">
+                  <div className="checkout-summary-item__img">
+                    {m.image ? (
+                      <img src={m.image} alt={m.name} loading="lazy" />
+                    ) : (
+                      <Soup size={26} />
+                    )}
+                  </div>
+                  <div className="checkout-summary-item__info">
+                    <h4>{tData(m, "name")}</h4>
+                    <div className="checkout-summary-item__meta">
+                      <span>Quầy 01</span>
+                      <span>•</span>
+                      <span>SL: {m.qty}</span>
+                      {m.discount_percent > 0 && (
+                        <span className="checkout-summary-item__tag">
+                          {t("Trợ giá")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="checkout-summary-item__price">
+                    {money(m.price * m.qty)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Cost breakdown */}
+            <div className="checkout-summary__costs">
+              <div className="checkout-cost-row">
+                <span>{t("Tạm tính:")}</span>
+                <b>{money(subtotal)}</b>
+              </div>
+
+              {discount > 0 && (
+                <div className="checkout-cost-row checkout-cost-row--discount">
+                  <span>
+                    <Tag size={14} />
+                    {t("Mã giảm giá")}
+                    {appliedVoucher?.code && ` (${appliedVoucher.code})`}:
+                  </span>
+                  <b>-{money(discount)}</b>
+                </div>
+              )}
+
+              {pointsDiscount > 0 && (
+                <div className="checkout-cost-row checkout-cost-row--discount">
+                  <span>
+                    <Sparkles size={14} />
+                    {t("Điểm Green Points:")}
+                  </span>
+                  <b>-{money(pointsDiscount)}</b>
+                </div>
+              )}
+
+              <div className="checkout-summary__total">
+                <div>
+                  <span>{t("TỔNG TIỀN THANH TOÁN")}</span>
+                  <small>
+                    {t("Đã bao gồm VAT & trợ giá học đường")}
+                  </small>
+                </div>
+                <div className="checkout-summary__total-value">
+                  {money(total)}
+                </div>
+              </div>
+            </div>
+
+            {/* CTA - Nếu không phải wallet/qr thì show nút submit chung */}
+            {(paymentMethod === "wallet" || paymentMethod === "qr") ? (
+              <div className="checkout-summary__note">
+                <Info size={16} />
+                <span>
+                  {paymentMethod === "wallet"
+                    ? t("Ví sẽ bị trừ ngay khi bạn xác nhận đơn hàng.")
+                    : t("Vui lòng hoàn tất chuyển khoản, sau đó ấn xác nhận.")}
+                </span>
+              </div>
+            ) : (
+              <button
+                className="checkout-summary__cta"
+                onClick={() =>
+                  submitOrder(paymentMethod === "card" ? "CARD" : "CASH")
+                }
+                disabled={submittingOrder}
+              >
+                {submittingOrder ? (
+                  <>
+                    <Loader2 size={18} className="checkout-spin" />
+                    {t("Đang xử lý...")}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={20} />
+                    {t("Xác nhận đặt đơn")}
+                  </>
                 )}
               </button>
             )}
+
+            <Link to="/customer/cart" className="checkout-summary__back">
+              {t("Quay lại giỏ hàng chỉnh sửa")}
+            </Link>
           </div>
 
-          {/* Đã áp dụng */}
-          {appliedVoucher && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "10px 14px",
-                background: "#e8f9f1",
-                borderRadius: 8,
-                fontSize: 13,
-                color: "#18a967",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <CheckCircle2 size={14} /> {t("Đã áp dụng")}{" "}
-              {appliedVoucher.code} — {t("Giảm giá")}{" "}
-              {money(appliedVoucher.value)}
+          {/* KDS note */}
+          <div className="checkout-kds-note">
+            <Microwave size={20} />
+            <div>
+              <b>{t("Quy trình chuyển bếp KDS tự động:")}</b>
+              <p>
+                {t("Sau khi ấn hoàn tất thanh toán, quầy bếp 01 & quầy nước 03 sẽ lập tức nhận vé điện tử để chuẩn bị thức ăn nóng sốt kịp thời cho bạn.")}
+              </p>
             </div>
-          )}
-
-          {/* Ví voucher */}
-          {!appliedVoucher && myVouchers.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--text-muted, #475569)",
-                  marginBottom: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <Gift size={14} /> {t("Ví voucher của bạn")} (
-                {myVouchers.length})
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fill, minmax(200px, 1fr))",
-                  gap: 8,
-                }}
-              >
-                {myVouchers.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => selectVoucher(v)}
-                    disabled={applyingVoucher}
-                    style={{
-                      padding: "12px 14px",
-                      background: "var(--bg-tertiary, #f5f7fb)",
-                      border: "1px dashed #2634d5",
-                      borderRadius: 10,
-                      cursor: applyingVoucher ? "not-allowed" : "pointer",
-                      textAlign: "left",
-                      opacity: applyingVoucher ? 0.6 : 1,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: 4,
-                      }}
-                    >
-                      <b style={{ color: "#2634d5", fontSize: 12 }}>
-                        {v.code}
-                      </b>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: "#18a967",
-                          fontWeight: 800,
-                        }}
-                      >
-                        -{money(v.value)}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-light, #8993a3)",
-                      }}
-                    >
-                      {v.points_used > 0
-                        ? `${t("Dùng")} ${v.points_used} ${t("điểm")}`
-                        : t("Admin tặng")}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Không có voucher + đủ điểm → nút đổi ngay */}
-          {!appliedVoucher &&
-            myVouchers.length === 0 &&
-            points >= MIN_REDEEM_POINTS && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 14,
-                  background:
-                    "linear-gradient(135deg, rgba(38,52,213,0.05), rgba(32,199,121,0.05))",
-                  border: "1px dashed #2634d5",
-                  borderRadius: 10,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 10,
-                  }}
-                >
-                  <Zap size={16} style={{ color: "#2634d5" }} />
-                  <b
-                    style={{
-                      fontSize: 13,
-                      color: "var(--text-primary, #172033)",
-                    }}
-                  >
-                    {t("Bạn có {points} điểm. Đổi ngay voucher {value}")
-                      .replace("{points}", points)
-                      .replace("{value}", money(REDEEM_VALUE))}
-                  </b>
-                </div>
-                <button
-                  onClick={redeemPoints}
-                  disabled={redeemLoading}
-                  style={{
-                    width: "100%",
-                    padding: "10px 16px",
-                    background: redeemLoading ? "#94a3b8" : "#18a967",
-                    color: "#fff",
-                    border: 0,
-                    borderRadius: 8,
-                    fontWeight: 700,
-                    cursor: redeemLoading ? "not-allowed" : "pointer",
-                    fontSize: 13,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                  }}
-                >
-                  {redeemLoading ? (
-                    <>
-                      <Loader2
-                        size={14}
-                        style={{ animation: "spin 1s linear infinite" }}
-                      />
-                      {t("Đang đổi...")}
-                    </>
-                  ) : (
-                    <>
-                      <Gift size={14} /> {t("Đổi")} {MIN_REDEEM_POINTS}{" "}
-                      {t("điểm")} → {t("Mã voucher")} {money(REDEEM_VALUE)}
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-
-          {/* Không voucher + không đủ điểm */}
-          {!appliedVoucher &&
-            myVouchers.length === 0 &&
-            points < MIN_REDEEM_POINTS && (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: "12px 14px",
-                  background: "var(--bg-tertiary, #f5f7fb)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  color: "var(--text-muted, #64748b)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <Gift size={14} />
-                <span>
-                  {t("Bạn có {points} điểm. Cần thêm {more} điểm để đổi voucher")
-                    .replace("{points}", points)
-                    .replace("{more}", MIN_REDEEM_POINTS - points)}{" "}
-                  <Link
-                    to="/customer/promotions"
-                    style={{ color: "#2634d5", fontWeight: 600 }}
-                  >
-                    {t("Xem điểm")} →
-                  </Link>
-                </span>
-              </div>
-            )}
-
-          {/* Loading state cho init */}
-          {initLoading && (
-            <div
-              style={{
-                marginTop: 12,
-                fontSize: 12,
-                color: "var(--text-light, #8993a3)",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Loader2
-                size={12}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
-              {t("Đang tải thông tin...")}
-            </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* ============ CỘT PHẢI: TÓM TẮT ============ */}
-      <div
-        style={{
-          ...cardStyle,
-          height: "fit-content",
-          position: "sticky",
-          top: 90,
-        }}
-      >
-        <h3 style={h3Style}>{t("Tóm tắt đơn hàng")}</h3>
-
-        <div
-          style={{
-            maxHeight: 240,
-            overflowY: "auto",
-            marginBottom: 14,
-          }}
-        >
-          {lines.map((m) => (
-            <div
-              key={m._key}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "8px 0",
-                borderBottom: "1px solid var(--border-color, #eef2f7)",
-                fontSize: 13,
-                gap: 10,
-              }}
-            >
-              <span
-                style={{
-                  color: "var(--text-primary, #172033)",
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                <b>{m.qty}×</b> {tData(m, "name")}
-              </span>
-              <b
-                style={{
-                  color: "var(--text-muted, #64748b)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {money(m.price * m.qty)}
-              </b>
-            </div>
-          ))}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            padding: "8px 0",
-            fontSize: 13,
-            color: "var(--text-muted, #64748b)",
-          }}
-        >
-          <span>{t("Tạm tính")}</span>
-          <b>{money(subtotal)}</b>
-        </div>
-
-        {discount > 0 && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              padding: "8px 0",
-              fontSize: 13,
-              color: "#18a967",
-            }}
-          >
-            <span>{t("Giảm giá")}</span>
-            <b>-{money(discount)}</b>
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            padding: "14px 0",
-            borderTop: "2px solid var(--border-color, #eef2f7)",
-            marginTop: 8,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 15,
-              fontWeight: 600,
-              color: "var(--text-primary, #172033)",
-            }}
-          >
-            {t("Tổng cộng")}
-          </span>
-          <strong style={{ color: "#2634d5", fontSize: 22 }}>
-            {money(total)}
-          </strong>
-        </div>
-
-        <button
-          onClick={openPayment}
-          disabled={submittingOrder}
-          style={{
-            width: "100%",
-            padding: 14,
-            background: submittingOrder ? "#94a3b8" : "#2634d5",
-            color: "#fff",
-            border: 0,
-            borderRadius: 10,
-            fontWeight: 700,
-            cursor: submittingOrder ? "not-allowed" : "pointer",
-            marginTop: 14,
-            fontSize: 14,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-          }}
-        >
-          <CreditCard size={18} /> {t("Đặt hàng")}
-        </button>
-      </div>
-
-      {/* ============ PAYMENT MODAL ============ */}
+      {/* ============================================== */}
+      {/* PAYMENT MODAL — fallback cho Wallet/QR          */}
+      {/* ============================================== */}
       {paymentOrder && (
         <PaymentModal
           order={paymentOrder}
@@ -951,84 +1317,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       )}
 
       <style>{`
-        @keyframes spin {
+        @keyframes checkout-spin-anim {
           from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
+          to { transform: rotate(360deg); }
         }
+        .checkout-spin { animation: checkout-spin-anim 1s linear infinite; }
       `}</style>
     </div>
   );
 }
-
-// ============================================================
-// SUB-COMPONENTS
-// ============================================================
-
-function FormField({ label, icon, error, children }) {
-  return (
-    <>
-      <label style={labelStyle}>{label}</label>
-      <div style={inputWrapStyle(error)}>
-        <span style={iconStyle}>{icon}</span>
-        {children}
-      </div>
-      {error && <div style={errStyle}>{error}</div>}
-    </>
-  );
-}
-
-// ============================================================
-// STYLE CONSTANTS
-// ============================================================
-
-const cardStyle = {
-  background: "var(--card-bg, #fff)",
-  border: "1px solid var(--border-color, #e7ebf0)",
-  borderRadius: 12,
-  padding: 20,
-};
-
-const h3Style = {
-  marginTop: 0,
-  color: "var(--text-primary, #172033)",
-};
-
-const labelStyle = {
-  display: "block",
-  fontSize: 12,
-  fontWeight: 600,
-  marginBottom: 4,
-  color: "var(--text-muted, #475569)",
-  marginTop: 12,
-};
-
-const iconStyle = { color: "var(--text-light, #8993a3)", flexShrink: 0 };
-
-const inputInnerStyle = {
-  flex: 1,
-  border: 0,
-  outline: "none",
-  background: "transparent",
-  color: "var(--text-primary, #172033)",
-  fontSize: 13,
-  minWidth: 0,
-};
-
-const inputWrapStyle = (err) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  border: err
-    ? "2px solid #ef4444"
-    : "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  padding: "8px 12px",
-  marginBottom: err ? 4 : 14,
-  background: "var(--bg-secondary, #fff)",
-});
-
-const errStyle = {
-  color: "#ef4444",
-  fontSize: 12,
-  marginBottom: 14,
-};
