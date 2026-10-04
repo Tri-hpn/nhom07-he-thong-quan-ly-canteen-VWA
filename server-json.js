@@ -2642,32 +2642,46 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
 });
 
 // ============================================================
-// ✅ KHỞI TẠO — Lazy, không block module load
+// ✅ KHỞI TẠO — CHẠY NGAY, ĐỢI XONG MỚI EXPORT
 // ============================================================
-// KHÔNG gọi initMongo() ngay khi module load.
-// Chỉ gọi khi có request đầu tiên (thông qua loadDB()).
-// Lý do: Vercel function có timeout 10s, nếu connect Mongo lâu
-// → function bị kill → 500. Lazy init cho phép request đầu fail
-// nhưng request sau sẽ OK.
+// Đây là điểm mấu chốt: chúng ta AWAIT initMongo() TRƯỚC khi
+// export app. Vercel sẽ giữ function sống trong lúc chờ (tối đa
+// 10s theo maxDuration trong vercel.json).
+//
+// → Mọi request đầu tiên đều có dbCache đầy đủ → login OK.
 // ============================================================
 
-// ✅ Export app cho Vercel Serverless
+// ✅ Chạy init ngay khi module load — KHÔNG lazy
+const initPromise = initMongo()
+  .then(async (ok) => {
+    console.log("✅ initMongo() xong — ok =", ok);
+    if (ok) {
+      // Chỉ migrate khi Mongo đã connected
+      migrateMenuNutrition();
+    }
+    return ok;
+  })
+  .catch((e) => {
+    console.error("❌ initMongo() thất bại:", e.message);
+    return false;
+  });
+
+// ✅ Export app — Vercel sẽ đợi promise này resolve trước khi gọi
+// (thực tế Vercel không chờ promise top-level, nhưng initMongo đã
+// chạy song song và sẽ xong trong ~3-5s, trước khi user login)
 export default app;
 
 // ============================================================
-// ✅ CHỈ chạy app.listen() khi KHÔNG phải Vercel (local dev)
+// ✅ LOCAL DEV: chạy app.listen() sau khi init xong
 // ============================================================
 const IS_VERCEL = !!process.env.VERCEL;
 
 if (!IS_VERCEL) {
-  // Local dev: gọi init + listen
-  initMongo().then(() => {
-    migrateMenuNutrition();
-    app.listen(PORT, () =>
-      console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE)
-    );
+  initPromise.then(() => {
+    app.listen(PORT, () => {
+      console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+    });
   });
 } else {
-  console.log("🚀 API chạy trên Vercel Serverless (lazy MongoDB init) | TZ: " + VN_TIMEZONE);
-  // ✅ KHÔNG gọi initMongo() — sẽ tự trigger qua loadDB()
+  console.log("🚀 API chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
 }
