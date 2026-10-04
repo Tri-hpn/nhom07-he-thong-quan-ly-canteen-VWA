@@ -298,8 +298,13 @@ function fillMenuNutrition(item) {
  */
 function migrateMenuNutrition() {
   try {
+    // ✅ Trên Vercel: chỉ migrate khi MongoDB đã kết nối thành công
+    if (!mongoReady) {
+      console.log("🥗 Bỏ qua migrate nutrition (chưa có MongoDB hoặc đang chạy Vercel serverless)");
+      return;
+    }
     const db = loadDB();
-    if (!Array.isArray(db.menu_items) || db.menu_items.length === 0) return;
+    if (!db || !Array.isArray(db.menu_items) || db.menu_items.length === 0) return;
     let changed = 0;
     for (const item of db.menu_items) {
       if (fillMenuNutrition(item)) changed++;
@@ -394,15 +399,21 @@ async function initMongo() {
     }
 
     if (!migration.ok) {
-      // Còn ảnh base64 trong document chính → TUYỆT ĐỐI không đọc/ghi
-      // full document (rất chậm và có thể làm mất ảnh). Chạy file JSON
-      // local để app vẫn dùng được và báo rõ cách xử lý.
-      throw new Error(
-        "Không tách được ảnh base64 khỏi document chính (" +
-          (migration.error || "không rõ nguyên nhân") +
-          ") → chạy: npm run db:migrate-images"
-      );
-    }
+  // Trên Vercel: KHÔNG throw để không crash function
+  if (process.env.VERCEL) {
+    console.warn(
+      "⚠️  Không tách được ảnh base64 (" + 
+      (migration.error || "không rõ") + 
+      ") — tiếp tục chạy với dữ liệu hiện có"
+    );
+  } else {
+    throw new Error(
+      "Không tách được ảnh base64 khỏi document chính (" +
+        (migration.error || "không rõ nguyên nhân") +
+        ") → chạy: npm run db:migrate-images"
+    );
+  }
+}
 
     console.log("⏳ Đang tải DB từ MongoDB...");
     const t0 = Date.now();
@@ -449,20 +460,39 @@ async function initMongo() {
 
 function loadDB() {
   if (dbCache) return dbCache;
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  
+  // ✅ Vercel: không đọc file, chỉ dùng dbCache
+  if (process.env.VERCEL) {
+    console.error("❌ loadDB: dbCache null trên Vercel — MongoDB chưa kết nối");
+    // Trả về object rỗng an toàn để không crash route
+    dbCache = {
+      users: [], menu_items: [], categories: [], orders: [],
+      vouchers: [], reviews: [], messages: [], attendances: [],
+      notifications: [], wallets: [], wallet_transactions: [],
+      inventory: [], imports: [], price_history: [], shifts: [],
+      toppings: [], sizes: [], settings: {}
+    };
+    return dbCache;
+  }
+  
+  // Local dev: đọc file
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+  } catch (e) {
+    console.error("loadDB lỗi đọc file:", e.message);
+    return null;
+  }
 }
 
 function saveDB(data) {
   dbCache = data;
+  
   if (mongoReady && MongoModel) {
-    // ⚠️ Ảnh món ăn phải nằm riêng trong collection menu_images — nếu vẫn
-    // nhúng base64 trong document chính thì document phình ~15 MB và mỗi
-    // lần lưu lại phải upload cả 15 MB lên Atlas.
+    // Ghi vào MongoDB
     const inlineCount = countInlineMenuImages(data);
     if (inlineCount > 0) {
       console.warn(
-        "⚠️  Còn " + inlineCount + " ảnh base64 trong menu_items → sẽ được tách sang menu_images " +
-          "ở lần khởi động sau (hoặc chạy ngay: npm run db:migrate-images)"
+        "⚠️  Còn " + inlineCount + " ảnh base64 trong menu_items"
       );
     }
     MongoModel.updateOne(
@@ -470,12 +500,20 @@ function saveDB(data) {
       { $set: { data: data } },
       { upsert: true }
     ).catch((e) => console.error("Mongo save error:", e.message));
-  } else {
-    try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
-    } catch (e) {
-      console.error("File save error:", e.message);
-    }
+    return;
+  }
+  
+  // ✅ Trên Vercel: KHÔNG ghi file (read-only filesystem)
+  if (process.env.VERCEL) {
+    console.warn("⚠️ saveDB: Bỏ qua ghi file (Vercel filesystem read-only)");
+    return;
+  }
+  
+  // Local dev: ghi file JSON bình thường
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (e) {
+    console.error("File save error:", e.message);
   }
 }
 
@@ -2639,23 +2677,24 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), (req, res) => {
 });
 
 // ============ HEALTH ============
-app.get("/", (_, res) => res.json({
+const healthHandler = (_, res) => res.json({
   ok: true,
   name: "Canteen VWA API (JSON)",
   version: BUILD_VERSION,
   timezone: VN_TIMEZONE,
-  autoTranslate: {
-    mode: "async-only",
-    langs: ASYNC_LANGS,
-    concurrency: 3,
-    timeoutMs: 3000,
-  },
+  autoTranslate: { mode: "async-only", langs: ASYNC_LANGS },
   oauth: {
     google: GOOGLE_OAUTH_ENABLED,
     facebook: FACEBOOK_OAUTH_ENABLED,
   },
+  mongo: mongoReady ? "connected" : "not-connected",
+  vercel: !!process.env.VERCEL,
   timestamp: new Date().toISOString()
-}));
+});
+
+app.get("/", healthHandler);
+app.get("/api", healthHandler);
+app.get("/api/", healthHandler);
 
 const PORT = process.env.PORT || 3000;
 
