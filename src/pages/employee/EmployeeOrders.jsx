@@ -19,7 +19,7 @@ import {
   Search, X, Loader2, AlertCircle, RefreshCw, Check, XCircle, ChefHat,
   CheckCircle2, CreditCard, Wallet, Verified, Timer, ClipboardList,
   TrendingUp, Clock, User, Lock, Package, ChevronDown, Sun, PackageCheck,
-  Ban, Inbox, VolumeX,
+    Ban, Inbox, VolumeX, Volume2,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api";
@@ -134,7 +134,29 @@ function getLockerInfo(orderId) {
 export default function EmployeeOrders() {
   const { t } = useI18n();
   const { user } = useAuth();
+  // --- BẮT ĐẦU THÊM LOGIC ÂM THANH ---
+  const [isSoundOn, setIsSoundOn] = useState(false);
+  const audioRef = useRef(null);
 
+  useEffect(() => {
+    // Yêu cầu: Có file tingting.mp3 trong thư mục public
+    audioRef.current = new Audio('/tingting.mp3');
+  }, []);
+
+  const toggleSound = () => {
+    const newState = !isSoundOn;
+    setIsSoundOn(newState);
+
+    if (newState) {
+      // Phát thử 1 tiếng để trình duyệt cấp quyền autoplay
+      audioRef.current.play()
+        .then(() => {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        })
+    }
+  };
+  // --- KẾT THÚC THÊM LOGIC ÂM THANH ---
   // ---- Data ----
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -497,7 +519,7 @@ export default function EmployeeOrders() {
           </div>
         )}
 
-        {/* ============ TOP CONSOLE ============ */}
+                {/* ============ TOP CONSOLE ============ */}
         <div className="kds-console">
           <div className="kds-console__left">
             {/* Shift card */}
@@ -532,25 +554,37 @@ export default function EmployeeOrders() {
               </div>
             </div>
 
-            {/* Sound (disabled) */}
-            <div className="kds-console__card">
-              <VolumeX
-                size={22}
-                style={{ color: "var(--st-text-muted)" }}
-              />
+            {/* Sound (Đã bật tính năng) */}
+            <div 
+              className="kds-console__card" 
+              onClick={toggleSound} 
+              style={{ cursor: 'pointer' }}
+            >
+              {isSoundOn ? (
+  <Volume2
+    size={22}
+    style={{ color: "var(--st-primary)" }}
+  />
+) : (
+  <VolumeX
+    size={22}
+    style={{ color: "var(--st-text-muted)" }}
+  />
+)}
               <div className="kds-console__card-info">
                 <span className="kds-console__card-label">
                   {t("Âm báo đơn")}
                 </span>
                 <span
                   className="kds-console__card-sub"
-                  style={{ fontWeight: 700 }}
+                  style={{ fontWeight: 700, color: isSoundOn ? "#10b981" : "inherit" }}
                 >
-                  {t("Đã tắt")}
+                  {isSoundOn ? t("Đã bật") : t("Đã tắt")}
                 </span>
               </div>
             </div>
-          </div>
+
+          </div> {/* <--- THẺ ĐÓNG NÀY ĐÃ ĐƯỢC THÊM VÀO ĐỂ HẾT LỖI */}
 
           {/* Station tabs */}
           <div className="kds-station-tabs">
