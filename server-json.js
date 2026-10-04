@@ -29,33 +29,26 @@ const BUILD_VERSION = "v6-fast-async-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // ✅ AUTO-TRANSLATE — Fire-and-forget HOÀN TOÀN
-// Không await, không block response, timeout ngắn
 // ============================================================
 const ASYNC_LANGS = ["en", "ja", "ko", "zh"];
 
 function translateAsync(db, obj, fields) {
-  // Không dùng async/await — chạy hoàn toàn ngoài luồng response
   for (const lang of ASYNC_LANGS) {
     for (const f of fields) {
       const text = obj[f];
       if (!text || !String(text).trim()) continue;
       if (obj[`${f}_${lang}`]) continue;
 
-      // Fire request, không chờ, không block
       translateOne(text, lang)
         .then((translated) => {
           if (translated && translated !== text) {
             obj[`${f}_${lang}`] = translated;
-            // saveDB sẽ được gọi bởi request tiếp theo
-            // hoặc ta save riêng sau khi hoàn tất tất cả
           }
         })
         .catch(() => {});
     }
   }
 
-  // Optional: after a delay, save once (không cần await)
-  // ✅ Giảm xuống 5000ms để không bị Vercel timeout (10s)
   setTimeout(() => {
     try { saveDB(db); } catch {}
   }, 5000);
@@ -79,7 +72,6 @@ function autoTranslateMenuItem(db, item, oldItem = null) {
     }
   }
 
-  // Fire async — KHÔNG await
   translateAsync(db, item, FIELDS);
 }
 
@@ -157,9 +149,8 @@ function generateOrderCode(db) {
 }
 
 // ============================================================
-// ✅ GIAI ĐOẠN 2 — Mật khẩu tạm cho tài khoản admin cấp
+// ✅ Mật khẩu tạm
 // ============================================================
-// Bỏ các ký tự dễ nhầm (0/O, 1/l/I) để admin đọc và gửi lại được.
 const TEMP_PASSWORD_CHARS =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
@@ -181,6 +172,7 @@ const MONGO_URI = process.env.MONGO_URI;
 let MongoModel = null;
 let dbCache = null;
 let mongoReady = false;
+let mongoConnecting = null;
 
 if (MONGO_URI) {
   const dbSchema = new mongoose.Schema(
@@ -229,13 +221,8 @@ function getTimeSlots(db) {
 }
 
 // ============================================================
-// NUTRITION — Thông tin dinh dưỡng món ăn
-// (prep_time / calories / is_cool / is_healthy / is_spicy)
-// Bộ lọc "Tiêu chí ưu tiên" + "Mức năng lượng" ở trang khách hàng
-// dựa vào các field này → mọi món đều phải có giá trị.
+// NUTRITION
 // ============================================================
-
-// Giá trị mặc định theo danh mục
 const NUTRITION_BY_CATEGORY = {
   "Cơm":               { prep_time: 12, calories: 620, is_cool: false, is_healthy: false, is_spicy: false },
   "Bún - Phở - Cháo":  { prep_time: 10, calories: 520, is_cool: false, is_healthy: false, is_spicy: false },
@@ -252,7 +239,6 @@ const NUTRITION_BY_CATEGORY = {
 };
 const NUTRITION_FALLBACK = { prep_time: 10, calories: 500, is_cool: false, is_healthy: false, is_spicy: false };
 
-// Bỏ dấu tiếng Việt để so khớp từ khoá trong tên món
 function normalizeVN(str) {
   return String(str || "")
     .toLowerCase()
@@ -261,16 +247,10 @@ function normalizeVN(str) {
     .replace(/đ/g, "d");
 }
 
-// Từ khoá trong tên món → tinh chỉnh lại giá trị mặc định của danh mục
 const COOL_NAME_RE = /\b(da xay|cold brew|nuoc ep|sinh to|smoothie)\b/;
 const SPICY_NAME_RE = /\b(cay|sa te|kimchi|tom yum|han quoc|thai|hue)\b/;
 const HEALTHY_NAME_RE = /\b(chay|salad|goi cuon|rau|dau hu|dau phu|yen mach|ngu coc|nuoc ep|sinh to)\b/;
 
-/**
- * Điền thông tin dinh dưỡng còn thiếu cho 1 món — KHÔNG ghi đè giá trị đã có.
- * Giá trị do quản lý nhập (kể cả false) luôn được giữ nguyên.
- * @returns {boolean} true nếu có field vừa được bổ sung
- */
 function fillMenuNutrition(item) {
   if (!item || typeof item !== "object") return false;
   const base = NUTRITION_BY_CATEGORY[item.category] || NUTRITION_FALLBACK;
@@ -293,15 +273,13 @@ function fillMenuNutrition(item) {
   return changed;
 }
 
-/**
- * Bổ sung dinh dưỡng cho toàn bộ món đã có trong DB (chạy 1 lần lúc khởi động).
- * Idempotent: chạy lại không thay đổi gì thêm.
- */
+// ============================================================
+// ✅ migrateMenuNutrition — CHỈ chạy khi mongoReady
+// ============================================================
 function migrateMenuNutrition() {
   try {
-    // ✅ Trên Vercel: chỉ migrate khi MongoDB đã kết nối thành công
     if (!mongoReady) {
-      console.log("🥗 Bỏ qua migrate nutrition (chưa có MongoDB hoặc đang chạy Vercel serverless)");
+      console.log("🥗 Bỏ qua migrate nutrition (MongoDB chưa sẵn sàng)");
       return;
     }
     const db = loadDB();
@@ -360,7 +338,7 @@ function buildSeedData() {
 }
 
 // ============================================================
-// ✅ INIT MONGO — có debug log chi tiết
+// ✅ INIT MONGO — Lazy connect + không block module load
 // ============================================================
 async function initMongo() {
   console.log("════════════════════════════════════════");
@@ -373,167 +351,132 @@ async function initMongo() {
   console.log("   VERCEL:", process.env.VERCEL);
   console.log("════════════════════════════════════════");
 
-  if (!MONGO_URI || !MongoModel) {
-    console.log("⚠️ Không có MONGO_URI → dùng file JSON local");
-    
-    // ✅ Trên Vercel: KHÔNG đọc/ghi file
-    if (process.env.VERCEL) {
-      console.log("⚠️ Vercel: không thể đọc/ghi file — dùng seed rỗng trong RAM");
-      dbCache = buildSeedData();
-      mongoReady = false;
-      return false;
-    }
-    
-    if (!fs.existsSync(DB_FILE)) {
-      const seed = buildSeedData();
-      fs.writeFileSync(DB_FILE, JSON.stringify(seed, null, 2), "utf-8");
-      dbCache = seed;
-      console.log("✅ Đã tạo file DB seed");
-    } else {
-      dbCache = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-    }
-    mongoReady = false;
-    return false;
+  // Đang connect → chờ
+  if (mongoConnecting) {
+    console.log("⏳ Đợi connection đang chạy...");
+    return mongoConnecting;
   }
 
-  try {
-    console.log("🔄 Đang kết nối MongoDB...");
-    const t0 = Date.now();
-    
-    await mongoose.connect(MONGO_URI, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-      connectTimeoutMS: 10000,
-      maxPoolSize: 10,
-    });
-    
-    console.log("✅ Đã kết nối MongoDB trong " + (Date.now() - t0) + "ms");
-
-    console.log("🖼️  Kiểm tra ảnh món ăn trong document chính...");
-    let migration;
-    try {
-      migration = await migrateInlineMenuImages({ log: (m) => console.log("   " + m) });
-    } catch (e) {
-      migration = { ok: false, error: e.message };
-      console.error("❌ Di trú ảnh lỗi:", e.message);
-    }
-
-    if (!migration.ok) {
-      // Trên Vercel: KHÔNG throw để không crash function
-      if (process.env.VERCEL) {
-        console.warn(
-          "⚠️  Không tách được ảnh base64 (" + 
-          (migration.error || "không rõ") + 
-          ") — tiếp tục chạy với dữ liệu hiện có"
-        );
-      } else {
-        throw new Error(
-          "Không tách được ảnh base64 khỏi document chính (" +
-            (migration.error || "không rõ nguyên nhân") +
-            ") → chạy: npm run db:migrate-images"
-        );
-      }
-    }
-
-    console.log("⏳ Đang tải DB từ MongoDB...");
-    const t1 = Date.now();
-    const doc = await MongoModel.findById(MAIN_DOC_ID).lean();
-
-    if (!doc) {
-      console.log("📦 DB chưa có trên MongoDB → khởi tạo seed...");
-      const seed = buildSeedData();
-      await MongoModel.create({ _id: MAIN_DOC_ID, data: seed });
-      dbCache = seed;
-      console.log("✅ Đã seed DB lên MongoDB");
-    } else {
-      dbCache = doc.data;
-      console.log(
-        "✅ Đã load DB trong " + (Date.now() - t1) + "ms: " +
-        (dbCache.menu_items?.length || 0) + " món, " +
-        (dbCache.users?.length || 0) + " users"
-      );
-    }
-    
-    mongoReady = true;
-    console.log("✅ MONGO READY = TRUE");
+  // Đã connect rồi → return luôn
+  if (mongoReady && dbCache) {
+    console.log("✅ Đã connected từ trước");
     return true;
-    
-  } catch (e) {
-    console.error("════════════════════════════════════════");
-    console.error("❌ MONGODB LỖI CHI TIẾT:");
-    console.error("   Error name:", e.name);
-    console.error("   Error message:", e.message);
-    console.error("   Error code:", e.code);
-    if (e.reason) {
-      console.error("   Reason:", e.reason?.message || e.reason);
-    }
-    if (e.stack) {
-      console.error("   Stack:", e.stack.split("\n").slice(0, 5).join("\n"));
-    }
-    console.error("════════════════════════════════════════");
-    
-    mongoReady = false;
-
-    // ✅ Trên Vercel: dùng seed rỗng trong RAM (không đọc file)
-    if (process.env.VERCEL) {
-      console.log("⚠️ Vercel: dùng seed rỗng trong RAM");
-      dbCache = buildSeedData();
-      return false;
-    }
-    
-    try {
-      if (!fs.existsSync(DB_FILE)) {
-        const seed = buildSeedData();
-        fs.writeFileSync(DB_FILE, JSON.stringify(seed, null, 2), "utf-8");
-        dbCache = seed;
-        console.log("✅ Đã tạo file DB seed local");
-      } else if (!dbCache) {
-        dbCache = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-      }
-      console.log("⚠️  Đang chạy bằng file local");
-    } catch (e2) {
-      console.error("❌ Không đọc được file DB local:", e2.message);
-    }
-    return false;
   }
+
+  mongoConnecting = (async () => {
+    try {
+      // Trường hợp 1: Không có MONGO_URI
+      if (!MONGO_URI || !MongoModel) {
+        console.log("⚠️ Không có MONGO_URI → dùng seed rỗng");
+        dbCache = buildSeedData();
+        mongoReady = false;
+        return false;
+      }
+
+      // Trường hợp 2: Có MONGO_URI → connect
+      console.log("🔄 Đang kết nối MongoDB...");
+      const t0 = Date.now();
+
+      await mongoose.connect(MONGO_URI, {
+        serverSelectionTimeoutMS: 8000,
+        socketTimeoutMS: 40000,
+        connectTimeoutMS: 8000,
+        maxPoolSize: 5,
+        minPoolSize: 0,
+        bufferCommands: false,
+      });
+
+      console.log("✅ Đã kết nối MongoDB trong " + (Date.now() - t0) + "ms");
+
+      console.log("🖼️  Kiểm tra ảnh món ăn...");
+      let migration;
+      try {
+        migration = await migrateInlineMenuImages({ log: (m) => console.log("   " + m) });
+      } catch (e) {
+        migration = { ok: false, error: e.message };
+        console.error("❌ Di trú ảnh lỗi:", e.message);
+      }
+
+      if (!migration.ok) {
+        if (process.env.VERCEL) {
+          console.warn("⚠️  Không tách được ảnh (" + (migration.error || "?") + ") — tiếp tục");
+        } else {
+          throw new Error("Không tách được ảnh base64 → chạy: npm run db:migrate-images");
+        }
+      }
+
+      console.log("⏳ Đang tải DB...");
+      const t1 = Date.now();
+      const doc = await MongoModel.findById(MAIN_DOC_ID).lean();
+
+      if (!doc) {
+        console.log("📦 DB chưa có → khởi tạo seed...");
+        const seed = buildSeedData();
+        await MongoModel.create({ _id: MAIN_DOC_ID, data: seed });
+        dbCache = seed;
+        console.log("✅ Đã seed DB lên MongoDB");
+      } else {
+        dbCache = doc.data;
+        console.log(
+          "✅ Đã load DB trong " + (Date.now() - t1) + "ms: " +
+          (dbCache.menu_items?.length || 0) + " món, " +
+          (dbCache.users?.length || 0) + " users"
+        );
+      }
+
+      mongoReady = true;
+      console.log("✅ MONGO READY = TRUE");
+      return true;
+
+    } catch (e) {
+      console.error("════════════════════════════════════════");
+      console.error("❌ MONGODB LỖI CHI TIẾT:");
+      console.error("   Error name:", e.name);
+      console.error("   Error message:", e.message);
+      console.error("   Error code:", e.code);
+      if (e.reason) console.error("   Reason:", e.reason?.message || e.reason);
+      if (e.stack) console.error("   Stack:", e.stack.split("\n").slice(0, 5).join("\n"));
+      console.error("════════════════════════════════════════");
+
+      mongoReady = false;
+      dbCache = buildSeedData();
+      console.log("⚠️ Fallback: dùng seed rỗng (app vẫn chạy được)");
+      return false;
+
+    } finally {
+      mongoConnecting = null;
+    }
+  })();
+
+  return mongoConnecting;
 }
 
+// ============================================================
+// ✅ loadDB — Lazy init, tự trigger connect
+// ============================================================
 function loadDB() {
   if (dbCache) return dbCache;
-  
-  // ✅ Vercel: không đọc file, chỉ dùng dbCache
-  if (process.env.VERCEL) {
-    console.error("❌ loadDB: dbCache null trên Vercel — MongoDB chưa kết nối");
-    // Trả về object rỗng an toàn để không crash route
-    dbCache = {
-      users: [], menu_items: [], categories: [], orders: [],
-      vouchers: [], reviews: [], messages: [], attendances: [],
-      notifications: [], wallets: [], wallet_transactions: [],
-      inventory: [], imports: [], price_history: [], shifts: [],
-      toppings: [], sizes: [], settings: {}
-    };
-    return dbCache;
-  }
-  
-  // Local dev: đọc file
-  try {
-    return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-  } catch (e) {
-    console.error("loadDB lỗi đọc file:", e.message);
-    return null;
-  }
+
+  console.log("⚡ loadDB: dbCache null → trigger lazy init");
+  initMongo().catch((e) => {
+    console.error("❌ Lazy init lỗi:", e.message);
+  });
+
+  // ✅ Trả về seed rỗng NGAY để không block request
+  dbCache = buildSeedData();
+  return dbCache;
 }
 
+// ============================================================
+// ✅ saveDB — Chỉ ghi Mongo, KHÔNG ghi file
+// ============================================================
 function saveDB(data) {
   dbCache = data;
-  
+
   if (mongoReady && MongoModel) {
-    // Ghi vào MongoDB
     const inlineCount = countInlineMenuImages(data);
     if (inlineCount > 0) {
-      console.warn(
-        "⚠️  Còn " + inlineCount + " ảnh base64 trong menu_items"
-      );
+      console.warn("⚠️  Còn " + inlineCount + " ảnh base64 trong menu_items");
     }
     MongoModel.updateOne(
       { _id: MAIN_DOC_ID },
@@ -542,19 +485,8 @@ function saveDB(data) {
     ).catch((e) => console.error("Mongo save error:", e.message));
     return;
   }
-  
-  // ✅ Trên Vercel: KHÔNG ghi file (read-only filesystem)
-  if (process.env.VERCEL) {
-    console.warn("⚠️ saveDB: Bỏ qua ghi file (Vercel filesystem read-only)");
-    return;
-  }
-  
-  // Local dev: ghi file JSON bình thường
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
-  } catch (e) {
-    console.error("File save error:", e.message);
-  }
+
+  console.warn("⚠️ saveDB: MongoDB chưa kết nối — dữ liệu CHỈ lưu trong RAM");
 }
 
 function notifyNewOrder(db, order) {
@@ -614,12 +546,10 @@ app.use(cors({
   ],
   credentials: true
 }));
-// limit 25mb: đủ cho file backup cũ (có thể chứa ảnh base64 ~15 MB);
-// ảnh trong file import được tách sang collection menu_images ngay.
 app.use(express.json({ limit: "25mb" }));
 
 // ============================================================
-// ✅ ẢNH MÓN ĂN — tách khỏi document chính (xem menuImageStore.js)
+// ✅ ẢNH MÓN ĂN
 // ============================================================
 function requestOrigin(req) {
   const proto =
@@ -665,9 +595,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// ============================================================
-// ✅ GET /api/uploads/menu/:id — phục vụ ảnh món ăn
-// ============================================================
 app.get("/api/uploads/menu/:id", async (req, res) => {
   try {
     const image = await getMenuImage(req.params.id);
@@ -686,7 +613,7 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
 });
 
 // ============================================================
-// ✅ JWT_SECRET — KHÔNG process.exit trên Vercel
+// ✅ JWT_SECRET
 // ============================================================
 const JWT_SECRET = process.env.JWT_SECRET || "FALLBACK_SECRET_CHI_DUNG_KHI_DEV_KHONG_AN_TOAN";
 if (!process.env.JWT_SECRET) {
@@ -2279,19 +2206,13 @@ app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
     const { data } = req.body;
     if (!data) return res.status(400).json({ message: "File backup không hợp lệ" });
     if (!data.users || !data.menu_items) return res.status(400).json({ message: "File backup thiếu dữ liệu cần thiết" });
-    const current = loadDB();
-    let backupFile = "";
-    if (!process.env.VERCEL) {
-      backupFile = path.join(__dirname, "canteen-db-auto-backup-" + Date.now() + ".json");
-      try { fs.writeFileSync(backupFile, JSON.stringify(current, null, 2), "utf-8"); } catch {}
-    }
 
     if (mongoReady) {
       await extractInlineImagesFromData(data, { log: (m) => console.log(m) });
     }
 
     saveDB(data);
-    res.json({ message: "Import thành công!", stats: { users: data.users?.length || 0, menu_items: data.menu_items?.length || 0, orders: data.orders?.length || 0, inventory: data.inventory?.length || 0 }, auto_backup_saved: backupFile ? path.basename(backupFile) : null });
+    res.json({ message: "Import thành công!", stats: { users: data.users?.length || 0, menu_items: data.menu_items?.length || 0, orders: data.orders?.length || 0, inventory: data.inventory?.length || 0 } });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -2612,9 +2533,7 @@ app.delete("/api/shifts/:id", auth(["ADMIN"]), (req, res) => {
   res.json({ ok: true });
 });
 
-// ============================================================
-// ✅ ADMIN BACKFILL — Dịch hàng loạt dữ liệu cũ chưa có bản dịch
-// ============================================================
+// ============ ADMIN BACKFILL TRANSLATIONS ============
 app.post("/api/admin/backfill-translations", auth(["ADMIN"]), (req, res) => {
   try {
     const db = loadDB();
@@ -2700,14 +2619,6 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
     const { confirm } = req.body;
     if (confirm !== "RESET") return res.status(400).json({ message: "Cần xác nhận 'RESET' để thực hiện" });
     const db = loadDB();
-    let backupFile = "";
-    if (!process.env.VERCEL) {
-      backupFile = path.join(__dirname, "canteen-db-auto-backup-" + Date.now() + ".json");
-      try {
-        fs.writeFileSync(backupFile, JSON.stringify(db, null, 2), "utf-8");
-        console.log("💾 Auto backup: " + path.basename(backupFile));
-      } catch {}
-    }
     db.orders = [];
     db.wallets = [];
     db.wallet_transactions = [];
@@ -2724,48 +2635,23 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
       m.sold = 0;
     });
     saveDB(db);
-    res.json({ ok: true, message: "Reset thành công", auto_backup: backupFile ? path.basename(backupFile) : null, stats: { users: db.users.length, menu_items: db.menu_items.length, orders: 0, wallets: 0 } });
+    res.json({ ok: true, message: "Reset thành công", stats: { users: db.users.length, menu_items: db.menu_items.length, orders: 0, wallets: 0 } });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
 });
 
 // ============================================================
-// ✅ KHỞI TẠO MONGODB + MIGRATE (cache promise, chạy 1 lần)
+// ✅ KHỞI TẠO — Lazy, không block module load
 // ============================================================
-let initPromise = null;
-
-function ensureInit() {
-  if (initPromise) return initPromise;
-  initPromise = (async () => {
-    try {
-      console.log("🔧 Bắt đầu init MongoDB...");
-      console.log("   MONGO_URI:", process.env.MONGO_URI ? "✅ có" : "❌ thiếu");
-      console.log("   JWT_SECRET:", process.env.JWT_SECRET ? "✅ có" : "❌ thiếu");
-      console.log("   VERCEL:", process.env.VERCEL || "không có");
-
-      await initMongo();
-      console.log("✅ MongoDB init xong");
-
-      migrateMenuNutrition();
-      console.log("✅ Migrate nutrition xong");
-    } catch (e) {
-      console.error("❌ Init lỗi NGHIÊM TRỌNG:", e.message);
-      console.error("   Stack:", e.stack);
-      throw e;
-    }
-  })();
-  return initPromise;
-}
-
-// Chạy init ngay khi module load
-ensureInit().catch((e) => {
-  console.error("❌ ensureInit thất bại:", e.message);
-});
-
+// KHÔNG gọi initMongo() ngay khi module load.
+// Chỉ gọi khi có request đầu tiên (thông qua loadDB()).
+// Lý do: Vercel function có timeout 10s, nếu connect Mongo lâu
+// → function bị kill → 500. Lazy init cho phép request đầu fail
+// nhưng request sau sẽ OK.
 // ============================================================
-// ✅ EXPORT app cho Vercel Serverless
-// ============================================================
+
+// ✅ Export app cho Vercel Serverless
 export default app;
 
 // ============================================================
@@ -2774,11 +2660,14 @@ export default app;
 const IS_VERCEL = !!process.env.VERCEL;
 
 if (!IS_VERCEL) {
-  ensureInit().then(() => {
+  // Local dev: gọi init + listen
+  initMongo().then(() => {
+    migrateMenuNutrition();
     app.listen(PORT, () =>
       console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE)
     );
   });
 } else {
-  console.log("🚀 API chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  console.log("🚀 API chạy trên Vercel Serverless (lazy MongoDB init) | TZ: " + VN_TIMEZONE);
+  // ✅ KHÔNG gọi initMongo() — sẽ tự trigger qua loadDB()
 }
