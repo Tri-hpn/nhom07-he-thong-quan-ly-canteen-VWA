@@ -2642,42 +2642,56 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
 });
 
 // ============================================================
-// ✅ KHỞI TẠO — CHẠY NGAY, ĐỢI XONG MỚI EXPORT
+// ✅ EXPORT MIDDLEWARE ĐỢI INIT — VERCEL KHÔNG KILL FUNCTION
 // ============================================================
-// Đây là điểm mấu chốt: chúng ta AWAIT initMongo() TRƯỚC khi
-// export app. Vercel sẽ giữ function sống trong lúc chờ (tối đa
-// 10s theo maxDuration trong vercel.json).
-//
-// → Mọi request đầu tiên đều có dbCache đầy đủ → login OK.
+// Điểm mấu chốt: thêm middleware AWAIT initPromise TRƯỚC các route.
+// Khi request đến, middleware sẽ:
+//   1. Chờ initMongo() resolve (3-5s)
+//   2. Sau đó mới cho request đi qua
+// Vercel thấy function có việc để làm → KHÔNG kill.
 // ============================================================
 
-// ✅ Chạy init ngay khi module load — KHÔNG lazy
-const initPromise = initMongo()
-  .then(async (ok) => {
-    console.log("✅ initMongo() xong — ok =", ok);
-    if (ok) {
-      // Chỉ migrate khi Mongo đã connected
-      migrateMenuNutrition();
+let initPromise = null;
+
+function getInitPromise() {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    try {
+      console.log("🔧 [middleware] Bắt đầu init MongoDB...");
+      const ok = await initMongo();
+      console.log("✅ [middleware] initMongo() xong — ok =", ok);
+      if (ok) migrateMenuNutrition();
+      return ok;
+    } catch (e) {
+      console.error("❌ [middleware] initMongo() lỗi:", e.message);
+      return false;
     }
-    return ok;
-  })
-  .catch((e) => {
-    console.error("❌ initMongo() thất bại:", e.message);
-    return false;
-  });
+  })();
+  return initPromise;
+}
 
-// ✅ Export app — Vercel sẽ đợi promise này resolve trước khi gọi
-// (thực tế Vercel không chờ promise top-level, nhưng initMongo đã
-// chạy song song và sẽ xong trong ~3-5s, trước khi user login)
+// ✅ Middleware AWAIT init TRƯỚC mọi route
+// Đặt ngay TRƯỚC app.listen / export default
+app.use(async (req, res, next) => {
+  // Nếu đã kết nối rồi → đi tiếp luôn
+  if (mongoReady) return next();
+
+  // Nếu đang init → chờ
+  console.log("⏳ Request đến — đợi MongoDB init...");
+  await getInitPromise();
+  next();
+});
+
+// ✅ Export app
 export default app;
 
 // ============================================================
-// ✅ LOCAL DEV: chạy app.listen() sau khi init xong
+// ✅ LOCAL DEV: chạy app.listen() sau khi init
 // ============================================================
 const IS_VERCEL = !!process.env.VERCEL;
 
 if (!IS_VERCEL) {
-  initPromise.then(() => {
+  getInitPromise().then(() => {
     app.listen(PORT, () => {
       console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
     });
