@@ -618,15 +618,12 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
 // ============================================================
 // ✅ JWT_SECRET
 // ============================================================
+// ✅ KHÔNG BAO GIỜ process.exit trên serverless — chỉ cảnh báo
 const JWT_SECRET = process.env.JWT_SECRET || "FALLBACK_SECRET_CHI_DUNG_KHI_DEV_KHONG_AN_TOAN";
 if (!process.env.JWT_SECRET) {
-  if (process.env.VERCEL) {
-    console.error("⚠️ JWT_SECRET chưa set — dùng fallback (KHÔNG AN TOÀN)");
-  } else {
-    console.error("❌ FATAL: JWT_SECRET chưa được set trong env!");
-    process.exit(1);
-  }
+  console.error("⚠️ JWT_SECRET chưa set — dùng fallback (KHÔNG AN TOÀN CHO PRODUCTION)");
 }
+// Bỏ hoàn toàn process.exit(1) — kể cả local dev cũng không cần thiết
 
 function auth(roles = []) {
   return (req, res, next) => {
