@@ -378,13 +378,16 @@ async function initMongo() {
       const t0 = Date.now();
 
       await mongoose.connect(MONGO_URI, {
-        serverSelectionTimeoutMS: 8000,
-        socketTimeoutMS: 40000,
-        connectTimeoutMS: 8000,
-        maxPoolSize: 5,
-        minPoolSize: 0,
-        bufferCommands: false,
-      });
+  serverSelectionTimeoutMS: 25000,
+  socketTimeoutMS: 45000,
+  connectTimeoutMS: 25000,
+  maxPoolSize: 10,
+  minPoolSize: 0,
+  bufferCommands: false,
+  family: 4,
+  retryWrites: true,
+  retryReads: true,
+});
 
       console.log("✅ Đã kết nối MongoDB trong " + (Date.now() - t0) + "ms");
 
