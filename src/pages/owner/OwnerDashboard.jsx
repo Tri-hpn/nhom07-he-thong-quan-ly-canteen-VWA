@@ -839,6 +839,7 @@ export default function OwnerDashboard() {
 // ============================================================
 
 function KPI({ icon, label, value, trend, color, badge }) {
+  const { t } = useI18n();
   return (
     <div
       style={{
