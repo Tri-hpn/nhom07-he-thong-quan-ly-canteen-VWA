@@ -258,6 +258,29 @@ export default function CustomerHome({ user, cart, setCart }) {
   const inFlightRef = useRef(false);
   const searchBoxRef = useRef(null);
 
+  // ---------- HÀM CẬP NHẬT TỒN KHO (MỚI THÊM) ----------
+  const handleUpdateStock = useCallback((itemId, quantityBought) => {
+    const updateList = (setter) =>
+      setter((prev) =>
+        prev.map((food) =>
+          (food.id === itemId || food._id === itemId)
+            ? {
+                ...food,
+                stock: Math.max(0, (food.stock || 0) - quantityBought), // Trừ tồn kho
+                sold: (food.sold || 0) + quantityBought,                 // Tăng số đã bán
+                total: food.total || Math.max((food.sold || 0) * 2, 50)  // Đảm bảo có total
+              }
+            : food
+        )
+      );
+
+    updateList(setPromotions);
+    updateList(setItems);
+    updateList(setNewItems);
+    updateList(setSignatureItems);
+    updateList(setAllMenu);
+  }, []);
+
   // ---------- Load data ----------
   const load = useCallback(
     async (silent = false) => {
@@ -407,12 +430,19 @@ export default function CustomerHome({ user, cart, setCart }) {
     setSelected(m);
   }, []);
 
+  // ---------- HÀM ADD TO CART (ĐÃ SỬA) ----------
   const addToCart = useCallback(
     (m) => {
       const id = m.id || m._id;
       const key = `${id}-S-`;
       const qty = flashQty[id] || 1;
       const maxStock = typeof m.stock === "number" ? m.stock : 99;
+
+      // Kiểm tra tồn kho trước khi thêm
+      if (qty > maxStock) {
+        alert(`Chỉ còn ${maxStock} suất cho món này!`);
+        return;
+      }
 
       setCart((c) => {
         const existing = c[key];
@@ -432,10 +462,13 @@ export default function CustomerHome({ user, cart, setCart }) {
         };
       });
 
+      // 👇 GỌI HÀM CẬP NHẬT TỒN KHO (QUAN TRỌNG)
+      handleUpdateStock(id, qty);
+
       // reset qty về 1 sau khi thêm
       setFlashQty((q) => ({ ...q, [id]: 1 }));
     },
-    [flashQty, setCart]
+    [flashQty, setCart, handleUpdateStock]
   );
 
   const handleQtyChange = useCallback((id, newQty) => {
@@ -987,6 +1020,7 @@ export default function CustomerHome({ user, cart, setCart }) {
           mode={mode}
           initialQty={flashQty[selected.id || selected._id] || 1}
           onClose={() => setSelected(null)}
+          onUpdateStock={handleUpdateStock}  // 👈 ĐÃ THÊM DÒNG NÀY
         />
       )}
 

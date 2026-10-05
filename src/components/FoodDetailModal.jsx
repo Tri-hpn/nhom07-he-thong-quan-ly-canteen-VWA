@@ -6,9 +6,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Star, Plus, ShoppingBag, Save, X,
-} from "lucide-react";
+import { Star, Plus, ShoppingBag, Save, X } from "lucide-react";
 import { money } from "./UI";
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
@@ -52,6 +50,7 @@ export default function FoodDetailModal({
   initialSize,
   initialQty,
   onUpdate,
+  onUpdateStock, // 👈 THÊM PROP NÀY
 }) {
   const { t, tData } = useI18n();
   const navigate = useNavigate();
@@ -138,7 +137,7 @@ export default function FoodDetailModal({
     setCart((c) => {
       const existing = c[key];
       const currentQty = Number(existing?.qty) || 0;
-      const newQty = Math.min(maxQty, currentQty + 1);
+      const newQty = Math.min(maxQty, currentQty + qty); // 👈 SỬA: dùng qty thay vì 1
 
       if (existing && currentQty >= maxQty) return c;
 
@@ -180,21 +179,30 @@ export default function FoodDetailModal({
 
     const key = buildKey();
     const existing = cart?.[key];
-    if (existing && Number(existing.qty) >= maxQty) {
-      toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
+    const currentQty = Number(existing?.qty) || 0;
+
+    // Kiểm tra tổng số lượng sau khi thêm có vượt quá maxQty không
+    if (currentQty + qty > maxQty) {
+      toast(`${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`, "error");
       return;
     }
 
-    const name = addToCart();
-    if (!name) return;
+    const name = buildName();
 
-    if (qty > 1) {
-      setCart((c) => {
-        const e = c[key];
-        if (!e) return c;
-        const newQty = Math.min(maxQty, (Number(e.qty) || 1) + (qty - 1));
-        return { ...c, [key]: { ...e, qty: newQty } };
-      });
+    setCart((c) => {
+      const e = c[key];
+      const newQty = (Number(e?.qty) || 0) + qty;
+      return {
+        ...c,
+        [key]: {
+          ...buildCartEntry(newQty),
+        },
+      };
+    });
+
+    // 👇 GỌI HÀM CẬP NHẬT TỒN KHO (QUAN TRỌNG)
+    if (onUpdateStock) {
+      onUpdateStock(itemId, qty);
     }
 
     toast(`${t("Đã thêm")} ${name} ${t("vào giỏ")}`, "success");
@@ -207,17 +215,31 @@ export default function FoodDetailModal({
       return;
     }
 
-    const name = addToCart();
-    if (!name) return;
+    const key = buildKey();
+    const existing = cart?.[key];
+    const currentQty = Number(existing?.qty) || 0;
 
-    if (qty > 1) {
-      const key = buildKey();
-      setCart((c) => {
-        const e = c[key];
-        if (!e) return c;
-        const newQty = Math.min(maxQty, (Number(e.qty) || 1) + (qty - 1));
-        return { ...c, [key]: { ...e, qty: newQty } };
-      });
+    if (currentQty + qty > maxQty) {
+      toast(`${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`, "error");
+      return;
+    }
+
+    const name = buildName();
+
+    setCart((c) => {
+      const e = c[key];
+      const newQty = (Number(e?.qty) || 0) + qty;
+      return {
+        ...c,
+        [key]: {
+          ...buildCartEntry(newQty),
+        },
+      };
+    });
+
+    // 👇 GỌI HÀM CẬP NHẬT TỒN KHO
+    if (onUpdateStock) {
+      onUpdateStock(itemId, qty);
     }
 
     toast(`${t("Đã thêm")} ${name} — ${t("chuyển đến thanh toán")}`, "success");
