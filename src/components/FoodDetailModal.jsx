@@ -50,7 +50,7 @@ export default function FoodDetailModal({
   initialSize,
   initialQty,
   onUpdate,
-  onUpdateStock, // 👈 THÊM PROP NÀY
+ onUpdateStock,
 }) {
   const { t, tData } = useI18n();
   const navigate = useNavigate();
@@ -137,7 +137,11 @@ export default function FoodDetailModal({
     setCart((c) => {
       const existing = c[key];
       const currentQty = Number(existing?.qty) || 0;
+<<<<<<< HEAD
       const newQty = Math.min(maxQty, currentQty + qty); // 👈 SỬA: dùng qty thay vì 1
+=======
+      const newQty = Math.min(maxQty, currentQty + qty);
+>>>>>>> c870c13a0d6bc0e3e21031e7cee9f927a0f3c583
 
       if (existing && currentQty >= maxQty) return c;
 
@@ -152,30 +156,13 @@ export default function FoodDetailModal({
     return name;
   };
 
-  const handleAddToCart = () => {
-    if (editingKey && onUpdate) {
-      if (isOutOfStock) {
-        toast(t("Hết hàng"), "error");
-        return;
-      }
-
-      if (qty > maxQty) {
-        toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
-        return;
-      }
-
-      const key = buildKey();
-      const entry = buildCartEntry(qty);
-      onUpdate(editingKey, key, entry);
-      toast(`${t("Đã cập nhật")} ${entry.name}`, "success");
-      onClose?.();
-      return;
-    }
-
+ const handleAddToCart = () => {
+  if (editingKey && onUpdate) {
     if (isOutOfStock) {
       toast(t("Hết hàng"), "error");
       return;
     }
+<<<<<<< HEAD
 
     const key = buildKey();
     const existing = cart?.[key];
@@ -206,14 +193,104 @@ export default function FoodDetailModal({
     }
 
     toast(`${t("Đã thêm")} ${name} ${t("vào giỏ")}`, "success");
+=======
+    if (qty > maxQty) {
+      toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
+      return;
+    }
+    const key = buildKey();
+    const entry = buildCartEntry(qty);
+    onUpdate(editingKey, key, entry);
+    toast(`${t("Đã cập nhật")} ${entry.name}`, "success");
+>>>>>>> c870c13a0d6bc0e3e21031e7cee9f927a0f3c583
     onClose?.();
+    return;
+  }
+
+  if (isOutOfStock) {
+    toast(t("Hết hàng"), "error");
+    return;
+  }
+
+  const key = buildKey();
+  const existing = cart?.[key];
+  const currentQty = Number(existing?.qty) || 0;
+
+  // Kiểm tra xem tổng số lượng sau khi thêm có vượt quá maxQty không
+  if (currentQty + qty > maxQty) {
+    toast(`${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`, "error");
+    return;
+  }
+
+  const name = buildName();
+
+  // Thêm vào giỏ hàng với đúng số lượng qty
+  setCart((c) => {
+    const e = c[key];
+    const newQty = (Number(e?.qty) || 0) + qty;
+    return {
+      ...c,
+      [key]: {
+        ...buildCartEntry(newQty),
+      },
+    };
+  });
+
+  // GỌI HÀM CẬP NHẬT TỒN KHO (Nếu có prop onUpdateStock từ file cha)
+  if (onUpdateStock) {
+    onUpdateStock(itemId, qty);
+  }
+
+  toast(`${t("Đã thêm")} ${name} ${t("vào giỏ")}`, "success");
+  onClose?.();
   };
 
   const handleBuyNow = () => {
-    if (isOutOfStock) {
-      toast(t("Hết hàng"), "error");
-      return;
+  if (isOutOfStock) {
+    toast(t("Hết hàng"), "error");
+    return;
+  }
+
+  const key = buildKey();
+  const existing = cart?.[key];
+  const currentQty = Number(existing?.qty) || 0;
+
+  if (currentQty + qty > maxQty) {
+    toast(`${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`, "error");
+    return;
+  }
+
+  const name = buildName();
+
+  setCart((c) => {
+    const e = c[key];
+    const newQty = (Number(e?.qty) || 0) + qty;
+    return {
+      ...c,
+      [key]: {
+        ...buildCartEntry(newQty),
+      },
+    };
+  });
+
+  // Gọi cập nhật tồn kho
+  if (onUpdateStock) {
+    onUpdateStock(itemId, qty);
+  }
+
+  toast(`${t("Đã thêm")} ${name} — ${t("chuyển đến thanh toán")}`, "success");
+  onClose?.();
+  navigate("/customer/checkout");
+};
+
+const handleQtyMinus = () => setQty((q) => Math.max(1, q - 1));
+const handleQtyPlus = () => {
+  setQty((q) => {
+    if (q >= maxQty) {
+      toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
+      return q;
     }
+<<<<<<< HEAD
 
     const key = buildKey();
     const existing = cart?.[key];
@@ -257,6 +334,11 @@ export default function FoodDetailModal({
       return q + 1;
     });
   };
+=======
+    return q + 1;
+  });
+};
+>>>>>>> c870c13a0d6bc0e3e21031e7cee9f927a0f3c583
 
   const unitPrice = Number(totalWithToppings) || Number(item.price) || 0;
   const grandTotal = unitPrice * qty;

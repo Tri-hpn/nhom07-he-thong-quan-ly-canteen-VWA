@@ -20,7 +20,7 @@ import { SkeletonCard } from "../../components/Skeleton";
 import FoodDetailModal from "../../components/FoodDetailModal";
 import ChatBotWidget from "../../components/ChatBotWidget";
 import { useI18n } from "../../hooks/useI18n";
-
+import { toast } from "../../components/Effects";
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -246,7 +246,33 @@ export default function CustomerHome({ user, cart, setCart }) {
   const [selected, setSelected] = useState(null);
   const [mode, setMode] = useState("cart");
   const [flashQty, setFlashQty] = useState({});
+      // Hàm cập nhật tồn kho khi thêm món
+  const handleUpdateStock = useCallback((itemId, quantityBought) => {
+  const updateFood = (food) => {
+    if (food.id !== itemId && food._id !== itemId) {
+      return food;
+    }
 
+    const currentStock = Number(food.stock) || 0;
+    const currentSold = Number(food.sold) || 0;
+
+    return {
+      ...food,
+
+      // Trừ số suất còn lại
+      stock: Math.max(0, currentStock - quantityBought),
+
+      // Tăng số suất đã bán
+      sold: currentSold + quantityBought,
+    };
+  };
+
+  setPromotions((prev) => prev.map(updateFood));
+  setItems((prev) => prev.map(updateFood));
+  setNewItems((prev) => prev.map(updateFood));
+  setSignatureItems((prev) => prev.map(updateFood));
+  setAllMenu((prev) => prev.map(updateFood));
+}, []);
   // Search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -430,8 +456,12 @@ export default function CustomerHome({ user, cart, setCart }) {
     setSelected(m);
   }, []);
 
+<<<<<<< HEAD
   // ---------- HÀM ADD TO CART (ĐÃ SỬA) ----------
   const addToCart = useCallback(
+=======
+      const addToCart = useCallback(
+>>>>>>> c870c13a0d6bc0e3e21031e7cee9f927a0f3c583
     (m) => {
       const id = m.id || m._id;
       const key = `${id}-S-`;
@@ -1010,7 +1040,7 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       )}
 
-      {/* ===== MODAL ===== */}
+           {/* ===== MODAL ===== */}
       {selected && (
         <FoodDetailModal
           item={selected}
@@ -1020,10 +1050,13 @@ export default function CustomerHome({ user, cart, setCart }) {
           mode={mode}
           initialQty={flashQty[selected.id || selected._id] || 1}
           onClose={() => setSelected(null)}
+<<<<<<< HEAD
           onUpdateStock={handleUpdateStock}  // 👈 ĐÃ THÊM DÒNG NÀY
+=======
+          onUpdateStock={handleUpdateStock}  // 👈 THÊM DÒNG NÀY VÀO ĐÂY
+>>>>>>> c870c13a0d6bc0e3e21031e7cee9f927a0f3c583
         />
       )}
-
       {/* ===== CHATBOT ===== */}
       <ChatBotWidget cart={cart} setCart={setCart} user={user} />
     </div>
