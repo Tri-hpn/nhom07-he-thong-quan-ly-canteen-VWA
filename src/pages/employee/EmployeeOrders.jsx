@@ -28,6 +28,7 @@ import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useI18n } from "../../hooks/useI18n";
 import { useAuth } from "../../contexts/AuthContext";
+import { emitOrderUpdated, onOrderUpdated } from "../../lib/orderEvents";
 import {
   fmtTime,
   fmtTimeWithLabel,
@@ -39,7 +40,7 @@ import {
 // CONSTANTS
 // ============================================================
 
-const POLL_MS = 10000;
+const POLL_MS = 5000;
 const COMPLETED_LIMIT = 5;
 const COLUMN_LIMIT = 5;
 
@@ -281,10 +282,18 @@ export default function EmployeeOrders() {
   useEffect(() => {
     load(false);
   }, [load]);
+  
+  // ✅ Nghe tín hiệu "đơn vừa cập nhật" từ tab/trang khác → load lại ngay
+  useEffect(() => {
+    const off = onOrderUpdated(() => {
+      load(true);
+    });
+    return off;
+  }, [load]);
 
   useEffect(() => {
     const timer = setInterval(() => load(true), POLL_MS);
-    return () => clearInterval(timer);
+        return () => clearInterval(timer);
   }, [load]);
 
   // ============================================================
@@ -420,6 +429,7 @@ export default function EmployeeOrders() {
         await api.orders.setStatus(id, next);
         toast(`"${order.code}" → "${next}"`, "success");
         await load(true);
+        emitOrderUpdated({ ...order, status: next });
       } catch (e) {
         toast(e.message || t("Không chuyển được trạng thái"), "error");
       } finally {
@@ -450,6 +460,7 @@ export default function EmployeeOrders() {
         "warning"
       );
       setConfirmReject(null);
+      emitOrderUpdated({ ...order, status: "Đã hủy" });
       await load(true);
     } catch (e) {
       toast(e.message || t("Không hủy được"), "error");
