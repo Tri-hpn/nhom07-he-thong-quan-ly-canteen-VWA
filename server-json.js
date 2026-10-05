@@ -351,13 +351,11 @@ async function initMongo() {
   console.log("   VERCEL:", process.env.VERCEL);
   console.log("════════════════════════════════════════");
 
-  // Đang connect → chờ
   if (mongoConnecting) {
     console.log("⏳ Đợi connection đang chạy...");
     return mongoConnecting;
   }
 
-  // Đã connect rồi → return luôn
   if (mongoReady && dbCache) {
     console.log("✅ Đã connected từ trước");
     return true;
@@ -365,7 +363,6 @@ async function initMongo() {
 
   mongoConnecting = (async () => {
     try {
-      // Trường hợp 1: Không có MONGO_URI
       if (!MONGO_URI || !MongoModel) {
         console.log("⚠️ Không có MONGO_URI → dùng seed rỗng");
         dbCache = buildSeedData();
@@ -373,7 +370,6 @@ async function initMongo() {
         return false;
       }
 
-      // Trường hợp 2: Có MONGO_URI → connect
       console.log("🔄 Đang kết nối MongoDB...");
       const t0 = Date.now();
 
@@ -465,7 +461,6 @@ function loadDB() {
     console.error("❌ Lazy init lỗi:", e.message);
   });
 
-  // ✅ Trả về seed rỗng NGAY để không block request
   dbCache = buildSeedData();
   return dbCache;
 }
@@ -550,6 +545,42 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({ limit: "25mb" }));
+
+// ============================================================
+// ✅✅✅ MIDDLEWARE AWAIT INIT — ĐÃ DI CHUYỂN LÊN ĐÂY ✅✅✅
+// ============================================================
+// Điểm mấu chốt: middleware này PHẢI nằm TRƯỚC tất cả routes
+// để đảm bảo MongoDB init xong trước khi request được xử lý.
+// ============================================================
+
+let initPromise = null;
+
+function getInitPromise() {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    try {
+      console.log("🔧 [middleware] Bắt đầu init MongoDB...");
+      const ok = await initMongo();
+      console.log("✅ [middleware] initMongo() xong — ok =", ok);
+      if (ok) migrateMenuNutrition();
+      return ok;
+    } catch (e) {
+      console.error("❌ [middleware] initMongo() lỗi:", e.message);
+      return false;
+    }
+  })();
+  return initPromise;
+}
+
+app.use(async (req, res, next) => {
+  // Nếu đã kết nối rồi → đi tiếp luôn
+  if (mongoReady) return next();
+
+  // Nếu đang init → chờ
+  console.log("⏳ Request đến — đợi MongoDB init...");
+  await getInitPromise();
+  next();
+});
 
 // ============================================================
 // ✅ ẢNH MÓN ĂN
@@ -2637,47 +2668,6 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
-});
-
-// ============================================================
-// ✅ EXPORT MIDDLEWARE ĐỢI INIT — VERCEL KHÔNG KILL FUNCTION
-// ============================================================
-// Điểm mấu chốt: thêm middleware AWAIT initPromise TRƯỚC các route.
-// Khi request đến, middleware sẽ:
-//   1. Chờ initMongo() resolve (3-5s)
-//   2. Sau đó mới cho request đi qua
-// Vercel thấy function có việc để làm → KHÔNG kill.
-// ============================================================
-
-let initPromise = null;
-
-function getInitPromise() {
-  if (initPromise) return initPromise;
-  initPromise = (async () => {
-    try {
-      console.log("🔧 [middleware] Bắt đầu init MongoDB...");
-      const ok = await initMongo();
-      console.log("✅ [middleware] initMongo() xong — ok =", ok);
-      if (ok) migrateMenuNutrition();
-      return ok;
-    } catch (e) {
-      console.error("❌ [middleware] initMongo() lỗi:", e.message);
-      return false;
-    }
-  })();
-  return initPromise;
-}
-
-// ✅ Middleware AWAIT init TRƯỚC mọi route
-// Đặt ngay TRƯỚC app.listen / export default
-app.use(async (req, res, next) => {
-  // Nếu đã kết nối rồi → đi tiếp luôn
-  if (mongoReady) return next();
-
-  // Nếu đang init → chờ
-  console.log("⏳ Request đến — đợi MongoDB init...");
-  await getInitPromise();
-  next();
 });
 
 // ✅ Export app
