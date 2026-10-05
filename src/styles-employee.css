@@ -8417,3 +8417,9 @@ html.dark-mode .prep-card__note {
 /* ============================================================
    KẾT THÚC FILE
    ============================================================ */
+
+/* Status filter dropdown */
+.kds-filter__select--status {
+  min-width: 180px;
+  padding-right: 38px;
+}

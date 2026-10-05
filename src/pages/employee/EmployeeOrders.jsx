@@ -158,6 +158,7 @@ export default function EmployeeOrders() {
   );
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [timeframeFilter, setTimeframeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // ---- UI state ----
   const [advancingId, setAdvancingId] = useState(null);
@@ -340,9 +341,13 @@ export default function EmployeeOrders() {
         result = result.filter((o) => o.payment === paymentFilter);
       }
 
+      if (statusFilter !== "all") {
+        result = result.filter((o) => o.status === statusFilter);
+      }
+
       return result;
     },
-    [search, paymentFilter]
+    [search, paymentFilter, statusFilter]
   );
 
   const filteredColumns = useMemo(
@@ -746,6 +751,24 @@ export default function EmployeeOrders() {
                 <option value="Tiền mặt">
                   {t("Tiền mặt tại quầy")}
                 </option>
+              </select>
+              <ChevronDown size={16} />
+            </div>
+
+
+            <div className="kds-filter__select-wrap">
+              <select
+                className="kds-filter__select kds-filter__select--status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                aria-label="Lọc theo trạng thái đơn hàng"
+              >
+                <option value="all">{t("Trạng thái đơn hàng")}</option>
+                <option value="Chờ xác nhận">{t("Đơn mới")}</option>
+                <option value="Đã xác nhận">{t("Đã xác nhận")}</option>
+                <option value="Đang chuẩn bị">{t("Đang nấu")}</option>
+                <option value="Sẵn sàng nhận">{t("Sẵn sàng nhận")}</option>
+                <option value="Hoàn thành">{t("Gần nhất")}</option>
               </select>
               <ChevronDown size={16} />
             </div>
