@@ -2,7 +2,7 @@
 
 Hệ thống đặt món và quản lý Canteen dành cho khách hàng, nhân viên và quản trị viên.
 
-**Trạng thái:** Production-ready - deploy tại [https://canteen-goo.vercel.app](https://canteen-goo.vercel.app)
+**Trạng thái:** Production-ready - deploy tại [[https://canteen-goo.vercel.app](https://canteenvwa.vercel.app/)
 
 ## Mục lục
 
