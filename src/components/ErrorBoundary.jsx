@@ -9,13 +9,43 @@
 //   • Thông báo thân thiện (tiếng Việt, có i18n)
 //   • Nút "Thử lại" và "Về trang chủ"
 //   • Chi tiết lỗi (thu gọn) + nút Sao chép để gửi cho dev
+//
+// ✅ FIX: Dùng `t` an toàn — fallback về chuỗi gốc nếu i18n chưa sẵn sàng
 // ============================================================
 
 import { Component } from "react";
 import {
   AlertTriangle, RefreshCw, Home, ChevronDown, ChevronUp, Copy, Check,
 } from "lucide-react";
-import { t } from "../lib/i18n";
+
+// ✅ FIX: Import an toàn — không crash nếu lib/i18n chưa load
+let i18nT = null;
+try {
+  const i18nModule = require("../lib/i18n");
+  i18nT = i18nModule?.t || null;
+} catch {
+  i18nT = null;
+}
+
+/**
+ * ✅ FIX: Hàm dịch an toàn.
+ * - Nếu `t` khả dụng → dùng `t(key)`
+ * - Nếu `t` undefined hoặc throw → trả về `key` gốc (tiếng Việt)
+ *
+ * Điều này đảm bảo ErrorBoundary KHÔNG BAO GIỜ crash
+ * ngay cả khi i18n chưa khởi tạo xong.
+ */
+function safeT(key) {
+  try {
+    if (typeof i18nT === "function") {
+      const result = i18nT(key);
+      if (typeof result === "string" && result.trim()) return result;
+    }
+  } catch {
+    // Bỏ qua lỗi i18n, dùng fallback
+  }
+  return key;
+}
 
 // ------------------------------------------------------------
 // Inline style — dùng đúng biến CSS của dự án (styles.css :root)
@@ -257,10 +287,13 @@ export default class ErrorBoundary extends Component {
             <AlertTriangle size={30} />
           </div>
 
-          <div style={S.title}>{t("Đã xảy ra lỗi khi hiển thị trang")}</div>
+          {/* ✅ FIX: Dùng safeT() thay vì t() */}
+          <div style={S.title}>
+            {safeT("Đã xảy ra lỗi khi hiển thị trang")}
+          </div>
 
           <div style={S.desc}>
-            {t(
+            {safeT(
               "Rất tiếc, trang này gặp sự cố ngoài ý muốn. Bạn hãy thử tải lại trang, nếu vẫn lỗi thì quay về trang chủ."
             )}
           </div>
@@ -272,7 +305,7 @@ export default class ErrorBoundary extends Component {
               onClick={this.handleReload}
             >
               <RefreshCw size={16} />
-              {t("Thử lại")}
+              {safeT("Thử lại")}
             </button>
 
             <button
@@ -281,7 +314,7 @@ export default class ErrorBoundary extends Component {
               onClick={this.handleGoHome}
             >
               <Home size={16} />
-              {t("Về trang chủ")}
+              {safeT("Về trang chủ")}
             </button>
           </div>
 
@@ -292,7 +325,7 @@ export default class ErrorBoundary extends Component {
             aria-expanded={showDetail}
           >
             {showDetail ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            {showDetail ? t("Ẩn chi tiết lỗi") : t("Xem chi tiết lỗi")}
+            {showDetail ? safeT("Ẩn chi tiết lỗi") : safeT("Xem chi tiết lỗi")}
           </button>
 
           {showDetail && (
@@ -304,7 +337,7 @@ export default class ErrorBoundary extends Component {
                 onClick={this.handleCopy}
               >
                 {copied ? <Check size={16} /> : <Copy size={16} />}
-                {copied ? t("Đã sao chép") : t("Sao chép chi tiết")}
+                {copied ? safeT("Đã sao chép") : safeT("Sao chép chi tiết")}
               </button>
             </div>
           )}
@@ -313,4 +346,3 @@ export default class ErrorBoundary extends Component {
     );
   }
 }
-
