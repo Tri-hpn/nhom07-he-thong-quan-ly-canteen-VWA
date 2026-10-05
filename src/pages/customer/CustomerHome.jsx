@@ -21,6 +21,7 @@ import FoodDetailModal from "../../components/FoodDetailModal";
 import ChatBotWidget from "../../components/ChatBotWidget";
 import { useI18n } from "../../hooks/useI18n";
 import { toast } from "../../components/Effects";
+
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -76,9 +77,6 @@ function normalizeVi(str) {
 
 // ============================================================
 // SUB-COMPONENT: HomeFoodCard
-// ------------------------------------------------------------
-// Dùng chung cho Món nổi bật / Món mới / Flash Sale
-// Style 100% từ .home-flash-card (styles-customer.css)
 // ============================================================
 
 function HomeFoodCard({
@@ -246,33 +244,7 @@ export default function CustomerHome({ user, cart, setCart }) {
   const [selected, setSelected] = useState(null);
   const [mode, setMode] = useState("cart");
   const [flashQty, setFlashQty] = useState({});
-      // Hàm cập nhật tồn kho khi thêm món
-  const handleUpdateStock = useCallback((itemId, quantityBought) => {
-  const updateFood = (food) => {
-    if (food.id !== itemId && food._id !== itemId) {
-      return food;
-    }
 
-    const currentStock = Number(food.stock) || 0;
-    const currentSold = Number(food.sold) || 0;
-
-    return {
-      ...food,
-
-      // Trừ số suất còn lại
-      stock: Math.max(0, currentStock - quantityBought),
-
-      // Tăng số suất đã bán
-      sold: currentSold + quantityBought,
-    };
-  };
-
-  setPromotions((prev) => prev.map(updateFood));
-  setItems((prev) => prev.map(updateFood));
-  setNewItems((prev) => prev.map(updateFood));
-  setSignatureItems((prev) => prev.map(updateFood));
-  setAllMenu((prev) => prev.map(updateFood));
-}, []);
   // Search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -284,7 +256,7 @@ export default function CustomerHome({ user, cart, setCart }) {
   const inFlightRef = useRef(false);
   const searchBoxRef = useRef(null);
 
-  // ---------- HÀM CẬP NHẬT TỒN KHO (MỚI THÊM) ----------
+  // ---------- HÀM CẬP NHẬT TỒN KHO (CHỈ KHAI BÁO 1 LẦN DUY NHẤT) ----------
   const handleUpdateStock = useCallback((itemId, quantityBought) => {
     const updateList = (setter) =>
       setter((prev) =>
@@ -456,12 +428,8 @@ export default function CustomerHome({ user, cart, setCart }) {
     setSelected(m);
   }, []);
 
-<<<<<<< HEAD
-  // ---------- HÀM ADD TO CART (ĐÃ SỬA) ----------
+  // ---------- HÀM ADD TO CART ----------
   const addToCart = useCallback(
-=======
-      const addToCart = useCallback(
->>>>>>> c870c13a0d6bc0e3e21031e7cee9f927a0f3c583
     (m) => {
       const id = m.id || m._id;
       const key = `${id}-S-`;
@@ -470,7 +438,7 @@ export default function CustomerHome({ user, cart, setCart }) {
 
       // Kiểm tra tồn kho trước khi thêm
       if (qty > maxStock) {
-        alert(`Chỉ còn ${maxStock} suất cho món này!`);
+        toast(`Chỉ còn ${maxStock} suất cho món này!`, "error");
         return;
       }
 
@@ -956,8 +924,7 @@ export default function CustomerHome({ user, cart, setCart }) {
 
           <div className="home-picks-grid home-picks-grid--flash-style">
             {signatureItems.slice(0, SIGNATURE_LIMIT).map((m) => (
-              <HomeFoodCard
-                key={m.id || m._id}
+              <HomeFoodCard                key={m.id || m._id}
                 m={m}
                 qty={flashQty[m.id || m._id] || 1}
                 onQtyChange={handleQtyChange}
@@ -1040,7 +1007,7 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       )}
 
-           {/* ===== MODAL ===== */}
+      {/* ===== MODAL ===== */}
       {selected && (
         <FoodDetailModal
           item={selected}
@@ -1050,13 +1017,10 @@ export default function CustomerHome({ user, cart, setCart }) {
           mode={mode}
           initialQty={flashQty[selected.id || selected._id] || 1}
           onClose={() => setSelected(null)}
-<<<<<<< HEAD
-          onUpdateStock={handleUpdateStock}  // 👈 ĐÃ THÊM DÒNG NÀY
-=======
-          onUpdateStock={handleUpdateStock}  // 👈 THÊM DÒNG NÀY VÀO ĐÂY
->>>>>>> c870c13a0d6bc0e3e21031e7cee9f927a0f3c583
+          onUpdateStock={handleUpdateStock}
         />
       )}
+
       {/* ===== CHATBOT ===== */}
       <ChatBotWidget cart={cart} setCart={setCart} user={user} />
     </div>
