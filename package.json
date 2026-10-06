@@ -29,7 +29,7 @@
     "translate:db:ko": "node scripts/backfill-from-mongo.mjs --lang=ko",
     "translate:db:zh": "node scripts/backfill-from-mongo.mjs --lang=zh",
 
-    "prebuild": "node scripts/auto-translate-locales.mjs --until-done --max-rounds 3",
+    "prebuild": "echo \"Skip prebuild translate on Vercel\"",
 
     "check:i18n": "node scripts/check-i18n-duplicate.mjs && node scripts/check-locale-coverage.mjs",
     "cleanup-db": "node scripts/cleanup-db.mjs",

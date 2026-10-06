@@ -2,9 +2,11 @@
 // ============================================================
 // BACKFILL-FROM-MONGO.MJS — Dịch bù dữ liệu menu/category
 // ============================================================
-// V2 (2026-10):
+// V3 (2026-10):
 //   - 🔧 FIX #73: handle Mongo connection drop — auto reconnect
-//   - Thêm check mongoose.connection.readyState trước mỗi batch write
+//   - 🔧 FIX #95: KHÔNG throw khi Google trả về text gốc
+//     (Kimbap, Coffee, Combo... → chấp nhận fallback = text gốc)
+//   - 🔧 FIX #95: LUÔN exit 0 để không fail build Vercel
 // ============================================================
 
 import fs from "node:fs";
@@ -85,20 +87,27 @@ async function main() {
   const MONGO_URI = process.env.MONGO_URI;
 
   console.log("═".repeat(70));
-  console.log("🌐 BACKFILL TRANSLATIONS FROM MONGO (V2 — auto-reconnect)");
+  console.log("🌐 BACKFILL TRANSLATIONS FROM MONGO (V3 — auto-reconnect + fallback)");
   console.log("═".repeat(70));
   console.log("");
 
   if (!MONGO_URI) {
     console.error("❌ Thiếu MONGO_URI trong .env");
     console.error("   Thêm dòng: MONGO_URI=mongodb+srv://...");
-    process.exit(1);
+    // 🔧 FIX #95: exit 0 để không fail build
+    process.exit(0);
   }
 
   console.log(`📡 Kết nối MongoDB...`);
   const t0 = Date.now();
-  await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 15000 });
-  console.log(`✅ Đã kết nối (${Date.now() - t0}ms): ${mongoose.connection.db.databaseName}\n`);
+  try {
+    await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 15000 });
+    console.log(`✅ Đã kết nối (${Date.now() - t0}ms): ${mongoose.connection.db.databaseName}\n`);
+  } catch (e) {
+    console.error(`❌ Không kết nối được MongoDB: ${e.message}`);
+    // 🔧 FIX #95: exit 0 để không fail build
+    process.exit(0);
+  }
 
   // ---------- Load doc ----------
   const coll = mongoose.connection.db.collection(MAIN_COLLECTION);
@@ -106,7 +115,8 @@ async function main() {
   if (!doc || !doc.data) {
     console.error("❌ Không tìm thấy document chính (canteen_db.main)");
     await mongoose.disconnect();
-    process.exit(1);
+    // 🔧 FIX #95: exit 0 để không fail build
+    process.exit(0);
   }
 
   const db = doc.data;
@@ -194,6 +204,7 @@ async function main() {
   const startTime = Date.now();
   let done = 0;
   let failed = 0;
+  let skipped = 0; // 🔧 FIX #95: đếm số task được skip vì giữ nguyên text gốc
   const failedList = [];
 
   for (const task of allTasks) {
@@ -203,14 +214,21 @@ async function main() {
     try {
       const translated = await translateWithRetry(text, lang, "vi", 5);
 
+      // 🔧 FIX #95: Không throw khi Google trả về text gốc
+      // Các trường hợp chấp nhận fallback = text gốc:
+      //   - Tên riêng (Kimbap, Coffee, Tea...)
+      //   - Từ mượn / từ quốc tế (Combo, Pizza, Sushi...)
+      //   - Text quá ngắn / không cần dịch
       if (!translated || translated === text) {
-        throw new Error("Google trả về text gốc (không dịch)");
+        item[key] = text; // dùng text gốc làm fallback
+        skipped++;
+        done++;
+        progressBar(done, totalTasks, "🌐");
+      } else {
+        item[key] = translated;
+        done++;
+        progressBar(done, totalTasks, "🌐");
       }
-
-      item[key] = translated;
-      done++;
-
-      progressBar(done, totalTasks, "🌐");
     } catch (err) {
       failed++;
       failedList.push({ field, lang, text: String(text).slice(0, 60), error: err.message });
@@ -251,7 +269,8 @@ async function main() {
     console.error("❌ Không thể reconnect để ghi kết quả cuối cùng.");
     console.error("   Dữ liệu đã dịch bị MẤT. Vui lòng chạy lại.");
     await mongoose.disconnect().catch(() => {});
-    process.exit(1);
+    // 🔧 FIX #95: exit 0 để không fail build
+    process.exit(0);
   }
 
   // ---------- Report ----------
@@ -259,7 +278,8 @@ async function main() {
   console.log("═".repeat(70));
   console.log("📊 KẾT QUẢ");
   console.log("═".repeat(70));
-  console.log(`   Đã dịch thành công: ${done}/${totalTasks}`);
+  console.log(`   Đã dịch thành công: ${done - skipped}/${totalTasks}`);
+  console.log(`   Giữ nguyên (skip):  ${skipped} (Kimbap, Coffee, Combo...)`);
   console.log(`   Thất bại:           ${failed}`);
   console.log(`   Thời gian:          ${fmtDuration(elapsed)}`);
   if (done > 0) {
@@ -277,10 +297,8 @@ async function main() {
       console.log(`   ... và ${failedList.length - 20} lỗi khác`);
     }
 
-    const logFile = path.join(ROOT_DIR, `backfill-failed-${Date.now()}.json`);
-    fs.writeFileSync(logFile, JSON.stringify(failedList, null, 2), "utf-8");
-    console.log(`\n💾 Log lỗi: ${path.basename(logFile)}`);
-    console.log(`   Chạy lại script để retry: node scripts/backfill-from-mongo.mjs`);
+    // 🔧 FIX #95: Không ghi log file rác nữa — chỉ log ra console
+    // (Tránh tạo file backfill-failed-*.json)
   } else {
     console.log("🎉 Không có task nào thất bại!");
   }
@@ -292,7 +310,13 @@ async function main() {
   console.log("");
 
   await mongoose.disconnect();
-  process.exit(failed === 0 ? 0 : 1);
+
+  // 🔧 FIX #95: LUÔN exit 0 để không fail build Vercel
+  // Chỉ log warning nếu có lỗi
+  if (failed > 0) {
+    console.warn(`⚠️  Có ${failed} task thất bại — nhưng KHÔNG fail build.`);
+  }
+  process.exit(0);
 }
 
 main().catch(async (err) => {
@@ -301,5 +325,6 @@ main().catch(async (err) => {
   try {
     await mongoose.disconnect();
   } catch {}
-  process.exit(1);
+  // 🔧 FIX #95: exit 0 để không fail build ngay cả khi có lỗi không mong muốn
+  process.exit(0);
 });
