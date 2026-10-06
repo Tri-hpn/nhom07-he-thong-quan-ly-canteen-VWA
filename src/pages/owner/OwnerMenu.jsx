@@ -6,6 +6,7 @@
 //
 // ✅ THÊM: Checkbox "Món Signature" trong modal thêm/sửa món
 // ✅ THÊM: Cột "Signature" trong bảng hiển thị badge
+// 🔧 FIX #89: t() truyền vars thay vì .replace("{password}", ...) thủ công
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";

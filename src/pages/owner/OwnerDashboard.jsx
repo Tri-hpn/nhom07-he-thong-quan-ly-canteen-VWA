@@ -6,6 +6,7 @@
 //   - Reports: ANALYTICAL (báo cáo chuyên sâu, so sánh kỳ)
 //
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #86: fmtTime + lastUpdated dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -28,6 +29,14 @@ import { useI18n } from "../../hooks/useI18n";
 
 const REFRESH_MS = 30000;
 const RECENT_ORDERS_LIMIT = 5;
+
+// 🔧 FIX #86: formatter cố định VN timezone, 24h
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
 
 // Next status flow
 const NEXT_STATUS = {
@@ -58,11 +67,12 @@ function getLocalDateStr(input) {
   return `${y}-${m}-${dt}`;
 }
 
+// 🔧 FIX #86: dùng formatter cố định VN, 24h
 function fmtTime(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  return TIME_FORMATTER.format(d);
 }
 
 function calcDelta(current, previous) {
@@ -308,7 +318,8 @@ export default function OwnerDashboard() {
             {t("Realtime")} · {t("Cập nhật mỗi")} {REFRESH_MS / 1000}s
             {lastUpdated && (
               <span style={{ marginLeft: 8, opacity: 0.7 }}>
-                ({lastUpdated.toLocaleTimeString("vi-VN")})
+                {/* 🔧 FIX #86: dùng formatter cố định VN, 24h */}
+                ({TIME_FORMATTER.format(lastUpdated)})
               </span>
             )}
           </span>
@@ -996,7 +1007,7 @@ function ActionCard({ icon, label, value, color, to }) {
 }
 
 // ============================================================
-// SUB-COMPONENT: Order Status BadgeCheck
+// SUB-COMPONENT: Order Status Badge
 // ============================================================
 
 function OrderStatusBadge({ status }) {
@@ -1047,7 +1058,7 @@ function EmptyChart({ message }) {
 }
 
 // ============================================================
-// SUB-COMPONENT: LayoutDashboard Skeleton
+// SUB-COMPONENT: Dashboard Skeleton
 // ============================================================
 
 function DashboardSkeleton() {

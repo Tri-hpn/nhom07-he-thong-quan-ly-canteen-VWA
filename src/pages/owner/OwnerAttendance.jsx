@@ -7,6 +7,7 @@
 //   - Bảng chi tiết có avatar + badge trạng thái
 //
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #85: fmtTime/fmtDate dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -20,6 +21,21 @@ import { useI18n } from "../../hooks/useI18n";
 // ============================================================
 // CONSTANTS
 // ============================================================
+
+// 🔧 FIX #85: formatter cố định VN timezone
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+});
 
 // Mapping trạng thái → key CSS class (dùng cho badge)
 const STATUS_KEY = {
@@ -145,24 +161,21 @@ export default function OwnerAttendance() {
   };
 
   // ---------- Formatters ----------
+  // 🔧 FIX #85: dùng Intl.DateTimeFormat cố định VN, 24h
 
   const fmtTime = (d) => {
     if (!d) return "—";
-    return new Date(d).toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return "—";
+    return TIME_FORMATTER.format(date);
   };
 
   // Timezone-safe: thêm "T00:00:00" để parse theo local time
   const fmtDate = (dateStr) => {
     if (!dateStr) return "—";
     const d = new Date(dateStr + "T00:00:00");
-    return d.toLocaleDateString("vi-VN", {
-      weekday: "short",
-      day: "2-digit",
-      month: "2-digit",
-    });
+    if (isNaN(d.getTime())) return "—";
+    return DATE_FORMATTER.format(d);
   };
 
   // ============================================================

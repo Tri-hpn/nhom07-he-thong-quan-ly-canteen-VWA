@@ -7,6 +7,7 @@
 //   - Filter bar
 //   - Revenue table
 //   - Print modal (Print Preview Engine) — theo HTML mẫu
+// 🔧 FIX #94: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -35,6 +36,26 @@ const QUICK_RANGES = [
   { id: "year",   label: "Năm nay",     years: 1 },
   { id: "custom", label: "Tùy chọn",    custom: true },
 ];
+
+// 🔧 FIX #94: formatter cố định VN timezone, 24h
+const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+// 🔧 FIX #94: helper format datetime VN
+function fmtDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return DATETIME_FORMATTER.format(d);
+}
 
 // ============================================================
 // HELPERS
@@ -261,7 +282,8 @@ export default function OwnerReports() {
         ...currentOrders.map((o) => [
           o.code,
           o.customer_name || "",
-          o.created_at ? new Date(o.created_at).toLocaleString("vi-VN") : "",
+          // 🔧 FIX #94: dùng fmtDateTime cố định VN
+          fmtDateTime(o.created_at),
           o.payment || t("Tiền mặt"),
           o.status,
           o.total || 0,
@@ -600,7 +622,6 @@ export default function OwnerReports() {
     </>
   );
 }
-
 // ============================================================
 // PRINT PREVIEW MODAL — theo HTML mẫu
 // ============================================================
@@ -893,8 +914,8 @@ function PrintPreviewModal({ orders, stats, range, onClose, t }) {
                     </span>
                   </div>
                   <div>
-                    {t("In lúc:")}{" "}
-                    {new Date().toLocaleString("vi-VN")} •{" "}
+                    {/* 🔧 FIX #94: dùng fmtDateTime cố định VN thay toLocaleString */}
+                    {t("In lúc:")} {fmtDateTime(new Date())} •{" "}
                     {t("Bản in số 01/03")}
                   </div>
                 </div>

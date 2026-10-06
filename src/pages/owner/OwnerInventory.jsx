@@ -2,6 +2,7 @@
 // OWNERINVENTORY.JSX — Quản lý kho nguyên liệu (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #88: import history dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
@@ -22,6 +23,18 @@ const UNITS = ["kg", "g", "lít", "ml", "chai", "hộp", "cái", "phần"];
 
 const MODAL_Z = 2147483600;
 const IMPORT_HISTORY_LIMIT = 30;
+
+// 🔧 FIX #88: formatter cố định VN timezone, 24h
+const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 // ============================================================
 // MAIN COMPONENT
@@ -251,6 +264,14 @@ export default function OwnerInventory() {
     if (key === "out") return t("Hết hàng");
     if (key === "low") return t("Sắp hết");
     return t("Còn hàng");
+  };
+
+  // 🔧 FIX #88: helper format datetime VN
+  const fmtImportTime = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return DATETIME_FORMATTER.format(d);
   };
 
   return (
@@ -595,8 +616,9 @@ export default function OwnerInventory() {
                         key={r.id}
                         style={{ borderBottom: "1px solid var(--border-color, #eef2f7)" }}
                       >
+                        {/* 🔧 FIX #88: dùng formatter cố định VN */}
                         <td style={{ ...tdStyle, fontSize: 12, color: "var(--text-muted, #64748b)" }}>
-                          {new Date(r.created_at).toLocaleString("vi-VN")}
+                          {fmtImportTime(r.created_at)}
                         </td>
                         <td style={tdStyle}>
                           <b>{r.name}</b>{" "}

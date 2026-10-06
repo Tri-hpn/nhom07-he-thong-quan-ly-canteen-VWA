@@ -2,6 +2,7 @@
 // OWNERPRICEHISTORY.JSX — Lịch sử thay đổi giá (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #90: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -18,6 +19,18 @@ import { SkeletonStats } from "../../components/Skeleton";
 // ============================================================
 
 const DATALIST_ID = "price-history-menu-items";
+
+// 🔧 FIX #90: formatter cố định VN timezone, 24h
+const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 const thStyle = {
   padding: 11,
@@ -114,6 +127,14 @@ export default function OwnerPriceHistory() {
   const hasFilter = filterText.trim().length > 0;
 
   const clearFilters = () => setFilterText("");
+
+  // 🔧 FIX #90: helper format datetime VN
+  const fmtDateTime = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return DATETIME_FORMATTER.format(d);
+  };
 
   // ============================================================
   // RENDER
@@ -367,7 +388,7 @@ export default function OwnerPriceHistory() {
                         borderBottom: "1px solid var(--border-color, #eef2f7)",
                       }}
                     >
-                      {/* Thời gian */}
+                      {/* Thời gian — 🔧 FIX #90: dùng formatter cố định VN */}
                       <td
                         style={{
                           ...tdStyle,
@@ -376,9 +397,7 @@ export default function OwnerPriceHistory() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {h.created_at
-                          ? new Date(h.created_at).toLocaleString("vi-VN")
-                          : "—"}
+                        {fmtDateTime(h.created_at)}
                       </td>
 
                       {/* Món ăn */}

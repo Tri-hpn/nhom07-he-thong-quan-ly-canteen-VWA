@@ -2,6 +2,7 @@
 // OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #89: t() truyền vars thay vì .replace("{password}", ...) thủ công
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
@@ -929,10 +930,10 @@ export default function OwnerEmployees() {
               <input name="phone" style={inputStyle} />
 
               <label style={labelStyle}>
-                {t("Mật khẩu (để trống = {password})").replace(
-                  "{password}",
-                  DEFAULT_PASSWORD
-                )}
+                {/* 🔧 FIX #89: truyền vars vào t() thay vì .replace("{password}", ...) thủ công */}
+                {t("Mật khẩu (để trống = {password})", {
+                  password: DEFAULT_PASSWORD,
+                })}
               </label>
               <input
                 name="password"

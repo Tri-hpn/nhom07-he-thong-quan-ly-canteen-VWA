@@ -56,3 +56,27 @@ Thumbs.db
 .vscode/*.log
 .vercel
 .env*
+
+# ==== Canteen VWA — bổ sung ====
+backfill-failed-*.json
+*.dupfix.bak
+*.bak
+*.old
+*.orig
+*.rej
+*.tmp
+*.log
+dist/
+build/
+.vite/
+.cache/
+coverage/
+.nyc_output/
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*~
+# ==== END ====

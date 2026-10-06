@@ -2,6 +2,7 @@
 // OWNERFINANCE.JSX — Quản lý tài chính (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #87: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -32,6 +33,25 @@ const BANKS = [
   { code: "AGB",  name: "Agribank" },
 ];
 
+// 🔧 FIX #87: formatter cố định VN timezone, 24h
+const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
 // Status → màu badge giao dịch
 const ORDER_STATUS_COLORS = {
   "Hoàn thành":  { bg: "#e8f9f1", fg: "#18a967" },
@@ -55,6 +75,21 @@ function getLocalDateStr(d = new Date()) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dt = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dt}`;
+}
+
+// 🔧 FIX #87: format datetime / date dùng formatter cố định VN
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return DATETIME_FORMATTER.format(d);
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return DATE_FORMATTER.format(d);
 }
 
 // ============================================================
@@ -640,11 +675,8 @@ function TransactionsTab() {
                   <tr key={o._id || o.id} style={trStyle}>
                     <td style={tdStyle}><b>{o.code}</b></td>
                     <td style={tdStyle}>{o.customer_name}</td>
-                    <td style={tdStyle}>
-                      {o.created_at
-                        ? new Date(o.created_at).toLocaleString("vi-VN")
-                        : "—"}
-                    </td>
+                    {/* 🔧 FIX #87: dùng formatter cố định VN */}
+                    <td style={tdStyle}>{fmtDateTime(o.created_at)}</td>
                     <td style={tdStyle}>{o.payment || t("Tiền mặt")}</td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
                       <b>{fmtMoney(o.total)}</b>
@@ -1030,9 +1062,8 @@ function ExpensesTab() {
                 <tbody>
                   {filteredExpenses.map((e) => (
                     <tr key={e.id} style={trStyle}>
-                      <td style={tdStyle}>
-                        {new Date(e.date).toLocaleDateString("vi-VN")}
-                      </td>
+                      {/* 🔧 FIX #87: dùng formatter cố định VN */}
+                      <td style={tdStyle}>{fmtDate(e.date)}</td>
                       <td style={tdStyle}><b>{e.title}</b></td>
                       <td style={tdStyle}>{e.category}</td>
                       <td style={tdStyle}>{e.note || "—"}</td>

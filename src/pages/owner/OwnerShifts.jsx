@@ -8,6 +8,7 @@
 //   4. Lịch sử   — chấm công theo tháng
 //
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #91: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { Skeleton, SkeletonStats } from "../../components/Skeleton";
@@ -65,6 +66,34 @@ const TABS = [
 const MODAL_Z = 2147483600;
 const REFRESH_MS = 30000;
 
+// 🔧 FIX #91: formatter cố định VN timezone
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const DATE_SHORT_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+});
+
+const DATE_LONG_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  weekday: "long",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+const WEEKDAY_SHORT_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  weekday: "short",
+});
+
 // ============================================================
 // HELPERS (date)
 // ============================================================
@@ -77,22 +106,19 @@ function getToday() {
   return `${y}-${m}-${dt}`;
 }
 
+// 🔧 FIX #91: dùng formatter cố định VN
 function fmtTime(d) {
   if (!d) return "—";
-  return new Date(d).toLocaleTimeString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return "—";
+  return TIME_FORMATTER.format(date);
 }
 
 function fmtDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("vi-VN", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  });
+  if (isNaN(d.getTime())) return "—";
+  return DATE_SHORT_FORMATTER.format(d);
 }
 
 function shiftColor(shiftId) {
@@ -328,13 +354,10 @@ export default function OwnerShifts() {
         const d = new Date(date + "T00:00:00");
         return {
           date,
-          label: d.toLocaleDateString("vi-VN", {
-            weekday: "long",
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-          }),
-          weekdayShort: d.toLocaleDateString("vi-VN", { weekday: "short" }),
+          // 🔧 FIX #91: dùng DATE_LONG_FORMATTER
+          label: DATE_LONG_FORMATTER.format(d),
+          // 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER
+          weekdayShort: WEEKDAY_SHORT_FORMATTER.format(d),
           dayNum: String(d.getDate()).padStart(2, "0"),
           shifts: list,
           shiftTypes,
@@ -622,13 +645,10 @@ export default function OwnerShifts() {
                 marginBottom: 2,
               }}
             >
-              🔔 {t("Có {n} ca chờ duyệt hôm nay").replace(
-                "{n}",
-                pendingTodayCount
-              )}
+              🔔 {t("Có {n} ca chờ duyệt hôm nay", { n: pendingTodayCount })}
             </b>
             <span style={{ color: "#78350f", fontSize: 13 }}>
-              {t("Vào tab \"Phân ca\" để duyệt hoặc từ chối.")}
+              {t('Vào tab "Phân ca" để duyệt hoặc từ chối.')}
             </span>
           </div>
           <button
@@ -999,7 +1019,6 @@ export default function OwnerShifts() {
           })}
         </div>
       )}
-
       {/* ============================================================
           TAB: THEO TUẦN (chỉ approved)
           ============================================================ */}
@@ -1108,9 +1127,8 @@ export default function OwnerShifts() {
                         }}
                       >
                         <div style={{ fontWeight: 700 }}>
-                          {dayObj.toLocaleDateString("vi-VN", {
-                            weekday: "short",
-                          })}
+                          {/* 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER */}
+                          {WEEKDAY_SHORT_FORMATTER.format(dayObj)}
                         </div>
                         <div style={{ fontSize: 10, opacity: 0.7 }}>
                           {d.slice(8)}/{d.slice(5, 7)}
@@ -1476,6 +1494,7 @@ export default function OwnerShifts() {
                               opacity: 0.9,
                             }}
                           >
+                            {/* 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER đã apply từ groupedShifts */}
                             {group.weekdayShort}
                           </span>
                           <span style={{ fontSize: 15, fontWeight: 800 }}>
@@ -1594,7 +1613,7 @@ export default function OwnerShifts() {
                                   {s.employee_name}
                                 </b>
 
-                                {/* BadgeCheck status */}
+                                {/* Badge status */}
                                 <span
                                   style={{
                                     padding: "2px 8px",
@@ -1615,7 +1634,7 @@ export default function OwnerShifts() {
                                     : t("Đã duyệt")}
                                 </span>
 
-                                {/* BadgeCheck shift */}
+                                {/* Badge shift */}
                                 <span
                                   style={{
                                     padding: "2px 10px",
@@ -2284,9 +2303,8 @@ function AssignModal({
               const isActive = activeDate === d;
               const isAssigned = isDayAssigned(d);
               const dayObj = new Date(d + "T00:00:00");
-              const dayLabel = dayObj.toLocaleDateString("vi-VN", {
-                weekday: "short",
-              });
+              // 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER
+              const dayLabel = WEEKDAY_SHORT_FORMATTER.format(dayObj);
 
               let bg = "var(--bg-tertiary, #f5f7fb)";
               let color = "var(--text-primary, #172033)";

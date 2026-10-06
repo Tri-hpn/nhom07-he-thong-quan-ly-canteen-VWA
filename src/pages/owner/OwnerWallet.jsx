@@ -2,6 +2,7 @@
 // OWNERWALLET.JSX — Quản lý Ví Canteen (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX #93: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
@@ -21,6 +22,18 @@ import ConfirmDialog from "../../components/ConfirmDialog";
 
 const MODAL_Z = 2147483600;
 const REFRESH_MS = 20000;
+
+// 🔧 FIX #93: formatter cố định VN timezone, 24h
+const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 const TX_KEYS = {
   deposit:  { icon: ArrowDownCircle, color: "#18a967", bg: "#e8f9f1", sign: "+" },
@@ -59,6 +72,14 @@ function getRangeStart(rangeId, TIME_RANGES) {
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - (r.days - 1));
   return d.getTime();
+}
+
+// 🔧 FIX #93: helper format datetime VN
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return DATETIME_FORMATTER.format(d);
 }
 
 // ============================================================
@@ -1152,9 +1173,8 @@ function TxRow({
           <span style={{ fontFamily: "monospace" }}>{tx.code}</span>
           <span>· {tx.user_email}</span>
           <span>
-            · {tx.created_at
-              ? new Date(tx.created_at).toLocaleString("vi-VN")
-              : "—"}
+            {/* 🔧 FIX #93: dùng fmtDateTime cố định VN */}
+            · {fmtDateTime(tx.created_at)}
           </span>
         </div>
         {tx.note && (
@@ -1247,7 +1267,6 @@ function TxRow({
     </div>
   );
 }
-
 // ============================================================
 // SUB-COMPONENT: DetailModal
 // ============================================================
@@ -1291,18 +1310,15 @@ function DetailModal({ tx, onClose, TX_CONFIG, STATUS_CONFIG, METHOD_BADGES, t }
           value={METHOD_BADGES[tx.method]?.label || tx.method || "—"}
         />
         <InfoRow label={t("Trạng thái")} value={statusConfig.label} />
+        {/* 🔧 FIX #93: dùng fmtDateTime cố định VN */}
         <InfoRow
           label={t("Ngày tạo")}
-          value={
-            tx.created_at
-              ? new Date(tx.created_at).toLocaleString("vi-VN")
-              : "—"
-          }
+          value={fmtDateTime(tx.created_at)}
         />
         {tx.approved_at && (
           <InfoRow
             label={t("Ngày duyệt")}
-            value={new Date(tx.approved_at).toLocaleString("vi-VN")}
+            value={fmtDateTime(tx.approved_at)}
           />
         )}
         {tx.approved_by && <InfoRow label={t("Người duyệt")} value={tx.approved_by} />}
