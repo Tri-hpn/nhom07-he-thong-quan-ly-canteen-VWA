@@ -1,10 +1,11 @@
-// ============================================================
+﻿// ============================================================
 // REGISTER.JSX — Đăng ký tài khoản (style Login V8)
 // ============================================================
 // V2: thêm guard res.user, không đổi logic khác
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
+import { LogoVWACompact } from "../components/LogoVWA";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Eye,
@@ -191,7 +192,7 @@ export default function Register({ onRegister }) {
         <div className="v8-form-inner">
           <div className="v8-form-top">
             <div className="v8-form-logo">
-              <div className="v8-form-logo-mark">C</div>
+              <LogoVWACompact size={64} />
             </div>
             <nav className="v8-tabs" aria-label={t("Chuyển trang")}>
               <Link to="/" className="v8-tab">

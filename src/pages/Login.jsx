@@ -1,10 +1,11 @@
-// ============================================================
+﻿// ============================================================
 // LOGIN.JSX — Đăng nhập (style Login Animation V8)
 // ============================================================
 // V2: password min 6, không reset state khi demo, không đổi logic
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
+import { LogoVWACompact } from "../components/LogoVWA";
 import { Link } from "react-router-dom";
 import {
   Eye,
@@ -167,7 +168,7 @@ export default function Login({ onLogin }) {
         <div className="v8-form-inner">
           <div className="v8-form-top">
             <div className="v8-form-logo">
-              <div className="v8-form-logo-mark">C</div>
+              <LogoVWACompact size={64} />
             </div>
             <nav className="v8-tabs" aria-label={t("Chuyển trang")}>
               <span className="v8-tab active">{t("Đăng nhập")}</span>

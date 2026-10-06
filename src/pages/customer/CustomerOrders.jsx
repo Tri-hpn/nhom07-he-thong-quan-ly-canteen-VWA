@@ -1,11 +1,12 @@
 // ============================================================
-// CUSTOMERORDERS.JSX — Đơn hàng của tôi (V5 - FINAL + i18n)
+// CUSTOMERORDERS.JSX — Đơn hàng của tôi (V6 - FINAL + i18n)
 // ============================================================
 // V5 (2026-10):
 //   - 🔧 FIX #30: getRelativeDateLabel dùng source-text i18n
-//                 - Bỏ t("{n} ngày trước") vì key chưa tồn tại
-//                 - Dùng tiếng Việt trực tiếp, i18n sẽ tự dịch
-//   - Giữ nguyên toàn bộ logic khác
+// V6 (2026-10):
+//   - 🔧 FIX: Customer thấy status mới ngay khi tab quay lại
+//             (visibilitychange → fetch ngay, không chờ 15s)
+//   - Poll 15s khi tab visible
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -118,11 +119,6 @@ function fmtTime(iso) {
   }
 }
 
-/**
- * 🔧 FIX #30: Trả về source-text tiếng Việt trực tiếp.
- * i18n engine sẽ tự động dịch key tiếng Việt → ngôn ngữ đích.
- * KHÔNG dùng t() ở đây để tránh phụ thuộc vào hook + tái render.
- */
 function getRelativeDateLabel(iso) {
   if (!iso) return "";
   try {
@@ -276,6 +272,11 @@ export default function CustomerOrders() {
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
 
+  // 🔧 FIX: theo dõi tab visible để pause poll khi ẩn
+  const [tabVisible, setTabVisible] = useState(
+    typeof document === "undefined" || !document.hidden
+  );
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -318,10 +319,38 @@ export default function CustomerOrders() {
     [t]
   );
 
+  // ============================================================
+  // Polling — tải lại danh sách đơn hàng định kỳ
+  // 🔧 FIX: pause khi tab ẩn (tránh spam request khi user ở tab khác)
+  // ============================================================
   useEffect(() => {
     load(false);
+
+    if (!tabVisible) return;
+
     const interval = setInterval(() => load(true), POLL_MS);
     return () => clearInterval(interval);
+  }, [load, tabVisible]);
+
+  // ============================================================
+  // 🔧 FIX: lắng nghe visibilitychange
+  //   - Khi tab customer bị ẩn → pause poll
+  //   - Khi tab quay lại visible → fetch NGAY lập tức (không chờ 15s)
+  //   Đây là cơ chế chính giúp customer thấy status mới
+  //   sau khi employee đổi status ở tab khác.
+  // ============================================================
+  useEffect(() => {
+    const handler = () => {
+      const visible = !document.hidden;
+      setTabVisible(visible);
+      if (visible) {
+        // Fetch ngay khi tab quay lại
+        load(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
   }, [load]);
 
   useEffect(() => {

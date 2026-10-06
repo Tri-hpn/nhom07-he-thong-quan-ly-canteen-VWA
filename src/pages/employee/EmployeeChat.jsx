@@ -1,5 +1,5 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V3)
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V5)
 // ============================================================
 // Layout 3 cột: Conversation list + Chat stream + Context inspector
 //
@@ -8,6 +8,9 @@
 //   - Auto-scroll: immediate lần đầu mở, smooth khi có tin mới
 //   - Không auto-scroll khi user kéo lên đọc tin cũ
 // 🔧 FIX #79: truyền vars vào t() thay vì .replace("{n}", ...) thủ công
+// 🔧 UI: xoá H1 + P trong chat-hero (giữ eyebrow + nút)
+// 🔧 V4: Di chuyển block "Ghi chú nội bộ" xuống dưới, trải dài cột 1+2
+// 🔧 V5: Fetch dữ liệu thật cho cột 3 Context Inspector
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -144,6 +147,10 @@ export default function EmployeeChat() {
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
+  // ---- Context Inspector ----
+  const [contextData, setContextData] = useState(null);
+  const [loadingContext, setLoadingContext] = useState(false);
+
   // ---- Input ----
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -237,6 +244,19 @@ export default function EmployeeChat() {
       lastMsgCountRef.current = 0;
       lastConvIdRef.current = null;
       await loadMessages(c.user_id, false);
+
+      // 🔧 FIX: Fetch context data
+      setLoadingContext(true);
+      api.chat
+        .getContext(c.user_id)
+        .then((data) => {
+          // Chỉ set data nếu vẫn đang chat với user này
+          if (selectedRef.current?.user_id === c.user_id) {
+            setContextData(data);
+          }
+        })
+        .catch(() => setContextData(null))
+        .finally(() => setLoadingContext(false));
 
       setConversations((list) =>
         list.map((x) =>
@@ -433,20 +453,13 @@ export default function EmployeeChat() {
   return (
     <div className="chat-workspace">
       {/* ============ HERO ============ */}
+      {/* 🔧 UI: xoá H1 + P — chỉ giữ eyebrow + cụm nút bên phải */}
       <section className="chat-hero">
         <div className="chat-hero__left">
           <span className="chat-hero__eyebrow">
             <span className="chat-hero__eyebrow-dot" />
             {t("Trực ca hỗ trợ thời gian thực")}
           </span>
-          <h1 className="chat-hero__title">
-            {t("Trung Tâm Trò Chuyện & Hỗ Trợ Khách Hàng Trực Tiếp")}
-          </h1>
-          <p className="chat-hero__desc">
-            {t(
-              "Kênh giao tiếp đồng bộ giữa Quầy điều phối, Bếp nóng, Quầy Barista và Khách dùng bữa Canteen VWA."
-            )}
-          </p>
         </div>
 
         <div className="chat-hero__actions">
@@ -1038,14 +1051,23 @@ export default function EmployeeChat() {
                   {t("Hồ sơ khách dùng bữa")}
                 </span>
                 <span className="chat-context-card__badge">
-                  {t("Hạng Bạc (Silver)")}
+                  {loadingContext
+                    ? t("Đang tải...")
+                    : contextData?.user?.tier || t("Hạng Bạc (Silver)")}
                 </span>
               </div>
 
               <div className="chat-context-profile">
                 <div className="chat-context-profile__avatar">
-                  {selected.user_avatar ? (
-                    <img src={selected.user_avatar} alt={selected.user_name} />
+                  {(contextData?.user?.avatar || selected.user_avatar) ? (
+                    <img
+                      src={contextData?.user?.avatar || selected.user_avatar}
+                      alt={selected.user_name}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.style.display = "none"; // Hide broken image
+                      }}
+                    />
                   ) : (
                     <UserIcon
                       size={24}
@@ -1055,13 +1077,14 @@ export default function EmployeeChat() {
                 </div>
                 <div className="chat-context-profile__info">
                   <span className="chat-context-profile__name">
-                    {selected.user_name || t("Khách")}
+                    {contextData?.user?.name || selected.user_name || t("Khách")}
                   </span>
                   <span className="chat-context-profile__faculty">
-                    {t("Khoa Công Nghệ Thông Tin")}
+                    {contextData?.user?.faculty || "—"}
                   </span>
                   <span className="chat-context-profile__points">
-                    {t("Tích lũy: 350 Green Points")}
+                    {t("Tích lũy:")} {contextData?.user?.points || 0}{" "}
+                    {t("Green Points")}
                   </span>
                 </div>
               </div>
@@ -1071,14 +1094,16 @@ export default function EmployeeChat() {
                   <span className="chat-context-meta__label">
                     {t("Ví VWA Pay")}
                   </span>
-                  <span className="chat-context-meta__value">185.000 đ</span>
+                  <span className="chat-context-meta__value">
+                    {fmtMoney(contextData?.wallet?.balance || 0)}
+                  </span>
                 </div>
                 <div className="chat-context-meta__item">
                   <span className="chat-context-meta__label">
                     {t("Đơn tháng này")}
                   </span>
                   <span className="chat-context-meta__value chat-context-meta__value--primary">
-                    24 {t("đơn")}
+                    {contextData?.ordersThisMonth || 0} {t("đơn")}
                   </span>
                 </div>
               </div>
@@ -1100,137 +1125,147 @@ export default function EmployeeChat() {
               </div>
             </div>
 
-            <div className="chat-context-card">
-              <div className="chat-order-inspector__head">
-                <div className="chat-order-inspector__info">
-                  <span className="chat-order-inspector__label">
-                    {t("Đơn hàng đang xử lý")}
-                  </span>
-                  <span className="chat-order-inspector__code">
-                    #ORD-20250228-098
-                  </span>
-                </div>
-                <div className="chat-order-inspector__token">
-                  #{selected.token || genToken(selected.user_id)}
-                </div>
-              </div>
-
-              <div className="chat-order-inspector__status">
-                <span className="chat-order-inspector__status-label">
-                  <Microwave size={16} style={{ color: "var(--st-primary)" }} />
-                  {t("Trạng thái hiện tại")}
-                </span>
-                <span className="chat-order-inspector__status-value">
-                  {t("Bếp đã nấu xong")}
-                </span>
-              </div>
-
-              <div className="chat-order-inspector__items">
-                <div className="chat-order-inspector__item">
-                  <div className="chat-order-inspector__item-left">
-                    <span className="chat-order-inspector__item-qty">1x</span>
-                    <span className="chat-order-inspector__item-name">
-                      {t("Cơm Bò Sốt Tiêu & Trứng")}
+            {contextData?.currentOrder ? (
+              <div className="chat-context-card">
+                <div className="chat-order-inspector__head">
+                  <div className="chat-order-inspector__info">
+                    <span className="chat-order-inspector__label">
+                      {t("Đơn hàng đang xử lý")}
+                    </span>
+                    <span className="chat-order-inspector__code">
+                      {contextData.currentOrder.code}
                     </span>
                   </div>
-                  <span className="chat-order-inspector__item-price">
-                    30.000 đ
+                  <div className="chat-order-inspector__token">
+                    #{selected.token || genToken(selected.user_id)}
+                  </div>
+                </div>
+
+                <div className="chat-order-inspector__status">
+                  <span className="chat-order-inspector__status-label">
+                    <Microwave
+                      size={16}
+                      style={{ color: "var(--st-primary)" }}
+                    />
+                    {t("Trạng thái hiện tại")}
+                  </span>
+                  <span className="chat-order-inspector__status-value">
+                    {t(contextData.currentOrder.status)}
                   </span>
                 </div>
-                <div className="chat-order-inspector__item">
-                  <div className="chat-order-inspector__item-left">
-                    <span className="chat-order-inspector__item-qty">1x</span>
-                    <span className="chat-order-inspector__item-name">
-                      {t("Trà Sen Vàng Long Nhãn")}
+
+                <div className="chat-order-inspector__items">
+                  {contextData.currentOrder.items.map((item, index) => (
+                    <div key={index} className="chat-order-inspector__item">
+                      <div className="chat-order-inspector__item-left">
+                        <span className="chat-order-inspector__item-qty">
+                          {item.qty}x
+                        </span>
+                        <span className="chat-order-inspector__item-name">
+                          {t(item.name)}
+                        </span>
+                      </div>
+                      <span className="chat-order-inspector__item-price">
+                        {fmtMoney(item.price)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="chat-order-inspector__summary">
+                  <div className="chat-order-inspector__row">
+                    <span>{t("Tổng cộng")}</span>
+                    <span>{fmtMoney(contextData.currentOrder.subtotal)}</span>
+                  </div>
+                  {contextData.currentOrder.discount > 0 && (
+                    <div className="chat-order-inspector__row chat-order-inspector__row--success">
+                      <span>{t("Giảm giá")}</span>
+                      <span>-{fmtMoney(contextData.currentOrder.discount)}</span>
+                    </div>
+                  )}
+                  <div className="chat-order-inspector__row chat-order-inspector__row--final">
+                    <span className="chat-order-inspector__row-label">
+                      {t("Đã thu qua")} {contextData.currentOrder.payment}:
+                    </span>
+                    <span className="chat-order-inspector__row-value">
+                      {fmtMoney(contextData.currentOrder.total)}
                     </span>
                   </div>
-                  <span className="chat-order-inspector__item-price">
-                    18.000 đ
-                  </span>
                 </div>
-              </div>
 
-              <div className="chat-order-inspector__summary">
-                <div className="chat-order-inspector__row">
-                  <span>{t("Tổng cộng")}</span>
-                  <span>48.000 đ</span>
-                </div>
-                <div className="chat-order-inspector__row chat-order-inspector__row--success">
-                  <span>{t("Trợ giá SV Học viện")}</span>
-                  <span>-10.000 đ</span>
-                </div>
-                <div className="chat-order-inspector__row chat-order-inspector__row--success">
-                  <span>{t("Voucher giảm giá")}</span>
-                  <span>-5.000 đ</span>
-                </div>
-                <div className="chat-order-inspector__row chat-order-inspector__row--final">
-                  <span className="chat-order-inspector__row-label">
-                    {t("Đã thu qua VWA Pay:")}
-                  </span>
-                  <span className="chat-order-inspector__row-value">
-                    33.000 đ
-                  </span>
-                </div>
-              </div>
-
-              <div className="chat-order-inspector__triggers">
-                <button
-                  type="button"
-                  className="chat-trigger-btn chat-trigger-btn--primary"
-                  onClick={handleRecall}
-                >
-                  <Megaphone size={18} />
-                  {t("Bấm Loa Gọi Số")} #
-                  {selected.token || genToken(selected.user_id)}
-                </button>
-                <button
-                  type="button"
-                  className="chat-trigger-btn"
-                  onClick={handleNotify}
-                >
-                  <Bell size={18} />
-                  {t("Bắn thông báo 'Món Đã Sẵn Sàng'")}
-                </button>
-                <div className="chat-trigger-grid-2">
+                <div className="chat-order-inspector__triggers">
                   <button
                     type="button"
-                    className="chat-trigger-btn"
-                    onClick={handleSwapDish}
+                    className="chat-trigger-btn chat-trigger-btn--primary"
+                    onClick={handleRecall}
                   >
-                    <ArrowLeftRight size={14} />
-                    {t("Đổi món khác")}
+                    <Megaphone size={18} />
+                    {t("Bấm Loa Gọi Số")} #
+                    {selected.token || genToken(selected.user_id)}
                   </button>
                   <button
                     type="button"
                     className="chat-trigger-btn"
-                    onClick={handleGiftVoucher}
+                    onClick={handleNotify}
                   >
-                    <Gift size={14} />
-                    {t("Tặng Voucher")}
+                    <Bell size={18} />
+                    {t("Bắn thông báo 'Món Đã Sẵn Sàng'")}
                   </button>
+                  <div className="chat-trigger-grid-2">
+                    <button
+                      type="button"
+                      className="chat-trigger-btn"
+                      onClick={handleSwapDish}
+                    >
+                      <ArrowLeftRight size={14} />
+                      {t("Đổi món khác")}
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-trigger-btn"
+                      onClick={handleGiftVoucher}
+                    >
+                      <Gift size={14} />
+                      {t("Tặng Voucher")}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div
+                className="chat-context-card"
+                style={{
+                  textAlign: "center",
+                  padding: 20,
+                  color: "var(--st-text-muted)",
+                }}
+              >
+                {t("Khách chưa có đơn nào đang xử lý")}
+              </div>
+            )}
+          </div>
+        )}
 
-            <div className="chat-context-card">
-              <div className="chat-internal-note">
-                <div className="chat-internal-note__head">
-                  <span className="chat-internal-note__title">
-                    <Edit3 size={14} />
-                    {t("Ghi chú nội bộ cho ca sau")}
-                  </span>
-                  <span className="chat-internal-note__saved">
-                    {t("Tự động lưu")}
-                  </span>
-                </div>
-                <textarea
-                  className="chat-internal-note__textarea"
-                  value={internalNote}
-                  onChange={(e) => setInternalNote(e.target.value)}
-                  placeholder={t("Nhập ghi chú cho nhân viên ca tối...")}
-                  rows={3}
-                />
+        {/* ===== BLOCK GHI CHÚ NỘI BỘ — TRẢI DÀI CỘT 1 + 2 ===== */}
+        {selected && (
+          <div className="chat-context-card chat-context-card--fullwidth">
+            <div className="chat-internal-note">
+              <div className="chat-internal-note__head">
+                <span className="chat-internal-note__title">
+                  <Edit3 size={14} />
+                  {t("Ghi chú nội bộ cho ca sau")}
+                </span>
+                <span className="chat-internal-note__saved">
+                  {t("Tự động lưu")}
+                </span>
               </div>
+              <textarea
+                className="chat-internal-note__textarea"
+                value={internalNote}
+                onChange={(e) => setInternalNote(e.target.value)}
+                placeholder={t("Nhập ghi chú cho nhân viên ca tối...")}
+                rows={3}
+              />
             </div>
           </div>
         )}

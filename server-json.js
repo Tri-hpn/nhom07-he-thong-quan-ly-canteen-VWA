@@ -1,4 +1,4 @@
-﻿﻿﻿﻿import express from "express";
+﻿﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -23,7 +23,7 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ✅ BUILD VERSION
-const BUILD_VERSION = "v7-backend-critical-fix-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v8-chat-context-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // ✅ AUTO-TRANSLATE — Fire-and-forget HOÀN TOÀN
@@ -334,6 +334,8 @@ function buildSeedData() {
     shifts: [],
     wallets: [],
     wallet_transactions: [],
+    // 🔧 TASKS — Giao việc cho nhân viên
+    tasks: [],
     settings: { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" },
   };
 }
@@ -2072,6 +2074,69 @@ app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   res.json(list);
 });
 
+// 🔧 THÊM MỚI: Endpoint lấy ngữ cảnh khách hàng cho cột 3 trong /employee/chat
+app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const userId = normalizeUserId(req.params.userId);
+    if (userId === null) return res.status(400).json({ message: "userId không hợp lệ" });
+
+    const user = (db.users || []).find((u) => normalizeUserId(u.id) === userId);
+    if (!user) return res.status(404).json({ message: "Không tìm thấy khách" });
+
+    const wallet = (db.wallets || []).find((w) => Number(w.user_id) === userId);
+
+    const now = new Date();
+    const ordersThisMonth = (db.orders || []).filter((o) => {
+      if (o.customer_id !== userId) return false;
+      const d = new Date(o.created_at);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+
+    const activeOrders = (db.orders || [])
+      .filter((o) => o.customer_id === userId && !["Hoàn thành", "Đã hủy"].includes(o.status))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const currentOrder = activeOrders[0] || null;
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || "",
+        avatar: user.avatar || "",
+        points: user.points || 0,
+        faculty: user.faculty || "",
+        tier:
+          user.points >= 1000
+            ? "Hạng Vàng"
+            : user.points >= 500
+            ? "Hạng Bạc"
+            : "Hạng Đồng",
+      },
+      wallet: { balance: wallet?.balance || 0 },
+      ordersThisMonth: ordersThisMonth.length,
+      currentOrder: currentOrder
+        ? {
+            code: currentOrder.code,
+            status: currentOrder.status,
+            items: (currentOrder.items || []).map((it) => ({
+              name: it.name,
+              qty: it.qty,
+              price: it.price,
+            })),
+            subtotal: currentOrder.subtotal || 0,
+            discount: currentOrder.discount || 0,
+            total: currentOrder.total || 0,
+            payment: currentOrder.payment || "",
+          }
+        : null,
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 app.post("/api/chat/send", auth(), (req, res) => {
   try {
     const db = loadDB();
@@ -2476,6 +2541,8 @@ app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
       attendances: db.attendances?.length || 0,
       imports: db.imports?.length || 0,
       price_history: db.price_history?.length || 0,
+      // 🔧 TASKS — Giao việc cho nhân viên
+      tasks: db.tasks?.length || 0,
       db_size_bytes: JSON.stringify(db).length
     });
   } catch (e) {
@@ -2802,6 +2869,141 @@ app.delete("/api/shifts/:id", auth(["ADMIN"]), (req, res) => {
   db.shifts = (db.shifts || []).filter(x => x.id != req.params.id);
   saveDB(db);
   res.json({ ok: true });
+});
+
+// ============================================================
+// TASKS — Giao việc cho nhân viên
+// ============================================================
+const VALID_TASK_STATUSES = ["pending", "done", "cancelled"];
+const VALID_TASK_PRIORITIES = ["low", "normal", "high", "urgent"];
+
+app.get("/api/tasks/me", auth(), (req, res) => {
+  try {
+    const db = loadDB();
+    if (!db.tasks) db.tasks = [];
+    const today = getLocalDateStr();
+    const list = db.tasks
+      .filter(
+        (t) =>
+          t.assigned_to === req.user.id &&
+          t.status !== "cancelled" &&
+          (!t.due_date || t.due_date >= today)
+      )
+      .sort((a, b) => {
+        if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
+        const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+        const pa = pOrder[a.priority] ?? 2;
+        const pb = pOrder[b.priority] ?? 2;
+        if (pa !== pb) return pa - pb;
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.get("/api/tasks", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    if (!db.tasks) db.tasks = [];
+    const { assigned_to, status } = req.query;
+    let list = [...db.tasks];
+    if (assigned_to) list = list.filter((t) => t.assigned_to == assigned_to);
+    if (status && status !== "all") list = list.filter((t) => t.status === status);
+    list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.post("/api/tasks", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    if (!db.tasks) db.tasks = [];
+    const { title, description, assigned_to, due_date, shift, priority } = req.body || {};
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ message: "Thiếu tiêu đề" });
+    }
+    if (!assigned_to) {
+      return res.status(400).json({ message: "Thiếu nhân viên được giao" });
+    }
+    const emp = db.users.find((u) => u.id == assigned_to);
+    if (!emp) {
+      return res.status(404).json({ message: "Không tìm thấy nhân viên" });
+    }
+
+    const id = Math.max(0, ...db.tasks.map((t) => t.id)) + 1;
+    const task = {
+      id,
+      title: String(title).trim(),
+      description: String(description || "").trim(),
+      assigned_to: Number(assigned_to),
+      assigned_by: req.user.id,
+      assigned_by_name: req.user.name,
+      due_date: due_date || "",
+      shift: shift || "",
+      status: "pending",
+      priority: VALID_TASK_PRIORITIES.includes(priority) ? priority : "normal",
+      created_at: new Date().toISOString(),
+      completed_at: null,
+    };
+    db.tasks.push(task);
+    saveDB(db);
+    res.status(201).json(task);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.put("/api/tasks/:id", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const t = (db.tasks || []).find((x) => x.id == req.params.id);
+    if (!t) return res.status(404).json({ message: "Không tìm thấy task" });
+    const { title, description, due_date, shift, priority, status } = req.body || {};
+    if (title !== undefined) t.title = String(title).trim();
+    if (description !== undefined) t.description = String(description).trim();
+    if (due_date !== undefined) t.due_date = due_date;
+    if (shift !== undefined) t.shift = shift;
+    if (priority !== undefined && VALID_TASK_PRIORITIES.includes(priority)) {
+      t.priority = priority;
+    }
+    if (status !== undefined && VALID_TASK_STATUSES.includes(status)) {
+      t.status = status;
+      if (status === "done") t.completed_at = new Date().toISOString();
+    }
+    saveDB(db);
+    res.json(t);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.delete("/api/tasks/:id", auth(["ADMIN"]), (req, res) => {
+  const db = loadDB();
+  db.tasks = (db.tasks || []).filter((x) => x.id != req.params.id);
+  saveDB(db);
+  res.json({ ok: true });
+});
+
+app.patch("/api/tasks/:id/complete", auth(), (req, res) => {
+  try {
+    const db = loadDB();
+    const t = (db.tasks || []).find((x) => x.id == req.params.id);
+    if (!t) return res.status(404).json({ message: "Không tìm thấy task" });
+    if (t.assigned_to !== req.user.id && req.user.role !== "ADMIN") {
+      return res.status(403).json({ message: "Không có quyền" });
+    }
+    t.status = t.status === "done" ? "pending" : "done";
+    t.completed_at = t.status === "done" ? new Date().toISOString() : null;
+    saveDB(db);
+    res.json(t);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 // ============ ADMIN BACKFILL TRANSLATIONS ============
