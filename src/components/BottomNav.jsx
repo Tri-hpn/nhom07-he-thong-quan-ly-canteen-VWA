@@ -3,6 +3,7 @@
 // ============================================================
 // ✅ GIỮ NGUYÊN: logic badge, poll orders, more menu, logout
 // 🎨 THAY ĐỔI: CSS classes mới theo design system
+// 🔧 FIX #56: pause poll khi tab ẩn (document.hidden + visibilitychange)
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -68,6 +69,11 @@ export default function BottomNav({ onLogout }) {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // 🔧 FIX #56: theo dõi tab visible để pause poll khi ẩn
+  const [tabVisible, setTabVisible] = useState(
+    typeof document === "undefined" || !document.hidden
+  );
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -108,6 +114,13 @@ export default function BottomNav({ onLogout }) {
     }
   }, []);
 
+  // 🔧 FIX #56: lắng nghe visibilitychange
+  useEffect(() => {
+    const handler = () => setTabVisible(!document.hidden);
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
+
   useEffect(() => {
     readCart();
     readOrders();
@@ -120,6 +133,16 @@ export default function BottomNav({ onLogout }) {
     window.addEventListener("orders-seen", onOrder);
     window.addEventListener("order-updated", onOrder);
 
+    // 🔧 FIX #56: chỉ poll khi tab visible
+    if (!tabVisible) {
+      return () => {
+        window.removeEventListener("cart-updated", onCart);
+        window.removeEventListener("refresh-cart", onCart);
+        window.removeEventListener("orders-seen", onOrder);
+        window.removeEventListener("order-updated", onOrder);
+      };
+    }
+
     const timer = setInterval(readOrders, POLL_MS);
 
     return () => {
@@ -129,7 +152,7 @@ export default function BottomNav({ onLogout }) {
       window.removeEventListener("order-updated", onOrder);
       clearInterval(timer);
     };
-  }, [readCart, readOrders]);
+  }, [readCart, readOrders, tabVisible]);
 
   useEffect(() => {
     setShowMore(false);

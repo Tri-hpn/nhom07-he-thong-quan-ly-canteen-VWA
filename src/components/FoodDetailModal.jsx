@@ -1,14 +1,17 @@
 // ============================================================
-// FOODDETAILMODAL.JSX — Modal chi tiết món ăn
+// FOODDETAILMODAL.JSX — Modal chi tiết món ăn (V3 - FIXED + i18n)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX:
+//   - M3: Xóa hàm addToCart() không dùng (dead code)
+//   - C2: Bỏ logic onUpdateStock — server là nguồn duy nhất
+//   - Extra: type="button" đầy đủ, clamp qty theo maxQty
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Star, Plus, ShoppingBag, Save, X,
-} from "lucide-react";
+import { Star, Plus, ShoppingBag, Save, X } from "lucide-react";
 import { money } from "./UI";
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
@@ -27,6 +30,10 @@ const FALLBACK_IMG =
     </svg>`
   );
 
+// ============================================================
+// HELPERS
+// ============================================================
+
 function getMaxQty(item) {
   if (!item) return 0;
   if (typeof item.stock === "number") {
@@ -35,10 +42,23 @@ function getMaxQty(item) {
   return DEFAULT_MAX_QTY;
 }
 
+/**
+ * 🔧 M3: Thống nhất lấy ID món ăn.
+ * Ưu tiên `_id` (Mongo) → fallback `id` (JSON).
+ * Khớp với CustomerHome / CustomerMenu / CustomerCart.
+ */
+function getItemId(item) {
+  return item?._id || item?.id;
+}
+
 function sortToppings(toppings) {
   if (!Array.isArray(toppings)) return [];
   return [...toppings].sort();
 }
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
 export default function FoodDetailModal({
   item,
@@ -51,41 +71,47 @@ export default function FoodDetailModal({
   initialToppings,
   initialSize,
   initialQty,
-  onUpdate,
- onUpdateStock,
 }) {
   const { t, tData } = useI18n();
   const navigate = useNavigate();
 
   const [selectedToppings, setSelectedToppings] = useState([]);
   const [selectedSize, setSelectedSize] = useState("S");
-  const [totalWithToppings, setTotalWithToppings] = useState(item?.price || 0);
+  const [totalWithToppings, setTotalWithToppings] = useState(
+    item?.price || 0
+  );
   const [qty, setQty] = useState(1);
 
   const maxQty = useMemo(() => getMaxQty(item), [item]);
   const isOutOfStock = maxQty === 0;
+  const itemId = getItemId(item);
 
-  const itemId = item?._id || item?.id;
-
+  // ---------- Init khi đổi món ----------
   useEffect(() => {
     if (!item) return;
 
-    const initToppings = Array.isArray(initialToppings) ? initialToppings : [];
+    const initToppings = Array.isArray(initialToppings)
+      ? initialToppings
+      : [];
     const initSize = initialSize || "S";
-    const initQty = Number(initialQty) || 1;
+    const initQtyRaw = Number(initialQty) || 1;
+    const max = getMaxQty(item);
+    const safeQty = max === 0 ? 1 : Math.min(initQtyRaw, max);
 
     setSelectedToppings(initToppings);
     setSelectedSize(initSize);
-    setQty(Math.min(initQty, getMaxQty(item) || initQty));
+    setQty(safeQty);
     setTotalWithToppings(Number(item.price) || 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemId]);
 
+  // Clamp qty khi maxQty thay đổi (VD: sau khi server trừ tồn kho)
   useEffect(() => {
     if (isOutOfStock) return;
     setQty((q) => Math.min(Math.max(1, q), maxQty));
   }, [maxQty, isOutOfStock]);
 
+  // ESC đóng modal
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Escape") onClose?.();
@@ -94,15 +120,25 @@ export default function FoodDetailModal({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  // Lock scroll body
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // ---------- Derived ----------
   const sortedToppings = useMemo(
     () => sortToppings(selectedToppings),
     [selectedToppings]
   );
 
   const buildKey = useCallback(() => {
-    const id = item?._id || item?.id || "";
+    const id = itemId || "";
     return `${id}-${selectedSize}-${sortedToppings.join(",")}`;
-  }, [item, selectedSize, sortedToppings]);
+  }, [itemId, selectedSize, sortedToppings]);
 
   const buildName = useCallback(() => {
     if (!item) return "";
@@ -116,154 +152,143 @@ export default function FoodDetailModal({
 
   if (!item) return null;
 
+  // ---------- Build cart entry ----------
   const buildCartEntry = (quantity) => ({
     ...item,
     name: buildName(),
     price: Number(totalWithToppings) || Number(item.price) || 0,
     qty: quantity,
     stock: item.stock ?? DEFAULT_MAX_QTY,
-    _originalId: item._id || item.id,
+    _originalId: itemId,
     _toppings: selectedToppings,
     _size: selectedSize,
   });
 
-  const addToCart = () => {
+  // ============================================================
+  // 🔧 M3: ĐÃ XÓA hàm addToCart() không dùng.
+  //         Chỉ giữ handleAddToCart() — hàm thực tế được gọi từ UI.
+  // ============================================================
+
+  // ---------- Thêm vào giỏ ----------
+  const handleAddToCart = () => {
+    // Edit mode: cập nhật item trong giỏ
+    if (editingKey) {
+      if (isOutOfStock) {
+        toast(t("Hết hàng"), "error");
+        return;
+      }
+      if (qty > maxQty) {
+        toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
+        return;
+      }
+      const key = buildKey();
+      const entry = buildCartEntry(qty);
+      if (typeof onUpdate === "function") {
+        onUpdate(editingKey, key, entry);
+      }
+      toast(`${t("Đã cập nhật")} ${entry.name}`, "success");
+      onClose?.();
+      return;
+    }
+
+    // Add mode: thêm mới vào giỏ
     if (isOutOfStock) {
       toast(t("Hết hàng"), "error");
-      return null;
+      return;
     }
 
     const key = buildKey();
+    const existing = cart?.[key];
+    const currentQty = Number(existing?.qty) || 0;
+
+    // Kiểm tra tổng sau khi thêm có vượt maxQty không
+    if (currentQty + qty > maxQty) {
+      toast(
+        `${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`,
+        "error"
+      );
+      return;
+    }
+
     const name = buildName();
 
     setCart((c) => {
-      const existing = c[key];
-      const currentQty = Number(existing?.qty) || 0;
-      const newQty = Math.min(maxQty, currentQty + qty);
-
-      if (existing && currentQty >= maxQty) return c;
-
+      const e = c[key];
+      const newQty = (Number(e?.qty) || 0) + qty;
       return {
         ...c,
-        [key]: {
-          ...buildCartEntry(newQty),
-        },
+        [key]: buildCartEntry(newQty),
       };
     });
 
-    return name;
+    // 🔧 C2: KHÔNG gọi onUpdateStock nữa — server tự trừ tồn kho
+    //         và CustomerHome sẽ refetch để đồng bộ.
+
+    toast(`${t("Đã thêm")} ${name} ${t("vào giỏ")}`, "success");
+    onClose?.();
   };
 
- const handleAddToCart = () => {
-  if (editingKey && onUpdate) {
+  // ---------- Mua ngay ----------
+  const handleBuyNow = () => {
     if (isOutOfStock) {
       toast(t("Hết hàng"), "error");
       return;
     }
-    if (qty > maxQty) {
-      toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
+
+    const key = buildKey();
+    const existing = cart?.[key];
+    const currentQty = Number(existing?.qty) || 0;
+
+    if (currentQty + qty > maxQty) {
+      toast(
+        `${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`,
+        "error"
+      );
       return;
     }
-    const key = buildKey();
-    const entry = buildCartEntry(qty);
-    onUpdate(editingKey, key, entry);
-    toast(`${t("Đã cập nhật")} ${entry.name}`, "success");
+
+    const name = buildName();
+
+    setCart((c) => {
+      const e = c[key];
+      const newQty = (Number(e?.qty) || 0) + qty;
+      return {
+        ...c,
+        [key]: buildCartEntry(newQty),
+      };
+    });
+
+    // 🔧 C2: KHÔNG gọi onUpdateStock nữa.
+    toast(
+      `${t("Đã thêm")} ${name} — ${t("chuyển đến thanh toán")}`,
+      "success"
+    );
     onClose?.();
-    return;
-  }
-
-  if (isOutOfStock) {
-    toast(t("Hết hàng"), "error");
-    return;
-  }
-
-  const key = buildKey();
-  const existing = cart?.[key];
-  const currentQty = Number(existing?.qty) || 0;
-
-  // Kiểm tra xem tổng số lượng sau khi thêm có vượt quá maxQty không
-  if (currentQty + qty > maxQty) {
-    toast(`${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`, "error");
-    return;
-  }
-
-  const name = buildName();
-
-  // Thêm vào giỏ hàng với đúng số lượng qty
-  setCart((c) => {
-    const e = c[key];
-    const newQty = (Number(e?.qty) || 0) + qty;
-    return {
-      ...c,
-      [key]: {
-        ...buildCartEntry(newQty),
-      },
-    };
-  });
-
-  // GỌI HÀM CẬP NHẬT TỒN KHO (Nếu có prop onUpdateStock từ file cha)
-  if (onUpdateStock) {
-    onUpdateStock(itemId, qty);
-  }
-
-  toast(`${t("Đã thêm")} ${name} ${t("vào giỏ")}`, "success");
-  onClose?.();
+    navigate("/customer/checkout");
   };
 
-  const handleBuyNow = () => {
-  if (isOutOfStock) {
-    toast(t("Hết hàng"), "error");
-    return;
-  }
+  // ---------- Qty handlers ----------
+  const handleQtyMinus = () => setQty((q) => Math.max(1, q - 1));
 
-  const key = buildKey();
-  const existing = cart?.[key];
-  const currentQty = Number(existing?.qty) || 0;
+  const handleQtyPlus = () => {
+    setQty((q) => {
+      if (q >= maxQty) {
+        toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
+        return q;
+      }
+      return q + 1;
+    });
+  };
 
-  if (currentQty + qty > maxQty) {
-    toast(`${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`, "error");
-    return;
-  }
-
-  const name = buildName();
-
-  setCart((c) => {
-    const e = c[key];
-    const newQty = (Number(e?.qty) || 0) + qty;
-    return {
-      ...c,
-      [key]: {
-        ...buildCartEntry(newQty),
-      },
-    };
-  });
-
-  // Gọi cập nhật tồn kho
-  if (onUpdateStock) {
-    onUpdateStock(itemId, qty);
-  }
-
-  toast(`${t("Đã thêm")} ${name} — ${t("chuyển đến thanh toán")}`, "success");
-  onClose?.();
-  navigate("/customer/checkout");
-};
-
-const handleQtyMinus = () => setQty((q) => Math.max(1, q - 1));
-const handleQtyPlus = () => {
-  setQty((q) => {
-    if (q >= maxQty) {
-      toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
-      return q;
-    }
-    return q + 1;
-  });
-};
-
+  // ---------- Derived values ----------
   const unitPrice = Number(totalWithToppings) || Number(item.price) || 0;
   const grandTotal = unitPrice * qty;
   const atMax = qty >= maxQty;
   const atMin = qty <= 1;
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div
       onClick={onClose}
@@ -295,7 +320,7 @@ const handleQtyPlus = () => {
           overflowY: "auto",
         }}
       >
-        {/* HEADER */}
+        {/* ===== HEADER ===== */}
         <div
           style={{
             display: "flex",
@@ -317,9 +342,9 @@ const handleQtyPlus = () => {
             {tData(item, "name")}
           </h3>
           <button
+            type="button"
             onClick={onClose}
             aria-label={t("Đóng")}
-            type="button"
             style={{
               background: "transparent",
               border: 0,
@@ -335,7 +360,7 @@ const handleQtyPlus = () => {
           </button>
         </div>
 
-        {/* IMAGE */}
+        {/* ===== IMAGE ===== */}
         <img
           src={item.image || FALLBACK_IMG}
           alt={item.name}
@@ -354,7 +379,7 @@ const handleQtyPlus = () => {
           }}
         />
 
-        {/* DESCRIPTION */}
+        {/* ===== DESCRIPTION ===== */}
         {item.description && (
           <p
             style={{
@@ -368,7 +393,7 @@ const handleQtyPlus = () => {
           </p>
         )}
 
-        {/* PRICE + STOCK */}
+        {/* ===== PRICE + STOCK ===== */}
         <div
           style={{
             display: "flex",
@@ -385,7 +410,9 @@ const handleQtyPlus = () => {
             <span
               style={{
                 fontSize: 12,
-                color: isOutOfStock ? "#ef4444" : "var(--text-light, #8993a3)",
+                color: isOutOfStock
+                  ? "#ef4444"
+                  : "var(--text-light, #8993a3)",
                 fontWeight: isOutOfStock ? 700 : 400,
               }}
             >
@@ -396,7 +423,7 @@ const handleQtyPlus = () => {
           )}
         </div>
 
-        {/* RATING */}
+        {/* ===== RATING ===== */}
         {item.rating && (
           <div
             style={{
@@ -417,16 +444,18 @@ const handleQtyPlus = () => {
           </div>
         )}
 
-        {/* TOPPING + SIZE */}
+        {/* ===== TOPPING + SIZE ===== */}
         <ToppingSelector
           category={item.category}
           basePrice={item.price}
           onToppingsChange={setSelectedToppings}
           onSizeChange={setSelectedSize}
           onTotalChange={setTotalWithToppings}
+          initialToppings={initialToppings}
+          initialSize={initialSize}
         />
 
-        {/* QTY */}
+        {/* ===== QTY ===== */}
         <div
           style={{
             display: "flex",
@@ -518,7 +547,7 @@ const handleQtyPlus = () => {
           </span>
         </div>
 
-        {/* TOTAL */}
+        {/* ===== TOTAL ===== */}
         <div
           style={{
             display: "flex",
@@ -556,14 +585,14 @@ const handleQtyPlus = () => {
           </b>
         </div>
 
-        {/* REVIEWS */}
+        {/* ===== REVIEWS ===== */}
         <ReviewSection
-          menuItemId={item._id || item.id}
+          menuItemId={itemId}
           currentUser={user}
           readOnly={true}
         />
 
-        {/* ACTION BUTTON */}
+        {/* ===== ACTION BUTTONS ===== */}
         <div
           style={{
             position: "sticky",
@@ -583,8 +612,8 @@ const handleQtyPlus = () => {
         >
           {isOutOfStock ? (
             <button
-              disabled
               type="button"
+              disabled
               style={{
                 width: "100%",
                 padding: 14,
@@ -605,8 +634,8 @@ const handleQtyPlus = () => {
             </button>
           ) : mode === "buy" ? (
             <button
-              onClick={handleBuyNow}
               type="button"
+              onClick={handleBuyNow}
               style={{
                 width: "100%",
                 padding: 14,
@@ -627,8 +656,8 @@ const handleQtyPlus = () => {
             </button>
           ) : (
             <button
-              onClick={handleAddToCart}
               type="button"
+              onClick={handleAddToCart}
               style={{
                 width: "100%",
                 padding: 14,

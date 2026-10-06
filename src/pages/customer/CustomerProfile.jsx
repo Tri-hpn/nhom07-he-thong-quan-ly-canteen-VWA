@@ -1,11 +1,21 @@
 // ============================================================
-// CUSTOMERPROFILE.JSX — Tài khoản & Cài đặt (V2 - Modal version)
+// CUSTOMERPROFILE.JSX — Tài khoản & Cài đặt (V5 - FINAL + i18n)
 // ============================================================
-// ✅ Modal nổi cho Giao diện / Ngôn ngữ / Thông báo / Mật khẩu
-// ✅ Source-text i18n
+// V5 (2026-10):
+//   - 🔧 FIX #31: font-size KHÔNG dùng `html { font-size: calc(...) }`
+//                 inline vì conflict với CSS toàn cục.
+//                 → Dùng CSS variable --app-font-scale trên :root
+//                 và để CSS toàn cục tự apply.
+//   - Giữ nguyên logic i18n, localStorage, theme, modals
 // ============================================================
 
-import { useState, useEffect, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   User, Mail, Phone, Save, Shield, Camera, Pencil, X, Check, KeyRound,
   Lock, Eye, EyeOff, Loader2, ChevronRight, BadgeCheck, Wallet, Bell,
@@ -16,6 +26,10 @@ import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 
+// ============================================================
+// CONSTANTS
+// ============================================================
+
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_TYPES = [
   "image/jpeg",
@@ -23,6 +37,15 @@ const ALLOWED_AVATAR_TYPES = [
   "image/png",
   "image/webp",
 ];
+
+const LS_KEYS = {
+  THEME: "vwa_theme",
+  LANG: "vwa_lang",
+  DIETARY: "vwa_dietary",
+  NOTI_PREFS: "vwa_noti_prefs",
+  MEAL_SLOTS: "vwa_meal_slots",
+  FONT_SIZE: "vwa_font_size",
+};
 
 const LANGUAGES = [
   { code: "vi", flag: "🇻🇳", name: "Tiếng Việt", sub: "Vietnamese (Mặc định)" },
@@ -75,6 +98,33 @@ const DIETARY_OPTIONS = [
   },
 ];
 
+const DEFAULT_DIETARY = {
+  vegetarian: true,
+  lessSpicy: true,
+  seafoodAllergy: false,
+  brownRice: false,
+};
+
+const DEFAULT_NOTI_PREFS = {
+  orderReady: true,
+  orderStatus: true,
+  promotion: true,
+  wallet: true,
+  sound: true,
+  vibration: false,
+};
+
+const DEFAULT_MEAL_SLOTS = {
+  breakfast: true,
+  lunch: true,
+  dinner: false,
+  notifyBefore: 15,
+};
+
+// ============================================================
+// HELPERS
+// ============================================================
+
 function buildFormFromUser(u) {
   return {
     name: u?.name || "",
@@ -90,7 +140,13 @@ function buildFormFromUser(u) {
 
 function escapeForCssUrl(url) {
   if (!url) return "";
-  return url.replace(/"/g, '\\"').replace(/\)/g, "\\)");
+  return String(url)
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/'/g, "\\'")
+    .replace(/\)/g, "\\)")
+    .replace(/\n/g, "")
+    .replace(/\r/g, "");
 }
 
 function getInitials(name) {
@@ -101,23 +157,57 @@ function getInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+function readLocalJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { ...fallback, ...parsed };
+    }
+    return parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 // ============================================================
-// ProfileModal — dùng chung cho Theme / Language / Noti / Password
+// SUB: ProfileModal
 // ============================================================
-function ProfileModal({ open, onClose, title, icon, children, maxWidth = 720 }) {
+
+function ProfileModal({
+  open,
+  onClose,
+  title,
+  icon,
+  children,
+  maxWidth = 720,
+}) {
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("keydown", handler);
-      document.body.style.overflow = prev;
+      if (document.body.style.overflow === "hidden") {
+        document.body.style.overflow = prev;
+      }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -149,6 +239,10 @@ function ProfileModal({ open, onClose, title, icon, children, maxWidth = 720 }) 
   );
 }
 
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
+
 export default function CustomerProfile({ user, setUser }) {
   const { t } = useI18n();
 
@@ -164,36 +258,46 @@ export default function CustomerProfile({ user, setUser }) {
 
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined") return "light";
-    return localStorage.getItem("vwa_theme") || "light";
+    try {
+      return localStorage.getItem(LS_KEYS.THEME) || "light";
+    } catch {
+      return "light";
+    }
   });
+
   const [language, setLanguage] = useState(() => {
     if (typeof window === "undefined") return "vi";
-    return localStorage.getItem("vwa_lang") || "vi";
-  });
-  const [fontSize, setFontSize] = useState(1);
-
-  const [dietary, setDietary] = useState({
-    vegetarian: true,
-    lessSpicy: true,
-    seafoodAllergy: false,
-    brownRice: false,
+    try {
+      return localStorage.getItem(LS_KEYS.LANG) || "vi";
+    } catch {
+      return "vi";
+    }
   });
 
-  const [notiPrefs, setNotiPrefs] = useState({
-    orderReady: true,
-    orderStatus: true,
-    promotion: true,
-    wallet: true,
-    sound: true,
-    vibration: false,
+  const [fontSize, setFontSize] = useState(() => {
+    if (typeof window === "undefined") return 1;
+    try {
+      const saved = parseInt(
+        localStorage.getItem(LS_KEYS.FONT_SIZE) || "1",
+        10
+      );
+      return isNaN(saved) ? 1 : Math.max(1, Math.min(3, saved));
+    } catch {
+      return 1;
+    }
   });
 
-  const [mealSlots, setMealSlots] = useState({
-    breakfast: true,
-    lunch: true,
-    dinner: false,
-    notifyBefore: 15,
-  });
+  const [dietary, setDietary] = useState(() =>
+    readLocalJson(LS_KEYS.DIETARY, DEFAULT_DIETARY)
+  );
+
+  const [notiPrefs, setNotiPrefs] = useState(() =>
+    readLocalJson(LS_KEYS.NOTI_PREFS, DEFAULT_NOTI_PREFS)
+  );
+
+  const [mealSlots, setMealSlots] = useState(() =>
+    readLocalJson(LS_KEYS.MEAL_SLOTS, DEFAULT_MEAL_SLOTS)
+  );
 
   const [pwdForm, setPwdForm] = useState({
     currentPassword: "",
@@ -204,25 +308,82 @@ export default function CustomerProfile({ user, setUser }) {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [pwdError, setPwdError] = useState("");
 
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (!editing) setForm(buildFormFromUser(user));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // 🔧 FIX #31: Áp theme + listen prefers-color-scheme
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const applyTheme = () => {
+      try {
+        localStorage.setItem(LS_KEYS.THEME, theme);
+        document.documentElement.classList.remove("dark-mode");
+        if (theme === "dark") {
+          document.documentElement.classList.add("dark-mode");
+        } else if (theme === "auto") {
+          const prefersDark = window.matchMedia(
+            "(prefers-color-scheme: dark)"
+          ).matches;
+          if (prefersDark) {
+            document.documentElement.classList.add("dark-mode");
+          }
+        }
+      } catch {}
+    };
+
+    applyTheme();
+
+    if (theme === "auto") {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const handler = () => applyTheme();
+      if (mq.addEventListener) {
+        mq.addEventListener("change", handler);
+        return () => mq.removeEventListener("change", handler);
+      } else if (mq.addListener) {
+        mq.addListener(handler);
+        return () => mq.removeListener(handler);
+      }
+    }
+  }, [theme]);
+
+  // 🔧 FIX #31: Apply font-size CHỈ qua CSS variable --app-font-scale.
+  // CSS toàn cục (styles.css) sẽ dùng: html { font-size: calc(16px * var(--app-font-scale, 1)); }
+  // Nếu CSS không có rule đó → ta fallback nhẹ bằng cách set biến trên :root.
   useEffect(() => {
     if (typeof document === "undefined") return;
     try {
-      localStorage.setItem("vwa_theme", theme);
-      document.documentElement.classList.remove("dark-mode");
-      if (theme === "dark") {
-        document.documentElement.classList.add("dark-mode");
-      } else if (theme === "auto") {
-        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)")
-          .matches;
-        if (prefersDark) document.documentElement.classList.add("dark-mode");
-      }
+      localStorage.setItem(LS_KEYS.FONT_SIZE, String(fontSize));
+      // Scale: 1 → 1.0, 2 → 1.12, 3 → 1.24
+      const scale = 1 + (fontSize - 1) * 0.12;
+      document.documentElement.style.setProperty(
+        "--app-font-scale",
+        String(scale)
+      );
     } catch {}
-  }, [theme]);
+  }, [fontSize]);
+
+  useEffect(() => {
+    writeLocalJson(LS_KEYS.DIETARY, dietary);
+  }, [dietary]);
+
+  useEffect(() => {
+    writeLocalJson(LS_KEYS.NOTI_PREFS, notiPrefs);
+  }, [notiPrefs]);
+
+  useEffect(() => {
+    writeLocalJson(LS_KEYS.MEAL_SLOTS, mealSlots);
+  }, [mealSlots]);
 
   const displayName = editing ? form.name : user?.name || "";
   const avatarSrc = editing ? form.avatar : user?.avatar;
@@ -239,10 +400,10 @@ export default function CustomerProfile({ user, setUser }) {
     };
   }, [avatarSrc]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setForm(buildFormFromUser(user));
     setErrors({});
-  };
+  }, [user]);
 
   const startEdit = () => {
     resetForm();
@@ -326,6 +487,8 @@ export default function CustomerProfile({ user, setUser }) {
         gender: form.gender,
       });
 
+      if (!mountedRef.current) return;
+
       if (setUser) setUser((u) => ({ ...u, ...updated }));
 
       try {
@@ -336,16 +499,18 @@ export default function CustomerProfile({ user, setUser }) {
       toast(t("Đã cập nhật thông tin"), "success");
       setEditing(false);
     } catch (err) {
-      toast(err.message || t("Không lưu được"), "error");
+      if (mountedRef.current) {
+        toast(err.message || t("Không lưu được"), "error");
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
   const changeLanguage = (code) => {
     setLanguage(code);
     try {
-      localStorage.setItem("vwa_lang", code);
+      localStorage.setItem(LS_KEYS.LANG, code);
       window.dispatchEvent(
         new CustomEvent("language-change", { detail: { lang: code } })
       );
@@ -355,6 +520,11 @@ export default function CustomerProfile({ user, setUser }) {
 
   const changeTheme = (id) => {
     setTheme(id);
+    try {
+      window.dispatchEvent(
+        new CustomEvent("theme-change", { detail: { theme: id } })
+      );
+    } catch {}
     toast(t("Đã đổi giao diện"), "success");
   };
 
@@ -397,6 +567,7 @@ export default function CustomerProfile({ user, setUser }) {
         currentPassword: pwdForm.currentPassword,
         newPassword: pwdForm.newPassword,
       });
+      if (!mountedRef.current) return;
       toast(t("Đổi mật khẩu thành công!"), "success");
       setShowPwdModal(false);
       setPwdForm({
@@ -405,15 +576,16 @@ export default function CustomerProfile({ user, setUser }) {
         confirmPassword: "",
       });
     } catch (e) {
-      setPwdError(e.message || t("Lỗi đổi mật khẩu"));
+      if (mountedRef.current) {
+        setPwdError(e.message || t("Lỗi đổi mật khẩu"));
+      }
     } finally {
-      setPwdLoading(false);
+      if (mountedRef.current) setPwdLoading(false);
     }
   };
 
   return (
     <div className="customer-profile-v2">
-      {/* ===== HEADER ===== */}
       <section className="profile-header">
         <div className="profile-header__row">
           <div className="profile-header__left">
@@ -441,15 +613,16 @@ export default function CustomerProfile({ user, setUser }) {
         </div>
       </section>
 
-      {/* ===== LAYOUT ===== */}
       <div className="profile-layout">
-        {/* SIDEBAR */}
         <aside className="profile-sidebar">
           <div className="profile-user-card profile-user-card--compact">
             <div className="profile-user-card__info">
               <div className="profile-user-card__name-row">
                 <b>{user?.name || t("Người dùng")}</b>
-                <BadgeCheck size={16} className="profile-user-card__verified" />
+                <BadgeCheck
+                  size={16}
+                  className="profile-user-card__verified"
+                />
               </div>
               <p className="profile-user-card__email">
                 {user?.email || "sinhvien@vwa.vn"}
@@ -469,12 +642,16 @@ export default function CustomerProfile({ user, setUser }) {
           </div>
 
           <nav className="profile-nav">
-            <a
+            <button
+              type="button"
               className="profile-nav__item active"
               onClick={() => {
                 const el = document.getElementById("section-profile");
                 if (el)
-                  el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  el.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
               }}
             >
               <div className="profile-nav__left">
@@ -482,9 +659,10 @@ export default function CustomerProfile({ user, setUser }) {
                 <span>{t("Hồ sơ cá nhân")}</span>
               </div>
               <ChevronRight size={14} />
-            </a>
+            </button>
 
-            <a
+            <button
+              type="button"
               className="profile-nav__item"
               onClick={() => setShowThemeModal(true)}
             >
@@ -493,9 +671,10 @@ export default function CustomerProfile({ user, setUser }) {
                 <span>{t("Giao diện & Trải nghiệm")}</span>
               </div>
               <span className="profile-nav__dot" />
-            </a>
+            </button>
 
-            <a
+            <button
+              type="button"
               className="profile-nav__item"
               onClick={() => setShowLangModal(true)}
             >
@@ -503,9 +682,10 @@ export default function CustomerProfile({ user, setUser }) {
                 <Globe size={18} />
                 <span>{t("Ngôn ngữ & Khu vực")}</span>
               </div>
-            </a>
+            </button>
 
-            <a
+            <button
+              type="button"
               className="profile-nav__item"
               onClick={() => (window.location.href = "/customer/wallet")}
             >
@@ -514,9 +694,10 @@ export default function CustomerProfile({ user, setUser }) {
                 <span>{t("Ví VWA & Thẻ sinh viên")}</span>
               </div>
               <span className="profile-nav__badge">PIN</span>
-            </a>
+            </button>
 
-            <a
+            <button
+              type="button"
               className="profile-nav__item"
               onClick={() => setShowNotiModal(true)}
             >
@@ -524,23 +705,30 @@ export default function CustomerProfile({ user, setUser }) {
                 <Bell size={18} />
                 <span>{t("Thông báo & Giờ ca ăn")}</span>
               </div>
-            </a>
+            </button>
 
-            <a className="profile-nav__item" onClick={openPwdModal}>
+            <button
+              type="button"
+              className="profile-nav__item"
+              onClick={openPwdModal}
+            >
               <div className="profile-nav__left">
                 <Shield size={18} />
                 <span>{t("Bảo mật 2 lớp & Mật khẩu")}</span>
               </div>
-            </a>
+            </button>
 
             <div className="profile-nav__sep" />
 
-            <a className="profile-nav__item profile-nav__item--muted">
+            <button
+              type="button"
+              className="profile-nav__item profile-nav__item--muted"
+            >
               <div className="profile-nav__left">
                 <HelpCircle size={16} />
                 <span>{t("Quy chế Căn tin VWA & Trợ giúp")}</span>
               </div>
-            </a>
+            </button>
           </nav>
 
           <div className="profile-kitchen-status">
@@ -557,7 +745,6 @@ export default function CustomerProfile({ user, setUser }) {
           </div>
         </aside>
 
-        {/* CONTENT */}
         <main className="profile-content">
           <section className="profile-section" id="section-profile">
             <div className="profile-section__head">
@@ -577,9 +764,9 @@ export default function CustomerProfile({ user, setUser }) {
 
                 {!editing ? (
                   <button
+                    type="button"
                     className="profile-btn profile-btn--primary"
                     onClick={startEdit}
-                    type="button"
                   >
                     <Pencil size={14} />
                     {t("Chỉnh sửa")}
@@ -587,19 +774,19 @@ export default function CustomerProfile({ user, setUser }) {
                 ) : (
                   <>
                     <button
+                      type="button"
                       className="profile-btn profile-btn--ghost"
                       onClick={cancelEdit}
                       disabled={loading}
-                      type="button"
                     >
                       <X size={14} />
                       {t("Hủy")}
                     </button>
                     <button
+                      type="button"
                       className="profile-btn profile-btn--primary"
                       onClick={save}
                       disabled={loading}
-                      type="button"
                     >
                       {loading ? (
                         <>
@@ -618,10 +805,12 @@ export default function CustomerProfile({ user, setUser }) {
               </div>
             </div>
 
-            {/* Avatar */}
             <div className="profile-avatar-block">
               <div className="profile-avatar-block__img-wrap">
-                <div className="profile-avatar-block__img" style={avatarStyle}>
+                <div
+                  className="profile-avatar-block__img"
+                  style={avatarStyle}
+                >
                   {!avatarSrc && initials}
                 </div>
                 {avatarSrc && (
@@ -649,9 +838,9 @@ export default function CustomerProfile({ user, setUser }) {
                   </label>
                   {avatarSrc && (
                     <button
+                      type="button"
                       className="profile-btn profile-btn--ghost"
                       onClick={removeAvatar}
-                      type="button"
                     >
                       <Trash2 size={16} />
                       {t("Gỡ ảnh")}
@@ -661,7 +850,6 @@ export default function CustomerProfile({ user, setUser }) {
               </div>
             </div>
 
-            {/* Form */}
             <div className="profile-form-grid">
               <div className="profile-form-field">
                 <label className="profile-form-label">
@@ -693,7 +881,10 @@ export default function CustomerProfile({ user, setUser }) {
                   </small>
                 </label>
                 <div className="profile-form-input-wrap profile-form-input-wrap--locked">
-                  <BadgeCheck size={18} className="profile-form-input-icon" />
+                  <BadgeCheck
+                    size={18}
+                    className="profile-form-input-icon"
+                  />
                   <input
                     value={form.studentId}
                     readOnly
@@ -723,7 +914,9 @@ export default function CustomerProfile({ user, setUser }) {
                     <option value="social">
                       {t("Công tác Xã hội & PT Cộng đồng K21")}
                     </option>
-                    <option value="law">{t("Luật Kinh tế & Dân sự K21")}</option>
+                    <option value="law">
+                      {t("Luật Kinh tế & Dân sự K21")}
+                    </option>
                     <option value="psychology">
                       {t("Tâm lý học & Giới tính K21")}
                     </option>
@@ -799,7 +992,6 @@ export default function CustomerProfile({ user, setUser }) {
               </div>
             </div>
 
-            {/* Dietary */}
             <div className="profile-dietary">
               <div className="profile-dietary__head">
                 <div className="profile-dietary__title">
@@ -815,9 +1007,12 @@ export default function CustomerProfile({ user, setUser }) {
                   <label key={opt.key} className="profile-dietary-card">
                     <input
                       type="checkbox"
-                      checked={dietary[opt.key]}
+                      checked={!!dietary[opt.key]}
                       onChange={() =>
-                        setDietary((d) => ({ ...d, [opt.key]: !d[opt.key] }))
+                        setDietary((d) => ({
+                          ...d,
+                          [opt.key]: !d[opt.key],
+                        }))
                       }
                     />
                     <div>
@@ -830,7 +1025,6 @@ export default function CustomerProfile({ user, setUser }) {
             </div>
           </section>
 
-          {/* SAVE BAR */}
           <div className="profile-save-bar">
             <div className="profile-save-bar__left">
               <div className="profile-save-bar__icon">
@@ -841,29 +1035,34 @@ export default function CustomerProfile({ user, setUser }) {
                   {t("Tất cả thay đổi giao diện và ngôn ngữ sẽ được lưu tự động")}
                 </b>
                 <p>
-                  {t("Tài khoản sinh viên")} {user?.name || t("bạn")} ({t("MSSV")}{" "}
-                  {form.studentId || "2151010088"}){" "}
+                  {t("Tài khoản sinh viên")} {user?.name || t("bạn")} (
+                  {t("MSSV")} {form.studentId || "2151010088"}){" "}
                   {t("đồng bộ ngay lập tức trên app di động và web.")}
                 </p>
               </div>
             </div>
             <div className="profile-save-bar__right">
               <button
+                type="button"
                 className="profile-btn profile-btn--ghost"
                 onClick={() => {
                   setTheme("light");
                   setLanguage("vi");
                   setFontSize(1);
+                  setDietary(DEFAULT_DIETARY);
+                  setNotiPrefs(DEFAULT_NOTI_PREFS);
+                  setMealSlots(DEFAULT_MEAL_SLOTS);
                   toast(t("Đã khôi phục mặc định"), "success");
                 }}
-                type="button"
               >
                 {t("Khôi phục mặc định")}
               </button>
               <button
-                className="profile-btn profile-btn--primary"
-                onClick={() => toast(t("Đã áp dụng tất cả thay đổi"), "success")}
                 type="button"
+                className="profile-btn profile-btn--primary"
+                onClick={() =>
+                  toast(t("Đã áp dụng tất cả thay đổi"), "success")
+                }
               >
                 <Check size={16} />
                 {t("Áp dụng tất cả thay đổi")}
@@ -873,7 +1072,6 @@ export default function CustomerProfile({ user, setUser }) {
         </main>
       </div>
 
-      {/* ============ MODAL: GIAO DIỆN ============ */}
       <ProfileModal
         open={showThemeModal}
         onClose={() => setShowThemeModal(false)}
@@ -896,9 +1094,11 @@ export default function CustomerProfile({ user, setUser }) {
               return (
                 <button
                   key={th.id}
-                  className={`profile-theme-card ${active ? "active" : ""}`}
-                  onClick={() => changeTheme(th.id)}
                   type="button"
+                  className={`profile-theme-card ${
+                    active ? "active" : ""
+                  }`}
+                  onClick={() => changeTheme(th.id)}
                 >
                   <div
                     className={`profile-theme-preview profile-theme-preview--${th.id}`}
@@ -927,7 +1127,9 @@ export default function CustomerProfile({ user, setUser }) {
                       active ? "active" : ""
                     }`}
                   >
-                    {active ? t("Đang áp dụng") : t("Chuyển sang chế độ này")}
+                    {active
+                      ? t("Đang áp dụng")
+                      : t("Chuyển sang chế độ này")}
                   </span>
                 </button>
               );
@@ -957,7 +1159,9 @@ export default function CustomerProfile({ user, setUser }) {
               min={1}
               max={3}
               value={fontSize}
-              onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
+              onChange={(e) =>
+                setFontSize(parseInt(e.target.value, 10))
+              }
               className="profile-font-size__slider"
             />
             <div className="profile-font-size__labels">
@@ -979,19 +1183,19 @@ export default function CustomerProfile({ user, setUser }) {
 
         <div className="profile-modal__actions">
           <button
+            type="button"
             className="profile-btn profile-btn--ghost"
             onClick={() => setShowThemeModal(false)}
-            type="button"
           >
             {t("Đóng")}
           </button>
           <button
+            type="button"
             className="profile-btn profile-btn--primary"
             onClick={() => {
               setShowThemeModal(false);
               toast(t("Đã áp dụng giao diện"), "success");
             }}
-            type="button"
           >
             <Check size={16} />
             {t("Áp dụng")}
@@ -999,7 +1203,6 @@ export default function CustomerProfile({ user, setUser }) {
         </div>
       </ProfileModal>
 
-      {/* ============ MODAL: NGÔN NGỮ ============ */}
       <ProfileModal
         open={showLangModal}
         onClose={() => setShowLangModal(false)}
@@ -1021,12 +1224,16 @@ export default function CustomerProfile({ user, setUser }) {
               return (
                 <button
                   key={l.code}
-                  className={`profile-lang-card ${active ? "active" : ""}`}
-                  onClick={() => changeLanguage(l.code)}
                   type="button"
+                  className={`profile-lang-card ${
+                    active ? "active" : ""
+                  }`}
+                  onClick={() => changeLanguage(l.code)}
                 >
                   <div className="profile-lang-card__top">
-                    <span className="profile-lang-card__flag">{l.flag}</span>
+                    <span className="profile-lang-card__flag">
+                      {l.flag}
+                    </span>
                     {active && (
                       <span className="profile-lang-card__check">
                         <Check size={13} />
@@ -1086,7 +1293,9 @@ export default function CustomerProfile({ user, setUser }) {
               <div className="profile-form-input-wrap">
                 <span className="profile-form-input-icon">🕐</span>
                 <select className="profile-form-input profile-form-input--select">
-                  <option>(GMT+07:00) {t("Giờ Hà Nội / Băng Cốc")}</option>
+                  <option>
+                    (GMT+07:00) {t("Giờ Hà Nội / Băng Cốc")}
+                  </option>
                   <option>(GMT+08:00) Singapore / Đài Bắc</option>
                   <option>(GMT+09:00) Seoul / Tokyo</option>
                 </select>
@@ -1097,19 +1306,19 @@ export default function CustomerProfile({ user, setUser }) {
 
         <div className="profile-modal__actions">
           <button
+            type="button"
             className="profile-btn profile-btn--ghost"
             onClick={() => setShowLangModal(false)}
-            type="button"
           >
             {t("Đóng")}
           </button>
           <button
+            type="button"
             className="profile-btn profile-btn--primary"
             onClick={() => {
               setShowLangModal(false);
               toast(t("Đã áp dụng ngôn ngữ"), "success");
             }}
-            type="button"
           >
             <Check size={16} />
             {t("Áp dụng")}
@@ -1117,7 +1326,6 @@ export default function CustomerProfile({ user, setUser }) {
         </div>
       </ProfileModal>
 
-      {/* ============ MODAL: THÔNG BÁO ============ */}
       <ProfileModal
         open={showNotiModal}
         onClose={() => setShowNotiModal(false)}
@@ -1138,30 +1346,41 @@ export default function CustomerProfile({ user, setUser }) {
               {
                 key: "orderReady",
                 title: t("Món đã sẵn sàng"),
-                desc: t("Nhận ngay khi đầu bếp hoàn thành món và bạn có thể đến quầy nhận."),
+                desc: t(
+                  "Nhận ngay khi đầu bếp hoàn thành món và bạn có thể đến quầy nhận."
+                ),
               },
               {
                 key: "orderStatus",
                 title: t("Trạng thái đơn hàng"),
-                desc: t("Thông báo khi đơn chuyển sang: Đã xác nhận → Đang chuẩn bị → Hoàn thành."),
+                desc: t(
+                  "Thông báo khi đơn chuyển sang: Đã xác nhận → Đang chuẩn bị → Hoàn thành."
+                ),
               },
               {
                 key: "promotion",
                 title: t("Khuyến mãi & Ưu đãi"),
-                desc: t("Nhận voucher mới, Flash Sale ca trưa, combo trợ giá sinh viên."),
+                desc: t(
+                  "Nhận voucher mới, Flash Sale ca trưa, combo trợ giá sinh viên."
+                ),
               },
               {
                 key: "wallet",
                 title: t("Biến động Ví Canteen"),
-                desc: t("Thông báo khi ví được nạp, trừ tiền, hoàn tiền hoặc trợ giá."),
+                desc: t(
+                  "Thông báo khi ví được nạp, trừ tiền, hoàn tiền hoặc trợ giá."
+                ),
               },
             ].map((item) => (
               <label key={item.key} className="profile-noti-item">
                 <input
                   type="checkbox"
-                  checked={notiPrefs[item.key]}
+                  checked={!!notiPrefs[item.key]}
                   onChange={() =>
-                    setNotiPrefs((p) => ({ ...p, [item.key]: !p[item.key] }))
+                    setNotiPrefs((p) => ({
+                      ...p,
+                      [item.key]: !p[item.key],
+                    }))
                   }
                 />
                 <div className="profile-noti-item__body">
@@ -1181,28 +1400,39 @@ export default function CustomerProfile({ user, setUser }) {
             <label className="profile-noti-item profile-noti-item--inline">
               <input
                 type="checkbox"
-                checked={notiPrefs.sound}
+                checked={!!notiPrefs.sound}
                 onChange={() =>
                   setNotiPrefs((p) => ({ ...p, sound: !p.sound }))
                 }
               />
               <div className="profile-noti-item__body">
                 <b>{t("Âm thanh thông báo")}</b>
-                <p>{t("Phát tiếng 'ting' khi có tin nhắn hoặc đơn mới.")}</p>
+                <p>
+                  {t(
+                    "Phát tiếng 'ting' khi có tin nhắn hoặc đơn mới."
+                  )}
+                </p>
               </div>
             </label>
 
             <label className="profile-noti-item profile-noti-item--inline">
               <input
                 type="checkbox"
-                checked={notiPrefs.vibration}
+                checked={!!notiPrefs.vibration}
                 onChange={() =>
-                  setNotiPrefs((p) => ({ ...p, vibration: !p.vibration }))
+                  setNotiPrefs((p) => ({
+                    ...p,
+                    vibration: !p.vibration,
+                  }))
                 }
               />
               <div className="profile-noti-item__body">
                 <b>{t("Rung thiết bị")}</b>
-                <p>{t("Rung nhẹ khi có thông báo (chỉ hoạt động trên app di động).")}</p>
+                <p>
+                  {t(
+                    "Rung nhẹ khi có thông báo (chỉ hoạt động trên app di động)."
+                  )}
+                </p>
               </div>
             </label>
           </div>
@@ -1237,7 +1467,7 @@ export default function CustomerProfile({ user, setUser }) {
                 icon: "🌙",
               },
             ].map((meal) => {
-              const active = mealSlots[meal.key];
+              const active = !!mealSlots[meal.key];
               return (
                 <button
                   key={meal.key}
@@ -1246,7 +1476,10 @@ export default function CustomerProfile({ user, setUser }) {
                     active ? "active" : ""
                   }`}
                   onClick={() =>
-                    setMealSlots((s) => ({ ...s, [meal.key]: !s[meal.key] }))
+                    setMealSlots((s) => ({
+                      ...s,
+                      [meal.key]: !s[meal.key],
+                    }))
                   }
                 >
                   <span className="profile-mealslot-card__icon">
@@ -1291,19 +1524,19 @@ export default function CustomerProfile({ user, setUser }) {
 
         <div className="profile-modal__actions">
           <button
+            type="button"
             className="profile-btn profile-btn--ghost"
             onClick={() => setShowNotiModal(false)}
-            type="button"
           >
             {t("Đóng")}
           </button>
           <button
+            type="button"
             className="profile-btn profile-btn--primary"
             onClick={() => {
               setShowNotiModal(false);
               toast(t("Đã lưu cài đặt thông báo"), "success");
             }}
-            type="button"
           >
             <Check size={16} />
             {t("Lưu cài đặt")}
@@ -1311,7 +1544,6 @@ export default function CustomerProfile({ user, setUser }) {
         </div>
       </ProfileModal>
 
-      {/* ============ MODAL: ĐỔI MẬT KHẨU ============ */}
       <ProfileModal
         open={showPwdModal}
         onClose={closePwdModal}
@@ -1319,7 +1551,9 @@ export default function CustomerProfile({ user, setUser }) {
         icon={<Lock size={20} />}
         maxWidth={440}
       >
-        {pwdError && <div className="profile-modal__error">{pwdError}</div>}
+        {pwdError && (
+          <div className="profile-modal__error">{pwdError}</div>
+        )}
 
         <label className="profile-modal__label">
           {t("Mật khẩu hiện tại")}
@@ -1330,21 +1564,29 @@ export default function CustomerProfile({ user, setUser }) {
             type={showPwd ? "text" : "password"}
             value={pwdForm.currentPassword}
             onChange={(e) =>
-              setPwdForm((f) => ({ ...f, currentPassword: e.target.value }))
+              setPwdForm((f) => ({
+                ...f,
+                currentPassword: e.target.value,
+              }))
             }
             placeholder={t("Nhập mật khẩu hiện tại")}
             disabled={pwdLoading}
           />
         </div>
 
-        <label className="profile-modal__label">{t("Mật khẩu mới")}</label>
+        <label className="profile-modal__label">
+          {t("Mật khẩu mới")}
+        </label>
         <div className="profile-modal__input-wrap">
           <KeyRound size={16} />
           <input
             type={showPwd ? "text" : "password"}
             value={pwdForm.newPassword}
             onChange={(e) =>
-              setPwdForm((f) => ({ ...f, newPassword: e.target.value }))
+              setPwdForm((f) => ({
+                ...f,
+                newPassword: e.target.value,
+              }))
             }
             placeholder={t("Tối thiểu 6 ký tự")}
             disabled={pwdLoading}
@@ -1367,7 +1609,10 @@ export default function CustomerProfile({ user, setUser }) {
             type={showPwd ? "text" : "password"}
             value={pwdForm.confirmPassword}
             onChange={(e) =>
-              setPwdForm((f) => ({ ...f, confirmPassword: e.target.value }))
+              setPwdForm((f) => ({
+                ...f,
+                confirmPassword: e.target.value,
+              }))
             }
             placeholder={t("Nhập lại mật khẩu mới")}
             disabled={pwdLoading}
@@ -1379,18 +1624,18 @@ export default function CustomerProfile({ user, setUser }) {
 
         <div className="profile-modal__actions">
           <button
+            type="button"
             className="profile-btn profile-btn--ghost"
             onClick={closePwdModal}
             disabled={pwdLoading}
-            type="button"
           >
             {t("Hủy")}
           </button>
           <button
+            type="button"
             className="profile-btn profile-btn--primary"
             onClick={changePassword}
             disabled={pwdLoading}
-            type="button"
           >
             {pwdLoading ? (
               <>
@@ -1410,6 +1655,10 @@ export default function CustomerProfile({ user, setUser }) {
           to { transform: rotate(360deg); }
         }
         .profile-spin { animation: profile-spin-anim 1s linear infinite; }
+
+        /* 🔧 FIX #31: KHÔNG set html { font-size } ở đây — CSS toàn cục
+           (styles.css hoặc styles-customer.css) chịu trách nhiệm apply
+           biến --app-font-scale. Chỉ set biến, KHÔNG override font-size. */
       `}</style>
     </div>
   );

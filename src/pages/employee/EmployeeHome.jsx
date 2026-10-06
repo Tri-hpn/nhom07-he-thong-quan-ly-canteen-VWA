@@ -7,6 +7,7 @@
 //   - KDS Kanban board (3 columns)
 //   - Inventory 86 list + VSATTP checklist (right column)
 //   - Telemetry dock
+// 🔧 FIX #80: KDS ticker dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -28,6 +29,15 @@ import ShiftChecklist from "../../components/ShiftChecklist";
 import TelemetryDock from "../../components/TelemetryDock";
 const REFRESH_MS = 5000;
 const SUBSIDY_PER_ITEM = 10000; // trợ giá 10k/suất
+
+// 🔧 FIX #80: formatter cố định cho KDS ticker (VN timezone, 24h)
+const TICKER_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 // VSATTP tasks mặc định
 const DEFAULT_VSATTP_TASKS = [
@@ -823,12 +833,9 @@ useEffect(() => {
                 )}
               </span>
             </div>
+            {/* 🔧 FIX #80: dùng formatter cố định VN, 24h */}
             <span className="kds-ticker__time">
-              {new Date().toLocaleTimeString("vi-VN", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
+              {TICKER_TIME_FORMATTER.format(new Date())}
             </span>
           </div>
         </div>

@@ -1,16 +1,23 @@
 // ============================================================
-// CHATBOTWIDGET.JSX — Chat popup nổi (V2 - căn giữa, ca trực thật)
+// CHATBOTWIDGET.JSX — Chat popup nổi (V4 - FINAL + i18n)
 // ============================================================
-// ✅ Panel căn giữa màn hình (không che navbar)
-// ✅ Hotline ca trực lấy từ API — không có nhân viên thì ẩn
-// ✅ Thời gian hiển thị đủ ngày + giờ + nhãn "Hôm qua"
+// 🔧 FIX:
+//   - C3: Customer gọi API /shifts/current-staff (public, không 403)
+//   - L19: Giờ tính ở server, client chỉ đọc is_current
+//   - M11: Listen language-change (qua useI18n)
+//   - D1: Xóa getCurrentShift() dư thừa
+//   - D2: PromptButton dùng callback onClick (không DOM manipulation)
+//   - D3: fmtTime nhận t để dịch nhãn "Hôm qua"
+//   - D5: shiftLoading chỉ set khi mở tab staff
+//   - Extra: type="button" đầy đủ
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Bot, X, Send, ShoppingCart, Store, MessageCircleHeart, Loader2,
-  AlertCircle, RefreshCw, Sparkles, Headset, CheckCircle2, ArrowRight,
-  Wallet, Leaf, Flame, Phone,
+  AlertCircle, RefreshCw, Sparkles, Headset, ArrowRight, Flame, Phone,
 } from "lucide-react";
 import { api } from "../api";
 import { money } from "./UI";
@@ -58,12 +65,13 @@ function makeId(prefix) {
 }
 
 /**
- * Định dạng thời gian tin nhắn:
+ * 🔧 D3: fmtTime cần `t` để dịch nhãn "Hôm qua".
+ * Format:
  *  - Hôm nay:  "04:11"
  *  - Hôm qua:  "17:15 • Hôm qua"
  *  - Cũ hơn:   "14:30 • 08/04"
  */
-function fmtTime(iso) {
+function fmtTime(iso, t) {
   if (!iso) return "";
   try {
     const d = new Date(iso);
@@ -80,7 +88,10 @@ function fmtTime(iso) {
     const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) return `${hh}:${mi}`;
-    if (diffDays === 1) return `${hh}:${mi} • Hôm qua`;
+    if (diffDays === 1) {
+      const yesterday = t ? t("Hôm qua") : "Hôm qua";
+      return `${hh}:${mi} • ${yesterday}`;
+    }
     return `${hh}:${mi} • ${dd}/${mm}`;
   } catch {
     return "";
@@ -100,27 +111,6 @@ function getInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function toMinutes(str) {
-  if (!str) return 0;
-  const [h, m] = String(str).split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-
-function getCurrentShift(staffList) {
-  if (!Array.isArray(staffList) || staffList.length === 0) return null;
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-
-  return (
-    staffList.find((s) => {
-      const start = toMinutes(s.start_time || s.shift_start);
-      const end = toMinutes(s.end_time || s.shift_end);
-      if (!start && !end) return false;
-      return nowMin >= start && nowMin <= end;
-    }) || null
-  );
-}
-
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -130,24 +120,29 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("ai");
 
+  // AI messages
   const [aiMessages, setAiMessages] = useState([]);
   const [aiText, setAiText] = useState("");
   const [aiTyping, setAiTyping] = useState(false);
 
+  // Staff messages
   const [staffMessages, setStaffMessages] = useState([]);
   const [staffText, setStaffText] = useState("");
   const [staffSending, setStaffSending] = useState(false);
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffError, setStaffError] = useState("");
 
+  // Data
   const [menuItems, setMenuItems] = useState([]);
   const [settings, setSettings] = useState(null);
   const [selected, setSelected] = useState(null);
   const [hasNew, setHasNew] = useState(false);
 
-  const [shiftStaff, setShiftStaff] = useState(null);
+  // Current staff (public API)
+  const [currentStaff, setCurrentStaff] = useState(null);
   const [shiftLoading, setShiftLoading] = useState(false);
 
+  // Refs
   const staffReqIdRef = useRef(0);
   const aiTimerRef = useRef(null);
   const lastAiCountRef = useRef(0);
@@ -158,6 +153,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   const staffBottomRef = useRef(null);
   const lastUserIdRef = useRef(user?.id);
 
+  // ============================================================
+  // 🔧 D4: Load menu + settings lần đầu (settings có thể null)
+  // ============================================================
   useEffect(() => {
     let cancelled = false;
 
@@ -168,18 +166,27 @@ export default function ChatBotWidget({ cart, setCart, user }) {
         const list = Array.isArray(d) ? d : [];
         setMenuItems(list.filter((m) => m.active));
       })
-      .catch(() => !cancelled && setMenuItems([]));
+      .catch(() => {
+        if (!cancelled) setMenuItems([]);
+      });
 
     api.settings
       .get()
-      .then((d) => !cancelled && setSettings(d))
-      .catch(() => !cancelled && setSettings(null));
+      .then((d) => {
+        if (!cancelled) setSettings(d || null);
+      })
+      .catch(() => {
+        if (!cancelled) setSettings(null);
+      });
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // ============================================================
+  // 🔧 C3 + D5: Load current staff — chỉ khi mở panel
+  // ============================================================
   useEffect(() => {
     if (!open) return;
 
@@ -187,14 +194,12 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     setShiftLoading(true);
 
     api.shifts
-      .approvedToday()
-      .then((list) => {
-        if (cancelled) return;
-        const current = getCurrentShift(list);
-        setShiftStaff(current);
+      .currentStaff()
+      .then((staff) => {
+        if (!cancelled) setCurrentStaff(staff || null);
       })
       .catch(() => {
-        if (!cancelled) setShiftStaff(null);
+        if (!cancelled) setCurrentStaff(null);
       })
       .finally(() => {
         if (!cancelled) setShiftLoading(false);
@@ -205,6 +210,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     };
   }, [open]);
 
+  // ============================================================
+  // Reset khi user thay đổi
+  // ============================================================
   useEffect(() => {
     if (lastUserIdRef.current !== user?.id) {
       lastUserIdRef.current = user?.id;
@@ -212,9 +220,14 @@ export default function ChatBotWidget({ cart, setCart, user }) {
       setStaffMessages([]);
       setAiText("");
       setStaffText("");
+      lastAiCountRef.current = 0;
+      lastStaffCountRef.current = 0;
     }
   }, [user?.id]);
 
+  // ============================================================
+  // Welcome message cho tab AI
+  // ============================================================
   useEffect(() => {
     if (!open || mode !== "ai") return;
     if (aiMessages.length > 0) return;
@@ -233,12 +246,16 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode, user?.name, aiMessages.length]);
 
+  // Cleanup AI timer
   useEffect(() => {
     return () => {
       if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     };
   }, []);
 
+  // ============================================================
+  // Load staff messages
+  // ============================================================
   const loadStaff = useCallback(
     async (silent = true) => {
       const myReqId = ++staffReqIdRef.current;
@@ -270,6 +287,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     return () => clearInterval(timer);
   }, [open, mode, loadStaff]);
 
+  // ============================================================
+  // Auto-scroll: AI
+  // ============================================================
   useEffect(() => {
     if (!open || mode !== "ai") return;
     const container = aiScrollRef.current;
@@ -295,6 +315,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     lastAiCountRef.current = aiMessages.length;
   }, [open, mode, aiMessages, aiTyping]);
 
+  // ============================================================
+  // Auto-scroll: Staff
+  // ============================================================
   useEffect(() => {
     if (!open || mode !== "staff") return;
     const container = staffScrollRef.current;
@@ -320,6 +343,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     lastStaffCountRef.current = staffMessages.length;
   }, [open, mode, staffMessages]);
 
+  // ============================================================
+  // Đánh dấu "có tin mới" khi widget đóng
+  // ============================================================
   useEffect(() => {
     if (open) {
       setHasNew(false);
@@ -331,6 +357,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     }
   }, [open, staffMessages]);
 
+  // ============================================================
+  // ESC đóng + lock body scroll
+  // ============================================================
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -345,52 +374,64 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     };
   }, [open]);
 
-  const sendAI = (value) => {
-    const val = (value || aiText).trim();
-    if (!val || aiTyping) return;
+  // ============================================================
+  // Send AI message
+  // ============================================================
+  const sendAI = useCallback(
+    (value) => {
+      const val = (value || aiText).trim();
+      if (!val || aiTyping) return;
 
-    if (val.length > MAX_MESSAGE_LENGTH) {
-      toast(
-        t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH),
-        "error"
-      );
-      return;
-    }
+      if (val.length > MAX_MESSAGE_LENGTH) {
+        toast(
+          t("Tin nhắn tối đa {n} ký tự").replace(
+            "{n}",
+            MAX_MESSAGE_LENGTH
+          ),
+          "error"
+        );
+        return;
+      }
 
-    setAiText("");
-    setAiMessages((m) => [
-      ...m,
-      {
-        id: makeId("u"),
-        from: "user",
-        content: val,
-        created_at: new Date().toISOString(),
-      },
-    ]);
-    setAiTyping(true);
-
-    if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
-
-    aiTimerRef.current = setTimeout(() => {
-      aiTimerRef.current = null;
-      const reply = getBotReply(val, menuItems, settings, t);
-      setAiTyping(false);
-      if (!reply) return;
-
+      setAiText("");
       setAiMessages((m) => [
         ...m,
         {
-          id: makeId("b"),
-          from: "bot",
-          content: reply.text,
-          items: reply.items || [],
+          id: makeId("u"),
+          from: "user",
+          content: val,
           created_at: new Date().toISOString(),
         },
       ]);
-    }, AI_REPLY_DELAY_MS);
-  };
+      setAiTyping(true);
 
-  const sendStaff = async () => {
+      if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
+
+      aiTimerRef.current = setTimeout(() => {
+        aiTimerRef.current = null;
+        const reply = getBotReply(val, menuItems, settings, t);
+        setAiTyping(false);
+        if (!reply) return;
+
+        setAiMessages((m) => [
+          ...m,
+          {
+            id: makeId("b"),
+            from: "bot",
+            content: reply.text,
+            items: reply.items || [],
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      }, AI_REPLY_DELAY_MS);
+    },
+    [aiText, aiTyping, menuItems, settings, t]
+  );
+
+  // ============================================================
+  // Send Staff message
+  // ============================================================
+  const sendStaff = useCallback(async () => {
     const val = staffText.trim();
     if (!val || staffSending) return;
 
@@ -412,53 +453,76 @@ export default function ChatBotWidget({ cart, setCart, user }) {
     } finally {
       setStaffSending(false);
     }
-  };
+  }, [staffText, staffSending, t]);
 
-  const quickAdd = (m) => {
-    const id = m._id || m.id;
-    const key = `${id}-S-`;
-    const maxQty = getMaxQty(m);
+  // ============================================================
+  // Quick add to cart
+  // ============================================================
+  const quickAdd = useCallback(
+    (m) => {
+      const id = m._id || m.id;
+      const key = `${id}-S-`;
+      const maxQty = getMaxQty(m);
 
-    let added = false;
-    let reason = "";
+      let added = false;
+      let reason = "";
 
-    setCart((c) => {
-      const existing = c[key];
-      const currentQty = Number(existing?.qty) || 0;
-      if (currentQty >= maxQty) {
-        reason = t("Chỉ còn {n} phần trong kho").replace("{n}", maxQty);
-        return c;
+      setCart((c) => {
+        const existing = c[key];
+        const currentQty = Number(existing?.qty) || 0;
+        if (currentQty >= maxQty) {
+          reason = t("Chỉ còn {n} phần trong kho").replace(
+            "{n}",
+            maxQty
+          );
+          return c;
+        }
+        added = true;
+        const newQty = Math.min(maxQty, currentQty + 1);
+        return {
+          ...c,
+          [key]: {
+            ...m,
+            name: m.name,
+            price: m.price,
+            qty: newQty,
+            stock: m.stock ?? 99,
+            _originalId: id,
+          },
+        };
+      });
+
+      if (added) {
+        toast(
+          t("Đã thêm {name} vào giỏ").replace("{name}", m.name),
+          "success"
+        );
+      } else {
+        toast(reason, "error");
       }
-      added = true;
-      const newQty = Math.min(maxQty, currentQty + 1);
-      return {
-        ...c,
-        [key]: {
-          ...m,
-          name: m.name,
-          price: m.price,
-          qty: newQty,
-          stock: m.stock ?? 99,
-          _originalId: id,
-        },
-      };
-    });
+    },
+    [setCart, t]
+  );
 
-    if (added) {
-      toast(t("Đã thêm {name} vào giỏ").replace("{name}", m.name), "success");
-    } else {
-      toast(reason, "error");
-    }
-  };
+  // ============================================================
+  // Toggle panel
+  // ============================================================
+  const toggleMode = useCallback(() => {
+    setMode((m) => (m === "ai" ? "staff" : "ai"));
+  }, []);
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <>
+      {/* FAB */}
       {!open && (
         <button
+          type="button"
           onClick={() => setOpen(true)}
           aria-label={t("Trợ lý Canteen")}
           className="chatbot-fab"
-          type="button"
         >
           <MessageCircleHeart size={26} />
           {hasNew && <span className="chatbot-fab__badge">1</span>}
@@ -466,6 +530,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
         </button>
       )}
 
+      {/* PANEL */}
       {open && (
         <div
           className="chatbot-panel-v2"
@@ -473,6 +538,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
           aria-modal="true"
           aria-label={t("Trợ lý Canteen")}
         >
+          {/* HEADER */}
           <header className="chatbot-header">
             <div className="chatbot-header__row">
               <div className="chatbot-header__info">
@@ -496,8 +562,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
 
               <div className="chatbot-header__actions">
                 <button
+                  type="button"
                   className="chatbot-header__btn"
-                  onClick={() => setMode(mode === "ai" ? "staff" : "ai")}
+                  onClick={toggleMode}
                   title={
                     mode === "ai"
                       ? t("Chuyển sang gặp Nhân viên quầy")
@@ -516,7 +583,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
                     </>
                   )}
                 </button>
+
                 <button
+                  type="button"
                   className="chatbot-header__icon-btn"
                   onClick={() => {
                     setAiMessages([]);
@@ -526,7 +595,9 @@ export default function ChatBotWidget({ cart, setCart, user }) {
                 >
                   <RefreshCw size={16} />
                 </button>
+
                 <button
+                  type="button"
                   className="chatbot-header__icon-btn chatbot-header__close"
                   onClick={() => setOpen(false)}
                   title={t("Đóng")}
@@ -538,9 +609,17 @@ export default function ChatBotWidget({ cart, setCart, user }) {
             </div>
           </header>
 
+          {/* BODY */}
           <div className="chatbot-body">
             <aside className="chatbot-side chatbot-side--left">
-              <LeftSidebar user={user} t={t} />
+              <LeftSidebar
+                user={user}
+                t={t}
+                onPromptClick={(text) => {
+                  setMode("ai");
+                  sendAI(text);
+                }}
+              />
             </aside>
 
             <section className="chatbot-center">
@@ -579,7 +658,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
               <RightSidebar
                 user={user}
                 t={t}
-                shiftStaff={shiftStaff}
+                currentStaff={currentStaff}
                 shiftLoading={shiftLoading}
               />
             </aside>
@@ -587,6 +666,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
         </div>
       )}
 
+      {/* MODAL */}
       {selected && (
         <FoodDetailModal
           item={selected}
@@ -604,7 +684,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
 // LeftSidebar
 // ============================================================
 
-function LeftSidebar({ user, t }) {
+function LeftSidebar({ user, t, onPromptClick }) {
   return (
     <>
       <div className="chatbot-card">
@@ -627,7 +707,7 @@ function LeftSidebar({ user, t }) {
               {t("Ví VWA Pay")}
             </span>
             <span className="chatbot-profile__stat-value chatbot-profile__stat-value--blue">
-              {money(user?.balance || 185000)}
+              {money(user?.balance || 0)}
             </span>
           </div>
           <div className="chatbot-profile__stat">
@@ -635,7 +715,7 @@ function LeftSidebar({ user, t }) {
               {t("Điểm thưởng")}
             </span>
             <span className="chatbot-profile__stat-value chatbot-profile__stat-value--blue">
-              {user?.points || 350} pts
+              {user?.points || 0} pts
             </span>
           </div>
         </div>
@@ -664,7 +744,12 @@ function LeftSidebar({ user, t }) {
         </div>
         <div className="chatbot-prompts">
           {PROMPT_SUGGESTIONS.map((p, i) => (
-            <PromptButton key={i} icon={p.icon} text={t(p.text)} />
+            <PromptButton
+              key={i}
+              icon={p.icon}
+              text={t(p.text)}
+              onClick={() => onPromptClick(p.text)}
+            />
           ))}
         </div>
       </div>
@@ -672,23 +757,13 @@ function LeftSidebar({ user, t }) {
   );
 }
 
-function PromptButton({ icon, text }) {
+// 🔧 D2: PromptButton dùng callback — không DOM manipulation
+function PromptButton({ icon, text, onClick }) {
   return (
     <button
       type="button"
       className="chatbot-prompt-btn"
-      onClick={() => {
-        const input = document.querySelector(".chatbot-input__field");
-        if (input) {
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype,
-            "value"
-          ).set;
-          setter.call(input, text);
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          input.focus();
-        }
-      }}
+      onClick={onClick}
     >
       <span className="chatbot-prompt-btn__text">
         {icon} {text}
@@ -702,7 +777,7 @@ function PromptButton({ icon, text }) {
 // RightSidebar
 // ============================================================
 
-function RightSidebar({ user, t, shiftStaff, shiftLoading }) {
+function RightSidebar({ user, t, currentStaff, shiftLoading }) {
   return (
     <>
       <div className="chatbot-card">
@@ -768,6 +843,7 @@ function RightSidebar({ user, t, shiftStaff, shiftLoading }) {
         </div>
       </div>
 
+      {/* Staff panel */}
       {shiftLoading ? (
         <div className="chatbot-card">
           <div className="chatbot-card__head">
@@ -779,7 +855,7 @@ function RightSidebar({ user, t, shiftStaff, shiftLoading }) {
             <span>{t("Đang kiểm tra ca trực...")}</span>
           </div>
         </div>
-      ) : shiftStaff ? (
+      ) : currentStaff ? (
         <div className="chatbot-card">
           <div className="chatbot-card__head">
             <Phone size={16} />
@@ -789,21 +865,23 @@ function RightSidebar({ user, t, shiftStaff, shiftLoading }) {
             <div className="chatbot-hotline__row">
               <span>{t("Quầy trưởng ca:")}</span>
               <b>
-                {shiftStaff.name || shiftStaff.staff_name || t("Nhân viên")}
-                {(shiftStaff.employee_code || shiftStaff.code) &&
-                  ` (${shiftStaff.employee_code || shiftStaff.code})`}
+                {currentStaff.name || t("Nhân viên")}
+                {currentStaff.employee_code &&
+                  ` (${currentStaff.employee_code})`}
               </b>
             </div>
-            {(shiftStaff.station || shiftStaff.counter_name) && (
+            {currentStaff.station && (
               <div className="chatbot-hotline__row">
                 <span>{t("Vị trí:")}</span>
-                <b>{shiftStaff.station || shiftStaff.counter_name}</b>
+                <b>{currentStaff.station}</b>
               </div>
             )}
-            {shiftStaff.phone && (
+            {currentStaff.phone && (
               <div className="chatbot-hotline__row">
                 <span>{t("Hotline:")}</span>
-                <a href={`tel:${shiftStaff.phone}`}>{shiftStaff.phone}</a>
+                <a href={`tel:${currentStaff.phone}`}>
+                  {currentStaff.phone}
+                </a>
               </div>
             )}
           </div>
@@ -845,7 +923,9 @@ function AIContent({
           return (
             <div
               key={m.id}
-              className={`chatbot-msg ${isUser ? "chatbot-msg--user" : ""}`}
+              className={`chatbot-msg ${
+                isUser ? "chatbot-msg--user" : ""
+              }`}
             >
               {!isUser && (
                 <div className="chatbot-msg__avatar">
@@ -871,9 +951,19 @@ function AIContent({
                 {!isUser && m.items && m.items.length > 0 && (
                   <div className="chatbot-food-grid">
                     {m.items.map((it) => (
-                      <div key={it.id || it._id} className="chatbot-food-card">
+                      <div
+                        key={it.id || it._id}
+                        className="chatbot-food-card"
+                      >
                         <div className="chatbot-food-card__img-wrap">
-                          <img src={it.image} alt={it.name} loading="lazy" />
+                          <img
+                            src={it.image}
+                            alt={it.name}
+                            loading="lazy"
+                            onError={(e) => {
+                              e.target.style.display = "none";
+                            }}
+                          />
                           {(it.sold || 0) >= 50 && (
                             <span className="chatbot-food-card__badge">
                               <Flame size={10} /> {t("Bán chạy")}
@@ -898,17 +988,17 @@ function AIContent({
                             </span>
                             <div className="chatbot-food-card__actions">
                               <button
+                                type="button"
                                 onClick={() => onQuickAdd(it)}
                                 className="chatbot-food-card__add"
                                 title={t("Thêm vào giỏ")}
-                                type="button"
                               >
                                 <ShoppingCart size={13} />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => onView(it)}
                                 className="chatbot-food-card__view"
-                                type="button"
                               >
                                 {t("Xem")}
                               </button>
@@ -921,7 +1011,7 @@ function AIContent({
                 )}
 
                 <div className="chatbot-msg__time">
-                  {fmtTime(m.created_at)}
+                  {fmtTime(m.created_at, t)}
                 </div>
               </div>
             </div>
@@ -957,9 +1047,9 @@ function AIContent({
         {QUICK_REPLIES_KEYS.map((key) => (
           <button
             key={key}
+            type="button"
             onClick={() => onSend(t(key))}
             disabled={typing}
-            type="button"
             className="chatbot-chip"
           >
             {t(key)}
@@ -970,8 +1060,8 @@ function AIContent({
       <div className="chatbot-input">
         <div className="chatbot-input__icons">
           <button
-            className="chatbot-input__icon"
             type="button"
+            className="chatbot-input__icon"
             title={t("Đính kèm ảnh")}
           >
             <Sparkles size={18} />
@@ -989,11 +1079,11 @@ function AIContent({
           maxLength={MAX_MESSAGE_LENGTH}
         />
         <button
+          type="button"
           onClick={() => onSend()}
           disabled={typing || !text.trim()}
           aria-label={t("Gửi")}
           className="chatbot-input__send"
-          type="button"
         >
           <Send size={16} />
         </button>
@@ -1033,7 +1123,7 @@ function StaffContent({
           <div className="chatbot-error">
             <AlertCircle size={18} />
             <span>{error}</span>
-            <button onClick={onRetry} type="button">
+            <button type="button" onClick={onRetry}>
               <RefreshCw size={11} /> {t("Thử lại")}
             </button>
           </div>
@@ -1059,7 +1149,9 @@ function StaffContent({
           return (
             <div
               key={m.id}
-              className={`chatbot-msg ${isOwn ? "chatbot-msg--user" : ""}`}
+              className={`chatbot-msg ${
+                isOwn ? "chatbot-msg--user" : ""
+              }`}
             >
               {!isOwn && (
                 <div className="chatbot-msg__avatar chatbot-msg__avatar--staff">
@@ -1080,7 +1172,7 @@ function StaffContent({
                 )}
                 <div className="chatbot-msg__content">{m.content}</div>
                 <div className="chatbot-msg__time">
-                  {fmtTime(m.created_at)}
+                  {fmtTime(m.created_at, t)}
                 </div>
               </div>
             </div>
@@ -1101,11 +1193,11 @@ function StaffContent({
           maxLength={MAX_MESSAGE_LENGTH}
         />
         <button
+          type="button"
           onClick={onSend}
           disabled={sending || !text.trim()}
           aria-label={t("Gửi")}
           className="chatbot-input__send"
-          type="button"
         >
           {sending ? (
             <Loader2 size={16} className="chatbot-spin" />

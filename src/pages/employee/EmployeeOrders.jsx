@@ -12,6 +12,7 @@
 //   - Kanban responsive 5/4/3/2/1 cột theo màn hình
 //   - Mỗi cột scroll riêng, header cố định
 //   - Nút "Xem thêm" khi cột có > 5 đơn
+// 🔧 FIX #82: bỏ prop `now` không dùng ở KDSTicket + state now dư thừa
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -145,8 +146,8 @@ export default function EmployeeOrders() {
   // ---- Approved shifts ----
   const [approvedShifts, setApprovedShifts] = useState([]);
 
-  // ---- Clock (cập nhật Ca Vận Hành mỗi 30s) ----
-  const [now, setNow] = useState(new Date());
+  // 🔧 FIX #82: state `now` đã bị bỏ — không dùng cho hiển thị nào
+  // (mọi chỗ hiển thị thời gian đều dùng fmtTime đã xử lý VN timezone)
 
   // ---- Trạm (station) ----
   const [searchParams, setSearchParams] = useSearchParams();
@@ -191,15 +192,6 @@ export default function EmployeeOrders() {
     },
     [expandedColumns]
   );
-
-  // ============================================================
-  // CLOCK
-  // ============================================================
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(timer);
-  }, []);
 
   // ============================================================
   // APPROVED SHIFTS
@@ -409,7 +401,7 @@ export default function EmployeeOrders() {
   // HERO
   // ============================================================
 
-  const shiftLabel = useMemo(() => getCurrentShiftLabel(now), [now]);
+  const shiftLabel = useMemo(() => getCurrentShiftLabel(new Date()), []);
   const staffName = user?.name || t("Nhân viên");
   const staffCode = user?.employeeCode || user?.code || "";
 
@@ -833,7 +825,6 @@ export default function EmployeeOrders() {
                     onAdvance={() => advance(o)}
                     onReject={() => rejectOrder(o)}
                     t={t}
-                    now={now}
                   />
                 ))}
               </KDSColumn>
@@ -865,7 +856,6 @@ export default function EmployeeOrders() {
                     elapsed={calcElapsedSec(o.created_at)}
                     onAdvance={() => advance(o)}
                     t={t}
-                    now={now}
                   />
                 ))}
               </KDSColumn>
@@ -897,7 +887,6 @@ export default function EmployeeOrders() {
                     elapsed={calcElapsedSec(o.created_at)}
                     onAdvance={() => advance(o)}
                     t={t}
-                    now={now}
                   />
                 ))}
               </KDSColumn>
@@ -928,7 +917,6 @@ export default function EmployeeOrders() {
                     isProcessing={advancingId === (o._id || o.id)}
                     onAdvance={() => advance(o)}
                     t={t}
-                    now={now}
                   />
                 ))}
               </KDSColumn>
@@ -1043,6 +1031,7 @@ function KDSColumn({
 // ============================================================
 // SUB: KDSTicket
 // ============================================================
+// 🔧 FIX #82: bỏ prop `now` (không dùng) — thời gian dùng fmtTime đã xử lý VN
 
 function KDSTicket({
   order,
@@ -1052,7 +1041,6 @@ function KDSTicket({
   onAdvance,
   onReject,
   t,
-  now,
 }) {
   const isPending = variant === "pending";
   const isConfirmed = variant === "confirmed";

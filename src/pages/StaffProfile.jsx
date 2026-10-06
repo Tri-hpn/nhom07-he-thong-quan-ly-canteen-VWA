@@ -1,27 +1,97 @@
 // ============================================================
-// STAFFPROFILE.JSX — Hồ sơ cá nhân cho Nhân viên / Admin
+// STAFFPROFILE.JSX — Hồ sơ Nhân viên / Admin (V2)
 // ============================================================
-// Props:
-//   user         — object user hiện tại (từ App state)
-//   setUser      — hàm cập nhật user (từ App state)
-//   canEditEmail — true nếu được sửa email (Admin: true, NV: false)
-//
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// V2:
+//   - Nén avatar trước khi gửi (max 512px, quality 0.85)
+//   - Tránh document chính phình do avatar base64
 // ============================================================
 
 import { useState, useEffect } from "react";
 import {
-  User, Mail, Phone, MapPin, Save, Shield, Camera, Pencil, X, Check, Lock, KeyRound, Eye, EyeOff,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Save,
+  Shield,
+  Camera,
+  Pencil,
+  X,
+  Check,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { api } from "../api";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
+// ---------- Nén avatar ----------
+const MAX_AVATAR_DIM = 512;
+const AVATAR_QUALITY = 0.85;
 
-export default function StaffProfile({ user, setUser, canEditEmail = false }) {
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("read-error"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("decode-error"));
+    img.src = src;
+  });
+}
+
+async function compressAvatar(file) {
+  const original = await readFileAsDataUrl(file);
+  if (typeof original !== "string") return original;
+
+  try {
+    const img = await loadImageElement(original);
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    if (!w || !h) return original;
+
+    const scale = Math.min(1, MAX_AVATAR_DIM / Math.max(w, h));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return original;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const out = canvas.toDataURL("image/jpeg", AVATAR_QUALITY);
+    return out.length < original.length ? out : original;
+  } catch {
+    return original;
+  }
+}
+
+function buildFormFromUser(u) {
+  return {
+    name: u?.name || "",
+    email: u?.email || "",
+    phone: u?.phone || "",
+    address: u?.address || "",
+    avatar: u?.avatar || "",
+  };
+}
+
+export default function StaffProfile({
+  user,
+  setUser,
+  canEditEmail = false,
+}) {
   const { t } = useI18n();
 
   const [editing, setEditing] = useState(false);
@@ -30,27 +100,11 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
   const [loading, setLoading] = useState(false);
   const [showPwdModal, setShowPwdModal] = useState(false);
 
-  // ---------- Helpers ----------
-
-  function buildFormFromUser(u) {
-    return {
-      name: u?.name || "",
-      email: u?.email || "",
-      phone: u?.phone || "",
-      address: u?.address || "",
-      avatar: u?.avatar || "",
-    };
-  }
-
-  // ---------- Effects ----------
-
   useEffect(() => {
     if (!editing) {
       setForm(buildFormFromUser(user));
     }
   }, [user, editing]);
-
-  // ---------- Handlers ----------
 
   const startEdit = () => {
     setForm(buildFormFromUser(user));
@@ -69,26 +123,24 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
     if (errors[key]) setErrors((er) => ({ ...er, [key]: "" }));
   };
 
-  // ---------- Upload avatar ----------
-
-  const handleAvatar = (e) => {
+  const handleAvatar = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
 
     if (file.size > 2 * 1024 * 1024) {
       toast(t("Ảnh vượt quá 2MB"), "error");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((f) => ({ ...f, avatar: reader.result }));
+    try {
+      const dataUrl = await compressAvatar(file);
+      setForm((f) => ({ ...f, avatar: dataUrl }));
       toast(t("Đã chọn ảnh mới"), "success");
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      toast(t("Không đọc được file"), "error");
+    }
   };
-
-  // ---------- Validate ----------
 
   const validate = () => {
     const errs = {};
@@ -109,8 +161,6 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
-
-  // ---------- Save profile ----------
 
   const save = async () => {
     if (!validate()) {
@@ -143,8 +193,6 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
     }
   };
 
-  // ---------- Render helpers ----------
-
   const roleLabel =
     user?.role === "ADMIN" ? t("Quản trị viên") : t("Nhân viên");
 
@@ -163,11 +211,7 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
       className="profile-grid"
       style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 20 }}
     >
-      {/* ============================================================
-          LEFT CARD — Avatar + Role + Nút đổi mật khẩu
-          ============================================================ */}
       <div className="profile-card-left" style={cardStyle}>
-        {/* Avatar + nút camera (chỉ hiện khi edit) */}
         <div
           className="profile-avatar-wrap"
           style={{
@@ -247,8 +291,9 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
           {user?.email}
         </p>
 
-        {/* BadgeCheck role */}
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+        <div
+          style={{ display: "flex", justifyContent: "center", marginTop: 12 }}
+        >
           <div
             style={{
               display: "inline-flex",
@@ -266,7 +311,6 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
           </div>
         </div>
 
-        {/* Nút đổi mật khẩu */}
         <button
           onClick={() => setShowPwdModal(true)}
           className="btn-change-pwd"
@@ -291,11 +335,7 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
         </button>
       </div>
 
-      {/* ============================================================
-          RIGHT CARD — Thông tin / Form chỉnh sửa
-          ============================================================ */}
       <div className="profile-card-right" style={cardStyle}>
-        {/* Header với nút Sửa / Lưu / Hủy */}
         <div
           style={{
             display: "flex",
@@ -348,25 +388,34 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
           </div>
         </div>
 
-        {/* ---------- VIEW MODE ---------- */}
         {!editing && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <InfoRow icon={<User size={16} />} label={t("Họ và tên")} value={user?.name} />
+            <InfoRow
+              icon={<User size={16} />}
+              label={t("Họ và tên")}
+              value={user?.name}
+            />
             <InfoRow
               icon={<Mail size={16} />}
               label={t("Email")}
               value={user?.email}
               note={!canEditEmail ? t("Do admin quản lý") : null}
             />
-            <InfoRow icon={<Phone size={16} />} label={t("Số điện thoại")} value={user?.phone || "—"} />
-            <InfoRow icon={<MapPin size={16} />} label={t("Địa chỉ")} value={user?.address || "—"} />
+            <InfoRow
+              icon={<Phone size={16} />}
+              label={t("Số điện thoại")}
+              value={user?.phone || "—"}
+            />
+            <InfoRow
+              icon={<MapPin size={16} />}
+              label={t("Địa chỉ")}
+              value={user?.address || "—"}
+            />
           </div>
         )}
 
-        {/* ---------- EDIT MODE ---------- */}
         {editing && (
           <div>
-            {/* Họ tên */}
             <label style={labelStyle}>{t("Họ và tên")} *</label>
             <div style={inputWrapStyle(errors.name)}>
               <User size={16} style={iconStyle} />
@@ -379,9 +428,9 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
             </div>
             {errors.name && <div style={errStyle}>{errors.name}</div>}
 
-            {/* Email */}
             <label style={labelStyle}>
-              {t("Email")} {canEditEmail ? "*" : `(${t("không được sửa")})`}
+              {t("Email")}{" "}
+              {canEditEmail ? "*" : `(${t("không được sửa")})`}
             </label>
             <div
               style={{
@@ -400,7 +449,6 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
             </div>
             {errors.email && <div style={errStyle}>{errors.email}</div>}
 
-            {/* SĐT */}
             <label style={labelStyle}>{t("Số điện thoại")}</label>
             <div style={inputWrapStyle(errors.phone)}>
               <Phone size={16} style={iconStyle} />
@@ -413,7 +461,6 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
             </div>
             {errors.phone && <div style={errStyle}>{errors.phone}</div>}
 
-            {/* Địa chỉ */}
             <label style={labelStyle}>{t("Địa chỉ")}</label>
             <div style={inputWrapStyle()}>
               <MapPin size={16} style={iconStyle} />
@@ -428,19 +475,12 @@ export default function StaffProfile({ user, setUser, canEditEmail = false }) {
         )}
       </div>
 
-      {/* ============================================================
-          MODAL ĐỔI MẬT KHẨU
-          ============================================================ */}
       {showPwdModal && (
         <PasswordModal onClose={() => setShowPwdModal(false)} />
       )}
     </div>
   );
 }
-
-// ============================================================
-// SUB-COMPONENT: PasswordModal
-// ============================================================
 
 function PasswordModal({ onClose }) {
   const { t } = useI18n();
@@ -456,7 +496,6 @@ function PasswordModal({ onClose }) {
   const update = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  // Đóng modal khi nhấn ESC
   useEffect(() => {
     const handler = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", handler);
@@ -465,7 +504,6 @@ function PasswordModal({ onClose }) {
 
   const submit = async () => {
     setError("");
-
     if (!form.currentPassword || !form.newPassword) {
       setError(t("Nhập đầy đủ thông tin"));
       return;
@@ -521,7 +559,6 @@ function PasswordModal({ onClose }) {
           maxWidth: 460,
         }}
       >
-        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -556,7 +593,6 @@ function PasswordModal({ onClose }) {
           </button>
         </div>
 
-        {/* Error box */}
         {error && (
           <div
             style={{
@@ -572,7 +608,6 @@ function PasswordModal({ onClose }) {
           </div>
         )}
 
-        {/* Current password */}
         <label style={labelStyle}>{t("Mật khẩu hiện tại")}</label>
         <div style={inputWrapStyle()}>
           <Lock size={16} style={iconStyle} />
@@ -598,7 +633,6 @@ function PasswordModal({ onClose }) {
           </button>
         </div>
 
-        {/* New password */}
         <label style={labelStyle}>{t("Mật khẩu mới")}</label>
         <div style={inputWrapStyle()}>
           <KeyRound size={16} style={iconStyle} />
@@ -611,8 +645,9 @@ function PasswordModal({ onClose }) {
           />
         </div>
 
-        {/* Confirm password */}
-        <label style={labelStyle}>{t("Xác nhận mật khẩu mới")}</label>
+        <label style={labelStyle}>
+          {t("Xác nhận mật khẩu mới")}
+        </label>
         <div style={inputWrapStyle()}>
           <Check size={16} style={iconStyle} />
           <input
@@ -625,7 +660,6 @@ function PasswordModal({ onClose }) {
           />
         </div>
 
-        {/* Buttons */}
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button
             onClick={onClose}
@@ -663,10 +697,6 @@ function PasswordModal({ onClose }) {
     </div>
   );
 }
-
-// ============================================================
-// SUB-COMPONENT: InfoRow
-// ============================================================
 
 function InfoRow({ icon, label, value, note }) {
   return (
@@ -709,7 +739,9 @@ function InfoRow({ icon, label, value, note }) {
         >
           {label}
           {note && (
-            <span style={{ fontSize: 10, color: "#f59e0b", fontWeight: 600 }}>
+            <span
+              style={{ fontSize: 10, color: "#f59e0b", fontWeight: 600 }}
+            >
               ({note})
             </span>
           )}
@@ -728,10 +760,6 @@ function InfoRow({ icon, label, value, note }) {
     </div>
   );
 }
-
-// ============================================================
-// STYLE CONSTANTS
-// ============================================================
 
 const cardStyle = {
   background: "var(--card-bg, #fff)",

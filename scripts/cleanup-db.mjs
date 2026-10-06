@@ -14,16 +14,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_FILE = path.join(__dirname, "..", "canteen-db.json");
+const ROOT_DIR = path.join(__dirname, "..");
+const DB_FILE = path.join(ROOT_DIR, "canteen-db.json");
+
+// ✅ FIX (LỖI #11): backup ngay cạnh DB — KHÔNG dùng path.join("..", __dirname, ...)
+// trước đây tạo path lai `../full/path/file` gây ghi sai chỗ.
 const BACKUP_FILE = path.join(
-  "..",
-  __dirname,
+  ROOT_DIR,
   `canteen-db.backup-${Date.now()}.json`
 );
 
 // ---------- Load ----------
 if (!fs.existsSync(DB_FILE)) {
-  console.error("❌ Không tìm thấy canteen-db.json");
+  console.error("❌ Không tìm thấy canteen-db.json tại:", DB_FILE);
   process.exit(1);
 }
 
@@ -77,9 +80,13 @@ console.log("\n🔧 Fix #3: Encoding order status...");
 
     if (o.status !== original) {
       report.encodingFixed++;
-      console.log(`   ✅ Order #${o.id} (${o.code}): "${original}" → "${o.status}"`);
+      console.log(
+        `   ✅ Order #${o.id} (${o.code}): "${original}" → "${o.status}"`
+      );
     } else {
-      console.log(`   ⚠️  Order #${o.id} (${o.code}): "${original}" — không match → giữ nguyên`);
+      console.log(
+        `   ⚠️  Order #${o.id} (${o.code}): "${original}" — không match → giữ nguyên`
+      );
     }
   }
 });
@@ -119,12 +126,18 @@ COLLECTIONS_WITH_USER_REF.forEach(({ name, field }) => {
 if (report.orphanUsers.length === 0) {
   console.log("   ✅ Không có orphan user_id");
 } else {
-  console.log(`   ⚠️  ${report.orphanUsers.length} orphan refs (GIỮ NGUYÊN — đây là lịch sử):`);
+  console.log(
+    `   ⚠️  ${report.orphanUsers.length} orphan refs (GIỮ NGUYÊN — đây là lịch sử):`
+  );
   report.orphanUsers.slice(0, 10).forEach((k) => console.log(`      • ${k}`));
   if (report.orphanUsers.length > 10) {
-    console.log(`      ... và ${report.orphanUsers.length - 10} refs khác`);
+    console.log(
+      `      ... và ${report.orphanUsers.length - 10} refs khác`
+    );
   }
-  console.log("   💡 Khuyến nghị: thêm user id 4, 5 vào DB hoặc xóa thủ công");
+  console.log(
+    "   💡 Khuyến nghị: thêm user id 4, 5 vào DB hoặc xóa thủ công"
+  );
 }
 
 // ============================================================
@@ -132,7 +145,9 @@ if (report.orphanUsers.length === 0) {
 // ============================================================
 console.log("\n🔧 Fix #17: Attendance employee_name...");
 
-const userMap = new Map((db.users || []).map((u) => [Number(u.id), u.name]));
+const userMap = new Map(
+  (db.users || []).map((u) => [Number(u.id), u.name])
+);
 
 (db.attendances || []).forEach((a) => {
   const correctName = userMap.get(Number(a.employee_id));
@@ -140,7 +155,9 @@ const userMap = new Map((db.users || []).map((u) => [Number(u.id), u.name]));
     const original = a.employee_name;
     a.employee_name = correctName;
     report.nameFixed++;
-    console.log(`   ✅ Attendance #${a.id}: "${original}" → "${correctName}"`);
+    console.log(
+      `   ✅ Attendance #${a.id}: "${original}" → "${correctName}"`
+    );
   }
 });
 
@@ -179,7 +196,9 @@ if (gaps.length === 0) {
   console.log("   ✅ Không có gap trong voucher id");
 } else {
   console.log(`   ⚠️  ${gaps.length} gap: [${gaps.join(", ")}]`);
-  console.log("   💡 KHÔNG re-sequence vì có thể làm hỏng FK (claimed_from, order_code)");
+  console.log(
+    "   💡 KHÔNG re-sequence vì có thể làm hỏng FK (claimed_from, order_code)"
+  );
   console.log("   💡 Gap là bình thường — voucher có thể bị xóa");
 }
 

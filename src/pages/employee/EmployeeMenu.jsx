@@ -7,6 +7,7 @@
 //   - Filter: search + 3 dropdowns + category pills
 //   - Grid 3 cột food cards với 4 states: ACTIVE/LOW/OUT/PAUSED
 //   - Audit log table
+// 🔧 FIX #81: audit log dùng Intl.DateTimeFormat cố định (VN, 24h)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -21,6 +22,15 @@ import { useI18n } from "../../hooks/useI18n";
 const REFRESH_MS = 30000;
 const LOW_STOCK_THRESHOLD = 10;
 const MAX_STOCK = 40;
+
+// 🔧 FIX #81: formatter cố định cho audit log (VN timezone, 24h)
+const AUDIT_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 const CATEGORY_MAP = {
   "Cơm": "COM",
@@ -230,12 +240,8 @@ export default function EmployeeMenu() {
   // ============================================================
 
   const addAudit = useCallback((dish, action, reason, actionVariant = "neutral") => {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    // 🔧 FIX #81: dùng formatter cố định VN, 24h
+    const timeStr = AUDIT_TIME_FORMATTER.format(new Date());
     setAuditLog((log) =>
       [
         {

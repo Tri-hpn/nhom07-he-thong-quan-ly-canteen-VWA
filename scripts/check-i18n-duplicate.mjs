@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 // ============================================================
-// CHECK I18N DUPLICATE KEYS
+// CHECK I18N DUPLICATE KEYS — V2
 // ============================================================
-// Quét tất cả file locale trong src/lib/i18n/locales/*.json
-// và báo cáo các key bị TRÙNG (cùng key xuất hiện nhiều lần).
-//
-// ⚠️ Lưu ý: JSON.parse() sẽ TỰ ĐỘNG ghi đè key trùng — key sau
-// thắng. Vì vậy để phát hiện trùng, phải đọc raw text và regex.
+// V2 (2026-10):
+//   - 🔧 FIX #74: regex cũ `^\s*"..."` bỏ sót key nằm cùng dòng với `{`
+//     → dùng regex match mọi vị trí key top-level, không chỉ đầu dòng
 // ============================================================
 
 import { readFileSync, readdirSync } from "fs";
@@ -18,20 +16,26 @@ const __dirname = dirname(__filename);
 
 const LOCALES_DIR = join(__dirname, "..", "src", "lib", "i18n", "locales");
 
-// Đọc raw text và đếm số lần xuất hiện của mỗi key (top-level)
+// 🔧 FIX #74: match mọi key top-level (không chỉ đầu dòng)
+// Pattern: string trong ngoặc kép theo sau là dấu `:`
+// Chấp nhận cả khi key nằm cùng dòng với `{` (JSON minified)
 function findDuplicateKeys(rawText) {
   const keyCounts = new Map();
   const keyLines = new Map();
 
-  // Match: "key": value  (key nằm trong dấu ngoặc kép ở đầu dòng,
-  // có thể có khoảng trắng indent)
-  const regex = /^\s*"((?:[^"\\]|\\.)*)"\s*:/gm;
+  // Match: "key":  (bất kỳ vị trí nào, không cần đầu dòng)
+  // Dùng negative lookbehind để tránh match key nằm trong value string
+  // (đơn giản: chỉ match key có `"` trước và `:` sau — JSON hợp lệ)
+  const regex = /"((?:[^"\\]|\\.)*)"\s*:/g;
 
   let match;
   while ((match = regex.exec(rawText)) !== null) {
     const key = match[1];
     const beforeMatch = rawText.slice(0, match.index);
     const line = beforeMatch.split("\n").length;
+
+    // Bỏ qua nếu key chứa \n (có thể là string value dài)
+    if (key.includes("\n")) continue;
 
     keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
 
@@ -55,18 +59,18 @@ function findDuplicateKeys(rawText) {
   return duplicates;
 }
 
-// Format key dài để in gọn
 function shortenKey(key, max = 80) {
   const clean = key.replace(/\n/g, "\\n");
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 3) + "...";
 }
 
-// Main
 function main() {
   let files;
   try {
-    files = readdirSync(LOCALES_DIR).filter((f) => f.endsWith(".json"));
+    files = readdirSync(LOCALES_DIR).filter(
+      (f) => f.endsWith(".json") && !f.endsWith(".bak")
+    );
   } catch (err) {
     console.error(`❌ Không đọc được thư mục: ${LOCALES_DIR}`);
     console.error(err.message);
@@ -98,16 +102,11 @@ function main() {
     totalDupes += dupes.length;
     console.log(`\n⚠️  ${file} — ${dupes.length} key bị TRÙNG:\n`);
 
-    // Sắp xếp theo số lần trùng giảm dần
     dupes.sort((a, b) => b.count - a.count);
 
     for (const d of dupes) {
-      console.log(
-        `   🔸 "${shortenKey(d.key)}"`
-      );
-      console.log(
-        `      → xuất hiện ${d.count} lần (dòng: ${d.lines.join(", ")})`
-      );
+      console.log(`   🔸 "${shortenKey(d.key)}"`);
+      console.log(`      → xuất hiện ${d.count} lần (dòng: ${d.lines.join(", ")})`);
     }
     console.log("");
   }

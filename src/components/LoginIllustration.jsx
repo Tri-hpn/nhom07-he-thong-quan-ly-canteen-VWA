@@ -1,25 +1,16 @@
 // ============================================================
-// LOGINILLUSTRATION.JSX — Illustration cho trang Login
+// LOGINILLUSTRATION.JSX — Illustration cho trang Login (V2)
 // ============================================================
-// Bao gồm:
-//   - Background trường VWA (mái ngói đỏ, cờ, cây xanh, mây, mặt trời)
-//   - 10 nhân vật hoạt hình
-//
-// Mỗi nhân vật có động tác khác nhau khi user focus ô mật khẩu:
-//   - "che"  : giơ 2 tay che mắt
-//   - "nham" : nhắm 2 mắt (không che)
-//   - "nhay" : nháy 1 mắt (wink)
-//   - "nua"  : che 1 tay, mắt còn lại nhắm
-//   - "idle" : bình thường (chớp mắt ngẫu nhiên)
-//
-// Props:
-//   peeking: boolean — true khi user đang focus ô mật khẩu
+// V2 (2026-10):
+//   - 🔧 FIX #65: useBlink cleanup không clear timer khi unmount giữa chừng
+//                 → track timeout IDs trong mảng + clear hết khi unmount
+//   - Giữ nguyên toàn bộ illustration
 // ============================================================
 
 import { useEffect, useState } from "react";
 
 // ============================================================
-// HOOK: useBlink
+// HOOK: useBlink (V2 - FIXED)
 // ============================================================
 
 function useBlink(disabled) {
@@ -30,20 +21,33 @@ function useBlink(disabled) {
       setBlinking(false);
       return;
     }
-    let t1, t2;
+
+    // 🔧 FIX #65: track tất cả timer IDs để clear đúng cách
+    const timers = [];
+    let cancelled = false;
+
     const schedule = () => {
-      t1 = setTimeout(() => {
+      if (cancelled) return;
+      const t1 = setTimeout(() => {
+        if (cancelled) return;
         setBlinking(true);
-        t2 = setTimeout(() => {
+        const t2 = setTimeout(() => {
+          if (cancelled) return;
           setBlinking(false);
           schedule();
         }, 180);
+        timers.push(t2);
       }, 1500 + Math.random() * 4000);
+      timers.push(t1);
     };
+
     schedule();
+
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      cancelled = true;
+      // 🔧 FIX #65: clear hết timers
+      timers.forEach((id) => clearTimeout(id));
+      timers.length = 0;
     };
   }, [disabled]);
 
@@ -57,7 +61,6 @@ function useBlink(disabled) {
 function VWASchool() {
   return (
     <g opacity="0.4">
-      {/* ===== Cây bên trái ===== */}
       <g transform="translate(120, 280)">
         <rect x="-5" y="-40" width="10" height="50" fill="#78350F" />
         <circle cx="0" cy="-60" r="32" fill="#16A34A" />
@@ -66,7 +69,6 @@ function VWASchool() {
         <circle cx="0" cy="-80" r="22" fill="#22C55E" />
       </g>
 
-      {/* ===== Cây bên phải ===== */}
       <g transform="translate(680, 280)">
         <rect x="-5" y="-40" width="10" height="50" fill="#78350F" />
         <circle cx="0" cy="-60" r="32" fill="#16A34A" />
@@ -75,47 +77,38 @@ function VWASchool() {
         <circle cx="0" cy="-80" r="22" fill="#22C55E" />
       </g>
 
-      {/* ===== Cột cờ bên trái ===== */}
       <g transform="translate(240, 260)">
         <rect x="-2" y="-110" width="4" height="120" fill="#D1D5DB" />
         <polygon points="2,-108 48,-98 2,-88" fill="#DC2626" />
         <polygon points="10,-102 10,-94 18,-98" fill="#FCD34D" />
       </g>
 
-      {/* ===== Cột cờ bên phải ===== */}
       <g transform="translate(560, 260)">
         <rect x="-2" y="-110" width="4" height="120" fill="#D1D5DB" />
         <polygon points="2,-108 48,-98 2,-88" fill="#DC2626" />
         <polygon points="10,-102 10,-94 18,-98" fill="#FCD34D" />
       </g>
 
-      {/* ===== Trường VWA chính giữa ===== */}
       <g transform="translate(400, 240)">
-        {/* Mái ngói đỏ */}
         <polygon points="-140,-50 0,-100 140,-50" fill="#DC2626" />
         <polygon points="-140,-50 -130,-42 130,-42 140,-50" fill="#991B1B" />
 
-        {/* Thân trường */}
         <rect x="-130" y="-42" width="260" height="110" fill="#FEF3C7" stroke="#D97706" strokeWidth="2" />
 
-        {/* Cửa sổ tầng 1 */}
         <rect x="-110" y="-25" width="26" height="26" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
         <rect x="-75" y="-25" width="26" height="26" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
         <rect x="49" y="-25" width="26" height="26" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
         <rect x="84" y="-25" width="26" height="26" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
 
-        {/* Cửa sổ tầng 2 */}
         <rect x="-110" y="-70" width="26" height="22" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
         <rect x="-75" y="-70" width="26" height="22" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
         <rect x="49" y="-70" width="26" height="22" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
         <rect x="84" y="-70" width="26" height="22" fill="#93C5FD" stroke="#1E40AF" strokeWidth="1.5" />
 
-        {/* Cửa chính */}
         <rect x="-22" y="15" width="44" height="53" fill="#7C2D12" />
         <rect x="-22" y="15" width="22" height="53" fill="#92400E" />
         <circle cx="14" cy="45" r="2.5" fill="#FBBF24" />
 
-        {/* Bảng hiệu */}
         <rect x="-55" y="-38" width="110" height="12" fill="#1F2937" rx="2" />
         <text
           x="0"
@@ -136,20 +129,17 @@ function VWASchool() {
 function SkyBackground() {
   return (
     <g>
-      {/* Sky gradient */}
       <defs>
         <linearGradient id="loginSky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#DBEAFE" />
           <stop offset="100%" stopColor="#E0F2FE" />
         </linearGradient>
       </defs>
-	<rect x="0" y="0" width="800" height="360" fill="url(#loginSky)" />
+      <rect x="0" y="0" width="800" height="360" fill="url(#loginSky)" />
 
-      {/* Mặt trời */}
       <circle cx="730" cy="55" r="32" fill="#FEF3C7" opacity="0.6" />
       <circle cx="730" cy="55" r="22" fill="#FCD34D" opacity="0.9" />
 
-      {/* Mây */}
       <g fill="#FFFFFF" opacity="0.8">
         <ellipse cx="120" cy="55" rx="42" ry="18" />
         <ellipse cx="150" cy="48" rx="30" ry="22" />
@@ -164,9 +154,8 @@ function SkyBackground() {
         <ellipse cx="400" cy="36" rx="22" ry="16" />
       </g>
 
-      {/* Ground */}
       <rect x="0" y="360" width="800" height="60" fill="#BBF7D0" />
-	<rect x="0" y="360" width="800" height="3" fill="#86EFAC" />
+      <rect x="0" y="360" width="800" height="3" fill="#86EFAC" />
     </g>
   );
 }
@@ -175,15 +164,13 @@ function SkyBackground() {
 // CHARACTERS
 // ============================================================
 
-// Helper: lấy trạng thái mắt dựa trên mode
 function getEyeMode(mode, blinking) {
   if (mode === "idle") {
     return blinking ? "closed" : "open";
   }
-  return mode; // "che" | "nham" | "nhay" | "nua"
+  return mode;
 }
 
-// --- 1. ROBOT (xanh dương) — react: che ---
 function Robot({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -233,7 +220,6 @@ function Robot({ mode }) {
   );
 }
 
-// --- 2. CAT (mèo vàng) — react: nham ---
 function Cat({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -244,22 +230,17 @@ function Cat({ mode }) {
       <line x1="-10" y1="0" x2="-10" y2="-18" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" />
       <line x1="10" y1="0" x2="10" y2="-18" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" />
 
-      {/* Tail */}
       <path d="M 22 -25 Q 42 -30 45 -55 Q 46 -70 38 -72" stroke="#F59E0B" strokeWidth="6" fill="none" strokeLinecap="round" />
 
-      {/* Body */}
       <ellipse cx="0" cy="-30" rx="24" ry="22" fill="#FBBF24" />
 
-      {/* Head */}
       <circle cx="0" cy="-70" r="26" fill="#FBBF24" />
 
-      {/* Ears */}
       <polygon points="-22,-85 -18,-105 -6,-90" fill="#FBBF24" stroke="#F59E0B" strokeWidth="1.5" />
       <polygon points="-18,-88 -15,-100 -8,-90" fill="#FCA5A5" />
       <polygon points="22,-85 18,-105 6,-90" fill="#FBBF24" stroke="#F59E0B" strokeWidth="1.5" />
       <polygon points="18,-88 15,-100 8,-90" fill="#FCA5A5" />
 
-      {/* Eyes */}
       {closed ? (
         <>
           <path d="M -14 -72 Q -9 -76 -4 -72" stroke="#1F2937" strokeWidth="2" fill="none" strokeLinecap="round" />
@@ -272,12 +253,10 @@ function Cat({ mode }) {
         </>
       )}
 
-      {/* Nose + mouth */}
       <polygon points="0,-62 -3,-59 3,-59" fill="#EC4899" />
       <path d="M 0 -59 Q -4 -54 -8 -56" stroke="#1F2937" strokeWidth="1.5" fill="none" strokeLinecap="round" />
       <path d="M 0 -59 Q 4 -54 8 -56" stroke="#1F2937" strokeWidth="1.5" fill="none" strokeLinecap="round" />
 
-      {/* Whiskers */}
       <line x1="-22" y1="-62" x2="-34" y2="-66" stroke="#1F2937" strokeWidth="1.2" strokeLinecap="round" />
       <line x1="-22" y1="-59" x2="-34" y2="-59" stroke="#1F2937" strokeWidth="1.2" strokeLinecap="round" />
       <line x1="22" y1="-62" x2="34" y2="-66" stroke="#1F2937" strokeWidth="1.2" strokeLinecap="round" />
@@ -286,7 +265,6 @@ function Cat({ mode }) {
   );
 }
 
-// --- 3. PINK SQUARE — react: che ---
 function PinkSquare({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -338,7 +316,6 @@ function PinkSquare({ mode }) {
   );
 }
 
-// --- 4. GREEN BLOB — react: nhay (wink) ---
 function GreenBlob({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -386,7 +363,6 @@ function GreenBlob({ mode }) {
   );
 }
 
-// --- 5. ORANGE CIRCLE — react: nua (che 1 tay) ---
 function OrangeCircle({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -443,7 +419,6 @@ function OrangeCircle({ mode }) {
   );
 }
 
-// --- 6. STAR (vàng, giữa) — react: che ---
 function Star({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -492,7 +467,6 @@ function Star({ mode }) {
   );
 }
 
-// --- 7. PURPLE TRIANGLE — react: nham ---
 function PurpleTriangle({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -536,7 +510,6 @@ function PurpleTriangle({ mode }) {
   );
 }
 
-// --- 8. DOG (nâu) — react: che ---
 function Dog({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -548,20 +521,15 @@ function Dog({ mode }) {
       <line x1="-10" y1="0" x2="-10" y2="-20" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" />
       <line x1="10" y1="0" x2="10" y2="-20" stroke="#1F2937" strokeWidth="3" strokeLinecap="round" />
 
-      {/* Tail */}
       <path d="M 22 -25 Q 35 -35 35 -50" stroke="#92400E" strokeWidth="6" fill="none" strokeLinecap="round" />
 
-      {/* Body */}
       <ellipse cx="0" cy="-30" rx="25" ry="22" fill="#D97706" />
 
-      {/* Head */}
       <circle cx="0" cy="-70" r="26" fill="#D97706" />
 
-      {/* Ears rủ xuống */}
       <ellipse cx="-24" cy="-62" rx="8" ry="18" fill="#92400E" />
       <ellipse cx="24" cy="-62" rx="8" ry="18" fill="#92400E" />
 
-      {/* Eyes */}
       {closed ? (
         <>
           <path d="M -14 -72 Q -9 -76 -4 -72" stroke="#1F2937" strokeWidth="2" fill="none" strokeLinecap="round" />
@@ -574,7 +542,6 @@ function Dog({ mode }) {
         </>
       )}
 
-      {/* Mũi + lưỡi */}
       <ellipse cx="0" cy="-60" rx="4" ry="3" fill="#1F2937" />
       <path d="M 0 -57 L 0 -52" stroke="#1F2937" strokeWidth="1.5" />
       <path d="M -4 -52 Q 0 -46 4 -52" fill="#F472B6" stroke="#1F2937" strokeWidth="1" />
@@ -594,7 +561,6 @@ function Dog({ mode }) {
   );
 }
 
-// --- 9. CUPCAKE — react: nua ---
 function Cupcake({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -603,7 +569,6 @@ function Cupcake({ mode }) {
 
   return (
     <g transform="translate(700, 320)">
-      {/* Đế bánh */}
       <polygon
         points="-25,-25 25,-25 18,0 -18,0"
         fill="#D97706"
@@ -611,20 +576,16 @@ function Cupcake({ mode }) {
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
-      {/* Sọc đế */}
       <line x1="-22" y1="-18" x2="22" y2="-18" stroke="#B45309" strokeWidth="1" />
       <line x1="-20" y1="-11" x2="20" y2="-11" stroke="#B45309" strokeWidth="1" />
 
-      {/* Kem xoáy */}
       <ellipse cx="0" cy="-30" rx="28" ry="14" fill="#F472B6" />
       <ellipse cx="0" cy="-42" rx="22" ry="12" fill="#F9A8D4" />
       <ellipse cx="0" cy="-52" rx="15" ry="9" fill="#FBCFE8" />
 
-      {/* Cherry */}
       <circle cx="0" cy="-63" r="6" fill="#DC2626" />
       <line x1="0" y1="-69" x2="3" y2="-75" stroke="#166534" strokeWidth="1.5" strokeLinecap="round" />
 
-      {/* Eyes (trên kem) */}
       {isHalf ? (
         <>
           <circle cx="-8" cy="-42" r="2.5" fill="#1F2937" />
@@ -642,10 +603,8 @@ function Cupcake({ mode }) {
         </>
       )}
 
-      {/* Miệng cười */}
       <path d="M -5 -35 Q 0 -30 5 -35" stroke="#1F2937" strokeWidth="1.5" fill="none" strokeLinecap="round" />
 
-      {/* Tay */}
       {isHalf ? (
         <>
           <line x1="-28" y1="-30" x2="-8" y2="-42" stroke="#1F2937" strokeWidth="2.5" strokeLinecap="round" />
@@ -666,7 +625,6 @@ function Cupcake({ mode }) {
   );
 }
 
-// --- 10. GHOST (bay trên) — react: nhay ---
 function Ghost({ mode }) {
   const blinking = useBlink(mode !== "idle");
   const eyeState = getEyeMode(mode, blinking);
@@ -705,8 +663,6 @@ function Ghost({ mode }) {
 // ============================================================
 
 export default function CuteCharacters({ peeking }) {
-  // Mỗi nhân vật có reaction riêng khi peeking=true
-  // Khi peeking=false tất cả đều "idle"
   const mode = (name) => (peeking ? name : "idle");
 
   return (
@@ -716,13 +672,9 @@ export default function CuteCharacters({ peeking }) {
       style={{ maxWidth: 800, display: "block" }}
       aria-hidden="true"
     >
-      {/* Layer 1: Sky + mây + mặt trời + đất */}
       <SkyBackground />
-
-      {/* Layer 2: Trường VWA + cây + cờ */}
       <VWASchool />
 
-      {/* Layer 3: Nhân vật */}
       <Ghost mode={mode("nhay")} />
       <Robot mode={mode("che")} />
       <Cat mode={mode("nham")} />

@@ -1,31 +1,26 @@
 // ============================================================
-// REGISTER.JSX — Trang đăng ký tài khoản (style Login V8)
+// REGISTER.JSX — Đăng ký tài khoản (style Login V8)
 // ============================================================
-// ✅ FIX #1: File cũ bị copy lộn từ ForgotPassword.jsx
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-//
-// Layout: 2 cột giống Login.jsx
-//   - Left: brand + illustration + caption
-//   - Right: form (họ tên, email, SĐT, mật khẩu, xác nhận, điều khoản)
-//
-// Sau khi đăng ký thành công:
-//   - Nếu nhận prop `onRegister` → gọi callback (App state cập nhật ngay)
-//   - Nếu không → setToken + window.location.href = "/" để App tự auto-login
+// V2: thêm guard res.user, không đổi logic khác
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Eye, EyeOff, LockKeyhole, Mail, ArrowRight, Loader2, User as UserIcon, Phone, Check,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  ArrowRight,
+  Loader2,
+  User as UserIcon,
+  Phone,
+  Check,
 } from "lucide-react";
 import { api, setToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
 import { toast } from "../components/Effects";
 import CuteCharacters from "../components/LoginIllustration";
-
-// ============================================================
-// OAUTH HELPERS (đồng bộ với Login.jsx)
-// ============================================================
 
 function startGoogleOAuth(t) {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -33,12 +28,10 @@ function startGoogleOAuth(t) {
     toast(t("Chưa cấu hình Google Client ID"), "error");
     return;
   }
-
   const redirectUri = encodeURIComponent(
     window.location.origin + "/auth/google/callback"
   );
   const scope = encodeURIComponent("openid email profile");
-
   const url =
     `https://accounts.google.com/o/oauth2/v2/auth?` +
     `client_id=${clientId}` +
@@ -46,7 +39,6 @@ function startGoogleOAuth(t) {
     `&response_type=code` +
     `&scope=${scope}` +
     `&prompt=select_account`;
-
   window.location.href = url;
 }
 
@@ -56,30 +48,22 @@ function startFacebookOAuth(t) {
     toast(t("Chưa cấu hình Facebook App ID"), "error");
     return;
   }
-
   const redirectUri = encodeURIComponent(
     window.location.origin + "/auth/facebook/callback"
   );
-
   const url =
     `https://www.facebook.com/v18.0/dialog/oauth?` +
     `client_id=${appId}` +
     `&redirect_uri=${redirectUri}` +
     `&scope=email,public_profile` +
     `&response_type=code`;
-
   window.location.href = url;
 }
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 
 export default function Register({ onRegister }) {
   const { t } = useI18n();
   const navigate = useNavigate();
 
-  // ---------- Form fields ----------
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -87,7 +71,6 @@ export default function Register({ onRegister }) {
   const [confirm, setConfirm] = useState("");
   const [agree, setAgree] = useState(false);
 
-  // ---------- UI state ----------
   const [show, setShow] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState("");
@@ -98,33 +81,27 @@ export default function Register({ onRegister }) {
     if (error) setError("");
   };
 
-  // ---------- Validate ----------
   const validate = () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPhone = phone.trim();
 
     if (!trimmedName) return t("Vui lòng nhập họ tên");
-
     if (!trimmedEmail) return t("Vui lòng nhập email");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       return t("Email không hợp lệ");
     }
-
     if (trimmedPhone && !/^[0-9]{10,11}$/.test(trimmedPhone)) {
       return t("SĐT phải 10-11 số");
     }
-
     if (!password) return t("Vui lòng nhập mật khẩu");
     if (password.length < 6) return t("Mật khẩu phải từ 6 ký tự");
     if (password !== confirm) return t("Xác nhận mật khẩu không khớp");
-
     if (!agree) return t("Vui lòng đồng ý điều khoản để tiếp tục");
 
     return null;
   };
 
-  // ---------- Submit ----------
   const submit = async (e) => {
     if (e) e.preventDefault();
     if (loading) return;
@@ -152,21 +129,21 @@ export default function Register({ onRegister }) {
 
       setToken(res.token);
 
+      // ✅ Guard: nếu BE trả token nhưng thiếu user → không crash
+      const newUser = res.user || { email: email.trim().toLowerCase() };
+
       toast(
         t("Đăng ký thành công! Chào mừng {name}").replace(
           "{name}",
-          res.user?.name || name.trim()
+          newUser.name || name.trim()
         ),
         "success"
       );
 
-      // Ưu tiên callback từ App (giữ state, không cần reload)
       if (typeof onRegister === "function") {
-        onRegister(res.user);
-        // Điều hướng về trang chủ customer
+        onRegister(newUser);
         navigate("/customer", { replace: true });
       } else {
-        // Fallback: reload để App auto-login từ token
         window.location.href = "/";
       }
     } catch (err) {
@@ -177,13 +154,11 @@ export default function Register({ onRegister }) {
     }
   };
 
-  // ---------- Bubble text theo trạng thái peeking ----------
   const bubbleText = useMemo(() => {
     if (peeking) return t("Đừng nhìn mật khẩu nhé! 🙈");
     return t("Tạo tài khoản để đặt món cùng Canteen VWA! 🍽️");
   }, [peeking, t]);
 
-  // ---------- Auto scroll to top khi mount (fix mobile) ----------
   useEffect(() => {
     try {
       window.scrollTo(0, 0);
@@ -192,7 +167,6 @@ export default function Register({ onRegister }) {
 
   return (
     <div className="v8-login-page">
-      {/* ============ LEFT: BRAND + ILLUSTRATION ============ */}
       <section className="v8-login-left">
         <div className="v8-login-brand">
           <div className="v8-brand-mark">C</div>
@@ -201,29 +175,24 @@ export default function Register({ onRegister }) {
             <small>{t("HỆ THỐNG QUẢN LÝ")}</small>
           </div>
         </div>
-
         <div className="v8-illustration-wrap">
           <div className="v8-illustration-inner">
             <div className="v8-speech-bubble">{bubbleText}</div>
             <CuteCharacters peeking={peeking} />
           </div>
         </div>
-
         <div className="v8-left-caption">
           <b>{t("Chào mừng đến Canteen VWA")}</b>
           <span>{t("Đặt món nhanh chóng, tiện lợi mỗi ngày.")}</span>
         </div>
       </section>
 
-      {/* ============ RIGHT: FORM ============ */}
       <main className="v8-login-right">
         <div className="v8-form-inner">
-          {/* Logo + Tabs */}
           <div className="v8-form-top">
             <div className="v8-form-logo">
               <div className="v8-form-logo-mark">C</div>
             </div>
-
             <nav className="v8-tabs" aria-label={t("Chuyển trang")}>
               <Link to="/" className="v8-tab">
                 {t("Đăng nhập")}
@@ -232,18 +201,14 @@ export default function Register({ onRegister }) {
             </nav>
           </div>
 
-          {/* Heading */}
           <h1 className="v8-form-title">{t("Tạo tài khoản mới")}</h1>
           <p className="v8-form-subtitle">
             {t("Đăng ký miễn phí — chỉ mất 30 giây.")}
           </p>
 
-          {/* Error */}
           {error && <div className="v8-error-box">{error}</div>}
 
-          {/* Form */}
           <form onSubmit={submit} autoComplete="off">
-            {/* Họ tên */}
             <label className="v8-label">{t("Họ và tên")} *</label>
             <div className="v8-input-wrap">
               <UserIcon size={16} className="v8-input-icon" />
@@ -262,7 +227,6 @@ export default function Register({ onRegister }) {
               />
             </div>
 
-            {/* Email */}
             <label className="v8-label">{t("Email")} *</label>
             <div className="v8-input-wrap">
               <Mail size={16} className="v8-input-icon" />
@@ -282,7 +246,6 @@ export default function Register({ onRegister }) {
               />
             </div>
 
-            {/* SĐT (optional) */}
             <label className="v8-label">
               {t("Số điện thoại")}{" "}
               <span
@@ -310,7 +273,6 @@ export default function Register({ onRegister }) {
               />
             </div>
 
-            {/* Mật khẩu */}
             <label className="v8-label">{t("Mật khẩu")} *</label>
             <div className="v8-input-wrap">
               <LockKeyhole size={16} className="v8-input-icon" />
@@ -341,8 +303,9 @@ export default function Register({ onRegister }) {
               </button>
             </div>
 
-            {/* Xác nhận mật khẩu */}
-            <label className="v8-label">{t("Xác nhận mật khẩu")} *</label>
+            <label className="v8-label">
+              {t("Xác nhận mật khẩu")} *
+            </label>
             <div className="v8-input-wrap">
               <Check size={16} className="v8-input-icon" />
               <input
@@ -375,7 +338,6 @@ export default function Register({ onRegister }) {
               </button>
             </div>
 
-            {/* Điều khoản */}
             <label className="v8-check">
               <input
                 type="checkbox"
@@ -399,7 +361,6 @@ export default function Register({ onRegister }) {
               </span>
             </label>
 
-            {/* Submit */}
             <button
               type="submit"
               className="v8-cta"
@@ -419,12 +380,10 @@ export default function Register({ onRegister }) {
             </button>
           </form>
 
-          {/* Divider */}
           <div className="v8-divider">
             <span>{t("Hoặc đăng ký với")}</span>
           </div>
 
-          {/* Social */}
           <div className="v8-socials">
             <button
               type="button"
@@ -472,7 +431,6 @@ export default function Register({ onRegister }) {
             </button>
           </div>
 
-          {/* Link sang Login */}
           <p className="v8-bottom-text">
             {t("Đã có tài khoản?")}{" "}
             <Link to="/">{t("Đăng nhập ngay")}</Link>
@@ -486,15 +444,12 @@ export default function Register({ onRegister }) {
           to   { transform: rotate(360deg); }
         }
         .spin { animation: spin 1s linear infinite; }
-
         .v8-illustration-inner svg circle,
         .v8-illustration-inner svg path,
         .v8-illustration-inner svg line,
         .v8-illustration-inner svg ellipse {
           transition: all 0.2s ease;
         }
-
-        /* Đảm bảo .v8-check label hiển thị đúng trong trang Register */
         .v8-check {
           display: flex;
           align-items: flex-start;

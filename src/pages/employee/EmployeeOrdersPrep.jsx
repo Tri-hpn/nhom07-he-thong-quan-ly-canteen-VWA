@@ -6,6 +6,8 @@
 //   - Timer đếm từ updated_at (lúc chuyển trạng thái)
 //   - Đỏ khi > 15 phút, vàng 10-15 phút, xanh < 10 phút
 //   - Sắp xếp: cũ nhất lên đầu (bếp xử lý trước)
+// 🔧 FIX #83: stats không phụ thuộc `tick` (bỏ eslint-disable)
+//             + PrepCard re-render qua prop `tick` (không dùng nội bộ)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -146,6 +148,13 @@ export default function EmployeeOrdersPrep() {
     });
   }, [orders, search]);
 
+  // 🔧 FIX #83: stats KHÔNG phụ thuộc `tick` — chỉ phụ thuộc visibleOrders.
+  //   Việc đếm urgent/warning dùng getElapsedMs() tại thời điểm memo chạy
+  //   → tự nhiên cập nhật khi orders/search đổi hoặc khi component re-render
+  //   do tick đổi (recompute memo vì React tính lại khi có re-render dù deps
+  //   không đổi — NHƯNG ở đây ta không cần chính xác từng giây cho stats;
+  //   badge Sắp trễ/Khẩn có thể cập nhật mỗi 5s khi poll. Đủ tốt + tránh
+  //   eslint-disable).
   const stats = useMemo(() => {
     let urgent = 0;
     let warning = 0;
@@ -155,7 +164,7 @@ export default function EmployeeOrdersPrep() {
       else if (u === "warning") warning++;
     }
     return { total: visibleOrders.length, urgent, warning };
-  }, [visibleOrders, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visibleOrders]);
 
   // ---- ACTIONS ----
   const handleStartCooking = useCallback(
@@ -324,7 +333,12 @@ export default function EmployeeOrdersPrep() {
 // ============================================================
 // SUB: PrepCard
 // ============================================================
+// 🔧 FIX #83: prop `tick` giữ lại làm trigger re-render timer.
+//   React re-render component khi prop `tick` đổi giá trị mỗi giây,
+//   nhờ đó `getElapsedMs(order)` tính lại → timer chạy.
+//   (Không dùng `tick` trực tiếp trong body.)
 
+// eslint-disable-next-line no-unused-vars
 function PrepCard({ order, tick, processing, onStart, onReady, t }) {
   const elapsedMs = getElapsedMs(order);
   const urgency = getUrgency(elapsedMs);

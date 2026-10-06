@@ -1,171 +1,227 @@
 // ============================================================
-// I18N CORE — Source-text based, không cần key thủ công
+// I18N CORE — Engine đa ngôn ngữ cho Canteen VWA
 // ============================================================
-// Nguyên tắc:
-//   1. Tiếng Việt là SOURCE OF TRUTH (viết trực tiếp trong code)
-//   2. Key = chính câu tiếng Việt (không slugify)
-//   3. Load locale dynamic import → code-split
-//   4. Fallback: thiếu dịch → hiện tiếng Việt (không lỗi)
-//   5. Hỗ trợ placeholder + pluralization đơn giản
+// - Nguồn: `locales/_source.json` (VI)
+// - Bản dịch: `locales/en.json`, `ja.json`, `ko.json`, `zh.json`
+// - `t(source, vars)`: tra bản dịch theo lang hiện tại
+//   + Placeholder `{name}`, `{n}`... thay bằng vars
+//   + Fallback về source nếu thiếu bản dịch
+// - `setLang`: đổi lang + dispatch "language-change" event
+//   → Topbar.jsx / CustomerProfile.jsx đã listen event này
+// 🔧 FIX #71: initI18n set ready ĐỒNG BỘ (dict đã import tĩnh),
+//             guard chống gắn listener 2 lần
 // ============================================================
 
-import { LANGUAGES, DEFAULT_LANG, STORAGE_KEY } from "./config";
+import en from "./locales/en.json";
+import ja from "./locales/ja.json";
+import ko from "./locales/ko.json";
+import zh from "./locales/zh.json";
+
+// ---------- Constants ----------
+
+const LANG_KEY = "vwa_lang";
+const DEFAULT_LANG = "vi";
+
+export const AVAILABLE_LANGS = [
+  { code: "vi", flag: "🇻🇳", name: "Tiếng Việt" },
+  { code: "en", flag: "🇺🇸", name: "English" },
+  { code: "ja", flag: "🇯🇵", name: "日本語" },
+  { code: "ko", flag: "🇰🇷", name: "한국어" },
+  { code: "zh", flag: "🇨🇳", name: "中文" },
+];
+
+// ---------- Dictionaries ----------
+
+const DICTS = {
+  vi: null, // VI = source, không cần dict
+  en,
+  ja,
+  ko,
+  zh,
+};
 
 // ---------- State ----------
-const localeCache = new Map();
-let currentLang = readStoredLang();
-let currentDict = {};
+
+let currentLang = DEFAULT_LANG;
 let ready = false;
+let inited = false; // 🔧 FIX #71: guard chống init 2 lần
+
 const listeners = new Set();
 
-// ---------- Đọc ngôn ngữ đã lưu ----------
-function readStoredLang() {
-  if (typeof window === "undefined") return DEFAULT_LANG;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && LANGUAGES.some((l) => l.code === saved)) return saved;
-
-    const browser = (navigator.language || "").split("-")[0].toLowerCase();
-    if (browser && LANGUAGES.some((l) => l.code === browser)) return browser;
-  } catch {}
-  return DEFAULT_LANG;
-}
-
-// ---------- Load locale (dynamic import → code split) ----------
-async function loadLocale(lang) {
-  if (localeCache.has(lang)) return localeCache.get(lang);
-
-  try {
-    const mod = await import(`./locales/${lang}.json`);
-    const dict = mod.default || mod;
-    localeCache.set(lang, dict);
-    return dict;
-  } catch (e) {
-    if (import.meta.env?.DEV) {
-      console.warn(`[i18n] Không load được locale "${lang}"`, e);
+// Đọc lang đã lưu — đồng bộ với Topbar/CustomerProfile dùng key "vwa_lang"
+try {
+  if (typeof window !== "undefined") {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved && DICTS[saved] !== undefined) {
+      currentLang = saved;
+    } else if (saved && !AVAILABLE_LANGS.some((l) => l.code === saved)) {
+      currentLang = DEFAULT_LANG;
     }
-    return {};
   }
+} catch {
+  currentLang = DEFAULT_LANG;
 }
 
-// ---------- Interpolation: "Xin chào {name}" ----------
-function interpolate(str, vars) {
-  if (!vars || typeof str !== "string") return str;
-  return str.replace(/\{(\w+)\}/g, (_, k) =>
-    vars[k] !== undefined ? String(vars[k]) : `{${k}}`
-  );
-}
+// ---------- Public API ----------
 
-// ---------- Pluralization: "1 item|{n} items" ----------
-function pluralize(translated, vars) {
-  if (!vars || vars.n === undefined) return translated;
-  if (!translated.includes("|")) return translated;
-
-  const [plural, singular] = translated.split("|").map((s) => s.trim());
-  const n = Number(vars.n);
-  return n === 1 ? singular : plural;
-}
-
-// ---------- Core translate ----------
-export function t(source, vars) {
-  if (!source) return "";
-
-  // VI: trả nguyên gốc (source of truth)
-  if (currentLang === DEFAULT_LANG) {
-    return interpolate(source, vars);
-  }
-
-  // Tra dict
-  const translated = currentDict[source];
-
-  // Fallback: thiếu → giữ VI
-  if (!translated) {
-    if (import.meta.env?.DEV) {
-      console.warn(`[i18n] Missing "${currentLang}": "${source}"`);
-    }
-    return interpolate(source, vars);
-  }
-
-  const withPlural = pluralize(translated, vars);
-  return interpolate(withPlural, vars);
-}
-
-// ---------- Đổi ngôn ngữ ----------
-export async function setLang(lang) {
-  if (!LANGUAGES.some((l) => l.code === lang)) {
-    console.warn(`[i18n] Ngôn ngữ không hợp lệ: "${lang}"`);
-    return;
-  }
-  if (lang === currentLang && ready) return;
-
-  const dict = await loadLocale(lang);
-  currentLang = lang;
-  currentDict = dict;
-  ready = true;
-
-  try {
-    localStorage.setItem(STORAGE_KEY, lang);
-    document.documentElement.lang = lang;
-    const meta = LANGUAGES.find((l) => l.code === lang);
-    document.documentElement.dir = meta?.dir || "ltr";
-  } catch {}
-
-  listeners.forEach((fn) => {
-    try { fn(lang); } catch {}
-  });
-}
-
-// ---------- Init ----------
-export async function initI18n() {
-  const dict = await loadLocale(currentLang);
-  currentDict = dict;
-  ready = true;
-  return currentLang;
-}
-
-// ---------- Subscribe ----------
-export function onLangChange(fn) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-// ---------- Getters ----------
 export function getLang() {
   return currentLang;
-}
-
-export function getAvailableLangs() {
-  return LANGUAGES;
 }
 
 export function isReady() {
   return ready;
 }
 
-// ---------- Format helpers (dùng locale hiện tại) ----------
-export function formatNumber(n, opts) {
-  try {
-    return new Intl.NumberFormat(currentLang, opts).format(n);
-  } catch {
-    return String(n);
-  }
+export function getAvailableLangs() {
+  return AVAILABLE_LANGS;
 }
 
-export function formatDate(date, opts) {
-  try {
-    return new Intl.DateTimeFormat(currentLang, opts).format(new Date(date));
-  } catch {
-    return String(date);
-  }
+/**
+ * Subscribe sự kiện đổi ngôn ngữ.
+ * @param {(lang:string)=>void} cb
+ * @returns {() => void} unsubscribe
+ */
+export function onLangChange(cb) {
+  if (typeof cb !== "function") return () => {};
+  listeners.add(cb);
+  return () => listeners.delete(cb);
 }
 
-export function formatCurrency(n, currency = "VND") {
-  try {
-    return new Intl.NumberFormat(currentLang, {
-      style: "currency",
-      currency,
-    }).format(n);
-  } catch {
-    return String(n) + " " + currency;
+/**
+ * Thay placeholder dạng `{name}`, `{n}`, `{amount}` trong text.
+ */
+function applyVars(text, vars) {
+  if (!vars || typeof vars !== "object") return text;
+  let out = text;
+  for (const key of Object.keys(vars)) {
+    const re = new RegExp(`\\{${key}\\}`, "g");
+    out = out.replace(re, String(vars[key]));
   }
+  return out;
 }
+
+/**
+ * Dịch 1 câu.
+ * @param {string} source Text gốc (tiếng Việt).
+ * @param {object} [vars]  Placeholder values.
+ * @returns {string}
+ */
+export function t(source, vars) {
+  if (source === null || source === undefined) return "";
+  const key = String(source);
+
+  // VI → trả nguyên
+  if (currentLang === "vi") {
+    return applyVars(key, vars);
+  }
+
+  const dict = DICTS[currentLang];
+  const translated = dict && dict[key];
+
+  // Có bản dịch thật (không phải self-ref)
+  if (
+    typeof translated === "string" &&
+    translated.length > 0 &&
+    translated !== key
+  ) {
+    return applyVars(translated, vars);
+  }
+
+  // Fallback về source
+  return applyVars(key, vars);
+}
+
+/**
+ * Đổi ngôn ngữ. Phát event "language-change" để các component đồng bộ
+ * (Topbar, CustomerProfile, ChatBotWidget... đã listen event này).
+ * @param {string} lang
+ */
+export function setLang(lang) {
+  if (!lang || typeof lang !== "string") return;
+  if (!AVAILABLE_LANGS.some((l) => l.code === lang)) return;
+  if (lang === currentLang) {
+    // Vẫn phát event để UI re-sync (Topbar đọc localStorage)
+    try {
+      window.dispatchEvent(
+        new CustomEvent("language-change", { detail: { lang } })
+      );
+    } catch {}
+    return;
+  }
+
+  currentLang = lang;
+
+  try {
+    localStorage.setItem(LANG_KEY, lang);
+  } catch {}
+
+  // Notify internal listeners
+  listeners.forEach((cb) => {
+    try {
+      cb(lang);
+    } catch (e) {
+      console.error("[i18n] listener error:", e);
+    }
+  });
+
+  // Notify window listeners (Topbar, CustomerProfile, ...)
+  try {
+    window.dispatchEvent(
+      new CustomEvent("language-change", { detail: { lang } })
+    );
+  } catch {}
+}
+
+/**
+ * Khởi tạo i18n. Gọi 1 lần ở main.jsx.
+ *
+ * 🔧 FIX #71: dict đã import tĩnh (không fetch) → set `ready = true`
+ *   ĐỒNG BỘ trước khi return. Promise trả về chỉ để tương thích
+ *   API async của main.jsx (await initI18n()).
+ *   Guard `inited` tránh gắn listener 2 lần nếu gọi nhiều lần.
+ */
+export function initI18n() {
+  // 🔧 FIX #71: set ready NGAY (sync) — dict đã có sẵn, không cần chờ
+  ready = true;
+
+  // 🔧 FIX #71: chỉ gắn listener 1 lần duy nhất
+  if (inited) return Promise.resolve(true);
+  inited = true;
+
+  // Đồng bộ khi tab khác đổi lang
+  try {
+    window.addEventListener("storage", (e) => {
+      if (e.key !== LANG_KEY || !e.newValue) return;
+      if (!AVAILABLE_LANGS.some((l) => l.code === e.newValue)) return;
+      if (e.newValue === currentLang) return;
+      currentLang = e.newValue;
+      listeners.forEach((cb) => {
+        try {
+          cb(currentLang);
+        } catch {}
+      });
+    });
+  } catch {}
+
+  // Đồng bộ khi Topbar/CustomerProfile dispatch "language-change"
+  try {
+    window.addEventListener("language-change", (e) => {
+      const next = e?.detail?.lang;
+      if (!next || next === currentLang) return;
+      if (!AVAILABLE_LANGS.some((l) => l.code === next)) return;
+      currentLang = next;
+      try {
+        localStorage.setItem(LANG_KEY, next);
+      } catch {}
+      listeners.forEach((cb) => {
+        try {
+          cb(currentLang);
+        } catch {}
+      });
+    });
+  } catch {}
+
+  return Promise.resolve(true);
+}
+
+export default { t, getLang, setLang, initI18n, onLangChange };

@@ -1,9 +1,11 @@
 // ============================================================
-// TOPBAR.JSX — Top navigation cho Customer (V2 - design mới)
+// TOPBAR.JSX — Top navigation cho Customer (V4 - FIXED + i18n)
 // ============================================================
-// ✅ GIỮ NGUYÊN: logic cart badge, order count, user, logout
-// 🎨 THAY ĐỔI: layout 2 rows theo design mới
-// ✅ FIX: Dropdown profile gọn lại — chỉ Hồ sơ / Ngôn ngữ / Theme / Logout
+// V4 (2026-10):
+//   - 🔧 FIX #34: readStoredTheme race condition
+//                 - Sync dark mode DOM + localStorage chạy TRƯỚC
+//                 - Sync state sau khi DOM đã update (dùng queueMicrotask)
+//   - Giữ nguyên logic còn lại
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -16,22 +18,18 @@ import {
 import { api } from "../api";
 import { useI18n } from "../hooks/useI18n";
 
-// ============================================================
-// CONSTANTS
-// ============================================================
-
 const CART_KEY = "canteen_cart";
 const ORDERS_SEEN_KEY = "orders_last_seen";
+const LANG_KEY = "vwa_lang";
+const THEME_KEY = "vwa_theme";
 const POLL_MS = 30000;
 const BADGE_MAX = 99;
 
-// Ngôn ngữ hỗ trợ — đồng bộ với LANGUAGES bên CustomerProfile
 const LANGUAGES = [
   { code: "vi", flag: "🇻🇳", label: "Tiếng Việt" },
   { code: "en", flag: "🇺🇸", label: "English" },
 ];
 
-// Main nav items (desktop)
 const NAV_ITEMS = [
   { key: "home",       label: "Khám phá",    icon: Home,            path: "/customer/home" },
   { key: "menu",       label: "Thực đơn",    icon: UtensilsCrossed, path: "/customer/menu" },
@@ -47,10 +45,6 @@ const ACTIVE_ORDER_STATUSES = [
   "Đang chuẩn bị",
   "Sẵn sàng nhận",
 ];
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function getInitials(name) {
   if (!name) return "VWA";
@@ -74,17 +68,41 @@ function readCartCount() {
   }
 }
 
+function readStoredLang() {
+  if (typeof window === "undefined") return "vi";
+  try {
+    return localStorage.getItem(LANG_KEY) || "vi";
+  } catch {
+    return "vi";
+  }
+}
+
+// 🔧 FIX #34: đọc theme từ localStorage TRƯỚC, fallback DOM class
+function readStoredTheme() {
+  if (typeof document === "undefined") return false;
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark") return true;
+    if (saved === "light") return false;
+    // fallback DOM
+    return document.documentElement.classList.contains("dark-mode");
+  } catch {
+    return false;
+  }
+}
+
 function isPathActive(currentPath, targetPath) {
   if (!currentPath || !targetPath) return false;
   if (currentPath === targetPath) return true;
   return currentPath.startsWith(targetPath + "/");
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
-export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu }) {
+export default function CustomerTopbar({
+  user,
+  cart,
+  onLogout,
+  onOpenMobileMenu,
+}) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,28 +113,18 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
-  // Ngôn ngữ hiện tại — đọc từ localStorage (CustomerProfile ghi vào đây)
-  const [currentLang, setCurrentLang] = useState(() => {
-    if (typeof window === "undefined") return "vi";
-    return localStorage.getItem("vwa_lang") || "vi";
-  });
-
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof document === "undefined") return false;
-    return document.documentElement.classList.contains("dark-mode");
-  });
+  const [currentLang, setCurrentLang] = useState(readStoredLang);
+  const [darkMode, setDarkMode] = useState(readStoredTheme);
 
   const orderReqIdRef = useRef(0);
   const profileMenuRef = useRef(null);
   const langMenuRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  // ---------- Cart ----------
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
 
-  // ---------- Orders pending ----------
   const readOrders = useCallback(async () => {
     const myReqId = ++orderReqIdRef.current;
     try {
@@ -128,7 +136,10 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
       const data = await api.orders.myOrders();
       if (myReqId !== orderReqIdRef.current) return;
 
-      const lastSeen = parseInt(localStorage.getItem(ORDERS_SEEN_KEY) || "0", 10);
+      const lastSeen = parseInt(
+        localStorage.getItem(ORDERS_SEEN_KEY) || "0",
+        10
+      );
       const count = (Array.isArray(data) ? data : []).filter((o) => {
         if (!ACTIVE_ORDER_STATUSES.includes(o.status)) return false;
         const created = new Date(o.created_at || 0).getTime();
@@ -140,7 +151,6 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
     }
   }, []);
 
-  // ---------- Effects ----------
   useEffect(() => {
     readCart();
     readOrders();
@@ -164,14 +174,62 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
     };
   }, [readCart, readOrders]);
 
-  // Close dropdowns on outside click
+  useEffect(() => {
+    const onLangChange = (e) => {
+      const newLang = e?.detail?.lang || readStoredLang();
+      setCurrentLang(newLang);
+    };
+
+    const onStorage = (e) => {
+      if (e.key === LANG_KEY && e.newValue) {
+        setCurrentLang(e.newValue);
+      }
+    };
+
+    window.addEventListener("language-change", onLangChange);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("language-change", onLangChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  // 🔧 FIX #34: sync state từ event + storage, nhưng KHÔNG tự apply DOM
+  // (để effect applyTheme chạy sau, tránh race)
+  useEffect(() => {
+    const onThemeChange = () => {
+      setDarkMode(readStoredTheme());
+    };
+
+    const onStorage = (e) => {
+      if (e.key === THEME_KEY) {
+        queueMicrotask(() => setDarkMode(readStoredTheme()));
+      }
+    };
+
+    window.addEventListener("theme-change", onThemeChange);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("theme-change", onThemeChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
   useEffect(() => {
     const handler = (e) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(e.target)
+      ) {
         setShowProfileMenu(false);
         setShowLangMenu(false);
       }
-      if (langMenuRef.current && !langMenuRef.current.contains(e.target)) {
+      if (
+        langMenuRef.current &&
+        !langMenuRef.current.contains(e.target)
+      ) {
         setShowLangMenu(false);
       }
     };
@@ -179,7 +237,6 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Ctrl+K → focus search
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -192,16 +249,15 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Sync dark mode
+  // 🔧 FIX #34: apply theme DOM + localStorage — chạy SAU mọi sync event
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.classList.toggle("dark-mode", darkMode);
     try {
-      localStorage.setItem("vwa_theme", darkMode ? "dark" : "light");
+      localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light");
     } catch {}
   }, [darkMode]);
 
-  // ---------- Handlers ----------
   const handleSearch = (e) => {
     e?.preventDefault?.();
     const q = searchQuery.trim();
@@ -221,7 +277,7 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
     setShowLangMenu(false);
     setShowProfileMenu(false);
     try {
-      localStorage.setItem("vwa_lang", code);
+      localStorage.setItem(LANG_KEY, code);
       window.dispatchEvent(
         new CustomEvent("language-change", { detail: { lang: code } })
       );
@@ -240,13 +296,8 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
   const currentLangObj =
     LANGUAGES.find((l) => l.code === currentLang) || LANGUAGES[0];
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
     <header className="customer-topbar">
-      {/* ============ ROW 1: STATUS BAR ============ */}
       <div className="customer-topbar__rolebar">
         <div className="customer-topbar__rolebar-inner">
           <div className="customer-topbar__status">
@@ -261,12 +312,11 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
         </div>
       </div>
 
-      {/* ============ ROW 2: MAIN BAR ============ */}
       <div className="customer-topbar__main">
         <div className="customer-topbar__main-inner">
-          {/* Left: Mobile menu + Logo + Nav */}
           <div className="customer-topbar__left">
             <button
+              type="button"
               className="customer-topbar__hamburger"
               onClick={onOpenMobileMenu}
               aria-label={t("Mở menu")}
@@ -300,8 +350,10 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
             </nav>
           </div>
 
-          {/* Center: Search */}
-          <form className="customer-topbar__search" onSubmit={handleSearch}>
+          <form
+            className="customer-topbar__search"
+            onSubmit={handleSearch}
+          >
             <Search size={18} className="customer-topbar__search-icon" />
             <input
               ref={searchInputRef}
@@ -313,7 +365,6 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
             />
           </form>
 
-          {/* Right: Cart + Profile */}
           <div className="customer-topbar__right">
             <Link
               to="/customer/cart"
@@ -324,12 +375,12 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
               {renderBadge(cartCount)}
             </Link>
 
-            {/* Profile */}
             <div
               className="customer-topbar__profile-wrap"
               ref={profileMenuRef}
             >
               <button
+                type="button"
                 className="customer-topbar__profile-btn"
                 onClick={() => {
                   setShowProfileMenu((s) => !s);
@@ -354,13 +405,11 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
 
               {showProfileMenu && (
                 <div className="customer-topbar__dropdown">
-                  {/* Header user */}
                   <div className="customer-topbar__dropdown-header">
                     <b>{user?.name || t("Khách")}</b>
                     <span>{user?.email || "user@vwa.edu.vn"}</span>
                   </div>
 
-                  {/* Hồ sơ cá nhân */}
                   <Link
                     to="/customer/profile"
                     className="customer-topbar__dropdown-item"
@@ -370,7 +419,6 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
                     {t("Hồ sơ cá nhân")}
                   </Link>
 
-                  {/* Đổi ngôn ngữ (expand submenu) */}
                   <div ref={langMenuRef}>
                     <button
                       type="button"
@@ -404,7 +452,9 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
                                   ? "customer-topbar__dropdown-item--active"
                                   : ""
                               }`}
-                              onClick={() => handleSelectLanguage(lang.code)}
+                              onClick={() =>
+                                handleSelectLanguage(lang.code)
+                              }
                             >
                               <span className="customer-topbar__lang-flag">
                                 {lang.flag}
@@ -427,7 +477,6 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
 
                   <div className="customer-topbar__dropdown-sep" />
 
-                  {/* Chế độ sáng/tối */}
                   <button
                     type="button"
                     className="customer-topbar__dropdown-item"
@@ -437,7 +486,6 @@ export default function CustomerTopbar({ user, cart, onLogout, onOpenMobileMenu 
                     {darkMode ? t("Chế độ sáng") : t("Chế độ tối")}
                   </button>
 
-                  {/* Đăng xuất */}
                   <button
                     type="button"
                     className="customer-topbar__dropdown-item customer-topbar__dropdown-item--danger"

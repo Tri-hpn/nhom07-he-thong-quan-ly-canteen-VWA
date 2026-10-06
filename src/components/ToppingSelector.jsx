@@ -1,6 +1,10 @@
 // ============================================================
 // TOPPINGSELECTOR.JSX — Chọn size + topping cho món ăn
 // ============================================================
+// 🔧 FIX #42: mở rộng TOPPING_GROUPS_BY_CATEGORY + fallback rộng
+//   - Thêm category: Bữa sáng/trưa/tối, Bánh mì - Xôi, Combo...
+//   - resolveToppingGroups: fallback trả [key] + nhóm mặc định
+//   - Filter topping có applies_to rỗng (áp dụng mọi món) — giữ nguyên
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -29,32 +33,52 @@ function isSameIdArray(a, b) {
 // Ánh xạ danh mục món (menu khách) → nhóm topping (`applies_to` do admin cấu hình).
 // Hai bên dùng tên nhóm khác nhau nên phải map, nếu không món thuộc các danh mục
 // Đồ uống / Bún - Phở - Cháo / Ăn vặt… sẽ không có topping nào để chọn.
+//
+// 🔧 FIX #42: bổ sung category còn thiếu để đồng bộ với menu thực tế.
 const TOPPING_GROUPS_BY_CATEGORY = {
-  "Cơm": ["Cơm"],
+  // Món chính
+  "Cơm": ["Cơm", "Món mặn"],
   "Bún - Phở - Cháo": ["Món mặn", "Cơm"],
   "Bánh mì - Xôi": ["Món mặn", "Cơm"],
-  "Đồ chay": ["Món chay"],
-  "Món chay": ["Món chay"],
   "Món mặn": ["Món mặn", "Cơm"],
+  "Món chay": ["Món chay"],
+  "Đồ chay": ["Món chay"],
   "Món phụ": ["Món phụ", "Cơm"],
+
+  // Ăn nhẹ / ăn vặt
   "Ăn vặt": ["Đồ ăn nhanh"],
   "Đồ ăn nhanh": ["Đồ ăn nhanh"],
+  "Tráng miệng": ["Đồ uống", "Đồ ăn nhanh"],
+
+  // Đồ uống
   "Coffee & Tea": ["Đồ uống"],
   "Nước ép - Sinh tố": ["Đồ uống"],
-  "Tráng miệng": ["Đồ uống"],
   "Đồ uống": ["Đồ uống"],
+
+  // Combo
   "Combo": ["Cơm", "Món mặn"],
   "Combo 1 người": ["Cơm", "Món mặn"],
   "Combo siêu hời": ["Cơm", "Món mặn"],
+
+  // 🔧 FIX #42: Bữa sáng/trưa/tối map về nhóm món mặn + cơm
   "Bữa sáng": ["Cơm", "Món mặn"],
   "Bữa trưa": ["Cơm", "Món mặn"],
   "Bữa tối": ["Cơm", "Món mặn"],
 };
 
+// 🔧 FIX #42: nhóm fallback khi category không có trong map
+//   → vẫn cho phép hiển thị topping, tránh mất selector.
+const FALLBACK_GROUPS = ["Cơm", "Món mặn", "Món phụ", "Đồ uống", "Đồ ăn nhanh"];
+
 function resolveToppingGroups(category) {
   if (!category) return [];
   const key = String(category).trim();
-  return TOPPING_GROUPS_BY_CATEGORY[key] || [key];
+  const mapped = TOPPING_GROUPS_BY_CATEGORY[key];
+  if (mapped && mapped.length > 0) return mapped;
+
+  // 🔧 FIX #42: fallback — trả [key] (để match chính xác applies_to)
+  //   + FALLBACK_GROUPS (để match nhóm phổ biến) → không bao giờ mất topping.
+  return [key, ...FALLBACK_GROUPS];
 }
 
 export default function ToppingSelector({

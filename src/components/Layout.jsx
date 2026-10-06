@@ -1,17 +1,20 @@
 // ============================================================
-// LAYOUT.JSX — Layout chính (Clean V2)
+// LAYOUT.JSX — Layout chính (V3 - FIXED + i18n)
 // ============================================================
-// 3 nhánh rõ ràng theo role:
-//   - CUSTOMER   → CustomerTopbar + BottomNav + Footer
-//   - EMPLOYEE   → Sidebar + inline topbar
-//   - ADMIN      → Sidebar + inline topbar
+// 🔧 FIX:
+//   - M8: hideHeading không còn cần thiết vì CSS đã ẩn toàn cục
+//         → vẫn giữ prop để tương thích ngược, không dùng
+//   - Extra: Layout KHÔNG tự ẩn heading — CSS quyết định
+//   - Extra: type="button" đầy đủ
+//   - #64: NOTE rõ PAGE_HEADINGS + lookupHeading là UNUSED
+//          (auto lookup DISABLED due to global CSS)
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import {
-  Menu,
-} from "lucide-react";
+import { Menu } from "lucide-react";
 
 import Sidebar from "./Sidebar";
 import CustomerTopbar from "./Topbar";
@@ -24,38 +27,147 @@ import { useI18n } from "../hooks/useI18n";
 // ============================================================
 // PAGE HEADINGS — Auto heading cho EMPLOYEE/ADMIN
 // ============================================================
+// 🔧 FIX #64: AUTO LOOKUP **DISABLED** due to global CSS
+//   - Rule `.page-heading { display: none !important }` trong CSS toàn cục
+//     đã ẩn mọi heading auto → giữ map này chỉ để tham khảo.
+//   - Nếu sau này muốn bật lại:
+//       1. Xóa rule CSS `.page-heading { display: none !important }`
+//       2. Uncomment block auto lookup trong useMemo `heading` bên dưới.
+//   - KHÔNG xóa map này để tránh phá vỡ import/test nào còn dùng.
+// ============================================================
 
 const PAGE_HEADINGS = [
   // EMPLOYEE
-  { path: "/employee/attendance", title: "Chấm công",          subtitle: "Check-in / Check-out" },
-  { path: "/employee/orders",     title: "Đơn hàng",           subtitle: "Xử lý đơn khách" },
-  { path: "/employee/menu",       title: "Thực đơn",           subtitle: "Xem tình trạng món" },
-  { path: "/employee/shifts",     title: "Lịch sử ca",         subtitle: "Ca trực & chấm công hôm nay" },
-  { path: "/employee/profile",    title: "Hồ sơ cá nhân",      subtitle: "Thông tin tài khoản" },
-  { path: "/employee/chat",       title: "Chat khách hàng",    subtitle: "Hỗ trợ khách hàng" },
+  {
+    path: "/employee/attendance",
+    title: "Chấm công",
+    subtitle: "Check-in / Check-out",
+  },
+  {
+    path: "/employee/orders",
+    title: "Đơn hàng",
+    subtitle: "Xử lý đơn khách",
+  },
+  {
+    path: "/employee/prep",
+    title: "Chuẩn bị đơn",
+    subtitle: "Danh sách đơn bếp cần xử lý",
+  },
+  {
+    path: "/employee/menu",
+    title: "Thực đơn",
+    subtitle: "Xem tình trạng món",
+  },
+  {
+    path: "/employee/shifts",
+    title: "Ca làm việc",
+    subtitle: "Ca trực & chấm công hôm nay",
+  },
+  {
+    path: "/employee/profile",
+    title: "Hồ sơ cá nhân",
+    subtitle: "Thông tin tài khoản",
+  },
+  {
+    path: "/employee/chat",
+    title: "Chat khách hàng",
+    subtitle: "Hỗ trợ khách hàng",
+  },
 
   // OWNER
-  { path: "/owner/employees",     title: "Quản lý nhân viên",  subtitle: "Danh sách nhân viên" },
-  { path: "/owner/shifts",        title: "Quản lý ca",         subtitle: "Phân ca + theo dõi chấm công" },
-  { path: "/owner/attendance",    title: "Chấm công",          subtitle: "Lịch sử chấm công nhân viên" },
-  { path: "/owner/customers",     title: "Quản lý khách hàng", subtitle: "Danh sách khách hàng" },
-  { path: "/owner/menu",          title: "Quản lý thực đơn",   subtitle: "Món ăn" },
-  { path: "/owner/price-history", title: "Lịch sử giá",        subtitle: "Theo dõi thay đổi giá món ăn" },
-  { path: "/owner/inventory",     title: "Kho hàng",           subtitle: "Nguyên liệu" },
-  { path: "/owner/reports",       title: "Báo cáo",            subtitle: "Doanh thu & thống kê" },
-  { path: "/owner/permissions",   title: "Phân quyền",         subtitle: "Phân quyền chi tiết cho từng user" },
-  { path: "/owner/orders",        title: "Quản lý đơn hàng",   subtitle: "Xử lý đơn khách như nhân viên" },
-  { path: "/owner/vouchers",      title: "Quản lý Voucher",    subtitle: "Tạo / sửa / xóa voucher cho khách" },
-  { path: "/owner/finance",       title: "Quản lý tài chính",  subtitle: "Tài khoản nhận tiền, doanh thu, chi phí" },
-  { path: "/owner/wallet",        title: "Quản lý Ví Canteen", subtitle: "Duyệt nạp / rút / thanh toán của khách" },
-  { path: "/owner/settings",      title: "Cài đặt",            subtitle: "Tài khoản nhận tiền + thông tin liên hệ" },
-  { path: "/owner/profile",       title: "Hồ sơ cá nhân",      subtitle: "Thông tin tài khoản" },
-  { path: "/owner/backup",        title: "Backup dữ liệu",     subtitle: "Xuất / nhập / reset database" },
+  {
+    path: "/owner/employees",
+    title: "Quản lý nhân viên",
+    subtitle: "Danh sách nhân viên",
+  },
+  {
+    path: "/owner/shifts",
+    title: "Quản lý ca",
+    subtitle: "Phân ca + theo dõi chấm công",
+  },
+  {
+    path: "/owner/attendance",
+    title: "Chấm công",
+    subtitle: "Lịch sử chấm công nhân viên",
+  },
+  {
+    path: "/owner/customers",
+    title: "Quản lý khách hàng",
+    subtitle: "Danh sách khách hàng",
+  },
+  {
+    path: "/owner/menu",
+    title: "Quản lý thực đơn",
+    subtitle: "Món ăn",
+  },
+  {
+    path: "/owner/price-history",
+    title: "Lịch sử giá",
+    subtitle: "Theo dõi thay đổi giá món ăn",
+  },
+  {
+    path: "/owner/inventory",
+    title: "Kho hàng",
+    subtitle: "Nguyên liệu",
+  },
+  {
+    path: "/owner/reports",
+    title: "Báo cáo",
+    subtitle: "Doanh thu & thống kê",
+  },
+  {
+    path: "/owner/permissions",
+    title: "Phân quyền",
+    subtitle: "Phân quyền chi tiết cho từng user",
+  },
+  {
+    path: "/owner/orders",
+    title: "Quản lý đơn hàng",
+    subtitle: "Xử lý đơn khách như nhân viên",
+  },
+  {
+    path: "/owner/vouchers",
+    title: "Quản lý Voucher",
+    subtitle: "Tạo / sửa / xóa voucher cho khách",
+  },
+  {
+    path: "/owner/finance",
+    title: "Quản lý tài chính",
+    subtitle: "Tài khoản nhận tiền, doanh thu, chi phí",
+  },
+  {
+    path: "/owner/wallet",
+    title: "Quản lý Ví Canteen",
+    subtitle: "Duyệt nạp / rút / thanh toán của khách",
+  },
+  {
+    path: "/owner/settings",
+    title: "Cài đặt",
+    subtitle: "Tài khoản nhận tiền + thông tin liên hệ",
+  },
+  {
+    path: "/owner/profile",
+    title: "Hồ sơ cá nhân",
+    subtitle: "Thông tin tài khoản",
+  },
+  {
+    path: "/owner/backup",
+    title: "Backup dữ liệu",
+    subtitle: "Xuất / nhập / reset database",
+  },
 ];
 
+/**
+ * 🔧 FIX #64: UNUSED — auto lookup đã bị disable vì CSS global ẩn heading.
+ * Giữ lại để tham khảo / bật lại sau này. Không gọi ở đâu cả.
+ * @deprecated Auto heading lookup DISABLED due to global CSS.
+ */
+// eslint-disable-next-line no-unused-vars
 function lookupHeading(pathname) {
   if (!pathname) return null;
-  const sorted = [...PAGE_HEADINGS].sort((a, b) => b.path.length - a.path.length);
+  const sorted = [...PAGE_HEADINGS].sort(
+    (a, b) => b.path.length - a.path.length
+  );
   for (const h of sorted) {
     if (pathname === h.path || pathname.startsWith(h.path + "/")) {
       return h;
@@ -75,6 +187,8 @@ export default function Layout({
   subtitle,
   onLogout,
   user,
+  // 🔧 M8: hideHeading giữ để tương thích ngược — KHÔNG còn dùng nữa
+  // eslint-disable-next-line no-unused-vars
   hideHeading = false,
   showFooter = false,
   cart,
@@ -87,7 +201,6 @@ export default function Layout({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const isCustomer = role === "CUSTOMER";
-  const isEmployee = role === "EMPLOYEE";
   const isAdmin = role === "ADMIN";
 
   // Body class cho mobile bottom nav
@@ -100,7 +213,11 @@ export default function Layout({
     return () => document.body.classList.remove("has-bottom-nav");
   }, [isCustomer]);
 
-  // Auto heading cho EMPLOYEE/ADMIN
+  // 🔧 M8 + FIX #64: Heading giờ CHỈ lấy từ props (title + subtitle).
+  //         Không tự động lookup nữa vì đã có CSS ẩn toàn cục.
+  //         Nếu tương lai muốn bật lại heading auto:
+  //           1. Xóa CSS `.page-heading { display: none !important }`
+  //           2. Uncomment block dưới (dùng lookupHeading(location.pathname))
   const heading = useMemo(() => {
     if (isCustomer) return null;
 
@@ -110,13 +227,17 @@ export default function Layout({
         subtitle: subtitle ? t(subtitle) : subtitle,
       };
     }
-    const found = lookupHeading(location.pathname);
-    if (!found) return null;
-    return {
-      title: t(found.title),
-      subtitle: t(found.subtitle),
-    };
-  }, [isCustomer, title, subtitle, location.pathname, t]);
+
+    // 🔧 FIX #64: Auto lookup DISABLED (do CSS ẩn toàn cục)
+    // const found = lookupHeading(location.pathname);
+    // if (!found) return null;
+    // return {
+    //   title: t(found.title),
+    //   subtitle: t(found.subtitle),
+    // };
+
+    return null;
+  }, [isCustomer, title, subtitle, t]);
 
   const toggleSidebar = useCallback(() => {
     window.dispatchEvent(new CustomEvent("toggle-sidebar"));
@@ -145,7 +266,11 @@ export default function Layout({
     >
       {/* ============ SIDEBAR — Chỉ cho EMPLOYEE/ADMIN ============ */}
       {!isCustomer && (
-        <Sidebar role={role} onLogout={openLogoutConfirm} user={user} />
+        <Sidebar
+          role={role}
+          onLogout={openLogoutConfirm}
+          user={user}
+        />
       )}
 
       <main className="main">
@@ -179,7 +304,13 @@ export default function Layout({
 
         {/* ============ MAIN CONTENT ============ */}
         <section className="page-content">
-          {!hideHeading && heading && (heading.title || heading.subtitle) && (
+          {/*
+            🔧 M8 + FIX #64: KHÔNG dùng hideHeading nữa.
+            Chỉ render heading nếu có title/subtitle từ props
+            (không auto lookup). CSS `.page-heading { display: none !important }`
+            sẽ ẩn toàn cục nếu bạn muốn.
+          */}
+          {heading && (heading.title || heading.subtitle) && (
             <div className="page-heading">
               {heading.title && <h1>{heading.title}</h1>}
               {heading.subtitle && <p>{heading.subtitle}</p>}
@@ -200,7 +331,9 @@ export default function Layout({
         open={showLogoutConfirm}
         icon={LogoutIcon}
         title={t("Đăng xuất khỏi Canteen VWA?")}
-        message={t("Giỏ hàng hiện tại sẽ bị xoá. Bạn sẽ cần đăng nhập lại để tiếp tục.")}
+        message={t(
+          "Giỏi hàng hiện tại sẽ bị xoá. Bạn sẽ cần đăng nhập lại để tiếp tục."
+        )}
         confirmText={t("Đăng xuất")}
         cancelText={t("Ở lại")}
         danger

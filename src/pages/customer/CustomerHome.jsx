@@ -1,10 +1,10 @@
 // ============================================================
-// CUSTOMERHOME.JSX — Trang chủ khách hàng (V2 - đồng bộ)
+// CUSTOMERHOME.JSX — Trang chủ khách hàng (V5 - FINAL + i18n)
 // ============================================================
-// ✅ Tất cả khối món (Flash Sale / Nổi bật / Món mới) dùng
-//    CÙNG component HomeFoodCard với class .home-flash-card
-// ✅ Ô tìm kiếm: gợi ý realtime (debounce 300ms) + dropdown
-// ✅ Danh mục: ấn pill → điều hướng sang /customer/menu?category=...
+// V5 (2026-10):
+//   - 🔧 FIX #29: scheduleRefetch clear timer khi unmount
+//                 + guard mountedRef trước khi setState
+//   - Giữ nguyên logic khác từ V4
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -21,9 +21,6 @@ import FoodDetailModal from "../../components/FoodDetailModal";
 import ChatBotWidget from "../../components/ChatBotWidget";
 import { useI18n } from "../../hooks/useI18n";
 import { toast } from "../../components/Effects";
-// ============================================================
-// CONSTANTS
-// ============================================================
 
 const BEST_SELLERS_LIMIT = 6;
 const NEW_ITEMS_LIMIT = 6;
@@ -34,35 +31,36 @@ const SKELETON_COUNT = 6;
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_SUGGEST_LIMIT = 6;
+const REFETCH_DEBOUNCE_MS = 800;
 
 const FALLBACK_IMG =
-  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=70";
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+      <rect fill='#f5f7fb' width='100' height='100'/>
+      <text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text>
+    </svg>`
+  );
 
-// Quick search chips — ấn để điền vào ô + tự tìm
 const QUICK_SEARCH_CHIPS = [
-  { label: "Cơm tấm sườn", query: "Cơm tấm sườn" },
-  { label: "Bún bò Huế", query: "Bún bò Huế" },
-  { label: "Trà đào cam sả", query: "Trà đào cam sả" },
-  { label: "Bánh mì chảo", query: "Bánh mì chảo" },
-  { label: "Combo 25k ⚡", query: "Combo", highlight: true },
+  { label: "Cơm tấm sườn",     query: "Cơm tấm sườn" },
+  { label: "Bún bò Huế",       query: "Bún bò Huế" },
+  { label: "Trà đào cam sả",   query: "Trà đào cam sả" },
+  { label: "Bánh mì chảo",     query: "Bánh mì chảo" },
+  { label: "Combo 25k ⚡",      query: "Combo", highlight: true },
 ];
 
-// Danh mục — value = tên category trong DB (để filter đúng)
 const HOME_CATEGORIES = [
-  { id: "all",     label: "Tất cả món",              icon: "🍽️", value: "" },
-  { id: "com",     label: "Cơm & Món chính",         icon: "🍚", value: "Cơm" },
-  { id: "bun",     label: "Bún - Phở - Mì",          icon: "🍜", value: "Bún - Phở - Cháo" },
-  { id: "anvat",   label: "Ăn vặt & Fastfood",       icon: "🥐", value: "Đồ ăn nhanh" },
-  { id: "douong",  label: "Đồ uống & Tráng miệng",   icon: "☕", value: "Đồ uống" },
-  { id: "chay",    label: "Món chay",                icon: "🥗", value: "Món chay" },
+  { id: "all",    label: "Tất cả món",            icon: "🍽️", value: "" },
+  { id: "com",    label: "Cơm & Món chính",       icon: "🍚", value: "Cơm" },
+  { id: "bun",    label: "Bún - Phở - Mì",        icon: "🍜", value: "Bún - Phở - Cháo" },
+  { id: "anvat",  label: "Ăn vặt & Fastfood",     icon: "🥐", value: "Đồ ăn nhanh" },
+  { id: "douong", label: "Đồ uống & Tráng miệng", icon: "☕", value: "Đồ uống" },
+  { id: "chay",   label: "Món chay",              icon: "🥗", value: "Món chay" },
 ];
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-function fmtNumber(n) {
-  return typeof n === "number" ? n.toLocaleString("vi-VN") : String(n ?? "");
+function getItemId(m) {
+  return m?._id || m?.id;
 }
 
 function normalizeVi(str) {
@@ -74,30 +72,15 @@ function normalizeVi(str) {
     .trim();
 }
 
-// ============================================================
-// SUB-COMPONENT: HomeFoodCard
-// ------------------------------------------------------------
-// Dùng chung cho Món nổi bật / Món mới / Flash Sale
-// Style 100% từ .home-flash-card (styles-customer.css)
-// ============================================================
-
-function HomeFoodCard({
-  m,
-  qty = 1,
-  onQtyChange,
-  onAdd,
-  onView,
-  t,
-  tData,
-}) {
-  const id = m.id || m._id;
+function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
+  const id = getItemId(m);
   const isOutOfStock = m.stock === 0;
   const isHot = (m.sold || 0) >= 50;
   const hasDiscount = m.discount_percent > 0 && m.original_price > m.price;
   const sold = m.sold || 0;
   const total = m.total || Math.max(sold * 2, 50);
   const remaining = Math.max(0, total - sold);
-  const percent = Math.min(100, (total > 0 ? (sold / total) * 100 : 0));
+  const percent = Math.min(100, total > 0 ? (sold / total) * 100 : 0);
 
   return (
     <div
@@ -198,6 +181,7 @@ function HomeFoodCard({
               </button>
             </div>
             <button
+              type="button"
               className="home-flash-card__add"
               onClick={(e) => {
                 e.stopPropagation();
@@ -225,19 +209,15 @@ function HomeFoodCard({
   );
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function CustomerHome({ user, cart, setCart }) {
   const navigate = useNavigate();
   const { t, tData } = useI18n();
 
-  const [items, setItems] = useState([]);           // best sellers
-  const [newItems, setNewItems] = useState([]);     // món mới
+  const [items, setItems] = useState([]);
+  const [newItems, setNewItems] = useState([]);
   const [signatureItems, setSignatureItems] = useState([]);
-  const [promotions, setPromotions] = useState([]); // flash sale
-  const [allMenu, setAllMenu] = useState([]);       // toàn bộ menu (để search)
+  const [promotions, setPromotions] = useState([]);
+  const [allMenu, setAllMenu] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -246,45 +226,30 @@ export default function CustomerHome({ user, cart, setCart }) {
   const [selected, setSelected] = useState(null);
   const [mode, setMode] = useState("cart");
   const [flashQty, setFlashQty] = useState({});
-      // Hàm cập nhật tồn kho khi thêm món
-  const handleUpdateStock = useCallback((itemId, quantityBought) => {
-  const updateFood = (food) => {
-    if (food.id !== itemId && food._id !== itemId) {
-      return food;
-    }
 
-    const currentStock = Number(food.stock) || 0;
-    const currentSold = Number(food.sold) || 0;
-
-    return {
-      ...food,
-
-      // Trừ số suất còn lại
-      stock: Math.max(0, currentStock - quantityBought),
-
-      // Tăng số suất đã bán
-      sold: currentSold + quantityBought,
-    };
-  };
-
-  setPromotions((prev) => prev.map(updateFood));
-  setItems((prev) => prev.map(updateFood));
-  setNewItems((prev) => prev.map(updateFood));
-  setSignatureItems((prev) => prev.map(updateFood));
-  setAllMenu((prev) => prev.map(updateFood));
-}, []);
-  // Search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  // Countdown flash sale
   const [countdown, setCountdown] = useState({ h: 1, m: 24, s: 15 });
 
   const inFlightRef = useRef(false);
   const searchBoxRef = useRef(null);
+  const refetchTimerRef = useRef(null);
+  const mountedRef = useRef(true);
 
-  // ---------- Load data ----------
+  // 🔧 FIX #29: mount tracking + cleanup refetch timer
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const load = useCallback(
     async (silent = false) => {
       if (inFlightRef.current) return;
@@ -299,33 +264,40 @@ export default function CustomerHome({ user, cart, setCart }) {
           api.promotions.list().catch(() => []),
         ]);
 
+        if (!mountedRef.current) return;
+
         const rawList = Array.isArray(menuRes) ? menuRes : [];
         const list = rawList.filter((m) => m.active);
         setAllMenu(list);
 
-        // Best sellers
         const bestSellers = [...list]
           .filter((m) => (m.sold || 0) > 0)
           .sort((a, b) => (b.sold || 0) - (a.sold || 0))
           .slice(0, BEST_SELLERS_LIMIT);
-        setItems(bestSellers.length > 0 ? bestSellers : list.slice(0, BEST_SELLERS_LIMIT));
+        setItems(
+          bestSellers.length > 0
+            ? bestSellers
+            : list.slice(0, BEST_SELLERS_LIMIT)
+        );
 
-        // Món mới (sort theo id giảm dần)
         const sortedById = [...list].sort(
           (a, b) => (b.id || 0) - (a.id || 0)
         );
         setNewItems(sortedById.slice(0, NEW_ITEMS_LIMIT));
 
-        // Signature
         const sig = list.filter((m) => m.is_signature === true);
         setSignatureItems(sig);
 
         setPromotions(Array.isArray(promoRes) ? promoRes : []);
       } catch (e) {
-        if (!silent) setError(e.message || t("Không tải được dữ liệu"));
+        if (mountedRef.current && !silent) {
+          setError(e.message || t("Không tải được dữ liệu"));
+        }
       } finally {
-        setLoading(false);
-        if (!silent) setRefreshing(false);
+        if (mountedRef.current) {
+          setLoading(false);
+          if (!silent) setRefreshing(false);
+        }
         inFlightRef.current = false;
       }
     },
@@ -337,7 +309,6 @@ export default function CustomerHome({ user, cart, setCart }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- Countdown ----------
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((c) => {
@@ -351,7 +322,6 @@ export default function CustomerHome({ user, cart, setCart }) {
     return () => clearInterval(timer);
   }, []);
 
-  // ---------- Debounce search ----------
   useEffect(() => {
     const id = setTimeout(() => {
       setDebouncedQuery(searchQuery.trim());
@@ -359,7 +329,6 @@ export default function CustomerHome({ user, cart, setCart }) {
     return () => clearTimeout(id);
   }, [searchQuery]);
 
-  // ---------- Click outside → đóng dropdown ----------
   useEffect(() => {
     const handler = (e) => {
       if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
@@ -370,7 +339,6 @@ export default function CustomerHome({ user, cart, setCart }) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // ---------- Search suggestions ----------
   const searchSuggestions = useMemo(() => {
     const q = normalizeVi(debouncedQuery);
     if (!q || q.length < 1) return [];
@@ -385,9 +353,10 @@ export default function CustomerHome({ user, cart, setCart }) {
   }, [debouncedQuery, allMenu]);
 
   const showSuggestions =
-    searchFocused && debouncedQuery.length >= 1 && searchSuggestions.length > 0;
+    searchFocused &&
+    debouncedQuery.length >= 1 &&
+    searchSuggestions.length > 0;
 
-  // ---------- Cart stats ----------
   const cartStats = useMemo(() => {
     const lines = Object.values(cart || {});
     const totalQty = lines.reduce((s, m) => s + (Number(m.qty) || 0), 0);
@@ -395,11 +364,25 @@ export default function CustomerHome({ user, cart, setCart }) {
       (s, m) => s + (Number(m.price) || 0) * (Number(m.qty) || 0),
       0
     );
-    const preview = lines.slice(0, 2).map((m) => m.name).join(" + ");
+    const preview = lines
+      .slice(0, 2)
+      .map((m) => m.name)
+      .join(" + ");
     return { totalQty, totalPrice, preview };
   }, [cart]);
 
-  // ---------- Handlers ----------
+  // 🔧 FIX #29: clear timer cũ trước khi set mới + guard mounted
+  const scheduleRefetch = useCallback(() => {
+    if (refetchTimerRef.current) {
+      clearTimeout(refetchTimerRef.current);
+      refetchTimerRef.current = null;
+    }
+    refetchTimerRef.current = setTimeout(() => {
+      refetchTimerRef.current = null;
+      if (mountedRef.current) load(true);
+    }, REFETCH_DEBOUNCE_MS);
+  }, [load]);
+
   const handleSearch = useCallback(
     (e) => {
       e?.preventDefault?.();
@@ -419,38 +402,42 @@ export default function CustomerHome({ user, cart, setCart }) {
     [navigate]
   );
 
-  const handleSuggestionClick = useCallback(
-    (m) => {
-      setSearchFocused(false);
-      setMode("cart");
-      setSelected(m);
-    },
-    []
-  );
+  const handleSuggestionClick = useCallback((m) => {
+    setSearchFocused(false);
+    setMode("cart");
+    setSelected(m);
+  }, []);
 
   const openModal = useCallback((m) => {
     setMode("cart");
     setSelected(m);
   }, []);
 
-      const addToCart = useCallback(
+  const addToCart = useCallback(
     (m) => {
-      const id = m.id || m._id;
+      const id = getItemId(m);
       const key = `${id}-S-`;
       const qty = flashQty[id] || 1;
       const maxStock = typeof m.stock === "number" ? m.stock : 99;
 
-      // Kiểm tra tồn kho trước khi thêm
       if (qty > maxStock) {
-        alert(`Chỉ còn ${maxStock} suất cho món này!`);
+        toast(
+          t("Chỉ còn {n} phần trong kho").replace("{n}", maxStock),
+          "error"
+        );
         return;
       }
+
+      let added = false;
 
       setCart((c) => {
         const existing = c[key];
         const currentQty = Number(existing?.qty) || 0;
         const newQty = Math.min(maxStock, currentQty + qty);
+
         if (existing && currentQty >= maxStock) return c;
+
+        added = true;
         return {
           ...c,
           [key]: {
@@ -464,13 +451,25 @@ export default function CustomerHome({ user, cart, setCart }) {
         };
       });
 
-      // 👇 GỌI HÀM CẬP NHẬT TỒN KHO (QUAN TRỌNG)
-      handleUpdateStock(id, qty);
+      if (added) {
+        toast(
+          t("Đã thêm {name} vào giỏ").replace("{name}", m.name),
+          "success"
+        );
+        scheduleRefetch();
+      }
 
-      // reset qty về 1 sau khi thêm
-      setFlashQty((q) => ({ ...q, [id]: 1 }));
+      setFlashQty((q) => {
+        const next = { ...q, [id]: 1 };
+        const keys = Object.keys(next);
+        if (keys.length > 100) {
+          const toDelete = keys.slice(0, keys.length - 100);
+          toDelete.forEach((k) => delete next[k]);
+        }
+        return next;
+      });
     },
-    [flashQty, setCart, handleUpdateStock]
+    [flashQty, setCart, t, scheduleRefetch]
   );
 
   const handleQtyChange = useCallback((id, newQty) => {
@@ -492,24 +491,22 @@ export default function CustomerHome({ user, cart, setCart }) {
     [navigate]
   );
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
     <div className="customer-home-v2">
-      {/* ===== ERROR ===== */}
       {error && (
         <div className="home-error-banner">
           <AlertCircle size={18} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>{error}</span>
-          <button onClick={() => load(false)} className="home-error-btn">
+          <button
+            type="button"
+            onClick={() => load(false)}
+            className="home-error-btn"
+          >
             <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
 
-      {/* ===== HERO WELCOME ===== */}
       <div className="home-welcome-hero">
         <div className="home-welcome-glow" />
         <div className="home-welcome-content">
@@ -551,6 +548,7 @@ export default function CustomerHome({ user, cart, setCart }) {
               </span>
             </div>
             <button
+              type="button"
               className="home-wallet-add"
               title={t("Nạp thêm")}
               onClick={() => navigate("/customer/wallet")}
@@ -560,7 +558,6 @@ export default function CustomerHome({ user, cart, setCart }) {
           </div>
         </div>
 
-        {/* Search box + dropdown */}
         <div
           className="home-search-box"
           ref={searchBoxRef}
@@ -615,9 +612,8 @@ export default function CustomerHome({ user, cart, setCart }) {
             </button>
           </form>
 
-          {/* Dropdown gợi ý */}
           {showSuggestions && (
-            <div className="home-search-suggest">
+            <div className="home-search-suggest" style={{ zIndex: 60 }}>
               <div className="home-search-suggest__head">
                 <span>
                   {t("Gợi ý cho")} "<b>{debouncedQuery}</b>"
@@ -628,7 +624,7 @@ export default function CustomerHome({ user, cart, setCart }) {
               </div>
 
               {searchSuggestions.map((m) => {
-                const id = m.id || m._id;
+                const id = getItemId(m);
                 return (
                   <button
                     key={id}
@@ -653,7 +649,10 @@ export default function CustomerHome({ user, cart, setCart }) {
                         {m.category} • {money(m.price)}
                       </span>
                     </div>
-                    <ArrowRight size={16} className="home-search-suggest__arrow" />
+                    <ArrowRight
+                      size={16}
+                      className="home-search-suggest__arrow"
+                    />
                   </button>
                 );
               })}
@@ -670,7 +669,6 @@ export default function CustomerHome({ user, cart, setCart }) {
           )}
         </div>
 
-        {/* Quick chips */}
         <div className="home-quick-chips">
           <span className="home-quick-label">
             <TrendingUp size={14} />
@@ -691,7 +689,6 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       </div>
 
-      {/* ===== FLASH SALE HERO ===== */}
       {promotions.length > 0 && (
         <div className="home-flash-hero">
           <div className="home-flash-glow" />
@@ -730,6 +727,7 @@ export default function CustomerHome({ user, cart, setCart }) {
                   </div>
                 </div>
                 <button
+                  type="button"
                   className="home-flash-cta"
                   onClick={() => navigate("/customer/menu")}
                 >
@@ -761,7 +759,6 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       )}
 
-      {/* ===== CATEGORY SELECTOR ===== */}
       <div className="home-cat-section">
         <div className="home-cat-header">
           <h3 className="home-cat-title">{t("Danh mục món ăn")}</h3>
@@ -771,6 +768,7 @@ export default function CustomerHome({ user, cart, setCart }) {
           {HOME_CATEGORIES.map((c) => (
             <button
               key={c.id}
+              type="button"
               className="home-cat-pill"
               onClick={() => handleCategoryClick(c.id)}
             >
@@ -781,7 +779,6 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       </div>
 
-      {/* ===== FLASH SALE GRID ===== */}
       {promotions.length > 0 && (
         <div className="home-flash-section">
           <div className="home-section-head">
@@ -805,23 +802,25 @@ export default function CustomerHome({ user, cart, setCart }) {
           </div>
 
           <div className="home-flash-grid">
-            {promotions.slice(0, FLASH_PROMOS_LIMIT).map((m) => (
-              <HomeFoodCard
-                key={m.id}
-                m={m}
-                qty={flashQty[m.id] || 1}
-                onQtyChange={handleQtyChange}
-                onAdd={addToCart}
-                onView={openModal}
-                t={t}
-                tData={tData}
-              />
-            ))}
+            {promotions.slice(0, FLASH_PROMOS_LIMIT).map((m) => {
+              const id = getItemId(m);
+              return (
+                <HomeFoodCard
+                  key={id}
+                  m={m}
+                  qty={flashQty[id] || 1}
+                  onQtyChange={handleQtyChange}
+                  onAdd={addToCart}
+                  onView={openModal}
+                  t={t}
+                  tData={tData}
+                />
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ===== MÓN NỔI BẬT (đồng bộ style với Flash Sale) ===== */}
       <div className="home-picks-section" id="signature-section">
         <div className="home-section-head">
           <div className="home-section-title-wrap">
@@ -850,22 +849,24 @@ export default function CustomerHome({ user, cart, setCart }) {
               ))}
             </>
           )}
-          {items.map((m) => (
-            <HomeFoodCard
-              key={m.id || m._id}
-              m={m}
-              qty={flashQty[m.id || m._id] || 1}
-              onQtyChange={handleQtyChange}
-              onAdd={addToCart}
-              onView={openModal}
-              t={t}
-              tData={tData}
-            />
-          ))}
+          {items.map((m) => {
+            const id = getItemId(m);
+            return (
+              <HomeFoodCard
+                key={id}
+                m={m}
+                qty={flashQty[id] || 1}
+                onQtyChange={handleQtyChange}
+                onAdd={addToCart}
+                onView={openModal}
+                t={t}
+                tData={tData}
+              />
+            );
+          })}
         </div>
       </div>
 
-      {/* ===== MÓN MỚI (đồng bộ style) ===== */}
       {newItems.length > 0 && (
         <div className="home-picks-section">
           <div className="home-section-head">
@@ -888,23 +889,25 @@ export default function CustomerHome({ user, cart, setCart }) {
           </div>
 
           <div className="home-picks-grid home-picks-grid--flash-style">
-            {newItems.map((m) => (
-              <HomeFoodCard
-                key={m.id || m._id}
-                m={m}
-                qty={flashQty[m.id || m._id] || 1}
-                onQtyChange={handleQtyChange}
-                onAdd={addToCart}
-                onView={openModal}
-                t={t}
-                tData={tData}
-              />
-            ))}
+            {newItems.map((m) => {
+              const id = getItemId(m);
+              return (
+                <HomeFoodCard
+                  key={id}
+                  m={m}
+                  qty={flashQty[id] || 1}
+                  onQtyChange={handleQtyChange}
+                  onAdd={addToCart}
+                  onView={openModal}
+                  t={t}
+                  tData={tData}
+                />
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ===== SIGNATURE (nếu có) ===== */}
       {signatureItems.length > 0 && (
         <div className="home-picks-section">
           <div className="home-section-head">
@@ -927,23 +930,25 @@ export default function CustomerHome({ user, cart, setCart }) {
           </div>
 
           <div className="home-picks-grid home-picks-grid--flash-style">
-            {signatureItems.slice(0, SIGNATURE_LIMIT).map((m) => (
-              <HomeFoodCard
-                key={m.id || m._id}
-                m={m}
-                qty={flashQty[m.id || m._id] || 1}
-                onQtyChange={handleQtyChange}
-                onAdd={addToCart}
-                onView={openModal}
-                t={t}
-                tData={tData}
-              />
-            ))}
+            {signatureItems.slice(0, SIGNATURE_LIMIT).map((m) => {
+              const id = getItemId(m);
+              return (
+                <HomeFoodCard
+                  key={id}
+                  m={m}
+                  qty={flashQty[id] || 1}
+                  onQtyChange={handleQtyChange}
+                  onAdd={addToCart}
+                  onView={openModal}
+                  t={t}
+                  tData={tData}
+                />
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ===== ADVISORY BOX ===== */}
       <div className="home-advisory-box">
         <div className="home-advisory-icon">
           <Info size={24} />
@@ -966,7 +971,6 @@ export default function CustomerHome({ user, cart, setCart }) {
         </Link>
       </div>
 
-      {/* ===== STICKY CART BAR ===== */}
       {cartStats.totalQty > 0 && (
         <div className="home-sticky-cart">
           <div className="home-sticky-cart__inner">
@@ -1012,7 +1016,6 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       )}
 
-           {/* ===== MODAL ===== */}
       {selected && (
         <FoodDetailModal
           item={selected}
@@ -1020,12 +1023,11 @@ export default function CustomerHome({ user, cart, setCart }) {
           setCart={setCart}
           user={user}
           mode={mode}
-          initialQty={flashQty[selected.id || selected._id] || 1}
+          initialQty={flashQty[getItemId(selected)] || 1}
           onClose={() => setSelected(null)}
-          onUpdateStock={handleUpdateStock}  // 👈 THÊM DÒNG NÀY VÀO ĐÂY
         />
       )}
-      {/* ===== CHATBOT ===== */}
+
       <ChatBotWidget cart={cart} setCart={setCart} user={user} />
     </div>
   );

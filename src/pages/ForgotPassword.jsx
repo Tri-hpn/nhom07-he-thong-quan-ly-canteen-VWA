@@ -3,15 +3,20 @@
 // ============================================================
 // Demo — OTP hardcode "123456"
 // 3 bước: Email → OTP + mật khẩu mới → Thành công
-//
-// FIX v2:
-//   - ✅ Áp dụng i18n cho TẤT CẢ text
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
-  Mail, LockKeyhole, ArrowRight, ShieldCheck, CheckCircle2, Eye, EyeOff, Loader2, RefreshCw,
+  Mail,
+  LockKeyhole,
+  ArrowRight,
+  ShieldCheck,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";
@@ -57,12 +62,10 @@ export default function ForgotPassword() {
 
     try {
       await new Promise((r) => setTimeout(r, 1000));
-
       toast(
         isResend ? t("forgot.toastOtpResent") : t("forgot.toastOtpSent"),
         "success"
       );
-
       setOtp(DEMO_OTP);
       if (!isResend) setStep(2);
       setCountdown(RESEND_COOLDOWN);
@@ -84,7 +87,8 @@ export default function ForgotPassword() {
 
     if (!otp.trim()) return setError(t("forgot.errorOtpRequired"));
     if (otp.length !== 6) return setError(t("forgot.errorOtpLength"));
-    if (newPassword.length < 6) return setError(t("forgot.errorPasswordMin"));
+    if (newPassword.length < 6)
+      return setError(t("forgot.errorPasswordMin"));
 
     setError("");
 
@@ -104,7 +108,6 @@ export default function ForgotPassword() {
     }
   };
 
-  // Bubble + caption — memo theo step
   const bubbleText = useMemo(() => {
     if (step === 3) return t("forgot.bubbleStep3");
     if (peeking) return t("forgot.bubblePeek");
@@ -139,7 +142,6 @@ export default function ForgotPassword() {
 
   return (
     <div className="v8-login-page">
-      {/* LEFT */}
       <section className="v8-login-left">
         <div className="v8-login-brand">
           <div className="v8-brand-mark">C</div>
@@ -148,31 +150,30 @@ export default function ForgotPassword() {
             <small>{t("login.brandSub")}</small>
           </div>
         </div>
-
         <div className="v8-illustration-wrap">
           <div className="v8-illustration-inner">
             <div className="v8-speech-bubble">{bubbleText}</div>
             <CuteCharacters peeking={peeking} />
           </div>
         </div>
-
         <div className="v8-left-caption">
           <b>{caption.b}</b>
           <span>{caption.s}</span>
         </div>
       </section>
 
-      {/* RIGHT */}
       <main className="v8-login-right">
         <div className="v8-form-inner">
-          {/* Logo + Tabs */}
           <div className="v8-form-top">
             <div className="v8-form-logo">
               <div className="v8-form-logo-mark">
-                {step === 3 ? <CheckCircle2 size={22} /> : <ShieldCheck size={22} />}
+                {step === 3 ? (
+                  <CheckCircle2 size={22} />
+                ) : (
+                  <ShieldCheck size={22} />
+                )}
               </div>
             </div>
-
             <nav className="v8-tabs" aria-label="Chuyển trang">
               <Link to="/" className="v8-tab">
                 {t("forgot.backToLoginShort")}
@@ -180,13 +181,11 @@ export default function ForgotPassword() {
             </nav>
           </div>
 
-          {/* Heading */}
           <h1 className="v8-form-title">{titleText}</h1>
           <p className="v8-form-subtitle">{subtitleText}</p>
 
           {error && <div className="v8-error-box">{error}</div>}
 
-          {/* STEP 1 — Email */}
           {step === 1 && (
             <form onSubmit={sendOTP} autoComplete="off">
               <label className="v8-label">{t("forgot.emailLabel")}</label>
@@ -204,7 +203,6 @@ export default function ForgotPassword() {
                   autoFocus
                 />
               </div>
-
               <button
                 type="submit"
                 className="v8-cta"
@@ -225,15 +223,18 @@ export default function ForgotPassword() {
             </form>
           )}
 
-          {/* STEP 2 — OTP + Password */}
           {step === 2 && (
             <form onSubmit={resetPassword} autoComplete="off">
-              <label className="v8-label">{t("forgot.otpLabelDemo")}</label>
+              <label className="v8-label">
+                {t("forgot.otpLabelDemo")}
+              </label>
               <div className="v8-input-wrap">
                 <input
                   value={otp}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    const val = e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 6);
                     setOtp(val);
                     clearError();
                   }}
@@ -275,7 +276,8 @@ export default function ForgotPassword() {
                     gap: 4,
                     background: "transparent",
                     border: 0,
-                    cursor: countdown > 0 || loading ? "not-allowed" : "pointer",
+                    cursor:
+                      countdown > 0 || loading ? "not-allowed" : "pointer",
                     color: countdown > 0 ? "#94a3b8" : "#2634d5",
                     fontWeight: 600,
                     fontSize: 12,
@@ -289,7 +291,9 @@ export default function ForgotPassword() {
                 </button>
               </div>
 
-              <label className="v8-label">{t("forgot.passwordLabel")}</label>
+              <label className="v8-label">
+                {t("forgot.passwordLabel")}
+              </label>
               <div className="v8-input-wrap">
                 <LockKeyhole size={16} className="v8-input-icon" />
                 <input
@@ -304,7 +308,9 @@ export default function ForgotPassword() {
                   autoComplete="new-password"
                   onFocus={() => setPeeking(true)}
                   onBlur={() => setPeeking(false)}
-                  onKeyDown={(e) => e.key === "Enter" && resetPassword(e)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && resetPassword(e)
+                  }
                 />
                 <button
                   type="button"
@@ -312,7 +318,9 @@ export default function ForgotPassword() {
                   tabIndex={-1}
                   className="v8-eye-btn"
                   aria-label={
-                    showPwd ? t("login.hidePassword") : t("login.showPassword")
+                    showPwd
+                      ? t("login.hidePassword")
+                      : t("login.showPassword")
                   }
                 >
                   {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -339,7 +347,6 @@ export default function ForgotPassword() {
             </form>
           )}
 
-          {/* STEP 3 — Success */}
           {step === 3 && (
             <div style={{ textAlign: "center", marginTop: 12 }}>
               <p
@@ -376,7 +383,6 @@ export default function ForgotPassword() {
           to   { transform: rotate(360deg); }
         }
         .spin { animation: spin 1s linear infinite; }
-
         .v8-illustration-inner svg circle,
         .v8-illustration-inner svg path,
         .v8-illustration-inner svg line,

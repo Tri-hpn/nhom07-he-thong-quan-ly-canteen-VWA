@@ -1,6 +1,7 @@
 // ============================================================
 // STAFFKPICARD.JSX — KPI card có progress bar + sub-stats
 // ============================================================
+// 🔧 FIX #40: delta.pct không validate number → guard Number.isFinite
 
 import {
   TrendingUp, TrendingDown,
@@ -22,6 +23,10 @@ export default function StaffKPICard({
   hint, // string | JSX
 }) {
   const { t } = useI18n();
+
+  // 🔧 FIX #40: validate delta.pct là number hữu hạn, fallback 0
+  const rawPct = Number(delta?.pct);
+  const safePct = Number.isFinite(rawPct) ? rawPct : 0;
 
   return (
     <div className="staff-kpi-card">
@@ -67,7 +72,8 @@ export default function StaffKPICard({
               }`}
             >
               {delta.isUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-              {delta.isUp ? "↑" : "↓"} {delta.pct}%
+              {/* 🔧 FIX #40: dùng safePct thay vì delta.pct */}
+              {delta.isUp ? "↑" : "↓"} {safePct}%
             </span>
             {legendRows?.[0] && (
               <span style={{ color: "var(--st-text-muted)", fontSize: 12 }}>

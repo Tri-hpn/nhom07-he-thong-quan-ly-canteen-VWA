@@ -1,6 +1,9 @@
 // ============================================================
 // TELEMETRYDOCK.JSX — Dock trạng thái thiết bị + live clock
 // ============================================================
+// 🔧 FIX #69: clock dùng Intl.DateTimeFormat cố định (24h, VN timezone)
+//             thay vì toLocaleTimeString (khác nhau giữa các browser)
+// ============================================================
 
 import { useEffect, useState } from "react";
 import {
@@ -15,6 +18,15 @@ const DEFAULT_DEVICES = [
   { name: "Máy in bill quẹt mã: Sẵn sàng giấy in", status: "online" },
 ];
 
+// 🔧 FIX #69: formatter tạo 1 lần, output ổn định 24h VN timezone
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
 export default function TelemetryDock({ devices = DEFAULT_DEVICES }) {
   const { t } = useI18n();
   const [now, setNow] = useState(new Date());
@@ -24,11 +36,8 @@ export default function TelemetryDock({ devices = DEFAULT_DEVICES }) {
     return () => clearInterval(timer);
   }, []);
 
-  const clockStr = now.toLocaleTimeString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  // 🔧 FIX #69: dùng formatter cố định, không phụ thuộc locale browser
+  const clockStr = TIME_FORMATTER.format(now);
 
   return (
     <div className="telemetry-dock">

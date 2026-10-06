@@ -1,55 +1,45 @@
 // ============================================================
-// ERRORBOUNDARY.JSX — Chặn lỗi "trắng màn hình"
+// ERRORBOUNDARY.JSX — Chặn lỗi "trắng màn hình" (V3)
 // ============================================================
-// Trước đây dự án KHÔNG có Error Boundary. Bất kỳ lỗi runtime nào
-// (ví dụ: quên import 1 icon → JSX nhận `undefined`) đều làm TOÀN BỘ
-// trang trắng xóa: không thông báo, không hướng dẫn, rất khó debug.
-//
-// Component này bắt lỗi trong lúc React render và hiển thị:
-//   • Thông báo thân thiện (tiếng Việt, có i18n)
-//   • Nút "Thử lại" và "Về trang chủ"
-//   • Chi tiết lỗi (thu gọn) + nút Sao chép để gửi cho dev
-//
-// ✅ FIX: Dùng `t` an toàn — fallback về chuỗi gốc nếu i18n chưa sẵn sàng
+// V3:
+//   - Tự lấy `t` từ useI18n thông qua wrapper I18nErrorBoundary
+//   - Không còn phải truyền prop t từ ngoài
+//   - Giữ export default ErrorBoundary (class) cho React yêu cầu
+//   - safeTranslate fallback tiếng Việt nếu i18n chưa ready
 // ============================================================
 
-import { Component } from "react";
+import { Component, useMemo, useState } from "react";
 import {
-  AlertTriangle, RefreshCw, Home, ChevronDown, ChevronUp, Copy, Check,
+  AlertTriangle,
+  RefreshCw,
+  Home,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Check,
 } from "lucide-react";
+import { useI18n } from "../hooks/useI18n";
 
-// ✅ FIX: Import an toàn — không crash nếu lib/i18n chưa load
-let i18nT = null;
-try {
-  const i18nModule = require("../lib/i18n");
-  i18nT = i18nModule?.t || null;
-} catch {
-  i18nT = null;
-}
+// ============================================================
+// SAFE TRANSLATE — Fallback khi i18n chưa sẵn sàng
+// ============================================================
 
-/**
- * ✅ FIX: Hàm dịch an toàn.
- * - Nếu `t` khả dụng → dùng `t(key)`
- * - Nếu `t` undefined hoặc throw → trả về `key` gốc (tiếng Việt)
- *
- * Điều này đảm bảo ErrorBoundary KHÔNG BAO GIỜ crash
- * ngay cả khi i18n chưa khởi tạo xong.
- */
-function safeT(key) {
-  try {
-    if (typeof i18nT === "function") {
-      const result = i18nT(key);
+function safeTranslate(t, key) {
+  if (typeof t === "function") {
+    try {
+      const result = t(key);
       if (typeof result === "string" && result.trim()) return result;
+    } catch {
+      /* Bỏ qua lỗi i18n */
     }
-  } catch {
-    // Bỏ qua lỗi i18n, dùng fallback
   }
   return key;
 }
 
-// ------------------------------------------------------------
-// Inline style — dùng đúng biến CSS của dự án (styles.css :root)
-// ------------------------------------------------------------
+// ============================================================
+// STYLES (inline — không phụ thuộc CSS external)
+// ============================================================
+
 const S = {
   wrap: {
     minHeight: "100vh",
@@ -161,67 +151,16 @@ const S = {
   },
 };
 
-// ------------------------------------------------------------
-// COMPONENT
-// ------------------------------------------------------------
+// ============================================================
+// ERROR FALLBACK UI — Function Component dùng hook
+// ============================================================
 
-export default class ErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      error: null,
-      errorInfo: null,
-      showDetail: false,
-      copied: false,
-    };
+function ErrorFallback({ error, errorInfo, onReload, onGoHome }) {
+  const { t } = useI18n();
+  const [showDetail, setShowDetail] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-    this.handleReload = this.handleReload.bind(this);
-    this.handleGoHome = this.handleGoHome.bind(this);
-    this.toggleDetail = this.toggleDetail.bind(this);
-    this.handleCopy = this.handleCopy.bind(this);
-  }
-
-  static getDerivedStateFromError(error) {
-    return { error };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    this.setState({ errorInfo });
-    console.error("[ErrorBoundary] Lỗi runtime:", error);
-    if (errorInfo && errorInfo.componentStack) {
-      console.error("[ErrorBoundary] Component stack:", errorInfo.componentStack);
-    }
-  }
-
-  componentDidUpdate(prevProps) {
-    // Đổi route (resetKey) → cho phép render lại bình thường
-    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
-      this.setState({ error: null, errorInfo: null, showDetail: false });
-    }
-  }
-
-  handleReload() {
-    try {
-      window.location.reload();
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  handleGoHome() {
-    try {
-      window.location.href = "/";
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  toggleDetail() {
-    this.setState((s) => ({ showDetail: !s.showDetail }));
-  }
-
-  buildDetailText() {
-    const { error, errorInfo } = this.state;
+  const detailText = useMemo(() => {
     if (!error) return "";
     return [
       "Message: " + (error.message || String(error)),
@@ -234,33 +173,27 @@ export default class ErrorBoundary extends Component {
         ? errorInfo.componentStack.trim()
         : "(không có)",
     ].join("\n");
-  }
+  }, [error, errorInfo]);
 
-  handleCopy() {
-    const text = this.buildDetailText();
+  const handleCopy = async () => {
     const markDone = () => {
-      this.setState({ copied: true });
-      window.setTimeout(() => this.setState({ copied: false }), 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     };
 
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard
-          .writeText(text)
-          .then(markDone)
-          .catch(() => this.fallbackCopy(text, markDone));
-      } else {
-        this.fallbackCopy(text, markDone);
+        await navigator.clipboard.writeText(detailText);
+        markDone();
+        return;
       }
-    } catch (e) {
-      this.fallbackCopy(text, markDone);
+    } catch {
+      /* fallback bên dưới */
     }
-  }
 
-  fallbackCopy(text, done) {
     try {
       const ta = document.createElement("textarea");
-      ta.value = text;
+      ta.value = detailText;
       ta.setAttribute("readonly", "");
       ta.style.position = "fixed";
       ta.style.top = "-9999px";
@@ -268,81 +201,151 @@ export default class ErrorBoundary extends Component {
       ta.select();
       document.execCommand("copy");
       document.body.removeChild(ta);
-      done();
-    } catch (e) {
+      markDone();
+    } catch {
+      /* Không copy được — bỏ qua */
+    }
+  };
+
+  const titleText = safeTranslate(t, "Đã xảy ra lỗi khi hiển thị trang");
+  const descText = safeTranslate(
+    t,
+    "Rất tiếc, trang này gặp sự cố ngoài ý muốn. Bạn hãy thử tải lại trang, nếu vẫn lỗi thì quay về trang chủ."
+  );
+  const retryText = safeTranslate(t, "Thử lại");
+  const homeText = safeTranslate(t, "Về trang chủ");
+  const showDetailText = safeTranslate(t, "Xem chi tiết lỗi");
+  const hideDetailText = safeTranslate(t, "Ẩn chi tiết lỗi");
+  const copiedText = safeTranslate(t, "Đã sao chép");
+  const copyText = safeTranslate(t, "Sao chép chi tiết");
+
+  return (
+    <div style={S.wrap}>
+      <div style={S.card} role="alert">
+        <div style={S.iconBox} aria-hidden="true">
+          <AlertTriangle size={30} />
+        </div>
+
+        <div style={S.title}>{titleText}</div>
+        <div style={S.desc}>{descText}</div>
+
+        <div style={S.actions}>
+          <button type="button" style={S.btnPrimary} onClick={onReload}>
+            <RefreshCw size={16} />
+            {retryText}
+          </button>
+
+          <button type="button" style={S.btnGhost} onClick={onGoHome}>
+            <Home size={16} />
+            {homeText}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          style={S.detailToggle}
+          onClick={() => setShowDetail((s) => !s)}
+          aria-expanded={showDetail}
+        >
+          {showDetail ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {showDetail ? hideDetailText : showDetailText}
+        </button>
+
+        {showDetail && (
+          <div style={S.detailBox}>
+            <pre style={S.pre}>{detailText}</pre>
+            <button
+              type="button"
+              style={{ ...S.btnGhost, marginTop: 12 }}
+              onClick={handleCopy}
+            >
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? copiedText : copyText}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ERROR BOUNDARY — Class Component
+// ============================================================
+
+export default class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, errorInfo: null };
+
+    this.handleReload = this.handleReload.bind(this);
+    this.handleGoHome = this.handleGoHome.bind(this);
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    this.setState({ errorInfo });
+    console.error("[ErrorBoundary] Lỗi runtime:", error);
+    if (errorInfo && errorInfo.componentStack) {
+      console.error(
+        "[ErrorBoundary] Component stack:",
+        errorInfo.componentStack
+      );
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.state.error && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null, errorInfo: null });
+    }
+  }
+
+  handleReload() {
+    try {
+      window.location.reload();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  handleGoHome() {
+    try {
+      window.location.href = "/";
+    } catch {
       /* ignore */
     }
   }
 
   render() {
-    const { error, showDetail, copied } = this.state;
+    const { error, errorInfo } = this.state;
+    const { children } = this.props;
 
-    // Không có lỗi → render bình thường
-    if (!error) return this.props.children;
+    if (!error) return children;
 
     return (
-      <div style={S.wrap}>
-        <div style={S.card} role="alert">
-          <div style={S.iconBox} aria-hidden="true">
-            <AlertTriangle size={30} />
-          </div>
-
-          {/* ✅ FIX: Dùng safeT() thay vì t() */}
-          <div style={S.title}>
-            {safeT("Đã xảy ra lỗi khi hiển thị trang")}
-          </div>
-
-          <div style={S.desc}>
-            {safeT(
-              "Rất tiếc, trang này gặp sự cố ngoài ý muốn. Bạn hãy thử tải lại trang, nếu vẫn lỗi thì quay về trang chủ."
-            )}
-          </div>
-
-          <div style={S.actions}>
-            <button
-              type="button"
-              style={S.btnPrimary}
-              onClick={this.handleReload}
-            >
-              <RefreshCw size={16} />
-              {safeT("Thử lại")}
-            </button>
-
-            <button
-              type="button"
-              style={S.btnGhost}
-              onClick={this.handleGoHome}
-            >
-              <Home size={16} />
-              {safeT("Về trang chủ")}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            style={S.detailToggle}
-            onClick={this.toggleDetail}
-            aria-expanded={showDetail}
-          >
-            {showDetail ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            {showDetail ? safeT("Ẩn chi tiết lỗi") : safeT("Xem chi tiết lỗi")}
-          </button>
-
-          {showDetail && (
-            <div style={S.detailBox}>
-              <pre style={S.pre}>{this.buildDetailText()}</pre>
-              <button
-                type="button"
-                style={{ ...S.btnGhost, marginTop: 12 }}
-                onClick={this.handleCopy}
-              >
-                {copied ? <Check size={16} /> : <Copy size={16} />}
-                {copied ? safeT("Đã sao chép") : safeT("Sao chép chi tiết")}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+      <ErrorFallback
+        error={error}
+        errorInfo={errorInfo}
+        onReload={this.handleReload}
+        onGoHome={this.handleGoHome}
+      />
     );
   }
+}
+
+// ============================================================
+// WRAPPER — Dùng cái này nếu muốn tự động có resetKey theo route
+// ============================================================
+// CÁCH DÙNG TRONG App.jsx:
+//   import { RouteErrorBoundary } from "./components/ErrorBoundary";
+//   <RouteErrorBoundary resetKey={location.pathname}>
+//     <App />
+//   </RouteErrorBoundary>
+// ============================================================
+
+export function RouteErrorBoundary({ children, resetKey }) {
+  return <ErrorBoundary resetKey={resetKey}>{children}</ErrorBoundary>;
 }

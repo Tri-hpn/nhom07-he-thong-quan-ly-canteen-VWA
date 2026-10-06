@@ -1,5 +1,10 @@
 // ============================================================
-// NOTIFICATIONBELL.JSX — Chuông thông báo trên topbar
+// NOTIFICATIONBELL.JSX — Chuông thông báo trên topbar (V2)
+// ============================================================
+// V2 (2026-10):
+//   - 🔧 FIX #35: MutationObserver observe document.body → leak
+//                 Thay bằng timeout-based check cho từng toast
+//   - Giữ nguyên logic mark read, poll, dropdown
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -23,10 +28,6 @@ const TYPE_CONFIG = {
   default: { Icon: Package,       bg: "rgba(100, 116, 139, 0.15)", color: "#64748b" },
 };
 
-/**
- * Time ago với i18n.
- * Truyền `t` để dịch.
- */
 function timeAgo(dateInput, t) {
   if (!dateInput) return "—";
 
@@ -34,17 +35,17 @@ function timeAgo(dateInput, t) {
   if (isNaN(time)) return "—";
 
   const diff = Date.now() - time;
-  if (diff < 0) return t("time.justNow");
+  if (diff < 0) return t("Vừa xong");
 
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return t("time.justNow");
-  if (mins < 60) return t("time.minutesAgo").replace("{n}", mins);
+  if (mins < 1) return t("Vừa xong");
+  if (mins < 60) return `${mins} ${t("phút trước")}`;
 
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return t("time.hoursAgo").replace("{n}", hours);
+  if (hours < 24) return `${hours} ${t("giờ trước")}`;
 
   const days = Math.floor(hours / 24);
-  if (days < 7) return t("time.daysAgo").replace("{n}", days);
+  if (days < 7) return `${days} ${t("ngày trước")}`;
 
   try {
     return new Date(dateInput).toLocaleDateString("vi-VN");
@@ -76,7 +77,16 @@ export default function NotificationBell() {
   const boxRef = useRef(null);
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
+  const mountedRef = useRef(true); // 🔧 FIX #35
   const navigate = useNavigate();
+
+  // 🔧 FIX #35: track mount
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const load = useCallback(
     async (silent = false) => {
@@ -90,14 +100,17 @@ export default function NotificationBell() {
         const res = await api.notifications.list();
 
         if (myReqId !== reqIdRef.current) return;
+        if (!mountedRef.current) return;
 
         setData(normalizeData(res));
       } catch (e) {
-        if (myReqId === reqIdRef.current && !silent) {
-          setError(e.message || t("notif.loadError"));
+        if (myReqId === reqIdRef.current && !silent && mountedRef.current) {
+          setError(e.message || t("Không tải được thông báo"));
         }
       } finally {
-        if (myReqId === reqIdRef.current) setLoading(false);
+        if (myReqId === reqIdRef.current && mountedRef.current) {
+          setLoading(false);
+        }
         inFlightRef.current = false;
       }
     },
@@ -205,11 +218,11 @@ export default function NotificationBell() {
         type="button"
         onClick={() => setOpen((s) => !s)}
         className="icon-btn topbar-icon-btn notif-bell-btn"
-        title={t("notif.title")}
+        title={t("Thông báo")}
         aria-label={
           data.unread > 0
-            ? t("notif.ariaWithUnread").replace("{n}", data.unread)
-            : t("notif.title")
+            ? `${data.unread} ${t("thông báo chưa đọc")}`
+            : t("Thông báo")
         }
         aria-haspopup="true"
         aria-expanded={open}
@@ -247,7 +260,7 @@ export default function NotificationBell() {
       {open && (
         <div
           role="dialog"
-          aria-label={t("notif.listAria")}
+          aria-label={t("Danh sách thông báo")}
           style={{
             position: "absolute",
             top: "calc(100% + 10px)",
@@ -283,7 +296,7 @@ export default function NotificationBell() {
                   color: "var(--text-primary, #172033)",
                 }}
               >
-                {t("notif.title")}
+                {t("Thông báo")}
               </b>
               {data.unread > 0 && (
                 <span
@@ -296,7 +309,7 @@ export default function NotificationBell() {
                     borderRadius: 10,
                   }}
                 >
-                  {t("notif.newCount").replace("{n}", data.unread)}
+                  {data.unread} {t("mới")}
                 </span>
               )}
             </div>
@@ -317,7 +330,7 @@ export default function NotificationBell() {
                   flexShrink: 0,
                 }}
               >
-                <Check size={12} /> {t("notif.markAllRead")}
+                <Check size={12} /> {t("Đọc tất cả")}
               </button>
             )}
           </div>
@@ -352,7 +365,7 @@ export default function NotificationBell() {
                   fontWeight: 600,
                 }}
               >
-                {t("common.retry")}
+                {t("Thử lại")}
               </button>
             </div>
           )}
@@ -373,7 +386,7 @@ export default function NotificationBell() {
                   marginBottom: 6,
                 }}
               />
-              <div>{t("common.loading")}</div>
+              <div>{t("Đang tải...")}</div>
             </div>
           )}
 
@@ -387,7 +400,7 @@ export default function NotificationBell() {
               }}
             >
               <Bell size={36} style={{ opacity: 0.3, marginBottom: 8 }} />
-              <div>{t("notif.empty")}</div>
+              <div>{t("Không có thông báo nào")}</div>
             </div>
           )}
 
@@ -454,7 +467,7 @@ export default function NotificationBell() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {n.title || t("notif.defaultTitle")}
+                        {n.title || t("Thông báo")}
                       </div>
 
                       {n.content && (

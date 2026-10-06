@@ -1,6 +1,7 @@
 // ============================================================
 // STARRATING.JSX — Đánh giá sao (1-5)
 // ============================================================
+// 🔧 FIX #41: cho phép clear về 0 (ArrowLeft ở mức 1, click lại sao)
 
 import { useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -36,10 +37,21 @@ export default function StarRating({
     return safeHover || safeValue;
   }, [readonly, safeValue, safeHover]);
 
+  // 🔧 FIX #41: click sao đang chọn → toggle về 0 (clear)
   const handleSelect = useCallback(
     (star) => {
       if (readonly) return;
-      onChange?.(star);
+      const next = star === safeValue ? 0 : star;
+      onChange?.(next);
+    },
+    [readonly, onChange, safeValue]
+  );
+
+  // 🔧 FIX #41: dùng cho keyboard (không toggle) — luôn set đúng giá trị
+  const setRating = useCallback(
+    (star) => {
+      if (readonly) return;
+      onChange?.(clampRating(star));
     },
     [readonly, onChange]
   );
@@ -67,36 +79,38 @@ export default function StarRating({
         case "ArrowRight":
         case "ArrowUp":
           e.preventDefault();
-          handleSelect(Math.min(5, current + 1 || 1));
+          // nếu current = 0 → lên 1
+          setRating(current + 1 || 1);
           break;
 
         case "ArrowLeft":
         case "ArrowDown":
           e.preventDefault();
-          handleSelect(Math.max(1, current - 1));
+          // 🔧 FIX #41: cho phép về 0 khi current <= 1
+          setRating(Math.max(0, current - 1));
           break;
 
         case "Home":
           e.preventDefault();
-          handleSelect(1);
+          setRating(0); // 🔧 FIX #41: Home = clear
           break;
 
         case "End":
           e.preventDefault();
-          handleSelect(5);
+          setRating(5);
           break;
 
         case " ":
         case "Enter":
           e.preventDefault();
-          handleSelect(safeValue || 5);
+          setRating(safeValue || 5);
           break;
 
         default:
           break;
       }
     },
-    [readonly, safeHover, safeValue, handleSelect]
+    [readonly, safeHover, safeValue, setRating]
   );
 
   const containerTabIndex = readonly ? -1 : 0;

@@ -1,11 +1,10 @@
 ﻿// ============================================================
-// vite.config.js — Vite configuration
+// VITE.CONFIG.JS — Vite configuration (V2)
 // ============================================================
-// - React plugin
-// - i18n auto-extract plugin
-// - Dev server proxy /api → localhost:3000 (tránh CORS)
-// - Build optimizations (chunk splitting)
-// - Path aliases
+// V2:
+//   - Giữ console.error/warn trong production (chỉ drop log/debug)
+//   - Bỏ manualChunks recharts (nên lazy import ở Reports)
+//   - optimizeDeps đầy đủ
 // ============================================================
 
 import { defineConfig, loadEnv } from "vite";
@@ -14,19 +13,12 @@ import path from "node:path";
 import i18nPlugin from "./vite-plugin-i18n.mjs";
 
 export default defineConfig(({ mode }) => {
-  // Load .env theo mode
   const env = loadEnv(mode, process.cwd(), "");
   const isProd = mode === "production";
 
   return {
-    // ---------- Plugins ----------
-    // ✅ FIX: Cả 2 plugin đều NẰM TRONG array này
-    plugins: [
-      react(),
-      i18nPlugin(),
-    ],
+    plugins: [react(), i18nPlugin()],
 
-    // ---------- Resolve ----------
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
@@ -36,17 +28,12 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    // ---------- Dev server ----------
     server: {
       port: 5173,
-      host: true, // Cho phép truy cập từ LAN
-      // ✅ strictPort: true → KHÔNG tự nhảy sang 5174 khi 5173 bận.
-      // Nếu 5173 bị chiếm, Vite sẽ báo lỗi rõ ràng để biết ngay có
-      // tiến trình cũ đang giữ cổng (trước đây bị "im lặng" đổi cổng).
+      host: true,
       strictPort: true,
       open: false,
       proxy: {
-        // Dev: proxy /api → Express backend
         "/api": {
           target: env.VITE_BACKEND_URL || "http://localhost:3000",
           changeOrigin: true,
@@ -55,55 +42,57 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    // ---------- Preview server ----------
     preview: {
       port: 4173,
       host: true,
     },
 
-    // ---------- Build ----------
     build: {
       outDir: "dist",
-      sourcemap: !isProd, // Sourcemap cho dev
+      sourcemap: !isProd,
       minify: "esbuild",
       target: "es2020",
-      chunkSizeWarningLimit: 1000, // kB
+      chunkSizeWarningLimit: 1200,
 
       rollupOptions: {
         output: {
-          // Tách vendor chunks để cache tốt hơn
+          // ✅ Tách vendor theo package thực tế đang dùng.
+          // KHÔNG tách recharts riêng — nên lazy import ở Reports.
           manualChunks: {
             "react-vendor": ["react", "react-dom", "react-router-dom"],
-            "chart-vendor": ["recharts"],
             "icon-vendor": ["lucide-react"],
           },
-
-          // Tên file có hash để cache busting
           chunkFileNames: "assets/[name]-[hash].js",
           entryFileNames: "assets/[name]-[hash].js",
           assetFileNames: "assets/[name]-[hash].[ext]",
         },
       },
 
-      // Bỏ console/debugger trong production
+      // ✅ Chỉ drop console.log + debugger, giữ console.error/warn.
+      // esbuild không hỗ trợ drop riêng log → dùng pure để tree-shake
+      // call có side effect an toàn: console.log/debug chỉ bị loại
+      // khi không có side effect (giữ nguyên console.error/warn).
       esbuild: isProd
         ? {
-            drop: ["console", "debugger"],
+            drop: ["debugger"],
+            pure: ["console.log", "console.debug", "console.trace"],
           }
         : {},
     },
 
-    // ---------- Optimization ----------
     optimizeDeps: {
-      include: ["react", "react-dom", "react-router-dom"],
+      include: [
+        "react",
+        "react-dom",
+        "react-router-dom",
+        "lucide-react",
+      ],
     },
 
-    // ---------- CSS ----------
     css: {
       devSourcemap: true,
     },
 
-    // ---------- Define global constants ----------
     define: {
       __APP_VERSION__: JSON.stringify(
         process.env.npm_package_version || "1.0.0"

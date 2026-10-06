@@ -1,11 +1,15 @@
 // ============================================================
-// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V2 - đồng bộ)
+// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V4 - FINAL + i18n)
 // ============================================================
-// ✅ GIỮ NGUYÊN: logic, state, hooks, API calls, i18n
-// 🎨 THAY ĐỔI:
-//   - Breadcrumb đã ẩn qua CSS toàn cục (styles-customer.css)
-//   - Header đồng bộ với trang chủ (font, màu, spacing)
-//   - Xoá "Món đang giảm giá" — trùng với Flash Sale ở Home
+// 🔧 FIX:
+//   - M16: Tab reward filter thật
+//   - F1: Filter fallback dựa vào value
+//   - F3: affordableOnly ưu tiên user chưa có điểm
+//   - F4: Không refetch khi đổi ngôn ngữ
+//   - F5: Tab Voucher logic chính xác hơn
+//   - F7: type="button" đầy đủ
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -60,12 +64,73 @@ const EARN_METHODS = [
   },
 ];
 
+// ============================================================
+// 🔧 F1 + F5: REWARD_TABS với filter rõ ràng
+// ============================================================
+// Logic phân loại:
+//   1. Nếu code chứa prefix rõ ràng (COMBO, GIFT, FOOD, DRINK, ECO, GREEN) → vào tab tương ứng.
+//   2. Nếu không có prefix:
+//      - value >= 10000 → tab Voucher (giảm tiền)
+//      - value < 10000 → tab Food (quà nhỏ)
+//   3. Tab "Voucher" = catch-all cho voucher KHÔNG khớp tab nào khác.
+// ============================================================
+
+function getCodeUpper(v) {
+  return String(v?.code || "").toUpperCase();
+}
+
+function getValue(v) {
+  return Number(v?.value) || 0;
+}
+
+function isComboCode(code) {
+  return code.includes("COMBO");
+}
+function isEcoCode(code) {
+  return code.includes("ECO") || code.includes("GREEN");
+}
+function isFoodCode(code) {
+  return code.includes("FOOD") || code.includes("DRINK") || code.includes("GIFT");
+}
+
 const REWARD_TABS = [
-  { id: "all", label: "Tất cả ưu đãi" },
-  { id: "voucher", label: "Voucher Giảm Tiền Trực Tiếp" },
-  { id: "food", label: "Đổi Món Ăn & Đồ Uống Miễn Phí" },
-  { id: "combo", label: "Combo Suất Ăn Trợ Giá SV" },
-  { id: "eco", label: "Quà Tặng Xanh & Bình Giữ Nhiệt" },
+  {
+    id: "all",
+    label: "Tất cả ưu đãi",
+    filter: () => true,
+  },
+  {
+    id: "voucher",
+    label: "Voucher Giảm Tiền Trực Tiếp",
+    // 🔧 F5: Voucher = KHÔNG match các tab khác
+    filter: (v) => {
+      const code = getCodeUpper(v);
+      if (isComboCode(code) || isEcoCode(code) || isFoodCode(code)) return false;
+      return getValue(v) > 0;
+    },
+  },
+  {
+    id: "food",
+    label: "Đổi Món Ăn & Đồ Uống Miễn Phí",
+    filter: (v) => {
+      const code = getCodeUpper(v);
+      if (isFoodCode(code)) return true;
+      // 🔧 F1: Fallback — value nhỏ thường là món/quà
+      if (isComboCode(code) || isEcoCode(code)) return false;
+      const val = getValue(v);
+      return val > 0 && val < 10000;
+    },
+  },
+  {
+    id: "combo",
+    label: "Combo Suất Ăn Trợ Giá SV",
+    filter: (v) => isComboCode(getCodeUpper(v)),
+  },
+  {
+    id: "eco",
+    label: "Quà Tặng Xanh & Bình Giữ Nhiệt",
+    filter: (v) => isEcoCode(getCodeUpper(v)),
+  },
 ];
 
 // ============================================================
@@ -77,7 +142,13 @@ function groupByValue(list) {
   for (const v of list) {
     const key = String(v.value);
     if (!map.has(key)) {
-      map.set(key, { value: v.value, count: 0, vouchers: [], used: 0, available: 0 });
+      map.set(key, {
+        value: v.value,
+        count: 0,
+        vouchers: [],
+        used: 0,
+        available: 0,
+      });
     }
     const g = map.get(key);
     g.count++;
@@ -139,8 +210,23 @@ export default function CustomerPromotions() {
 
   const copyTimerRef = useRef(null);
   const inFlightRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  // ---------- Load ----------
+  // ============================================================
+  // Track mount
+  // ============================================================
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  // ============================================================
+  // LOAD
+  // 🔧 F4: Không phụ thuộc `t` để tránh refetch khi đổi ngôn ngữ
+  // ============================================================
   const loadAll = useCallback(
     async (silent = false) => {
       if (inFlightRef.current) return;
@@ -156,31 +242,35 @@ export default function CustomerPromotions() {
           api.points.me().catch(() => ({ points: 0 })),
         ]);
 
+        if (!mountedRef.current) return;
+
         setVouchers(Array.isArray(myRes) ? myRes : []);
         setPublicVouchers(Array.isArray(pubRes) ? pubRes : []);
         setPoints(Number(pointsRes?.points) || 0);
       } catch (e) {
-        if (!silent) setError(e.message || t("Không tải được dữ liệu khuyến mãi"));
+        if (mountedRef.current && !silent) {
+          setError(
+            e.message || "Không tải được dữ liệu khuyến mãi"
+          );
+        }
       } finally {
-        setLoading(false);
-        if (!silent) setRefreshing(false);
+        if (mountedRef.current) {
+          setLoading(false);
+          if (!silent) setRefreshing(false);
+        }
         inFlightRef.current = false;
       }
     },
-    [t]
+    []
   );
 
   useEffect(() => {
     loadAll(false);
   }, [loadAll]);
 
-  useEffect(() => {
-    return () => {
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-    };
-  }, []);
-
-  // ---------- Derived ----------
+  // ============================================================
+  // DERIVED
+  // ============================================================
   const { active, used } = useMemo(() => {
     return {
       active: vouchers.filter((v) => !v.used),
@@ -188,19 +278,50 @@ export default function CustomerPromotions() {
     };
   }, [vouchers]);
 
-  const list = tab === "active" ? active : used;
+  /**
+   * 🔧 M16 + F3: Lọc theo tab reward + tab active/used.
+   */
+  const list = useMemo(() => {
+    const source = tab === "active" ? active : used;
+
+    const tabConfig = REWARD_TABS.find((rt) => rt.id === rewardTab);
+    const filterFn = tabConfig?.filter || (() => true);
+
+    let result = source.filter(filterFn);
+
+    // 🔧 F3: affordableOnly — nếu user chưa có điểm, hiện hết
+    if (affordableOnly && points > 0) {
+      result = result.filter((v) => {
+        const usedPoints = Number(v.points_used) || 0;
+        return usedPoints === 0 || usedPoints <= points;
+      });
+    }
+
+    return result;
+  }, [tab, active, used, rewardTab, affordableOnly, points]);
+
   const grouped = useMemo(() => groupByValue(list), [list]);
   const canRedeem = points >= redeemPoints && redeemPoints >= MIN_REDEEM;
 
+  // Tier
   const tier = useMemo(() => {
-    if (points >= 1000) return { name: t("Bạch Kim"), short: t("Platinum"), next: 1500 };
-    if (points >= 500) return { name: t("Vàng"), short: t("Gold"), next: 1000 };
-    if (points >= 100) return { name: t("Bạc"), short: t("Silver"), next: 500 };
+    if (points >= 1000) {
+      return { name: t("Bạch Kim"), short: t("Platinum"), next: 1500 };
+    }
+    if (points >= 500) {
+      return { name: t("Vàng"), short: t("Gold"), next: 1000 };
+    }
+    if (points >= 100) {
+      return { name: t("Bạc"), short: t("Silver"), next: 500 };
+    }
     return { name: t("Đồng"), short: t("Bronze"), next: 100 };
   }, [points, t]);
+
   const tierProgress = Math.min(100, (points / tier.next) * 100);
 
-  // ---------- Handlers ----------
+  // ============================================================
+  // HANDLERS
+  // ============================================================
   const scrollToSection = useCallback((id) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -210,7 +331,10 @@ export default function CustomerPromotions() {
     if (redeemLoading) return;
     if (redeemPoints < MIN_REDEEM) {
       toast(
-        t("Cần ít nhất {value} điểm để đổi").replace("{value}", MIN_REDEEM),
+        t("Cần ít nhất {value} điểm để đổi").replace(
+          "{value}",
+          MIN_REDEEM
+        ),
         "error"
       );
       return;
@@ -287,20 +411,19 @@ export default function CustomerPromotions() {
   // ============================================================
   // RENDER
   // ============================================================
-
   return (
     <div className="customer-promo-v2">
       {error && (
         <div className="promo-error">
           <AlertCircle size={18} />
           <span>{error}</span>
-          <button onClick={() => loadAll(false)}>
+          <button type="button" onClick={() => loadAll(false)}>
             <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
 
-      {/* ===== HEADER (breadcrumb đã ẩn qua CSS) ===== */}
+      {/* HEADER */}
       <section className="promo-header">
         <div className="promo-header__row">
           <div className="promo-header__left">
@@ -317,6 +440,7 @@ export default function CustomerPromotions() {
           </div>
 
           <button
+            type="button"
             className="promo-header__cta"
             onClick={() => scrollToSection("my-vouchers")}
           >
@@ -326,7 +450,7 @@ export default function CustomerPromotions() {
         </div>
       </section>
 
-      {/* ===== POINTS HERO ===== */}
+      {/* POINTS HERO */}
       <section className="promo-hero">
         <div className="promo-hero__glow-1" />
         <div className="promo-hero__glow-2" />
@@ -387,11 +511,17 @@ export default function CustomerPromotions() {
             </div>
 
             <div className="promo-hero__actions">
-              <button className="promo-hero__action promo-hero__action--solid">
+              <button
+                type="button"
+                className="promo-hero__action promo-hero__action--solid"
+              >
                 <History size={16} />
                 {t("Lịch sử tích/đổi điểm")}
               </button>
-              <button className="promo-hero__action promo-hero__action--ghost">
+              <button
+                type="button"
+                className="promo-hero__action promo-hero__action--ghost"
+              >
                 <HelpCircle size={16} />
                 {t("Quy tắc tích điểm")}
               </button>
@@ -433,7 +563,7 @@ export default function CustomerPromotions() {
         </div>
       </section>
 
-      {/* ===== EARN POINTS ===== */}
+      {/* EARN POINTS */}
       <section className="promo-section">
         <div className="promo-section__head">
           <div>
@@ -482,7 +612,7 @@ export default function CustomerPromotions() {
         </div>
       </section>
 
-      {/* ===== REDEEM HUB ===== */}
+      {/* REDEEM HUB */}
       <section className="promo-section">
         <div className="promo-section__head">
           <div>
@@ -499,6 +629,7 @@ export default function CustomerPromotions() {
                 type="checkbox"
                 checked={affordableOnly}
                 onChange={(e) => setAffordableOnly(e.target.checked)}
+                disabled={points === 0}
               />
               <span>
                 {t("Chỉ hiện quà đủ điểm đổi")} (≤ {points} pts)
@@ -507,10 +638,12 @@ export default function CustomerPromotions() {
           </div>
         </div>
 
+        {/* 🔧 M16: Tab filter giờ hoạt động thật */}
         <div className="promo-reward-tabs">
           {REWARD_TABS.map((tItem) => (
             <button
               key={tItem.id}
+              type="button"
               className={`promo-reward-tab ${
                 rewardTab === tItem.id ? "active" : ""
               }`}
@@ -521,6 +654,7 @@ export default function CustomerPromotions() {
           ))}
         </div>
 
+        {/* Đổi điểm */}
         <div className="promo-redeem-options">
           <div className="promo-redeem-options__left">
             <span className="promo-redeem-options__label">
@@ -532,6 +666,7 @@ export default function CustomerPromotions() {
               return (
                 <button
                   key={p}
+                  type="button"
                   className={`promo-redeem-opt ${
                     isActive ? "active" : ""
                   }`}
@@ -549,6 +684,7 @@ export default function CustomerPromotions() {
               <b>{money(redeemPoints * POINT_TO_VND)}</b>
             </span>
             <button
+              type="button"
               className="promo-redeem-btn"
               disabled={redeemLoading || !canRedeem}
               onClick={doRedeem}
@@ -568,6 +704,7 @@ export default function CustomerPromotions() {
           </div>
         </div>
 
+        {/* Public vouchers */}
         {publicVouchers.length > 0 && (
           <div className="promo-public-section">
             <div className="promo-public-section__head">
@@ -587,6 +724,7 @@ export default function CustomerPromotions() {
                     </div>
                     <div className="promo-public-card__code">{v.code}</div>
                     <button
+                      type="button"
                       className="promo-public-card__btn"
                       disabled={isClaiming || anyClaiming}
                       onClick={() => claimVoucher(v)}
@@ -609,13 +747,12 @@ export default function CustomerPromotions() {
             </div>
           </div>
         )}
-
-        {/* ĐÃ XOÁ: Khối "Món đang giảm giá" — trùng với Flash Sale ở Home */}
       </section>
 
-      {/* ===== WALLET + ACTIVITY ===== */}
+      {/* WALLET + ACTIVITY */}
       <section className="promo-section" id="my-vouchers">
         <div className="promo-split">
+          {/* Wallet */}
           <div className="promo-split__left">
             <div className="promo-split__head">
               <div>
@@ -639,9 +776,13 @@ export default function CustomerPromotions() {
             {!loading && grouped.length === 0 && (
               <div className="promo-wallet-empty">
                 <Ticket size={40} />
-                <b>{t("Chưa có voucher nào")}</b>
+                <b>{t("Không có voucher trong mục này")}</b>
                 <p>
-                  {t("Đổi điểm hoặc nhận voucher từ mục Ưu đãi toàn hệ thống.")}
+                  {rewardTab !== "all"
+                    ? t("Thử chọn tab khác hoặc bấm Tất cả ưu đãi.")
+                    : t(
+                        "Đổi điểm hoặc nhận voucher từ mục Ưu đãi toàn hệ thống."
+                      )}
                 </p>
               </div>
             )}
@@ -692,6 +833,7 @@ export default function CustomerPromotions() {
                         {!isUsed && (
                           <div className="promo-wallet-card__actions">
                             <button
+                              type="button"
                               className="promo-wallet-card__icon-btn"
                               onClick={() => copyCode(firstVoucher)}
                               title={t("Sao chép mã")}
@@ -703,8 +845,11 @@ export default function CustomerPromotions() {
                               )}
                             </button>
                             <button
+                              type="button"
                               className="promo-wallet-card__use"
-                              onClick={() => navigate("/customer/checkout")}
+                              onClick={() =>
+                                navigate("/customer/checkout")
+                              }
                             >
                               <QrCode size={14} />
                               {t("Dùng ngay")}
@@ -718,10 +863,12 @@ export default function CustomerPromotions() {
 
                 {grouped.length > 4 && (
                   <button
+                    type="button"
                     className="promo-wallet-see-more"
                     onClick={() => scrollToSection("my-vouchers")}
                   >
-                    {t("Xem tất cả")} ({grouped.length}) <ArrowRight size={14} />
+                    {t("Xem tất cả")} ({grouped.length}){" "}
+                    <ArrowRight size={14} />
                   </button>
                 )}
               </div>
@@ -735,6 +882,8 @@ export default function CustomerPromotions() {
             </div>
           </div>
 
+          {/* Activity */}
+          {/* 🔧 F2: Data mẫu — sẽ thay bằng api.points.me().history khi BE sẵn sàng */}
           <div className="promo-split__right">
             <div className="promo-split__head">
               <div>
@@ -745,7 +894,10 @@ export default function CustomerPromotions() {
                   {t("Lịch sử tích lũy và sử dụng VWA Green Points gần đây")}
                 </p>
               </div>
-              <button className="promo-activity-see-all">
+              <button
+                type="button"
+                className="promo-activity-see-all"
+              >
                 {t("Xem toàn bộ")} <ExternalLink size={13} />
               </button>
             </div>
@@ -815,7 +967,7 @@ export default function CustomerPromotions() {
                 {t("Bạn chỉ cần thêm")} <b>15 {t("lần sống xanh")}</b>{" "}
                 {t("nữa để đạt Hạng Vàng danh dự.")}
               </span>
-              <button>{t("Tìm hiểu thêm")}</button>
+              <button type="button">{t("Tìm hiểu thêm")}</button>
             </div>
           </div>
         </div>
@@ -851,7 +1003,17 @@ export default function CustomerPromotions() {
 // SUB: ActivityRow
 // ============================================================
 
-function ActivityRow({ date, time, icon, iconColor = "#2563EB", title, sub, delta, deltaType, highlight }) {
+function ActivityRow({
+  date,
+  time,
+  icon,
+  iconColor = "#2563EB",
+  title,
+  sub,
+  delta,
+  deltaType,
+  highlight,
+}) {
   return (
     <div className={`promo-activity-row ${highlight ? "highlight" : ""}`}>
       <div className="promo-activity-row__date">
@@ -892,15 +1054,12 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
       aria-label={t("Chọn voucher")}
       className="promo-modal-overlay"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="promo-modal"
-      >
+      <div onClick={(e) => e.stopPropagation()} className="promo-modal">
         <div className="promo-modal__head">
           <h3>
             {t("Chọn voucher {value}").replace("{value}", money(g.value))}
           </h3>
-          <button onClick={onClose} aria-label={t("Đóng")}>
+          <button type="button" onClick={onClose} aria-label={t("Đóng")}>
             <X size={20} />
           </button>
         </div>
@@ -932,25 +1091,36 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
                 {!vUsed && (
                   <>
                     <button
+                      type="button"
                       onClick={() => onCopy(v)}
                       className="promo-modal__copy"
                     >
                       {vCopied ? <Check size={14} /> : <Copy size={14} />}
                     </button>
-                    <button onClick={onUse} className="promo-modal__use">
+                    <button
+                      type="button"
+                      onClick={onUse}
+                      className="promo-modal__use"
+                    >
                       {t("Dùng")}
                     </button>
                   </>
                 )}
                 {vUsed && (
-                  <span className="promo-modal__used-tag">{t("Đã dùng")}</span>
+                  <span className="promo-modal__used-tag">
+                    {t("Đã dùng")}
+                  </span>
                 )}
               </div>
             );
           })}
         </div>
 
-        <button onClick={onClose} className="promo-modal__close">
+        <button
+          type="button"
+          onClick={onClose}
+          className="promo-modal__close"
+        >
           {t("Đóng")}
         </button>
       </div>

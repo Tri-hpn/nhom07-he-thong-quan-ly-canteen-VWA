@@ -1,16 +1,14 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V4 - Staff dark theme)
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V5 - FIXED + i18n)
 // ============================================================
-// - EMPLOYEE: Dark navy #131b2e (đồng bộ với KDS Kanban)
-// - ADMIN/CUSTOMER: giữ theme sky cũ
-// - Zone labels phân chia: "NHÂN VIÊN & BẾP (KDS)" + "QUẢN TRỊ HỆ THỐNG (SAAS)"
-// - Node footer hiển thị phiên bản hệ thống
+// 🔧 FIX:
+//   - L36: Logo 12px quá nhỏ → đổi thành 40px
+//   - L37: Bỏ override width/height trên brand-mark staff
+//   - #38: Đồng bộ badge key giữa MENU_CONFIG.EMPLOYEE và getBadge()
+//          + getBadge nhận alias "kds"/"kds_kanban", "prep"/"kds_prep"
+//   - Extra: type="button" đầy đủ, cleanup unused imports
 //
-// ✅ V4:
-//   - Bỏ "Chấm công" (đã gộp vào "Ca làm việc")
-//   - Đổi "Lịch sử ca hôm nay" → "Ca làm việc"
-//   - Thêm menu "Chuẩn bị đơn" → /employee/prep
-//   - Badge: Kanban = đơn Chờ xác nhận, Prep = đơn Đang chuẩn bị
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -60,55 +58,49 @@ const ICONS = {
   kds_menu: UtensilsCrossed,
   kds_attendance: CalendarCheck,
   kds_alerts: BellRing,
-  admin_analytics: BarChart3,
-  admin_orders: ReceiptText,
-  admin_menu: UtensilsCrossed,
-  admin_categories: LayoutGrid,
-  admin_inventory: Package,
-  admin_users: Users,
-  admin_staff: BadgeCheck,
-  admin_vouchers: Ticket,
-  admin_analytics2: Activity,
-  admin_settings: Settings,
 };
 
-// ✅ MENU CONFIG mới — EMPLOYEE chỉ còn 1 zone (đã bỏ Chấm công riêng)
+// ============================================================
+// MENU CONFIG
+// ============================================================
+
 const MENU_CONFIG = {
   ADMIN: {
     zones: [
       {
         label: null,
         items: [
-          ["dashboard",     "Tổng quan",           "/owner"],
-          ["orders_admin",  "Đơn hàng",            "/owner/orders"],
-          ["menu",          "Thực đơn",            "/owner/menu"],
-          ["price",         "Lịch sử giá",         "/owner/price-history"],
-          ["inventory",     "Kho hàng",            "/owner/inventory"],
-          ["vouchers",      "Voucher",             "/owner/vouchers"],
-          ["finance",       "Tài chính",           "/owner/finance"],
-          ["wallet_admin",  "Ví Canteen",          "/owner/wallet"],
-          ["reports",       "Báo cáo",             "/owner/reports"],
-          ["employees",     "Nhân viên",           "/owner/employees"],
-          ["attendance",    "Ca làm & chấm công",  "/owner/shifts"],
-          ["customers",     "Khách hàng",          "/owner/customers"],
-          ["permissions",   "Phân quyền",          "/owner/permissions"],
-          ["backup",        "Backup dữ liệu",      "/owner/backup"],
+          ["dashboard",    "Tổng quan",           "/owner"],
+          ["orders_admin", "Đơn hàng",            "/owner/orders"],
+          ["menu",         "Thực đơn",            "/owner/menu"],
+          ["price",        "Lịch sử giá",         "/owner/price-history"],
+          ["inventory",    "Kho hàng",            "/owner/inventory"],
+          ["vouchers",     "Voucher",             "/owner/vouchers"],
+          ["finance",      "Tài chính",           "/owner/finance"],
+          ["wallet_admin", "Ví Canteen",          "/owner/wallet"],
+          ["reports",      "Báo cáo",             "/owner/reports"],
+          ["employees",    "Nhân viên",           "/owner/employees"],
+          ["attendance",   "Ca làm & chấm công",  "/owner/shifts"],
+          ["customers",    "Khách hàng",          "/owner/customers"],
+          ["permissions",  "Phân quyền",          "/owner/permissions"],
+          ["backup",       "Backup dữ liệu",      "/owner/backup"],
         ],
       },
     ],
   },
-  // ✅ EMPLOYEE — cập nhật V4
   EMPLOYEE: {
     zones: [
       {
         label: "Nhân viên & Bếp (KDS)",
         items: [
-          ["dashboard",   "Tổng quan ca làm việc",  "/employee"],
-          ["kds_kanban",  "Bàn làm việc (Kanban)",  "/employee/orders", { badge: "kds" }],
-          ["kds_prep",    "Chuẩn bị đơn",           "/employee/prep",   { badge: "prep" }],
-          ["kds_menu",    "Thực đơn & Kho (86)",    "/employee/menu"],
-          ["kds_history", "Ca làm việc",            "/employee/shifts"],
-          ["kds_alerts",  "Thông báo khẩn",         "/employee/chat"],
+          ["dashboard",   "Tổng quan ca làm việc", "/employee"],
+          // 🔧 FIX #38: badge "kds" → "kds_kanban" cho khớp key item
+          ["kds_kanban",  "Bàn làm việc (Kanban)", "/employee/orders", { badge: "kds_kanban" }],
+          // 🔧 FIX #38: badge "prep" → "kds_prep" cho khớp key item
+          ["kds_prep",    "Chuẩn bị đơn",          "/employee/prep",   { badge: "kds_prep" }],
+          ["kds_menu",    "Thực đơn & Kho (86)",   "/employee/menu"],
+          ["kds_history", "Ca làm việc",           "/employee/shifts"],
+          ["kds_alerts",  "Thông báo khẩn",        "/employee/chat"],
         ],
       },
     ],
@@ -118,13 +110,13 @@ const MENU_CONFIG = {
       {
         label: null,
         items: [
-          ["dashboard",   "Trang chủ",       "/customer"],
-          ["menu",        "Thực đơn",        "/customer/menu"],
-          ["orders",      "Đơn hàng",        "/customer/orders"],
-          ["wallet",      "Ví Canteen",      "/customer/wallet"],
-          ["promotions",  "Khuyến mãi",      "/customer/promotions"],
-          ["chat",        "Chat hỗ trợ",     "/customer/chat"],
-          ["profile",     "Hồ sơ",           "/customer/profile"],
+          ["dashboard",  "Trang chủ",     "/customer"],
+          ["menu",       "Thực đơn",      "/customer/menu"],
+          ["orders",     "Đơn hàng",      "/customer/orders"],
+          ["wallet",     "Ví Canteen",    "/customer/wallet"],
+          ["promotions", "Khuyến mãi",    "/customer/promotions"],
+          ["chat",       "Chat hỗ trợ",   "/customer/chat"],
+          ["profile",    "Hồ sơ",         "/customer/profile"],
         ],
       },
     ],
@@ -139,7 +131,10 @@ const PROFILE_CONFIG = {
 
 const ROOT_PATHS = ["/owner", "/employee", "/customer"];
 
-// Tách "to" thành path + query
+// ============================================================
+// HELPERS
+// ============================================================
+
 function splitTo(to) {
   const raw = String(to || "");
   const i = raw.indexOf("?");
@@ -148,13 +143,11 @@ function splitTo(to) {
     : { path: raw.slice(0, i), query: raw.slice(i + 1) };
 }
 
-// Giữ đúng hành vi NavLink cũ
 function pathMatches(path, pathname) {
   if (ROOT_PATHS.includes(path)) return pathname === path;
   return pathname === path || pathname.startsWith(path + "/");
 }
 
-// Mọi tham số khai báo trong `to` đều phải khớp URL hiện tại
 function queryMatches(query, search) {
   const want = new URLSearchParams(query);
   const keys = [...want.keys()];
@@ -163,7 +156,6 @@ function queryMatches(query, search) {
   return keys.every((k) => current.get(k) === want.get(k));
 }
 
-// Xác định mục đang active — hỗ trợ query
 function isNavItemActive(to, siblings, location) {
   const { path, query } = splitTo(to);
   if (!pathMatches(path, location.pathname)) return false;
@@ -258,7 +250,7 @@ function StaffSidebarUser({ user, onLogout, t }) {
 }
 
 // ============================================================
-// LEGACY PROFILE LINK — cho ADMIN/CUSTOMER
+// PROFILE LINK — cho ADMIN/CUSTOMER
 // ============================================================
 
 function ProfileLink({ user, role, onNavClick, t }) {
@@ -371,19 +363,21 @@ export default function Sidebar({ role, onLogout, user }) {
 
   const location = useLocation();
 
-  // Toggle sidebar
+  // ---------- Toggle sidebar ----------
   useEffect(() => {
     const toggle = () => setOpen((o) => !o);
     window.addEventListener("toggle-sidebar", toggle);
     return () => window.removeEventListener("toggle-sidebar", toggle);
   }, []);
 
+  // ---------- Visibility ----------
   useEffect(() => {
     const handler = () => setTabVisible(!document.hidden);
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
   }, []);
 
+  // ---------- Lock body scroll ----------
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -396,14 +390,12 @@ export default function Sidebar({ role, onLogout, user }) {
   }, [open]);
 
   useEffect(() => {
-    if (open) {
-      document.body.classList.add("sidebar-open");
-    } else {
-      document.body.classList.remove("sidebar-open");
-    }
+    if (open) document.body.classList.add("sidebar-open");
+    else document.body.classList.remove("sidebar-open");
     return () => document.body.classList.remove("sidebar-open");
   }, [open]);
 
+  // ---------- ESC ----------
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -413,7 +405,7 @@ export default function Sidebar({ role, onLogout, user }) {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  // Cart (CUSTOMER)
+  // ---------- Cart ----------
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
@@ -430,7 +422,7 @@ export default function Sidebar({ role, onLogout, user }) {
     };
   }, [role, readCart]);
 
-  // Fetch counts
+  // ---------- Fetch counts ----------
   const fetchCounts = useCallback(async () => {
     const myReqId = ++fetchReqIdRef.current;
     try {
@@ -443,20 +435,22 @@ export default function Sidebar({ role, onLogout, user }) {
         if (myReqId !== fetchReqIdRef.current) return;
 
         const lastSeen = readLastSeen("orders_last_seen");
-        const pending = (Array.isArray(orders) ? orders : []).filter((o) => {
-          const created = new Date(o?.created_at || 0).getTime();
-          return !isNaN(created) && created > lastSeen;
-        }).length;
+        const pending = (Array.isArray(orders) ? orders : []).filter(
+          (o) => {
+            const created = new Date(o?.created_at || 0).getTime();
+            return !isNaN(created) && created > lastSeen;
+          }
+        ).length;
         setOrderPending(pending);
 
         const lastSeenPoints = readLastSeen("points_last_seen");
-        const available = (Array.isArray(vouchers) ? vouchers : []).filter(
-          (v) => {
-            if (v?.used) return false;
-            const created = new Date(v?.created_at || 0).getTime();
-            return !isNaN(created) && created > lastSeenPoints;
-          }
-        ).length;
+        const available = (
+          Array.isArray(vouchers) ? vouchers : []
+        ).filter((v) => {
+          if (v?.used) return false;
+          const created = new Date(v?.created_at || 0).getTime();
+          return !isNaN(created) && created > lastSeenPoints;
+        }).length;
         setVoucherCount(available);
       } else if (role === "EMPLOYEE") {
         const orders = await api.orders.all("Tất cả").catch(() => []);
@@ -464,12 +458,9 @@ export default function Sidebar({ role, onLogout, user }) {
 
         const list = Array.isArray(orders) ? orders : [];
 
-        // Badge Kanban = đơn Chờ xác nhận (cần duyệt)
         const kanbanCount = list.filter(
           (o) => o.status === "Chờ xác nhận"
         ).length;
-
-        // Badge Chuẩn bị đơn = đơn Đang chuẩn bị
         const prepCount = list.filter(
           (o) => o.status === "Đang chuẩn bị"
         ).length;
@@ -517,13 +508,30 @@ export default function Sidebar({ role, onLogout, user }) {
     [role]
   );
 
+  // 🔧 FIX #38: getBadge nhận cả alias "kds"/"kds_kanban" và "prep"/"kds_prep"
+  //   → đảm bảo badge Kanban + Prep hiển thị đúng bất kể MENU_CONFIG
+  //   truyền key nào (backward-compatible với các nơi khác có thể gọi).
   const getBadge = useCallback(
     (key) => {
       if (key === "orders" && orderPending > 0) return orderPending;
       if (key === "promotions" && voucherCount > 0) return voucherCount;
-      if (key === "kds_kanban" && kdsCount > 0) return kdsCount;
-      if (key === "kds" && kdsCount > 0) return kdsCount;
-      if (key === "prep" && prepCount > 0) return prepCount;
+
+      // Kanban: chấp nhận cả "kds" và "kds_kanban"
+      if (
+        (key === "kds_kanban" || key === "kds") &&
+        kdsCount > 0
+      ) {
+        return kdsCount;
+      }
+
+      // Prep: chấp nhận cả "prep" và "kds_prep"
+      if (
+        (key === "prep" || key === "kds_prep") &&
+        prepCount > 0
+      ) {
+        return prepCount;
+      }
+
       return 0;
     },
     [orderPending, voucherCount, kdsCount, prepCount]
@@ -551,22 +559,16 @@ export default function Sidebar({ role, onLogout, user }) {
       >
         {/* BRAND HEADER */}
         <div className="brand">
-          <div
-            className="brand-mark"
-            style={
-              isStaff
-                ? {
-                    padding: 0,
-                    background: "transparent",
-                    boxShadow: "none",
-                    width: 12,
-                    height: 12,
-                  }
-                : {}
-            }
-          >
-            {isStaff ? <LogoVWACompact size={12} /> : "C"}
-          </div>
+          {/*
+            🔧 L36 + L37: Logo staff trước đây size={12} + CSS width/height=12
+            → đổi thành 40px (chuẩn), bỏ override CSS size.
+          */}
+          {isStaff ? (
+            <LogoVWACompact size={40} />
+          ) : (
+            <div className="brand-mark">C</div>
+          )}
+
           <div className="brand-text">
             <strong>{isStaff ? "Canteen VWA" : "CANTEEN VWA"}</strong>
             <small>{isStaff ? t("KDS/SAAS") : "VWA"}</small>
@@ -601,7 +603,9 @@ export default function Sidebar({ role, onLogout, user }) {
                   <NavLink
                     key={to + label + key}
                     to={to}
-                    className={() => "nav-link " + (active ? "active" : "")}
+                    className={() =>
+                      "nav-link " + (active ? "active" : "")
+                    }
                     aria-current={active ? "page" : null}
                     onClick={closeSidebar}
                   >
@@ -645,9 +649,9 @@ export default function Sidebar({ role, onLogout, user }) {
               t={t}
             />
             <button
+              type="button"
               className="logout-btn"
               onClick={onLogout}
-              type="button"
             >
               <LogOut size={18} /> {t("Đăng xuất")}
             </button>

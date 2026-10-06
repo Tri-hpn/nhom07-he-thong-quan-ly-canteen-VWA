@@ -7,6 +7,8 @@
 //   - Nhật ký ca: timeline check-in/out hôm nay
 //   - Kíp trực hôm nay: đồng nghiệp
 //   - Lịch sử chấm công gần nhất
+// 🔧 FIX #84: clock dùng Intl.DateTimeFormat cố định (VN, 24h)
+//             cho cả time + date — output ổn định giữa các browser
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -25,6 +27,24 @@ import { fmtTime, fmtDateLabel } from "../../lib/datetime";
 const REFRESH_MS = 30000;
 const RECENT_LIMIT = 8;
 const MODAL_Z = 2147483600;
+
+// 🔧 FIX #84: formatter cố định VN timezone cho clock
+const CLOCK_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+// 🔧 FIX #84: formatter cố định cho ngày hiển thị (thứ, dd/mm/yyyy)
+const CLOCK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  weekday: "long",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
 
 const SHIFTS = [
   {
@@ -250,11 +270,9 @@ export default function EmployeeShifts() {
     return names.join(" • ");
   }, [todayShifts, t]);
 
-  const clockLabel = clock.toLocaleTimeString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  // 🔧 FIX #84: dùng formatter cố định VN, 24h
+  const clockLabel = CLOCK_TIME_FORMATTER.format(clock);
+  const clockDateLabel = CLOCK_DATE_FORMATTER.format(clock);
 
   // ---- CHECK-IN/OUT ----
   const handleCheckIn = async () => {
@@ -329,12 +347,8 @@ export default function EmployeeShifts() {
               </span>
               <span className="staff-hero__chip-sep">•</span>
               <span className="staff-hero__chip staff-hero__chip--neutral">
-                {clock.toLocaleDateString("vi-VN", {
-                  weekday: "long",
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                })}
+                {/* 🔧 FIX #84: dùng clockDateLabel thay toLocaleDateString */}
+                {clockDateLabel}
               </span>
               {currentShift && (
                 <>
@@ -384,6 +398,7 @@ export default function EmployeeShifts() {
           </div>
 
           <div className="shifthist-clockbox">
+            {/* 🔧 FIX #84: dùng clockLabel từ formatter cố định */}
             <div className="shifthist-clockbox__time">{clockLabel}</div>
             <span className="shifthist-clockbox__sub">
               {t("Tự động cập nhật mỗi 30 giây")}

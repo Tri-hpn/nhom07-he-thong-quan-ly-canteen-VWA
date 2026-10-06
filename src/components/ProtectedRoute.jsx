@@ -18,6 +18,7 @@
 //   • Chưa đăng nhập               → về trang đăng nhập "/"
 //   • must_change_password = true   → về "/" (App sẽ hiện trang đổi MK)
 //   • Sai vai trò                   → về trang chủ đúng vai trò
+// 🔧 FIX #67: giữ state.from khi redirect do sai role (không mất ngữ cảnh)
 // ============================================================
 
 import { Navigate, Outlet, useLocation } from "react-router-dom";
@@ -58,8 +59,15 @@ export default function ProtectedRoute({ allow = [], redirectTo, children }) {
   }
 
   // ---------- Sai vai trò ----------
+  // 🔧 FIX #67: giữ state.from để sau khi login đúng role có thể quay lại
   if (allow.length > 0 && !allow.includes(user.role)) {
-    return <Navigate to={redirectTo || homePathForRole(user.role)} replace />;
+    return (
+      <Navigate
+        to={redirectTo || homePathForRole(user.role)}
+        replace
+        state={{ from: location.pathname }}
+      />
+    );
   }
 
   // children = dùng như component bọc; không có children = dùng như layout route

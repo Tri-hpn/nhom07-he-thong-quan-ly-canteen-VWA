@@ -1,13 +1,15 @@
 // ============================================================
-// CONFIRMDIALOG.JSX — Modal xác nhận (thay cho confirm() native)
+// CONFIRMDIALOG.JSX — Modal xác nhận (V2 - FIXED + i18n)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// 🔧 FIX:
+//   - M13: Thêm nút X đóng ở góc trên phải
+//   - Extra: type="button" đầy đủ, nút X disabled khi loading
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useEffect, useRef } from "react";
-import {
-  AlertTriangle, LogOut, Loader2,
-} from "lucide-react";
+import { AlertTriangle, LogOut, Loader2, X } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 
 const MODAL_Z = 2147483600;
@@ -32,6 +34,7 @@ export default function ConfirmDialog({
   const finalConfirm = confirmText || t("Xác nhận");
   const finalCancel = cancelText || t("Hủy");
 
+  // ESC để đóng
   useEffect(() => {
     if (!open) return;
 
@@ -42,10 +45,18 @@ export default function ConfirmDialog({
     return () => window.removeEventListener("keydown", handler);
   }, [open, loading, onClose]);
 
+  // Focus vào nút Cancel khi mở
   useEffect(() => {
-    if (open) cancelRef.current?.focus();
+    if (open) {
+      // Delay 1 tick để element được render
+      const timer = setTimeout(() => {
+        cancelRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
   }, [open]);
 
+  // Lock scroll body khi mở
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -84,21 +95,63 @@ export default function ConfirmDialog({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
+          position: "relative",
           background: "var(--card-bg, #fff)",
           borderRadius: 16,
           padding: 24,
+          paddingTop: 20,
           width: "100%",
           maxWidth: 420,
           boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
           animation: "confirmPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
         }}
       >
+        {/* 🔧 M13: Nút X đóng ở góc trên phải */}
+        <button
+          type="button"
+          onClick={() => !loading && onClose?.()}
+          disabled={loading}
+          aria-label={t("Đóng")}
+          title={t("Đóng")}
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            border: 0,
+            background: "transparent",
+            color: "var(--text-light, #8993a3)",
+            cursor: loading ? "not-allowed" : "pointer",
+            display: "grid",
+            placeItems: "center",
+            opacity: loading ? 0.4 : 1,
+            transition: "background 0.15s, color 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            if (!loading) {
+              e.currentTarget.style.background =
+                "var(--bg-tertiary, #f5f7fb)";
+              e.currentTarget.style.color = "var(--text-primary, #172033)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "var(--text-light, #8993a3)";
+          }}
+        >
+          <X size={18} />
+        </button>
+
+        {/* Icon + Title + Message */}
         <div
           style={{
             display: "flex",
             alignItems: "flex-start",
             gap: 14,
             marginBottom: 20,
+            paddingRight: 32, /* tránh chồng lên nút X */
           }}
         >
           <div
@@ -147,6 +200,7 @@ export default function ConfirmDialog({
           </div>
         </div>
 
+        {/* Actions */}
         <div style={{ display: "flex", gap: 10 }}>
           <button
             ref={cancelRef}
@@ -167,8 +221,10 @@ export default function ConfirmDialog({
               transition: "background 0.15s",
             }}
             onMouseEnter={(e) => {
-              if (!loading)
-                e.currentTarget.style.background = "var(--bg-tertiary, #f5f7fb)";
+              if (!loading) {
+                e.currentTarget.style.background =
+                  "var(--bg-tertiary, #f5f7fb)";
+              }
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "var(--card-bg, #fff)";
@@ -201,6 +257,9 @@ export default function ConfirmDialog({
               if (!loading) e.currentTarget.style.transform = "scale(0.97)";
             }}
             onMouseUp={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+            }}
+            onMouseLeave={(e) => {
               e.currentTarget.style.transform = "scale(1)";
             }}
           >

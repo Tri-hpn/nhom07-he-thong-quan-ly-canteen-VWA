@@ -6,9 +6,10 @@
 // ✅ Tạm dừng khi hover chuột hoặc khi tab bị ẩn
 // ✅ i18n: nội dung slide dịch qua t() (nguồn tiếng Việt ở bannerSlides.js)
 // ✅ buttonLink dạng "#anchor" → cuộn mượt tới section trong trang
+// 🔧 FIX #55: reset index khi slides thay đổi (không chỉ total)
 // ============================================================
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronLeft,
@@ -51,9 +52,20 @@ export default function BannerCarousel({ slides = bannerSlides }) {
   const timerRef = useRef(null);
   const total = slides?.length || 0;
 
+  // 🔧 FIX #55: signature ổn định theo id (không theo index/total)
+  //   → khi slides đổi (rename/reorder) vẫn reset index đúng
+  const slidesSignature = useMemo(
+    () =>
+      Array.isArray(slides)
+        ? slides.map((s) => s?.id ?? "").join("|")
+        : "",
+    [slides]
+  );
+
+  // 🔧 FIX #55: deps dùng slidesSignature thay vì total
   useEffect(() => {
     setIndex(0);
-  }, [total]);
+  }, [slidesSignature]);
 
   const restartTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -412,4 +424,3 @@ function Slide({ slide, isActive }) {
     </div>
   );
 }
-

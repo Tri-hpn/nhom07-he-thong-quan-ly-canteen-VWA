@@ -14,10 +14,23 @@
     "prestart": "node scripts/free-dev-ports.mjs 5173 3000",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "ports": "node scripts/free-dev-ports.mjs --dry",
+
     "translate": "node scripts/auto-translate-locales.mjs",
     "translate:watch": "node scripts/auto-translate-locales.mjs --watch",
     "translate:force": "node scripts/auto-translate-locales.mjs --force",
     "translate:dry": "node scripts/auto-translate-locales.mjs --dry-run",
+    "translate:until-done": "node scripts/auto-translate-locales.mjs --until-done --max-rounds 10",
+
+    "translate:db": "node scripts/backfill-from-mongo.mjs",
+    "translate:db:dry": "node scripts/backfill-from-mongo.mjs --dry-run",
+    "translate:db:force": "node scripts/backfill-from-mongo.mjs --force",
+    "translate:db:en": "node scripts/backfill-from-mongo.mjs --lang=en",
+    "translate:db:ja": "node scripts/backfill-from-mongo.mjs --lang=ja",
+    "translate:db:ko": "node scripts/backfill-from-mongo.mjs --lang=ko",
+    "translate:db:zh": "node scripts/backfill-from-mongo.mjs --lang=zh",
+
+    "prebuild": "node scripts/auto-translate-locales.mjs --until-done --max-rounds 3",
+
     "check:i18n": "node scripts/check-i18n-duplicate.mjs && node scripts/check-locale-coverage.mjs",
     "cleanup-db": "node scripts/cleanup-db.mjs",
     "db:migrate-images": "node menuImageStore.js",

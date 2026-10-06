@@ -1,12 +1,16 @@
 // ============================================================
-// VITE PLUGIN I18N — Auto-extract t("...") khi dev
+// VITE PLUGIN I18N — Auto-extract t("...") + auto-translate (V3)
 // ============================================================
-// Chạy mỗi khi dev server start hoặc file thay đổi
-// Output: src/lib/i18n/locales/_source.json
+// V3:
+//   - exec có --until-done → tránh fail rate limit
+//   - Bỏ listener stdout rỗng
+//   - writeSource có debounce ở HMR
+//   - Log gọn hơn
 // ============================================================
 
 import fs from "node:fs";
 import path from "node:path";
+import { exec } from "node:child_process";
 
 const T_REGEX = /\bt\(\s*["'`]([^"'`]+)["'`]/g;
 const SOURCE_FILE = "src/lib/i18n/locales/_source.json";
@@ -18,6 +22,9 @@ const EXCLUDE_PARTS = [
   "src/lib/i18n",
   "src/hooks/useI18n",
 ];
+
+const AUTO_TRANSLATE_DELAY_MS = 3000;
+const AUTO_TRANSLATE_ENABLED = true;
 
 function walk(dir, files = []) {
   if (!fs.existsSync(dir)) return files;
@@ -34,7 +41,6 @@ function walk(dir, files = []) {
 function extractFromFiles(root) {
   const keys = new Set();
   const files = SCAN_DIRS.flatMap((d) => walk(path.join(root, d)));
-
   for (const file of files) {
     let content;
     try {
@@ -46,7 +52,6 @@ function extractFromFiles(root) {
     T_REGEX.lastIndex = 0;
     while ((match = T_REGEX.exec(content)) !== null) {
       const key = match[1].trim();
-      // Bỏ qua template literal (có ${})
       if (key && !key.includes("${")) keys.add(key);
     }
   }
@@ -56,6 +61,52 @@ function extractFromFiles(root) {
 export default function i18nPlugin() {
   let root = process.cwd();
   let isDev = false;
+  let translateTimer = null;
+  let translateRunning = false;
+  let scanTimer = null;
+
+  function scheduleAutoTranslate(addedCount) {
+    if (!AUTO_TRANSLATE_ENABLED || !isDev) return;
+    if (addedCount <= 0) return;
+
+    if (translateTimer) clearTimeout(translateTimer);
+
+    translateTimer = setTimeout(() => {
+      translateTimer = null;
+
+      if (translateRunning) {
+        console.log("[i18n] ⏸️  Bỏ qua — bản dịch trước đang chạy");
+        return;
+      }
+
+      translateRunning = true;
+      console.log(
+        `\n[i18n] 🌐 Tự động dịch ${addedCount} câu mới... ` +
+          `(chạy --until-done, có thể mất vài phút)`
+      );
+
+      // ✅ Thêm --until-done để tự loop tới 100% thay vì bỏ dở
+      exec(
+        "node scripts/auto-translate-locales.mjs --until-done --max-rounds 5",
+        { cwd: root, maxBuffer: 10 * 1024 * 1024 },
+        (err, stdout, stderr) => {
+          translateRunning = false;
+
+          if (err) {
+            console.error("[i18n] ❌ Dịch lỗi:", err.message);
+            if (stderr) console.error(stderr.slice(0, 500));
+            return;
+          }
+
+          const lines = (stdout || "").trim().split("\n");
+          const lastLines = lines.slice(-6).join("\n");
+          console.log(lastLines);
+          console.log("[i18n] ✨ Đã cập nhật bản dịch\n");
+        }
+      );
+      // ✅ KHÔNG cần forward stdout rỗng nữa
+    }, AUTO_TRANSLATE_DELAY_MS);
+  }
 
   function writeSource() {
     const keys = extractFromFiles(root);
@@ -83,7 +134,23 @@ export default function i18nPlugin() {
       console.log(`\n[i18n] ✖ ${removed.length} câu không dùng nữa`);
     }
 
-    return { added: added.length, removed: removed.length, total: keys.length };
+    return {
+      added: added.length,
+      removed: removed.length,
+      total: keys.length,
+    };
+  }
+
+  // ✅ Debounce writeSource để tránh scan 20 lần khi lưu 20 file
+  function scheduleWriteSource() {
+    if (scanTimer) clearTimeout(scanTimer);
+    scanTimer = setTimeout(() => {
+      scanTimer = null;
+      const stats = writeSource();
+      if (stats.added > 0) {
+        scheduleAutoTranslate(stats.added);
+      }
+    }, 300);
   }
 
   return {
@@ -98,7 +165,7 @@ export default function i18nPlugin() {
     },
     handleHotUpdate({ file }) {
       if (isDev && /\.(jsx?|tsx?)$/.test(file)) {
-        writeSource();
+        scheduleWriteSource();
       }
     },
   };

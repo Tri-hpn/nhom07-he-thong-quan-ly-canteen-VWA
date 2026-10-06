@@ -2,8 +2,8 @@
   "sourceLang": "vi",
   "targetLangs": ["en", "ja", "ko", "zh"],
   "minLength": 2,
-  "delayMs": 150,
-  "maxRetries": 3,
+  "delayMs": 600,
+  "maxRetries": 5,
   "skipPatterns": [
     "^[\\p{Emoji}\\s\\p{P}]+$",
     "^\\d+$",

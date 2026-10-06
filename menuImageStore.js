@@ -398,14 +398,52 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
     },
   ]).toArray();
 
-  // (2) Kiểm tra đã copy đủ chưa — thiếu thì DỪNG để không mất ảnh
-  const stored = await db.collection(MENU_IMAGES_COLLECTION).countDocuments({});
-  if (stored < inline) {
-    const error = `Chỉ copy được ${stored}/${inline} ảnh vào ${MENU_IMAGES_COLLECTION} → dừng để tránh mất ảnh`;
-    log("❌ " + error);
-    return { ok: false, needed: true, inline, stored, moved: 0, beforeBytes, error };
+    // (2) Kiểm tra đã copy đủ chưa — thiếu thì DỪNG để không mất ảnh
+  // ✅ FIX (LỖI #20): countDocuments({}) đếm TOÀN BỘ collection, kể cả ảnh cũ
+  // → nếu collection đã có sẵn ảnh từ trước thì `stored` > `inline` → pass check
+  // dù copy mới thất bại. Sửa: so khớp chính xác _id các món cần copy.
+  const expectedIds = await coll
+    .aggregate([
+      { $match: { _id: MAIN_DOC_ID } },
+      { $project: { items: { $ifNull: ["$data.menu_items", []] } } },
+      { $unwind: "$items" },
+      { $match: { "items.image": { $regex: "^data:" } } },
+      { $project: { _id: { $toString: "$items.id" } } },
+    ])
+    .toArray();
+
+  const expectedIdSet = new Set(expectedIds.map((r) => r._id));
+
+  if (expectedIdSet.size > 0) {
+    const storedDocs = await db
+      .collection(MENU_IMAGES_COLLECTION)
+      .find({ _id: { $in: [...expectedIdSet] } })
+      .project({ _id: 1 })
+      .toArray();
+
+    const storedIdSet = new Set(storedDocs.map((d) => d._id));
+    const missingIds = [...expectedIdSet].filter(
+      (id) => !storedIdSet.has(id)
+    );
+
+    if (missingIds.length > 0) {
+      const error = `Chỉ copy được ${storedIdSet.size}/${expectedIdSet.size} ảnh (thiếu ${missingIds.length}) → dừng để tránh mất ảnh`;
+      log("❌ " + error);
+      return {
+        ok: false,
+        needed: true,
+        inline,
+        stored: storedIdSet.size,
+        moved: 0,
+        beforeBytes,
+        error,
+      };
+    }
+
+    log(
+      `📦 Đã copy ${storedIdSet.size} ảnh sang ${MENU_IMAGES_COLLECTION}`
+    );
   }
-  log(`📦 Đã copy ${inline} ảnh sang ${MENU_IMAGES_COLLECTION}`);
 
   // (3) Thay ảnh base64 bằng đường dẫn (server-side, không tải dữ liệu về máy)
   await coll.aggregate([

@@ -2,7 +2,8 @@
 // SKELETON.JSX — Placeholder loading với shimmer effect
 // ============================================================
 // Không có text hiển thị → KHÔNG cần i18n.
-// Giữ nguyên code gốc.
+// 🔧 FIX #39: SkeletonCard dùng aspect-ratio thay vì height 160px cứng
+//             → responsive mobile, không méo tỷ lệ.
 // ============================================================
 
 import { useMemo } from "react";
@@ -56,7 +57,18 @@ export function SkeletonCard({ style = {} }) {
         ...style,
       }}
     >
-      <Skeleton width="100%" height={160} radius={0} />
+      {/*
+        🔧 FIX #39: dùng aspect-ratio 1/1 thay vì height 160px cứng.
+        - Trên desktop: khối ảnh rộng ~300px → cao ~300px (gần giống cũ)
+        - Trên mobile 320px: khối ảnh rộng ~150px → cao ~150px (không méo)
+        - Có thể override bằng prop style={{ aspectRatio: "..." }}
+      */}
+      <Skeleton
+        width="100%"
+        height="auto"
+        radius={0}
+        style={{ aspectRatio: "1 / 1" }}
+      />
 
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
         <Skeleton width="40%" height={10} />

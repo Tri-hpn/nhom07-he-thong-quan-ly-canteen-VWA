@@ -2,6 +2,8 @@
 // SHIFTCHECKLIST.JSX — VSATTP checklist (dùng localStorage)
 // ============================================================
 // Lưu state theo ngày: "vsattp_checklist_YYYY-MM-DD"
+// 🔧 FIX #68: getTodayKey + stamp dùng timezone VN (Asia/Ho_Chi_Minh)
+//             để tránh lệch ngày khi server ở UTC
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -10,12 +12,33 @@ import {
 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 
+const VN_TZ = "Asia/Ho_Chi_Minh";
+
+// 🔧 FIX #68: format YYYY-MM-DD theo giờ VN, không phụ thuộc local timezone
+function getVnYmd(date = new Date()) {
+  // en-CA → YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: VN_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 function getTodayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dt = String(d.getDate()).padStart(2, "0");
-  return `vsattp_checklist_${y}-${m}-${dt}`;
+  return `vsattp_checklist_${getVnYmd()}`;
+}
+
+// 🔧 FIX #68: lấy ngày + tháng theo giờ VN cho stamp "Mã kiểm"
+function getVnDayMonth() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: VN_TZ,
+    day: "2-digit",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const day = parts.find((p) => p.type === "day")?.value || "01";
+  const month = parts.find((p) => p.type === "month")?.value || "01";
+  return { day, month };
 }
 
 export default function ShiftChecklist({ tasks = [], supervisorNote }) {
@@ -46,6 +69,9 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
   const toggle = (i) => {
     setChecked((c) => ({ ...c, [i]: !c[i] }));
   };
+
+  // 🔧 FIX #68: stamp dùng giờ VN
+  const { day: vnDay, month: vnMonth } = getVnDayMonth();
 
   return (
     <div className="vsattp-card">
@@ -102,7 +128,7 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
           {t("Tem Kiểm Chuẩn Y Tế VWA")}
         </span>
         <span className="vsattp-stamp__code">
-          {t("Mã kiểm:")} #HYG-{new Date().getDate()}{String(new Date().getMonth() + 1).padStart(2, "0")}
+          {t("Mã kiểm:")} #HYG-{vnDay}{vnMonth}
         </span>
       </div>
     </div>

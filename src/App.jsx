@@ -1,16 +1,20 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V3)
+// APP.JSX — Root component + Routing (V5)
 // ============================================================
-// ✅ V3:
-//   - Thêm route /employee/prep   → EmployeeOrdersPrep (layout mới)
-//   - Gộp /employee/shifts        → EmployeeShifts (check-in + history + đăng ký ca)
-//   - Xoá /employee/attendance    → redirect về /employee/shifts
-//   - Bỏ import EmployeeCheckInOut + EmployeeShiftHistory
+// V5 (2026-10):
+//   - 🔧 FIX #26: chặn redirect loop khi mustChangePassword
+//                 - useRef track lần redirect cuối để tránh loop
+//                 - Nếu phải đổi MK thì KHÔNG chạy role-check effect
+//   - Giữ nguyên logic khác từ V4
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  Routes, Route, Navigate, useNavigate, useLocation,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
 } from "react-router-dom";
 
 // ---------- Core ----------
@@ -19,7 +23,7 @@ import CardHoverEffect from "./components/CardHoverEffect";
 import { setToken } from "./api";
 import { toast } from "./components/Effects";
 
-// ---------- Auth / Phân quyền (Giai đoạn 2) ----------
+// ---------- Auth / Phân quyền ----------
 import { useAuth } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -71,6 +75,22 @@ import OwnerFinance from "./pages/owner/OwnerFinance";
 import OwnerSettings from "./pages/owner/OwnerSettings";
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+function homePathForRole(role) {
+  if (role === "ADMIN") return "/owner";
+  if (role === "EMPLOYEE") return "/employee";
+  return "/customer/home";
+}
+
+function isPathInPrefix(path, prefix) {
+  if (!path || !prefix) return false;
+  if (path === prefix) return true;
+  return path.startsWith(prefix + "/");
+}
+
+// ============================================================
 // APP COMPONENT
 // ============================================================
 
@@ -89,6 +109,10 @@ export default function App() {
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // 🔧 FIX #26: track lần redirect gần nhất để phát hiện loop
+  const lastRedirectRef = useRef({ path: "", timestamp: 0 });
+  const pendingRedirectRef = useRef(null);
 
   // ---------- Effects ----------
 
@@ -125,50 +149,65 @@ export default function App() {
 
     window.addEventListener("auth-expired", handler);
     return () => window.removeEventListener("auth-expired", handler);
-  }, [navigate]);
+  }, [navigate, setUser]);
 
-  // Redirect nếu user đang ở path không khớp với role
+  // 🔧 FIX #26: Redirect nếu user ở path không khớp với role
+  // - Nếu mustChangePassword: skip hoàn toàn (không redirect)
+  // - Nếu đang ở trang public (/, /register, ...): skip
+  // - Nếu path đã đúng role: skip
+  // - Chống loop: nếu cùng path vừa redirect trong 1s qua → skip
   useEffect(() => {
     if (!user) return;
     if (mustChangePassword) return;
+
     const rolePrefix =
       user.role === "ADMIN"
         ? "/owner"
         : user.role === "EMPLOYEE"
         ? "/employee"
         : "/customer";
+
     const path = location.pathname;
-    if (!path.startsWith(rolePrefix)) {
-      const target =
-        user.role === "CUSTOMER" ? "/customer/home" : rolePrefix;
-      navigate(target, { replace: true });
+
+    if (isPathInPrefix(path, rolePrefix)) return;
+
+    // Các path được phép ở lại (không phải redirect)
+    const PUBLIC_PATHS = ["/", "/register", "/forgot-password", "/payment-result"];
+    if (PUBLIC_PATHS.includes(path)) return;
+    if (path.startsWith("/auth/")) return;
+
+    const target = homePathForRole(user.role);
+
+    // Chống loop: nếu vừa redirect tới `target` trong 1s vừa qua → bỏ qua
+    const now = Date.now();
+    const last = lastRedirectRef.current;
+    if (last.path === target && now - last.timestamp < 1000) {
+      return;
     }
+
+    lastRedirectRef.current = { path: target, timestamp: now };
+    pendingRedirectRef.current = target;
+
+    navigate(target, { replace: true });
   }, [user, mustChangePassword, location.pathname, navigate]);
 
   // ---------- Handlers ----------
 
   const handleLogin = async (email, password) => {
-    try {
-      const u = await login(email, password);
+    const u = await login(email, password);
 
-      const home =
-        u.role === "ADMIN"
-          ? "/owner"
-          : u.role === "EMPLOYEE"
-          ? "/employee"
-          : "/customer/home";
-      navigate(home);
-      toast("Xin chào " + u.name + "!", "success");
-      return true;
-    } catch (e) {
-      return false;
-    }
+    const home = homePathForRole(u.role);
+    navigate(home);
+    toast("Xin chào " + u.name + "!", "success");
+    return true;
   };
 
   const handleLogout = () => {
     logout();
     setCart({});
-    localStorage.removeItem("canteen_cart");
+    try {
+      localStorage.removeItem("canteen_cart");
+    } catch {}
 
     document.body.style.overflow = "";
     document.body.style.paddingRight = "";
@@ -198,7 +237,7 @@ export default function App() {
   }
 
   // ============================================================
-  // CHƯA ĐĂNG NHẬP — Login/Register/Forgot + OAuth callback
+  // CHƯA ĐĂNG NHẬP
   // ============================================================
   if (!user) {
     return (
@@ -279,7 +318,6 @@ export default function App() {
     <>
       <CardHoverEffect />
       <Routes>
-
         {/* ==================== CUSTOMER ==================== */}
         <Route
           path="/customer"
@@ -361,8 +399,6 @@ export default function App() {
 
         {/* ==================== EMPLOYEE ==================== */}
         <Route element={<ProtectedRoute allow={["EMPLOYEE"]} />}>
-
-          {/* Tổng quan */}
           <Route
             path="/employee"
             element={
@@ -379,47 +415,39 @@ export default function App() {
             }
           />
 
-          {/* Chuẩn bị đơn — layout dọc mới */}
           <Route
             path="/employee/prep"
             element={wrap(
               "Chuẩn bị đơn",
               "Danh sách đơn bếp cần xử lý",
-              <EmployeeOrdersPrep />,
-              { hideHeading: true }
+              <EmployeeOrdersPrep />
             )}
           />
 
-          {/* Ca làm việc — gộp check-in + lịch sử + đăng ký ca */}
           <Route
             path="/employee/shifts"
             element={wrap(
               "Ca làm việc",
               "Chấm công & lịch sử ca",
-              <EmployeeShifts />,
-              { hideHeading: true }
+              <EmployeeShifts />
             )}
           />
 
-          {/* Redirect cũ → mới */}
           <Route
             path="/employee/attendance"
             element={<Navigate to="/employee/shifts" replace />}
           />
 
-          {/* Kanban */}
           <Route
             path="/employee/orders"
             element={wrap("Đơn hàng", "Xử lý đơn khách", <EmployeeOrders />)}
           />
 
-          {/* Menu 86 */}
           <Route
             path="/employee/menu"
             element={wrap("Thực đơn", "Xem tình trạng món", <EmployeeMenu />)}
           />
 
-          {/* Profile */}
           <Route
             path="/employee/profile"
             element={wrap(
@@ -433,7 +461,6 @@ export default function App() {
             )}
           />
 
-          {/* Chat */}
           <Route
             path="/employee/chat"
             element={wrap(
@@ -442,12 +469,10 @@ export default function App() {
               <EmployeeChat />
             )}
           />
-
         </Route>
 
         {/* ==================== OWNER (ADMIN) ==================== */}
         <Route element={<ProtectedRoute allow={["ADMIN"]} />}>
-
           <Route
             path="/owner"
             element={wrap(
@@ -517,8 +542,7 @@ export default function App() {
             element={wrap(
               "Báo cáo",
               "Doanh thu & thống kê",
-              <OwnerReports />,
-              { hideHeading: true }
+              <OwnerReports />
             )}
           />
 
@@ -597,23 +621,12 @@ export default function App() {
               <OwnerBackup />
             )}
           />
-
         </Route>
 
         {/* ==================== FALLBACK ==================== */}
         <Route
           path="*"
-          element={
-            <Navigate
-              to={
-                user.role === "ADMIN"
-                  ? "/owner"
-                  : user.role === "EMPLOYEE"
-                  ? "/employee"
-                  : "/customer/home"
-              }
-            />
-          }
+          element={<Navigate to={homePathForRole(user.role)} replace />}
         />
       </Routes>
     </>

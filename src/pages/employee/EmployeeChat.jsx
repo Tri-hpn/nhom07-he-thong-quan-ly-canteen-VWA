@@ -7,6 +7,7 @@
 //   - Badge ngày ở giữa chat khi đổi ngày (Hôm nay/Hôm qua/X ngày/dd/mm)
 //   - Auto-scroll: immediate lần đầu mở, smooth khi có tin mới
 //   - Không auto-scroll khi user kéo lên đọc tin cũ
+// 🔧 FIX #79: truyền vars vào t() thay vì .replace("{n}", ...) thủ công
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -316,8 +317,9 @@ export default function EmployeeChat() {
       const val = (contentOverride ?? text).trim();
       if (!val || !selected || sending) return;
       if (val.length > MAX_MESSAGE_LENGTH) {
+        // 🔧 FIX #79: truyền vars vào t() thay vì .replace("{n}", ...) thủ công
         toast(
-          t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH),
+          t("Tin nhắn tối đa {n} ký tự", { n: MAX_MESSAGE_LENGTH }),
           "error"
         );
         return;

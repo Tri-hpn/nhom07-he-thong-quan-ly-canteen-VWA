@@ -1,6 +1,7 @@
 // ============================================================
 // UI.JSX — Utility components
 // ============================================================
+// 🔧 FIX #43: StatusBadge fallback text khi status/statusKey undefined
 
 import {
   useEffect, useState, useMemo, useCallback,
@@ -158,8 +159,8 @@ export function StatusBadge({ status, statusKey }) {
 
   const theme = hasProvider ? ctxTheme : fallbackTheme;
 
-  // Nhận status thật (đã dịch) để tra bảng
-  const displayStatus = statusKey ? t(statusKey) : status;
+  // 🔧 FIX #43: luôn có text hiển thị, fallback "—" khi cả 2 đều rỗng
+  const displayStatus = statusKey ? t(statusKey) : (status || "—");
 
   const config = useMemo(
     () => STATUS_CONFIG[displayStatus] || FALLBACK,
