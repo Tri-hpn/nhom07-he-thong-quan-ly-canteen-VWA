@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // FORGOTPASSWORD.JSX — Khôi phục mật khẩu (style Login V8)
 // ============================================================
 // Demo — OTP hardcode "123456"
@@ -6,6 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
+import { LogoVWACompact } from "../components/LogoVWA";
 import { Link } from "react-router-dom";
 import {
   Mail,
@@ -166,13 +167,7 @@ export default function ForgotPassword() {
         <div className="v8-form-inner">
           <div className="v8-form-top">
             <div className="v8-form-logo">
-              <div className="v8-form-logo-mark">
-                {step === 3 ? (
-                  <CheckCircle2 size={22} />
-                ) : (
-                  <ShieldCheck size={22} />
-                )}
-              </div>
+              <LogoVWACompact size={64} />
             </div>
             <nav className="v8-tabs" aria-label="Chuyển trang">
               <Link to="/" className="v8-tab">

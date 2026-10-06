@@ -1,19 +1,30 @@
 // ============================================================
 // OWNERMENU.JSX — Quản lý thực đơn + danh mục (Admin)
 // ============================================================
-// Nhóm khung giờ nhận món (Time Slots) ở đầu trang.
-// Bảng món ăn ở dưới.
+// Layout: Card ngang (Mẫu A) giống hệt EmployeeMenu
+//   - Time Slots (khung giờ) ở đầu trang
+//   - Toolbar: search + filter + 2 nút chính
+//   - Grid card ngang: ảnh 96px + info + actions
+//   - Pagination 12 món/trang
+//   - Modals: Thêm/Sửa món, Quản lý danh mục
 //
-// ✅ THÊM: Checkbox "Món Signature" trong modal thêm/sửa món
-// ✅ THÊM: Cột "Signature" trong bảng hiển thị badge
-// 🔧 FIX #89: t() truyền vars thay vì .replace("{password}", ...) thủ công
+// 🔧 Admin có quyền (khác nhân viên):
+//   - Toggle "Tắt món" (active = 0) — riêng admin
+//   - Nút Sửa (mở modal edit)
+//   - Nút Xoá vĩnh viễn (api.menu.remove)
+//
+// ✅ THÊM: Checkbox "Món Signature"
+// 🔧 FIX #89: t() truyền vars thay vì .replace("{password}", ...)
 // ============================================================
 
-import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Plus, Search, Pencil, Trash2, FolderPlus, Folder, X, Save, Loader2, AlertCircle, UtensilsCrossed, EyeOff, Eye, Star, Clock, Sunrise, Sun, Sunset, RotateCcw, Edit,
+  Plus, Minus, Search, Pencil, Trash2, FolderPlus, Folder, X, Save,
+  Loader2, AlertCircle, UtensilsCrossed, EyeOff, Eye, Star, Clock,
+  Sunrise, Sun, Sunset, RotateCcw, Edit, CheckCircle2, Package, Ban,
+  Power, ChevronLeft, ChevronRight, Flame,
 } from "lucide-react";
+import { SkeletonTable } from "../../components/Skeleton";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
@@ -30,6 +41,9 @@ import { useI18n } from "../../hooks/useI18n";
 const MODAL_Z = 2147483600;
 const DEFAULT_CATEGORY_ICON = "🍽️";
 const MAX_DISCOUNT = 90;
+const MAX_STOCK = 100;
+const LOW_STOCK_THRESHOLD = 10;
+const PAGE_SIZE = 12;
 
 // Time slot sessions
 const SESSIONS = [
@@ -51,18 +65,31 @@ function dbg(...args) {
   if (DEBUG) console.log("[OwnerMenu]", ...args);
 }
 
+function getFALLBACK_IMG() {
+  return (
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text></svg>`
+    )
+  );
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 
 export default function OwnerMenu() {
   const { t, tData } = useI18n();
+
   // ---------- Menu list state ----------
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
   const [filterCat, setFilterCat] = useState("");
+
+  // ---------- Pagination ----------
+  const [page, setPage] = useState(1);
 
   // ---------- Time slots state ----------
   const [slots, setSlots] = useState([]);
@@ -95,10 +122,10 @@ export default function OwnerMenu() {
     discountPercent: 0,
   });
 
-  // ---------- ✅ Signature checkbox state ----------
+  // ---------- Signature checkbox state ----------
   const [isSignature, setIsSignature] = useState(false);
 
-  // ---------- ✅ Dinh dưỡng (dùng cho bộ lọc bên khách hàng) ----------
+  // ---------- Dinh dưỡng ----------
   const [nutrition, setNutrition] = useState({
     is_cool: false,
     is_healthy: false,
@@ -111,6 +138,7 @@ export default function OwnerMenu() {
 
   // ---------- Per-action loading ----------
   const [togglingId, setTogglingId] = useState(null);
+  const [processingIds, setProcessingIds] = useState(() => new Set());
 
   // ============================================================
   // LOAD TIME SLOTS
@@ -233,7 +261,7 @@ export default function OwnerMenu() {
   }, [modal]);
 
   // ============================================================
-  // FILTER MENU
+  // FILTER + PAGINATION
   // ============================================================
 
   const filtered = useMemo(() => {
@@ -247,8 +275,32 @@ export default function OwnerMenu() {
       result = result.filter((m) => m.category === filterCat);
     }
 
-    return result;
+    // Sort: tạm hết hàng + đã tắt lên đầu để admin thấy rõ
+    return [...result].sort((a, b) => {
+      const stockA = Number(a.stock) || 0;
+      const stockB = Number(b.stock) || 0;
+      const activeA = Number(a.active) || 0;
+      const activeB = Number(b.active) || 0;
+
+      // Ưu tiên: đã tắt (0) > tạm hết (1) > sắp hết (2) > bình thường (3)
+      const orderA = !activeA ? 0 : stockA === 0 ? 1 : stockA < LOW_STOCK_THRESHOLD ? 2 : 3;
+      const orderB = !activeB ? 0 : stockB === 0 ? 1 : stockB < LOW_STOCK_THRESHOLD ? 2 : 3;
+
+      return orderA - orderB;
+    });
   }, [list, q, filterCat]);
+
+  // Reset page khi filter/search đổi
+  useEffect(() => {
+    setPage(1);
+  }, [q, filterCat]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, currentPage]);
 
   // ---------- Confirm helpers ----------
 
@@ -362,7 +414,6 @@ export default function OwnerMenu() {
       return toast("Số lượng không được âm", "error");
     }
 
-    // Dinh dưỡng: bỏ trống → null để server tự gán mặc định theo danh mục
     const numOrNull = (v) => {
       const s = String(v ?? "").trim();
       if (s === "") return null;
@@ -380,9 +431,7 @@ export default function OwnerMenu() {
       description: f.get("description")?.trim() || "",
       image: image || f.get("imageUrl")?.trim() || "",
       reason: f.get("reason")?.trim() || "",
-      // ✅ Lưu field is_signature
       is_signature: isSignature,
-      // ✅ Dinh dưỡng — dùng cho bộ lọc "Tiêu chí ưu tiên" + "Mức năng lượng"
       prep_time: numOrNull(f.get("prep_time")),
       calories: numOrNull(f.get("calories")),
       is_cool: nutrition.is_cool,
@@ -408,7 +457,7 @@ export default function OwnerMenu() {
     }
   };
 
-  // ---------- Toggle active ----------
+  // ---------- Toggle active (Tắt/Bật món) ----------
 
   const toggleActive = async (item) => {
     const id = item._id || item.id;
@@ -452,6 +501,73 @@ export default function OwnerMenu() {
     }
   };
 
+  // ---------- Toggle Out (Tạm hết hàng) ----------
+
+  const markProcessing = (id, on) => {
+    setProcessingIds((s) => {
+      const n = new Set(s);
+      if (on) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+  };
+
+  const handleToggleOut = useCallback(
+    async (item) => {
+      const id = item._id || item.id;
+      if (processingIds.has(id)) return;
+      markProcessing(id, true);
+
+      const stockNum = Number(item.stock) || 0;
+      const isOut = stockNum === 0;
+      const newStock = isOut ? 20 : 0;
+
+      try {
+        await api.menu.update(id, { stock: newStock });
+        toast(
+          isOut
+            ? `Đã mở bán lại: "${item.name}"`
+            : `Đã tạm hết hàng: "${item.name}"`,
+          isOut ? "success" : "warning"
+        );
+        await load();
+      } catch (e) {
+        toast(e.message || "Không cập nhật được", "error");
+      } finally {
+        markProcessing(id, false);
+      }
+    },
+    [processingIds, load]
+  );
+
+  // ---------- Adjust stock ----------
+
+  const handleAdjustStock = useCallback(
+    async (item, delta) => {
+      const id = item._id || item.id;
+      if (processingIds.has(id)) return;
+
+      const currentStock = Number(item.stock) || 0;
+      const newStock = Math.max(0, Math.min(MAX_STOCK, currentStock + delta));
+      if (newStock === currentStock) return;
+
+      markProcessing(id, true);
+      try {
+        await api.menu.update(id, { stock: newStock });
+        toast(`Tồn kho: ${newStock} suất`, "success", {
+          id: "stock-toast-" + id,
+          duration: 1500,
+        });
+        await load();
+      } catch (e) {
+        toast(e.message || "Không cập nhật được", "error");
+      } finally {
+        markProcessing(id, false);
+      }
+    },
+    [processingIds, load]
+  );
+
   // ---------- Remove item ----------
 
   const removeItem = (item) => {
@@ -463,7 +579,7 @@ export default function OwnerMenu() {
         "⚠️ HÀNH ĐỘNG NÀY KHÔNG THỂ HOÀN TÁC.\n\n" +
         "Món sẽ bị XÓA KHỎI DATABASE.\n" +
         "Khác với 'Tắt món' (chỉ ẩn khỏi khách, có thể bật lại).\n\n" +
-        "Nếu bạn chỉ muốn ẩn tạm, hãy dùng nút Tắt ở cột Hiển thị.",
+        "Nếu bạn chỉ muốn ẩn tạm, hãy dùng nút Tắt món.",
       confirmText: "XÓA VĨNH VIỄN",
       cancelText: "Hủy — Giữ lại",
       danger: true,
@@ -476,7 +592,7 @@ export default function OwnerMenu() {
     });
   };
 
-  // ---------- LayoutGrid handlers ----------
+  // ---------- Category handlers ----------
 
   const openAddCat = () => {
     setEditingCat(null);
@@ -575,7 +691,6 @@ export default function OwnerMenu() {
       slots: map[session.id] || [],
     })).filter((g) => g.slots.length > 0);
   }, [slots]);
-
   // ============================================================
   // RENDER
   // ============================================================
@@ -774,7 +889,7 @@ export default function OwnerMenu() {
             </div>
           )}
 
-          {/* Users */}
+          {/* Slots */}
           {!slotsLoading &&
             groupedSlots.map((group) => {
               const Icon = group.icon;
@@ -1040,348 +1155,130 @@ export default function OwnerMenu() {
           </button>
         </div>
 
-        {/* ============ TABLE ============ */}
-        <div
-          style={{
-            background: "var(--card-bg, #fff)",
-            border: "1px solid var(--border-color, #e7ebf0)",
-            borderRadius: 12,
-            padding: 20,
-          }}
-        >
-          {loading && (
-            <SkeletonTable
-              columns={8}
-              rows={5}
-              headers={[
-                "Ảnh",
-                "Món",
-                "Danh mục",
-                "Giá",
-                "Tồn",
-                "Hiển thị",
-                "Signature",
-                "Thao tác",
-              ]}
+        {/* ============ RESULT INFO ============ */}
+        {!loading && filtered.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 14,
+              fontSize: 13,
+              color: "var(--text-muted, #64748b)",
+              flexWrap: "wrap",
+              gap: 10,
+            }}
+          >
+            <span>
+              Hiển thị{" "}
+              <b style={{ color: "var(--text-primary, #172033)" }}>
+                {paginatedItems.length}
+              </b>{" "}
+              / {filtered.length} món
+            </span>
+          </div>
+        )}
+
+        {/* ============ MENU GRID (CARD NGANG - MẪU A) ============ */}
+        {loading && paginatedItems.length === 0 ? (
+          <div
+            style={{
+              padding: 60,
+              textAlign: "center",
+              color: "var(--text-light, #8993a3)",
+              background: "var(--card-bg, #fff)",
+              borderRadius: 14,
+            }}
+          >
+            <Loader2
+              size={26}
+              style={{ animation: "spin 1s linear infinite", marginBottom: 8 }}
             />
-          )}
-
-          {!loading && error && <ErrorBox message={error} onRetry={load} />}
-
-          {!loading && !error && (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
-                    <th style={thStyle}>Ảnh</th>
-                    <th style={thStyle}>Món</th>
-                    <th style={thStyle}>Danh mục</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Giá</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Tồn</th>
-                    <th style={{ ...thStyle, textAlign: "center" }}>
-                      Hiển thị
-                    </th>
-                    {/* ✅ CỘT SIGNATURE */}
-                    <th style={{ ...thStyle, textAlign: "center" }}>
-                      Signature
-                    </th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>
-                      Thao tác
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((m) => {
-                    const itemId = m._id || m.id;
-                    const hasDiscount = m.discount_percent > 0;
-                    const isActive = Number(m.active) === 1;
-                    const isToggling = togglingId === itemId;
-
-                    return (
-                      <tr
-                        key={itemId}
-                        style={{
-                          borderBottom:
-                            "1px solid var(--border-color, #eef2f7)",
-                          background: isActive
-                            ? "transparent"
-                            : "rgba(245, 158, 11, 0.06)",
-                          borderLeft: isActive
-                            ? "3px solid transparent"
-                            : "3px solid #f59e0b",
-                          transition: "background 0.2s, border-left 0.2s",
-                          opacity: isToggling ? 0.6 : 1,
-                        }}
-                      >
-                        <td style={tdStyle}>
-                          <img
-                            src={m.image}
-                            alt={m.name}
-                            style={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: 8,
-                              objectFit: "cover",
-                              border: "1px solid var(--border-color, #e5e9ef)",
-                            }}
-                            onError={(e) => {
-                              e.target.src =
-                                "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23f5f7fb' width='100' height='100'/><text x='50' y='55' font-size='40' text-anchor='middle'>🍽️</text></svg>";
-                            }}
-                          />
-                        </td>
-                        <td style={tdStyle}>
-                          <b style={{ display: "block", marginBottom: 2 }}>
-                            {tData(m, "name")}
-                          </b>
-                          {m.description && (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "var(--text-light, #8993a3)",
-                                display: "block",
-                                maxWidth: 300,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {tData(m, "description")}
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          style={{
-                            ...tdStyle,
-                            color: "var(--text-muted, #64748b)",
-                          }}
-                        >
-                          {m.category}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>
-                          {hasDiscount ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "flex-end",
-                                gap: 2,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  color: "var(--text-light, #94a3b8)",
-                                  textDecoration: "line-through",
-                                }}
-                              >
-                                {money(m.original_price)}
-                              </span>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                }}
-                              >
-                                <b style={{ color: "#ef4444", fontSize: 13 }}>
-                                  {money(m.price)}
-                                </b>
-                                <span
-                                  style={{
-                                    background:
-                                      "linear-gradient(135deg, #ef4444, #f59e0b)",
-                                    color: "#fff",
-                                    padding: "1px 6px",
-                                    borderRadius: 8,
-                                    fontSize: 10,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  -{m.discount_percent}%
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <b style={{ color: "#18a967", fontSize: 13 }}>
-                              {money(m.price)}
-                            </b>
-                          )}
-                        </td>
-                        <td
-                          style={{
-                            ...tdStyle,
-                            textAlign: "right",
-                            color: m.stock === 0 ? "#ef4444" : "inherit",
-                            fontWeight: m.stock === 0 ? 700 : 400,
-                          }}
-                        >
-                          {m.stock}
-                        </td>
-
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              gap: 4,
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => toggleActive(m)}
-                              disabled={isToggling}
-                              title={
-                                isActive
-                                  ? "TẮT BÁN món này (khách không thấy, món vẫn còn)"
-                                  : "BẬT BÁN món này"
-                              }
-                              aria-label={
-                                isActive ? "Tắt bán món" : "Bật bán món"
-                              }
-                              aria-pressed={isActive}
-                              role="switch"
-                              style={{
-                                background: isActive ? "#18a967" : "#cbd5e1",
-                                border: 0,
-                                cursor: isToggling ? "wait" : "pointer",
-                                width: 52,
-                                height: 28,
-                                borderRadius: 999,
-                                padding: 0,
-                                position: "relative",
-                                display: "inline-block",
-                                margin: "0 auto",
-                                verticalAlign: "middle",
-                                transition: "background-color 0.25s ease",
-                                boxShadow: isActive
-                                  ? "0 2px 8px rgba(24, 169, 103, 0.35)"
-                                  : "inset 0 1px 3px rgba(0, 0, 0, 0.08)",
-                                opacity: isToggling ? 0.7 : 1,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  position: "absolute",
-                                  top: 3,
-                                  left: isActive ? 27 : 3,
-                                  width: 22,
-                                  height: 22,
-                                  borderRadius: "50%",
-                                  background: "#ffffff",
-                                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
-                                  transition:
-                                    "left 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-                                }}
-                              />
-                            </button>
-                            {!isActive && (
-                              <span
-                                style={{
-                                  fontSize: 9.5,
-                                  fontWeight: 700,
-                                  color: "#f59e0b",
-                                  textTransform: "uppercase",
-                                  letterSpacing: 0.3,
-                                }}
-                              >
-                                Đã tắt
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* ✅ CỘT SIGNATURE */}
-                        <td style={{ ...tdStyle, textAlign: "center" }}>
-                          {m.is_signature ? (
-                            <span
-                              title="Món Signature"
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 3,
-                                padding: "4px 10px",
-                                borderRadius: 12,
-                                background:
-                                  "linear-gradient(135deg, #f59e0b, #ef4444)",
-                                color: "#fff",
-                                fontSize: 10,
-                                fontWeight: 700,
-                                whiteSpace: "nowrap",
-                                boxShadow:
-                                  "0 2px 6px rgba(245, 158, 11, 0.35)",
-                              }}
-                            >
-                              <Star size={10} fill="#fff" /> Signature
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                color: "var(--text-light, #94a3b8)",
-                                fontSize: 12,
-                              }}
-                            >
-                              —
-                            </span>
-                          )}
-                        </td>
-
-                        <td style={{ ...tdStyle, textAlign: "right" }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 6,
-                              justifyContent: "flex-end",
-                            }}
-                          >
-                            <IconButton
-                              onClick={() => openItemModal(m)}
-                              title="Sửa món (không phải tắt)"
-                            >
-                              <Edit size={15} />
-                            </IconButton>
-                            <IconButton
-                              onClick={() => removeItem(m)}
-                              title="XÓA VĨNH VIỄN món này (khác với tắt)"
-                              color="#ef4444"
-                            >
-                              <Trash2 size={15} />
-                            </IconButton>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {!filtered.length && (
-                    <tr>
-                      <td
-                        colSpan="8"
-                        style={{
-                          textAlign: "center",
-                          padding: 40,
-                          color: "var(--text-light, #8993a3)",
-                        }}
-                      >
-                        <UtensilsCrossed
-                          size={36}
-                          style={{ opacity: 0.35, marginBottom: 10 }}
-                        />
-                        <div>
-                          {q || filterCat
-                            ? "Không có món nào khớp bộ lọc"
-                            : 'Chưa có món nào — bấm "Thêm món" để bắt đầu'}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div>Đang tải thực đơn...</div>
+          </div>
+        ) : error ? (
+          <ErrorBox message={error} onRetry={load} />
+        ) : filtered.length === 0 ? (
+          <div
+            style={{
+              padding: 60,
+              textAlign: "center",
+              color: "var(--text-light, #8993a3)",
+              background: "var(--card-bg, #fff)",
+              borderRadius: 14,
+            }}
+          >
+            <UtensilsCrossed
+              size={40}
+              style={{ opacity: 0.3, marginBottom: 8 }}
+            />
+            <div>
+              {q || filterCat
+                ? "Không có món nào khớp bộ lọc"
+                : 'Chưa có món nào — bấm "Thêm món" để bắt đầu'}
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <div className="admin-menu-grid">
+              {paginatedItems.map((m) => (
+                <AdminMenuCardRow
+                  key={m._id || m.id}
+                  item={m}
+                  isProcessing={processingIds.has(m._id || m.id)}
+                  isToggling={togglingId === (m._id || m.id)}
+                  onToggleOut={() => handleToggleOut(m)}
+                  onToggleActive={() => toggleActive(m)}
+                  onAdjustStock={(delta) => handleAdjustStock(m, delta)}
+                  onEdit={() => openItemModal(m)}
+                  onDelete={() => removeItem(m)}
+                  t={t}
+                  tData={tData}
+                />
+              ))}
+            </div>
 
+            {/* ============ PAGINATION ============ */}
+            {totalPages > 1 && (
+              <div className="admin-menu-pagination">
+                <button
+                  type="button"
+                  className="admin-menu-page-btn"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  aria-label="Trang trước"
+                >
+                  <ChevronLeft size={18} />
+                  <span>Trang trước</span>
+                </button>
+
+                <div className="admin-menu-page-indicator">
+                  <span className="admin-menu-page-indicator__label">
+                    Trang
+                  </span>
+                  <span className="admin-menu-page-indicator__current">
+                    {currentPage}
+                  </span>
+                  <span className="admin-menu-page-indicator__sep">/</span>
+                  <span className="admin-menu-page-indicator__total">
+                    {totalPages}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  className="admin-menu-page-btn"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  aria-label="Trang sau"
+                >
+                  <span>Trang sau</span>
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
+          </>
+        )}
         {/* ============ CATEGORY MODAL ============ */}
         {showCatModal && (
           <Modal
@@ -2092,6 +1989,307 @@ export default function OwnerMenu() {
 }
 
 // ============================================================
+// SUB-COMPONENT: AdminMenuCardRow — Card ngang (Mẫu A)
+// ------------------------------------------------------------
+// Giống EmployeeMenu nhưng admin có thêm:
+//   - Nút "Tắt món" (active=0)
+//   - Icon Sửa (mở modal edit)
+//   - Icon Xoá (xoá vĩnh viễn)
+// ============================================================
+
+function AdminMenuCardRow({
+  item,
+  isProcessing,
+  isToggling,
+  onToggleOut,
+  onToggleActive,
+  onAdjustStock,
+  onEdit,
+  onDelete,
+  t,
+  tData,
+}) {
+  const stockNum = Number(item.stock) || 0;
+  const soldNum = Number(item.sold) || 0;
+  const totalStockNum = stockNum + soldNum;
+  const activeNum = Number(item.active) || 0;
+  const isActive = activeNum === 1;
+  const isOut = stockNum === 0;
+  const isLow = stockNum > 0 && stockNum < LOW_STOCK_THRESHOLD;
+  const isDisabled = !isActive;
+
+  const unitLabel =
+    item.category === "Đồ uống"
+      ? t("ly")
+      : item.category === "Món mặn"
+      ? t("tô")
+      : t("suất");
+
+  // Badge trạng thái
+  let statusBadge = null;
+  if (isDisabled) {
+    statusBadge = {
+      variant: "disabled",
+      icon: <Power size={11} />,
+      text: t("Đã tắt món"),
+    };
+  } else if (isOut) {
+    statusBadge = {
+      variant: "out",
+      icon: <Ban size={11} />,
+      text: t("Tạm hết hàng"),
+    };
+  } else if (isLow) {
+    statusBadge = {
+      variant: "low",
+      icon: <AlertCircle size={11} />,
+      text: `${t("Sắp hết")} (${stockNum})`,
+    };
+  } else {
+    statusBadge = {
+      variant: "active",
+      icon: <CheckCircle2 size={11} />,
+      text: t("Đang bán"),
+    };
+  }
+
+  // Class card
+  const cardClass =
+    "admin-menu-card" +
+    (isDisabled ? " admin-menu-card--disabled" : "") +
+    (isOut && !isDisabled ? " admin-menu-card--out" : "");
+
+  return (
+    <article className={cardClass}>
+      {/* Ảnh vuông 96px */}
+      <div className="admin-menu-card__img-wrap">
+        <img
+          src={item.image || getFALLBACK_IMG()}
+          alt={item.name}
+          loading="lazy"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = getFALLBACK_IMG();
+          }}
+        />
+        {item.is_signature && (
+          <span className="admin-menu-card__badge-signature">
+            <Star size={9} fill="#fff" /> SIGNATURE
+          </span>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="admin-menu-card__info">
+        <span className="admin-menu-card__category">
+          {item.category}
+        </span>
+
+        <h3 className="admin-menu-card__name">
+          {tData(item, "name") || item.name}
+        </h3>
+
+        {/* Giá */}
+        <div className="admin-menu-card__price-row">
+          {item.original_price > item.price && (
+            <span className="admin-menu-card__price-old">
+              {money(item.original_price)}
+            </span>
+          )}
+          <span className="admin-menu-card__price-new">
+            {money(item.price)}
+          </span>
+          {item.original_price > item.price &&
+            item.discount_percent > 0 && (
+              <span className="admin-menu-card__discount">
+                -{item.discount_percent}%
+              </span>
+            )}
+        </div>
+
+        {/* Meta */}
+        <div className="admin-menu-card__meta">
+          {item.rating > 0 && (
+            <span className="admin-menu-card__meta-item">
+              <Star size={12} fill="#f59e0b" color="#f59e0b" />
+              <b>{item.rating}</b>
+            </span>
+          )}
+          {item.calories > 0 && (
+            <span className="admin-menu-card__meta-item">
+              <Flame size={12} color="#ef4444" />
+              {item.calories} kcal
+            </span>
+          )}
+          {item.prep_time > 0 && (
+            <span className="admin-menu-card__meta-item">
+              <Clock size={12} />
+              {item.prep_time} {t("phút")}
+            </span>
+          )}
+        </div>
+
+        {/* Status + Stock X/Y */}
+        <div className="admin-menu-card__status-row">
+          {statusBadge && (
+            <span
+              className={`admin-menu-card__badge admin-menu-card__badge--${statusBadge.variant}`}
+            >
+              {statusBadge.icon}
+              {statusBadge.text}
+            </span>
+          )}
+
+          <span className="admin-menu-card__stock-info">
+            <Package size={12} />
+            <b
+              style={{
+                color: isOut
+                  ? "var(--st-danger)"
+                  : isLow
+                  ? "#b45309"
+                  : "var(--st-success)",
+              }}
+            >
+              {stockNum}
+            </b>
+            <span>
+              / {totalStockNum} {unitLabel}
+            </span>
+          </span>
+        </div>
+
+        {/* Actions */}
+        <div className="admin-menu-card__actions">
+          {/* Stepper */}
+          <div className="admin-menu-card__stepper">
+            <button
+              type="button"
+              className="admin-menu-card__step-btn"
+              onClick={() => onAdjustStock(-1)}
+              disabled={isProcessing || stockNum <= 0 || isDisabled}
+              aria-label={t("Giảm")}
+            >
+              <Minus size={14} />
+            </button>
+            <span className="admin-menu-card__step-value">{stockNum}</span>
+            <button
+              type="button"
+              className="admin-menu-card__step-btn"
+              onClick={() => onAdjustStock(1)}
+              disabled={isProcessing || stockNum >= MAX_STOCK || isDisabled}
+              aria-label={t("Tăng")}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+
+          {/* Quick add */}
+          <div className="admin-menu-card__quick">
+            <button
+              type="button"
+              className="admin-menu-card__quick-btn"
+              onClick={() => onAdjustStock(10)}
+              disabled={isProcessing || isDisabled}
+            >
+              +10
+            </button>
+            <button
+              type="button"
+              className="admin-menu-card__quick-btn"
+              onClick={() => onAdjustStock(20)}
+              disabled={isProcessing || isDisabled}
+            >
+              +20
+            </button>
+          </div>
+
+          {/* Toggle Out (tạm hết hàng) */}
+          <button
+            type="button"
+            className={`admin-menu-card__toggle-out ${
+              isOut
+                ? "admin-menu-card__toggle-out--reopen"
+                : "admin-menu-card__toggle-out--out"
+            }`}
+            onClick={onToggleOut}
+            disabled={isProcessing || isDisabled}
+            title={
+              isDisabled
+                ? t("Món đã bị tắt — mở lại trước khi thao tác")
+                : isOut
+                ? t("Mở bán lại")
+                : t("Báo tạm hết hàng")
+            }
+          >
+            {isProcessing ? (
+              <Loader2
+                size={14}
+                style={{ animation: "spin 1s linear infinite" }}
+              />
+            ) : isOut ? (
+              <Eye size={14} />
+            ) : (
+              <EyeOff size={14} />
+            )}
+            <span>{isOut ? t("Mở bán lại") : t("Tạm hết")}</span>
+          </button>
+
+          {/* Toggle Active (Tắt/Bật món) - CHỈ ADMIN */}
+          <button
+            type="button"
+            className={`admin-menu-card__toggle-active ${
+              isDisabled ? "admin-menu-card__toggle-active--off" : ""
+            }`}
+            onClick={onToggleActive}
+            disabled={isToggling}
+            title={
+              isActive
+                ? t("Tắt món — ẩn với khách, vẫn còn trong hệ thống")
+                : t("Bật lại món")
+            }
+          >
+            {isToggling ? (
+              <Loader2
+                size={14}
+                style={{ animation: "spin 1s linear infinite" }}
+              />
+            ) : (
+              <Power size={14} />
+            )}
+            <span>{isActive ? t("Tắt món") : t("Bật lại")}</span>
+          </button>
+
+          {/* Icon actions (Sửa/Xoá) */}
+          <div className="admin-menu-card__icon-actions">
+            <button
+              type="button"
+              className="admin-menu-card__icon-btn"
+              onClick={onEdit}
+              disabled={isProcessing}
+              title={t("Sửa món")}
+              aria-label={t("Sửa món")}
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              className="admin-menu-card__icon-btn admin-menu-card__icon-btn--danger"
+              onClick={onDelete}
+              disabled={isProcessing}
+              title={t("Xoá vĩnh viễn món này")}
+              aria-label={t("Xoá món")}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// ============================================================
 // SUB-COMPONENTS
 // ============================================================
 
@@ -2205,20 +2403,6 @@ function Modal({ children, onClose, maxWidth = 480 }) {
 // ============================================================
 // STYLE CONSTANTS
 // ============================================================
-
-const thStyle = {
-  padding: 11,
-  textAlign: "left",
-  fontSize: 12,
-  color: "var(--text-muted, #64748b)",
-  fontWeight: 600,
-};
-
-const tdStyle = {
-  padding: 11,
-  fontSize: 13,
-  color: "var(--text-primary, #172033)",
-};
 
 const labelStyle = {
   display: "block",

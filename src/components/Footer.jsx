@@ -1,8 +1,9 @@
-// ============================================================
+﻿// ============================================================
 // FOOTER.JSX — Footer toàn cục
 // ============================================================
 
 import { useEffect, useState, useMemo } from "react";
+import { LogoVWACompact } from "./LogoVWA";
 import {
   Phone, Mail, MapPin, Facebook, Youtube, Instagram, Send, Globe,
 } from "lucide-react";
@@ -132,7 +133,7 @@ export default function Footer() {
         {/* CỘT 1: BRAND */}
         <div className="footer-col">
           <div className="footer-brand">
-            <div className="footer-logo">C</div>
+            <LogoVWACompact size={40} className="footer-logo" />
             <div>
               <b>CANTEEN VWA</b>
               <small>SMART MANAGEMENT</small>

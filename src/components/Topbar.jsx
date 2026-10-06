@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // TOPBAR.JSX — Top navigation cho Customer (V4 - FIXED + i18n)
 // ============================================================
 // V4 (2026-10):
@@ -20,6 +20,7 @@ import { useI18n } from "../hooks/useI18n";
 
 const CART_KEY = "canteen_cart";
 const ORDERS_SEEN_KEY = "orders_last_seen";
+import { LogoVWACompact } from "./LogoVWA";
 const LANG_KEY = "vwa_lang";
 const THEME_KEY = "vwa_theme";
 const POLL_MS = 30000;
@@ -325,7 +326,7 @@ export default function CustomerTopbar({
             </button>
 
             <Link to="/customer/home" className="customer-topbar__logo">
-              <div className="customer-topbar__logo-mark">V</div>
+              <LogoVWACompact size={36} />
               <div className="customer-topbar__logo-text">
                 <b>CANTEEN VWA</b>
                 <small>{t("HỌC VIỆN PHỤ NỮ VN")}</small>

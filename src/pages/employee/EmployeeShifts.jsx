@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // EMPLOYEESHIFTS.JSX — Trang "Ca làm việc" (gộp CheckInOut + History)
 // ============================================================
 // Layout:
@@ -9,6 +9,13 @@
 //   - Lịch sử chấm công gần nhất
 // 🔧 FIX #84: clock dùng Intl.DateTimeFormat cố định (VN, 24h)
 //             cho cả time + date — output ổn định giữa các browser
+// 🔧 V2: Nút "In phiếu giao ca" → mở modal preview chuẩn (đồng nhất
+//         với EmployeeHome V7). Dữ liệu lấy real ca thật:
+//         - Ca: ưu tiên todayAtt.shift → currentShift.id → todayShifts[0]
+//         - Chấm công: check-in/out/hours/status từ todayAtt
+//         - Phiếu gồm: Header + Thông tin ca + Chấm công + Ghi chú
+//           + Chữ ký + Footer (KHÔNG có doanh thu/đơn hàng — vì trang
+//           này không load orders)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -44,6 +51,32 @@ const CLOCK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
+});
+
+// 🔧 V2: formatter cho phiếu giao ca
+const PRINT_DATETIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+const PRINT_DATE_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+const PRINT_TIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
 });
 
 const SHIFTS = [
@@ -115,6 +148,29 @@ function pillVariant(status) {
   return STATUS_VARIANT[status] || "neutral";
 }
 
+// 🔧 V2: sinh mã phiếu giao ca — SHIFT-YYYYMMDD-XX
+function genShiftCode(now = new Date(), suffix = "A") {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `SHIFT-${y}${m}${d}-${suffix}`;
+}
+
+// 🔧 V2: map shift id ("Ca sáng") → { title, time }
+function getShiftInfoById(id) {
+  const s = SHIFTS.find((x) => x.id === id);
+  if (s) return { title: s.label, time: s.time };
+  return { title: "Ngoài giờ", time: "--:-- - --:--" };
+}
+
+// 🔧 V2: format giờ làm (giờ) → "Xh Ym"
+function fmtHours(hours) {
+  if (!hours || hours <= 0) return "0.0h";
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 // ============================================================
 // MAIN
 // ============================================================
@@ -140,6 +196,9 @@ export default function EmployeeShifts() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [selectedShift, setSelectedShift] = useState(null);
+
+  // 🔧 V2: Modal phiếu giao ca
+  const [showHandover, setShowHandover] = useState(false);
 
   // ---- CLOCK ----
   useEffect(() => {
@@ -274,7 +333,50 @@ export default function EmployeeShifts() {
   const clockLabel = CLOCK_TIME_FORMATTER.format(clock);
   const clockDateLabel = CLOCK_DATE_FORMATTER.format(clock);
 
-  // ---- CHECK-IN/OUT ----
+  // ============================================================
+  // 🔧 V2: DỮ LIỆU CHO PHIẾU GIAO CA — CA THẬT
+  // ============================================================
+  // Ưu tiên: todayAtt.shift → currentShift.id → todayShifts[0].shift → "Ngoài giờ"
+  const handoverShiftId = useMemo(() => {
+    if (todayAtt?.shift) return todayAtt.shift;
+    if (currentShift?.id) return currentShift.id;
+    if (todayShifts[0]?.shift) return todayShifts[0].shift;
+    return null;
+  }, [todayAtt, currentShift, todayShifts]);
+
+  const handoverShiftInfo = useMemo(
+    () => getShiftInfoById(handoverShiftId),
+    [handoverShiftId]
+  );
+
+  const handoverShiftCode = useMemo(() => {
+    const suffix =
+      handoverShiftId === "Ca sáng"
+        ? "S"
+        : handoverShiftId === "Ca chiều"
+        ? "C"
+        : "A";
+    return genShiftCode(clock, suffix);
+  }, [clock, handoverShiftId]);
+
+  const handoverPrintTime = PRINT_DATETIME_FORMATTER.format(clock);
+  const handoverPrintDate = PRINT_DATE_FORMATTER.format(clock);
+  const handoverPrintTimeOnly = PRINT_TIME_FORMATTER.format(clock);
+
+  const handoverStaffName = user?.name || "—";
+  const handoverStaffCode =
+    user?.employeeCode || user?.code || "NV-2024-08";
+
+  // Trạng thái chấm công cho phiếu
+  const handoverAttStatus = todayAtt?.checkIn
+    ? todayAtt?.checkOut
+      ? t("Đã hoàn thành ca")
+      : t("Đang trong ca")
+    : t("Chưa check-in");
+
+  // ============================================================
+  // CHECK-IN/OUT
+  // ============================================================
   const handleCheckIn = async () => {
     if (checkingIn || checkingOut) return;
     if (!todayShifts.length) {
@@ -313,6 +415,22 @@ export default function EmployeeShifts() {
       setCheckingOut(false);
     }
   };
+
+  // 🔧 V2: Mở modal phiếu giao ca
+  const handleOpenHandover = useCallback(() => {
+    setShowHandover(true);
+  }, []);
+
+  const handleCloseHandover = useCallback(() => {
+    setShowHandover(false);
+  }, []);
+
+  const handlePrintHandover = useCallback(() => {
+    // Đợi DOM render xong modal rồi mới in
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  }, []);
 
   // ---- RENDER ----
   if (loading) {
@@ -425,10 +543,11 @@ export default function EmployeeShifts() {
                 <PlusCircle size={18} />
                 <span>{t("Đăng ký ca")}</span>
               </button>
+              {/* 🔧 V2: Mở modal phiếu giao ca thay vì window.print() */}
               <button
                 type="button"
                 className="staff-hero__action"
-                onClick={() => window.print()}
+                onClick={handleOpenHandover}
               >
                 <Printer size={18} />
                 <span>{t("In phiếu giao ca")}</span>
@@ -821,6 +940,565 @@ export default function EmployeeShifts() {
           onClose={() => setShowRegister(false)}
         />
       )}
+
+      {/* ============ 🔧 V2: MODAL PHIẾU GIAO CA ============ */}
+      {showHandover && (
+        <div className="handover-overlay" role="dialog" aria-modal="true">
+          <div className="handover-modal">
+            {/* Toolbar (không in) */}
+            <div className="handover-modal__toolbar no-print">
+              <h3 className="handover-modal__toolbar-title">
+                {t("Xem trước phiếu giao ca")}
+              </h3>
+              <div className="handover-modal__toolbar-actions">
+                <button
+                  type="button"
+                  className="handover-modal__btn handover-modal__btn--ghost"
+                  onClick={handleCloseHandover}
+                >
+                  <X size={16} />
+                  <span>{t("Đóng")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="handover-modal__btn handover-modal__btn--primary"
+                  onClick={handlePrintHandover}
+                >
+                  <Printer size={16} />
+                  <span>{t("In phiếu")}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Phiếu giao ca — vùng in */}
+            <div className="handover-sheet" id="handover-print-area">
+              {/* Header */}
+              <div className="handover-sheet__header">
+                <div className="handover-sheet__logo">
+                  <img src="/icon.svg" alt="Canteen VWA" width={48} height={48} style={{ display: "block" }} />
+                  <div className="handover-sheet__logo-text">
+                    <b>CANTEEN VWA</b>
+                    <span>Học viện Phụ Nữ Việt Nam</span>
+                  </div>
+                </div>
+                <div className="handover-sheet__title-wrap">
+                  <h1 className="handover-sheet__title">
+                    PHIẾU GIAO CA
+                  </h1>
+                  <span className="handover-sheet__subtitle">
+                    Shift Handover Report
+                  </span>
+                </div>
+                <div className="handover-sheet__meta-right">
+                  <div>
+                    <b>{t("Mã phiếu:")}</b> {handoverShiftCode}
+                  </div>
+                  <div>
+                    <b>{t("Ngày:")}</b> {handoverPrintDate}
+                  </div>
+                  <div>
+                    <b>{t("Giờ in:")}</b> {handoverPrintTimeOnly}
+                  </div>
+                </div>
+              </div>
+
+              {/* Thông tin ca */}
+              <div className="handover-sheet__section">
+                <div className="handover-sheet__section-title">
+                  {t("THÔNG TIN CA")}
+                </div>
+                <div className="handover-sheet__grid">
+                  <div className="handover-sheet__row">
+                    <span className="handover-sheet__label">
+                      {t("Ca làm việc:")}
+                    </span>
+                    <span className="handover-sheet__value">
+                      {t(handoverShiftInfo.title)} ({handoverShiftInfo.time})
+                    </span>
+                  </div>
+                  <div className="handover-sheet__row">
+                    <span className="handover-sheet__label">
+                      {t("Nhân viên:")}
+                    </span>
+                    <span className="handover-sheet__value">
+                      {handoverStaffName}
+                      {handoverStaffCode ? ` (${handoverStaffCode})` : ""}
+                    </span>
+                  </div>
+                  <div className="handover-sheet__row">
+                    <span className="handover-sheet__label">
+                      {t("Ngày làm việc:")}
+                    </span>
+                    <span className="handover-sheet__value">{today}</span>
+                  </div>
+                  <div className="handover-sheet__row">
+                    <span className="handover-sheet__label">
+                      {t("Ca được phân:")}
+                    </span>
+                    <span className="handover-sheet__value">
+                      {todayShifts.length > 0 ? shiftLabel : "—"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CHẤM CÔNG — mục riêng của trang này */}
+              <div className="handover-sheet__section">
+                <div className="handover-sheet__section-title">
+                  {t("CHẤM CÔNG")}
+                </div>
+                <table className="handover-sheet__table">
+                  <tbody>
+                    <tr>
+                      <td>{t("Check-in")}</td>
+                      <td className="handover-sheet__num">
+                        {todayAtt?.checkIn ? fmtTime(todayAtt.checkIn) : "—"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>{t("Check-out")}</td>
+                      <td className="handover-sheet__num">
+                        {todayAtt?.checkOut ? fmtTime(todayAtt.checkOut) : "—"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>{t("Giờ làm hôm nay")}</td>
+                      <td className="handover-sheet__num handover-sheet__num--big">
+                        {todayAtt?.hours ? fmtHours(todayAtt.hours) : "0.0h"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>{t("Ca đang chấm")}</td>
+                      <td className="handover-sheet__num">
+                        {todayAtt?.shift || "—"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>{t("Trạng thái")}</td>
+                      <td className="handover-sheet__num">
+                        {handoverAttStatus}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Ghi chú */}
+              <div className="handover-sheet__section">
+                <div className="handover-sheet__section-title">
+                  {t("GHI CHÚ")}
+                </div>
+                <div className="handover-sheet__note-box">
+                  <div className="handover-sheet__note-line" />
+                  <div className="handover-sheet__note-line" />
+                  <div className="handover-sheet__note-line" />
+                </div>
+              </div>
+
+              {/* Chữ ký */}
+              <div className="handover-sheet__signatures">
+                <div className="handover-sheet__sign">
+                  <b>{t("Người giao ca")}</b>
+                  <span>({t("Ký, ghi rõ họ tên")})</span>
+                  <div className="handover-sheet__sign-space" />
+                  <div className="handover-sheet__sign-name">
+                    {handoverStaffName}
+                  </div>
+                </div>
+                <div className="handover-sheet__sign">
+                  <b>{t("Người nhận ca")}</b>
+                  <span>({t("Ký, ghi rõ họ tên")})</span>
+                  <div className="handover-sheet__sign-space" />
+                  <div className="handover-sheet__sign-name">&nbsp;</div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="handover-sheet__footer">
+                {t(
+                  "Phiếu được tạo tự động bởi hệ thống Canteen VWA — {time}"
+                ).replace("{time}", handoverPrintTime)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔧 V2: CSS — modal phiếu giao ca + @media print (copy từ EmployeeHome V7) */}
+      <style>{`
+        /* ---------- Modal overlay ---------- */
+        .handover-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          background: rgba(15, 23, 42, 0.6);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding: 24px 16px;
+          overflow-y: auto;
+        }
+
+        .handover-modal {
+          width: 100%;
+          max-width: 820px;
+          background: var(--st-surface);
+          border-radius: 12px;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+          overflow: hidden;
+        }
+
+        .handover-modal__toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 16px;
+          background: var(--st-surface-low);
+          border-bottom: 1px solid var(--st-outline-light);
+        }
+
+        .handover-modal__toolbar-title {
+          margin: 0;
+          font-family: var(--st-font-head);
+          font-size: 15px;
+          font-weight: 700;
+          color: var(--st-text);
+        }
+
+        .handover-modal__toolbar-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .handover-modal__btn {
+          height: 38px;
+          padding: 0 14px;
+          border-radius: 8px;
+          border: 0;
+          font-family: var(--st-font-head);
+          font-size: 13px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .handover-modal__btn--ghost {
+          background: var(--st-surface-container);
+          color: var(--st-text);
+        }
+        .handover-modal__btn--ghost:hover {
+          background: var(--st-surface-high);
+        }
+
+        .handover-modal__btn--primary {
+          background: var(--st-primary-container);
+          color: var(--st-on-primary);
+        }
+        .handover-modal__btn--primary:hover {
+          background: var(--st-primary);
+        }
+
+        /* ---------- Tờ phiếu giao ca ---------- */
+        .handover-sheet {
+          background: #ffffff;
+          color: #111827;
+          padding: 28px 32px 32px;
+          font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          font-size: 13px;
+          line-height: 1.5;
+        }
+
+        .handover-sheet__header {
+          display: grid;
+          grid-template-columns: auto 1fr auto;
+          align-items: center;
+          gap: 16px;
+          padding-bottom: 14px;
+          border-bottom: 2px solid #111827;
+        }
+
+        .handover-sheet__logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .handover-sheet__logo-mark {
+          width: 44px;
+          height: 44px;
+          border-radius: 8px;
+          background: #004ac6;
+          color: #fff;
+          display: grid;
+          place-items: center;
+          font-family: "Plus Jakarta Sans", sans-serif;
+          font-weight: 800;
+          font-size: 14px;
+          letter-spacing: 0.02em;
+        }
+
+        .handover-sheet__logo-text {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .handover-sheet__logo-text b {
+          font-family: "Plus Jakarta Sans", sans-serif;
+          font-size: 13px;
+          font-weight: 800;
+          letter-spacing: 0.02em;
+          color: #111827;
+        }
+
+        .handover-sheet__logo-text span {
+          font-size: 11px;
+          color: #6b7280;
+        }
+
+        .handover-sheet__title-wrap {
+          text-align: center;
+          min-width: 0;
+        }
+
+        .handover-sheet__title {
+          margin: 0;
+          font-family: "Plus Jakarta Sans", sans-serif;
+          font-size: 22px;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          color: #111827;
+        }
+
+        .handover-sheet__subtitle {
+          display: block;
+          font-size: 11px;
+          color: #6b7280;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-top: 2px;
+        }
+
+        .handover-sheet__meta-right {
+          text-align: right;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+
+        .handover-sheet__meta-right b {
+          color: #374151;
+          font-weight: 700;
+        }
+
+        .handover-sheet__section {
+          margin-top: 18px;
+        }
+
+        .handover-sheet__section-title {
+          font-family: "Plus Jakarta Sans", sans-serif;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: #004ac6;
+          padding-bottom: 4px;
+          border-bottom: 1px solid #e5e7eb;
+          margin-bottom: 8px;
+        }
+
+        .handover-sheet__grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 4px 24px;
+        }
+
+        .handover-sheet__row {
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+          padding: 3px 0;
+        }
+
+        .handover-sheet__label {
+          color: #6b7280;
+          min-width: 110px;
+        }
+
+        .handover-sheet__value {
+          font-weight: 600;
+          color: #111827;
+          flex: 1;
+        }
+
+        .handover-sheet__table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12.5px;
+        }
+
+        .handover-sheet__table td {
+          padding: 5px 8px;
+          border-bottom: 1px dashed #e5e7eb;
+        }
+
+        .handover-sheet__table tr:last-child td {
+          border-bottom: 0;
+        }
+
+        .handover-sheet__num {
+          text-align: right;
+          font-variant-numeric: tabular-nums;
+          font-weight: 700;
+          color: #111827;
+          white-space: nowrap;
+        }
+
+        .handover-sheet__num--big {
+          font-size: 15px;
+          color: #004ac6;
+        }
+
+        .handover-sheet__table--list th {
+          text-align: left;
+          padding: 6px 8px;
+          background: #f3f4f6;
+          font-family: "Plus Jakarta Sans", sans-serif;
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #374151;
+          border-bottom: 1px solid #d1d5db;
+        }
+
+        .handover-sheet__th-num {
+          text-align: right !important;
+        }
+
+        .handover-sheet__table--list td {
+          padding: 5px 8px;
+          border-bottom: 1px solid #f3f4f6;
+        }
+
+        .handover-sheet__more-note {
+          margin-top: 6px;
+          font-size: 11.5px;
+          color: #6b7280;
+          font-style: italic;
+        }
+
+        .handover-sheet__note-box {
+          padding: 4px 0;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        .handover-sheet__note-line {
+          border-bottom: 1px dotted #9ca3af;
+          height: 1px;
+        }
+
+        .handover-sheet__signatures {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+          margin-top: 24px;
+        }
+
+        .handover-sheet__sign {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          text-align: center;
+        }
+
+        .handover-sheet__sign b {
+          font-family: "Plus Jakarta Sans", sans-serif;
+          font-size: 12.5px;
+          font-weight: 800;
+          color: #111827;
+        }
+
+        .handover-sheet__sign span {
+          font-size: 11px;
+          color: #6b7280;
+          font-style: italic;
+        }
+
+        .handover-sheet__sign-space {
+          height: 56px;
+        }
+
+        .handover-sheet__sign-name {
+          font-family: "Plus Jakarta Sans", sans-serif;
+          font-size: 13px;
+          font-weight: 700;
+          color: #111827;
+          border-top: 1px solid #111827;
+          padding-top: 4px;
+          min-width: 160px;
+        }
+
+        .handover-sheet__footer {
+          margin-top: 20px;
+          padding-top: 10px;
+          border-top: 1px solid #e5e7eb;
+          text-align: center;
+          font-size: 10.5px;
+          color: #9ca3af;
+        }
+
+        /* ---------- @media print — chỉ in tờ phiếu ---------- */
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #handover-print-area,
+          #handover-print-area * {
+            visibility: visible !important;
+          }
+          #handover-print-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            background: #fff !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            padding: 20px 24px !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .handover-overlay {
+            position: static !important;
+            background: #fff !important;
+            backdrop-filter: none !important;
+            padding: 0 !important;
+            overflow: visible !important;
+          }
+          .handover-modal {
+            max-width: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
+        }
+      `}</style>
     </div>
   );
 }

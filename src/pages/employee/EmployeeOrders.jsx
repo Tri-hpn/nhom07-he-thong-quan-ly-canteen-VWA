@@ -1,32 +1,37 @@
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban Board (V5)
+// EMPLOYEEORDERS.JSX — KDS Kanban Board (V8)
 // ============================================================
-// Layout 5-column Kanban:
-//   1. Đơn Mới (Chờ xác nhận)     → Duyệt / Từ chối
-//   2. Đã Xác Nhận                 → Bắt đầu nấu
-//   3. Đang Nấu (Đang chuẩn bị)   → Báo xong
-//   4. Sẵn Sàng (Sẵn sàng nhận)   → Khách đã nhận (tủ giữ nóng + PIN)
-//   5. Gần Nhất (Hoàn thành)      → Compact list
+// ✅ V8 — Thay đổi:
+//   - Sort: đơn CŨ NHẤT lên đầu mỗi dòng
+//   - Nháy đỏ: đơn CŨ NHẤT (đầu dòng, bên trái)
+//   - Đơn MỚI xuất hiện bên PHẢI
+//   - Giữ nguyên thứ tự 5 dòng: Mới → Đã XN → Đang Nấu → Sẵn Sàng → Gần Nhất
 //
-// ✅ V5:
-//   - Kanban responsive 5/4/3/2/1 cột theo màn hình
-//   - Mỗi cột scroll riêng, header cố định
-//   - Nút "Xem thêm" khi cột có > 5 đơn
-// 🔧 FIX #82: bỏ prop `now` không dùng ở KDSTicket + state now dư thừa
+// ✅ V7 (giữ nguyên):
+//   - Dùng KDSTicket mới (imported), bỏ KDSTicket cũ trong file
+//   - Prop layout="tall" để block cao hơn
+//
+// ✅ V6 (giữ nguyên):
+//   Layout 5 dòng vertical:
+//     Dòng 1: Đơn Mới (Chờ xác nhận)     → Duyệt / Từ chối
+//     Dòng 2: Đã Xác Nhận                 → Bắt đầu nấu
+//     Dòng 3: Đang Nấu (Đang chuẩn bị)   → Báo xong
+//     Dòng 4: Sẵn Sàng (Sẵn sàng nhận)   → Khách đã nhận
+//     Dòng 5: Gần Nhất (Hoàn thành)      → Compact strip
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Search, X, Loader2, AlertCircle, RefreshCw, Check, XCircle, ChefHat,
-  CheckCircle2, CreditCard, Wallet, Verified, Timer, ClipboardList,
-  TrendingUp, Clock, User, Lock, Package, ChevronDown, Sun, PackageCheck,
-  Ban, Inbox, VolumeX,
+  Search, Loader2, AlertCircle, RefreshCw, Check, XCircle, ChefHat,
+  CheckCircle2, Wallet, Verified, Timer, TrendingUp, User, Lock,
+  ChevronDown, PackageCheck, VolumeX,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import KDSTicket from "../../components/KDSTicket";
 import { useI18n } from "../../hooks/useI18n";
 import { useAuth } from "../../contexts/AuthContext";
 import { emitOrderUpdated, onOrderUpdated } from "../../lib/orderEvents";
@@ -42,21 +47,14 @@ import {
 // ============================================================
 
 const POLL_MS = 5000;
-const COMPLETED_LIMIT = 5;
-const COLUMN_LIMIT = 5;
+const COMPLETED_LIMIT = 8;
+const ROW_LIMIT = 6;
 
 const NEXT_STATUS = {
   "Chờ xác nhận": "Đã xác nhận",
   "Đã xác nhận": "Đang chuẩn bị",
   "Đang chuẩn bị": "Sẵn sàng nhận",
   "Sẵn sàng nhận": "Hoàn thành",
-};
-
-const ACTION_LABELS = {
-  "Chờ xác nhận": "Duyệt Đơn",
-  "Đã xác nhận": "Bắt Đầu Nấu",
-  "Đang chuẩn bị": "Báo Xong & Chuyển Tủ",
-  "Sẵn sàng nhận": "Khách Đã Nhận Món",
 };
 
 const STATION_TABS = [
@@ -70,13 +68,6 @@ const STATION_IDS = STATION_TABS.map((s) => s.id);
 function normalizeStation(value) {
   return STATION_IDS.includes(value) ? value : "all";
 }
-
-const PAYMENT_LABELS = {
-  "Tiền mặt": { icon: "cash", label: "Tiền mặt tại quầy" },
-  QR: { icon: "qr", label: "VietQR (Đã TT)" },
-  "Ví Canteen": { icon: "wallet", label: "Ví Nội Bộ VWA" },
-  "Thẻ": { icon: "card", label: "Thẻ SV" },
-};
 
 // ============================================================
 // HELPERS
@@ -96,39 +87,6 @@ function calcElapsedSec(iso) {
   return Math.max(0, Math.floor((Date.now() - created) / 1000));
 }
 
-function fmtElapsed(seconds) {
-  if (!seconds || seconds < 0) return "00:00";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function getInitials(name) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function getLockerInfo(orderId) {
-  const key = `kds_locker_${orderId}`;
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-
-  const id = Number(orderId) || 0;
-  const slot = (id % 20) + 1;
-  const pin = String(1000 + ((id * 137) % 9000)).slice(-4);
-  const info = { slot, pin };
-
-  try {
-    localStorage.setItem(key, JSON.stringify(info));
-  } catch {}
-  return info;
-}
-
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -145,9 +103,6 @@ export default function EmployeeOrders() {
 
   // ---- Approved shifts ----
   const [approvedShifts, setApprovedShifts] = useState([]);
-
-  // 🔧 FIX #82: state `now` đã bị bỏ — không dùng cho hiển thị nào
-  // (mọi chỗ hiển thị thời gian đều dùng fmtTime đã xử lý VN timezone)
 
   // ---- Trạm (station) ----
   const [searchParams, setSearchParams] = useSearchParams();
@@ -166,8 +121,8 @@ export default function EmployeeOrders() {
   const [advancingId, setAdvancingId] = useState(null);
   const [confirmReject, setConfirmReject] = useState(null);
 
-  // ✅ Kanban — giới hạn 5 đơn mỗi cột + nút "Xem thêm"
-  const [expandedColumns, setExpandedColumns] = useState({
+  // ✅ Kanban — giới hạn 6 đơn mỗi dòng + nút "Xem thêm"
+  const [expandedRows, setExpandedRows] = useState({
     pending: false,
     confirmed: false,
     prep: false,
@@ -179,18 +134,18 @@ export default function EmployeeOrders() {
 
   // ---- Helper cho expand ----
   const toggleExpand = useCallback((key) => {
-    setExpandedColumns((s) => ({ ...s, [key]: !s[key] }));
+    setExpandedRows((s) => ({ ...s, [key]: !s[key] }));
   }, []);
 
   const takeVisible = useCallback(
     (list, key) => {
-      if (expandedColumns[key]) return { visible: list, hiddenCount: 0 };
+      if (expandedRows[key]) return { visible: list, hiddenCount: 0 };
       return {
-        visible: list.slice(0, COLUMN_LIMIT),
-        hiddenCount: Math.max(0, list.length - COLUMN_LIMIT),
+        visible: list.slice(0, ROW_LIMIT),
+        hiddenCount: Math.max(0, list.length - ROW_LIMIT),
       };
     },
-    [expandedColumns]
+    [expandedRows]
   );
 
   // ============================================================
@@ -274,8 +229,7 @@ export default function EmployeeOrders() {
   useEffect(() => {
     load(false);
   }, [load]);
-  
-  // ✅ Nghe tín hiệu "đơn vừa cập nhật" từ tab/trang khác → load lại ngay
+
   useEffect(() => {
     const off = onOrderUpdated(() => {
       load(true);
@@ -285,14 +239,14 @@ export default function EmployeeOrders() {
 
   useEffect(() => {
     const timer = setInterval(() => load(true), POLL_MS);
-        return () => clearInterval(timer);
+    return () => clearInterval(timer);
   }, [load]);
 
   // ============================================================
   // GROUP ORDERS BY STATUS
   // ============================================================
 
-  const columns = useMemo(() => {
+  const rows = useMemo(() => {
     const byStatus = {
       pending: [],
       confirmed: [],
@@ -308,6 +262,21 @@ export default function EmployeeOrders() {
       else if (o.status === "Sẵn sàng nhận") byStatus.ready.push(o);
       else if (o.status === "Hoàn thành") byStatus.completed.push(o);
     }
+
+    // 🔧 FIX V8: đơn CŨ NHẤT lên đầu mỗi dòng
+    //   → đơn ĐẦU dòng là đơn CŨ NHẤT → nháy đỏ (priority)
+    //   → đơn MỚI xuất hiện bên PHẢI
+    const sortOldestFirst = (arr) =>
+      arr.sort((a, b) => {
+        const ta = new Date(a.created_at || a.updated_at || 0).getTime();
+        const tb = new Date(b.created_at || b.updated_at || 0).getTime();
+        return ta - tb;
+      });
+
+    sortOldestFirst(byStatus.pending);
+    sortOldestFirst(byStatus.confirmed);
+    sortOldestFirst(byStatus.prep);
+    sortOldestFirst(byStatus.ready);
 
     byStatus.completed.sort((a, b) => {
       const ta = new Date(a.updated_at || a.created_at || 0).getTime();
@@ -351,16 +320,16 @@ export default function EmployeeOrders() {
     [search, paymentFilter, statusFilter]
   );
 
-  const filteredColumns = useMemo(
+  const filteredRows = useMemo(
     () => ({
-      pending: applyFilter(columns.pending),
-      confirmed: applyFilter(columns.confirmed),
-      prep: applyFilter(columns.prep),
-      ready: applyFilter(columns.ready),
-      completed: applyFilter(columns.completed),
-      completedTotal: columns.completedTotal,
+      pending: applyFilter(rows.pending),
+      confirmed: applyFilter(rows.confirmed),
+      prep: applyFilter(rows.prep),
+      ready: applyFilter(rows.ready),
+      completed: applyFilter(rows.completed),
+      completedTotal: rows.completedTotal,
     }),
-    [columns, applyFilter]
+    [rows, applyFilter]
   );
 
   // ============================================================
@@ -388,14 +357,14 @@ export default function EmployeeOrders() {
         : "0";
 
     return {
-      pending: columns.pending.length,
-      prep: columns.prep.length,
-      ready: columns.ready.length,
+      pending: rows.pending.length,
+      prep: rows.prep.length,
+      ready: rows.ready.length,
       completedToday: completedToday.length,
       revenue,
       onTimePct,
     };
-  }, [orders, columns]);
+  }, [orders, rows]);
 
   // ============================================================
   // HERO
@@ -508,7 +477,6 @@ export default function EmployeeOrders() {
         {/* ============ TOP CONSOLE ============ */}
         <div className="kds-console">
           <div className="kds-console__left">
-            {/* Shift card */}
             <div className="kds-console__card">
               <span className="kds-console__card-dot" />
               <div className="kds-console__card-info">
@@ -521,7 +489,6 @@ export default function EmployeeOrders() {
               </div>
             </div>
 
-            {/* Staff card */}
             <div className="kds-console__card">
               <User size={22} className="kds-console__card-icon" />
               <div className="kds-console__card-info">
@@ -540,7 +507,6 @@ export default function EmployeeOrders() {
               </div>
             </div>
 
-            {/* Sound (disabled) */}
             <div className="kds-console__card">
               <VolumeX
                 size={22}
@@ -560,7 +526,6 @@ export default function EmployeeOrders() {
             </div>
           </div>
 
-          {/* Station tabs */}
           <div className="kds-station-tabs">
             {STATION_TABS.map((s) => (
               <button
@@ -579,7 +544,6 @@ export default function EmployeeOrders() {
 
         {/* ============ KPI ROW ============ */}
         <div className="kds-kpi-grid">
-          {/* KPI 1 */}
           <div className="kds-kpi kds-kpi--danger">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">
@@ -598,14 +562,11 @@ export default function EmployeeOrders() {
             <div className="kds-kpi__bar">
               <div
                 className="kds-kpi__bar-fill kds-kpi__bar-fill--danger"
-                style={{
-                  width: `${Math.min(100, kpi.pending * 20)}%`,
-                }}
+                style={{ width: `${Math.min(100, kpi.pending * 20)}%` }}
               />
             </div>
           </div>
 
-          {/* KPI 2 */}
           <div className="kds-kpi">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">
@@ -630,7 +591,6 @@ export default function EmployeeOrders() {
             </div>
           </div>
 
-          {/* KPI 3 */}
           <div className="kds-kpi">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">
@@ -657,7 +617,6 @@ export default function EmployeeOrders() {
             </div>
           </div>
 
-          {/* KPI 4 */}
           <div className="kds-kpi">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">
@@ -682,7 +641,6 @@ export default function EmployeeOrders() {
             </div>
           </div>
 
-          {/* KPI 5 */}
           <div className="kds-kpi kds-kpi--primary">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">
@@ -694,10 +652,7 @@ export default function EmployeeOrders() {
               />
             </div>
             <div className="kds-kpi__value-row">
-              <span
-                className="kds-kpi__value"
-                style={{ fontSize: 22 }}
-              >
+              <span className="kds-kpi__value" style={{ fontSize: 22 }}>
                 {money(kpi.revenue).replace("đ", "")}đ
               </span>
             </div>
@@ -748,16 +703,11 @@ export default function EmployeeOrders() {
               >
                 <option value="all">{t("Mọi thanh toán")}</option>
                 <option value="QR">{t("VietQR (Đã TT)")}</option>
-                <option value="Ví Canteen">
-                  {t("Ví Nội Bộ VWA")}
-                </option>
-                <option value="Tiền mặt">
-                  {t("Tiền mặt tại quầy")}
-                </option>
+                <option value="Ví Canteen">{t("Ví Nội Bộ VWA")}</option>
+                <option value="Tiền mặt">{t("Tiền mặt tại quầy")}</option>
               </select>
               <ChevronDown size={16} />
             </div>
-
 
             <div className="kds-filter__select-wrap">
               <select
@@ -797,29 +747,32 @@ export default function EmployeeOrders() {
           </div>
         </div>
 
-        {/* ============ KANBAN BOARD ============ */}
-        <div className="kds-board">
-          {/* COL 1: PENDING */}
+        {/* ============ KDS BOARD — 5 ROWS VERTICAL ============ */}
+        <div className="kds-board kds-board--rows">
+          {/* ROW 1: PENDING */}
           {(() => {
             const { visible, hiddenCount } = takeVisible(
-              filteredColumns.pending,
+              filteredRows.pending,
               "pending"
             );
             return (
-              <KDSColumn
+              <KDSRow
                 title={t("1. Đơn Mới")}
+                subtitle={t("Chờ xác nhận")}
                 variant="pending"
-                count={filteredColumns.pending.length}
+                count={filteredRows.pending.length}
                 countLabel={t("Đơn")}
                 empty={t("Không có đơn mới")}
                 moreCount={hiddenCount}
                 onMore={() => toggleExpand("pending")}
               >
-                {visible.map((o) => (
+                {visible.map((o, idx) => (
                   <KDSTicket
                     key={o._id || o.id}
                     order={o}
                     variant="pending"
+                    layout="tall"
+                    isPriority={idx === 0 && !expandedRows.pending}
                     isProcessing={advancingId === (o._id || o.id)}
                     elapsed={calcElapsedSec(o.created_at)}
                     onAdvance={() => advance(o)}
@@ -827,121 +780,132 @@ export default function EmployeeOrders() {
                     t={t}
                   />
                 ))}
-              </KDSColumn>
+              </KDSRow>
             );
           })()}
 
-          {/* COL 2: CONFIRMED */}
+          {/* ROW 2: CONFIRMED */}
           {(() => {
             const { visible, hiddenCount } = takeVisible(
-              filteredColumns.confirmed,
+              filteredRows.confirmed,
               "confirmed"
             );
             return (
-              <KDSColumn
+              <KDSRow
                 title={t("2. Đã Xác Nhận")}
+                subtitle={t("Chờ Bếp")}
                 variant="confirmed"
-                count={filteredColumns.confirmed.length}
+                count={filteredRows.confirmed.length}
                 countLabel={t("Đơn")}
                 empty={t("Không có đơn đã xác nhận")}
                 moreCount={hiddenCount}
                 onMore={() => toggleExpand("confirmed")}
               >
-                {visible.map((o) => (
+                {visible.map((o, idx) => (
                   <KDSTicket
                     key={o._id || o.id}
                     order={o}
                     variant="confirmed"
+                    layout="tall"
+                    isPriority={idx === 0 && !expandedRows.confirmed}
                     isProcessing={advancingId === (o._id || o.id)}
                     elapsed={calcElapsedSec(o.created_at)}
                     onAdvance={() => advance(o)}
                     t={t}
                   />
                 ))}
-              </KDSColumn>
+              </KDSRow>
             );
           })()}
 
-          {/* COL 3: PREP */}
+          {/* ROW 3: PREP */}
           {(() => {
             const { visible, hiddenCount } = takeVisible(
-              filteredColumns.prep,
+              filteredRows.prep,
               "prep"
             );
             return (
-              <KDSColumn
+              <KDSRow
                 title={t("3. Đang Nấu")}
+                subtitle={t("Đang chế biến")}
                 variant="prep"
-                count={filteredColumns.prep.length}
+                count={filteredRows.prep.length}
                 countLabel={t("Đơn")}
                 empty={t("Không có đơn đang nấu")}
                 moreCount={hiddenCount}
                 onMore={() => toggleExpand("prep")}
               >
-                {visible.map((o) => (
+                {visible.map((o, idx) => (
                   <KDSTicket
                     key={o._id || o.id}
                     order={o}
                     variant="prep"
+                    layout="tall"
+                    isPriority={idx === 0 && !expandedRows.prep}
                     isProcessing={advancingId === (o._id || o.id)}
                     elapsed={calcElapsedSec(o.created_at)}
                     onAdvance={() => advance(o)}
                     t={t}
                   />
                 ))}
-              </KDSColumn>
+              </KDSRow>
             );
           })()}
 
-          {/* COL 4: READY */}
+          {/* ROW 4: READY */}
           {(() => {
             const { visible, hiddenCount } = takeVisible(
-              filteredColumns.ready,
+              filteredRows.ready,
               "ready"
             );
             return (
-              <KDSColumn
+              <KDSRow
                 title={t("4. Sẵn Sàng Nhận")}
+                subtitle={t("Tủ giữ nóng")}
                 variant="ready"
-                count={filteredColumns.ready.length}
+                count={filteredRows.ready.length}
                 countLabel={t("Đơn")}
                 empty={t("Không có đơn sẵn sàng")}
                 moreCount={hiddenCount}
                 onMore={() => toggleExpand("ready")}
               >
-                {visible.map((o) => (
+                {visible.map((o, idx) => (
                   <KDSTicket
                     key={o._id || o.id}
                     order={o}
                     variant="ready"
+                    layout="tall"
+                    isPriority={idx === 0 && !expandedRows.ready}
                     isProcessing={advancingId === (o._id || o.id)}
                     onAdvance={() => advance(o)}
                     t={t}
                   />
                 ))}
-              </KDSColumn>
+              </KDSRow>
             );
           })()}
 
-          {/* COL 5: COMPLETED */}
-          <KDSColumn
+          {/* ROW 5: COMPLETED — compact strip */}
+          <KDSRow
             title={t("5. Gần Nhất")}
+            subtitle={t("Hoàn thành")}
             variant="completed"
-            count={filteredColumns.completedTotal}
+            count={filteredRows.completedTotal}
             countLabel={t("Hoàn thành")}
             empty={t("Chưa có đơn hoàn thành")}
+            isStrip
           >
-            {filteredColumns.completed.map((o) => (
-              <CompletedItem key={o._id || o.id} order={o} t={t} />
+            {filteredRows.completed.map((o) => (
+              <CompletedStripItem key={o._id || o.id} order={o} t={t} />
             ))}
 
-            {filteredColumns.completedTotal > COMPLETED_LIMIT && (
+            {filteredRows.completedTotal > COMPLETED_LIMIT && (
               <button type="button" className="kds-completed__more">
-                {t("Xem tất cả")} {filteredColumns.completedTotal}{" "}
+                {t("Xem tất cả")} {filteredRows.completedTotal}{" "}
                 {t("đơn →")}
               </button>
             )}
-          </KDSColumn>
+          </KDSRow>
         </div>
       </div>
 
@@ -977,17 +941,19 @@ export default function EmployeeOrders() {
 }
 
 // ============================================================
-// SUB: KDSColumn
+// SUB: KDSRow
 // ============================================================
 
-function KDSColumn({
+function KDSRow({
   title,
+  subtitle,
   variant,
   count,
   countLabel,
   empty,
   moreCount = 0,
   onMore,
+  isStrip = false,
   children,
 }) {
   const hasChildren = Array.isArray(children)
@@ -995,25 +961,28 @@ function KDSColumn({
     : !!children;
 
   return (
-    <div className="kds-column">
-      <div className="kds-column__head">
-        <div className="kds-column__title-wrap">
-          <span className={`kds-column__dot kds-column__dot--${variant}`} />
-          <span className="kds-column__title">{title}</span>
+    <section className={`kds-row kds-row--${variant}`}>
+      <div className="kds-row__head">
+        <div className="kds-row__title-wrap">
+          <span className={`kds-row__dot kds-row__dot--${variant}`} />
+          <span className="kds-row__title">{title}</span>
+          {subtitle && (
+            <span className="kds-row__subtitle">{subtitle}</span>
+          )}
         </div>
-        <span className={`kds-column__count kds-column__count--${variant}`}>
+        <span className={`kds-row__count kds-row__count--${variant}`}>
           {count} {countLabel}
         </span>
       </div>
 
-      <div className="kds-column__body">
+      <div className={`kds-row__body ${isStrip ? "kds-row__body--strip" : ""}`}>
         {hasChildren ? (
           <>
             {children}
             {moreCount > 0 && (
               <button
                 type="button"
-                className="kds-column__more"
+                className="kds-row__more"
                 onClick={onMore}
               >
                 +{moreCount} đơn nữa — Xem thêm
@@ -1021,303 +990,39 @@ function KDSColumn({
             )}
           </>
         ) : (
-          <div className="kds-column__empty">{empty}</div>
+          <div className="kds-row__empty">{empty}</div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
 // ============================================================
-// SUB: KDSTicket
+// SUB: CompletedStripItem
 // ============================================================
-// 🔧 FIX #82: bỏ prop `now` (không dùng) — thời gian dùng fmtTime đã xử lý VN
 
-function KDSTicket({
-  order,
-  variant,
-  isProcessing,
-  elapsed,
-  onAdvance,
-  onReject,
-  t,
-}) {
-  const isPending = variant === "pending";
-  const isConfirmed = variant === "confirmed";
-  const isPrep = variant === "prep";
-  const isReady = variant === "ready";
-
-  const items = order.items || [];
-  const totalQty = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
-  const total = Number(order.total) || 0;
-
-  const elapsedMin = Math.floor(elapsed / 60);
-  const isUrgent = elapsedMin >= 12;
-  const timeLabel = fmtElapsed(elapsed);
-
-  const paymentInfo =
-    PAYMENT_LABELS[order.payment] || PAYMENT_LABELS["Tiền mặt"];
-  const paymentLabel = paymentInfo.label;
-
-  const locker = isReady ? getLockerInfo(order._id || order.id) : null;
-
-  const prepPct = isPrep ? Math.min(95, (elapsed / 600) * 100) : 0;
-
-  const actionLabel = ACTION_LABELS[order.status] || t("Xử lý");
-
-  // Ngày label
-  const dateVariant = getDateLabelVariant(order.created_at);
-  const showDateLabel = dateVariant && dateVariant !== "today";
-  const dateLabelText = (() => {
-    if (!showDateLabel) return "";
-    if (dateVariant === "yesterday") return "Hôm qua";
-    const d = new Date(order.created_at);
-    const dd = d.getDate().toString().padStart(2, "0");
-    const mm = (d.getMonth() + 1).toString().padStart(2, "0");
-    return `${dd}/${mm}`;
-  })();
-
+function CompletedStripItem({ order, t }) {
   return (
-    <article
-      className={`kds-card ${isProcessing ? "kds-card--processing" : ""}`}
-    >
-      <div className="kds-card__head">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            minWidth: 0,
-          }}
-        >
-          <span className="kds-card__code">{order.code}</span>
-          {isUrgent && isPending && (
-            <span className="kds-card__tag kds-card__tag--danger">
-              {t("Còn")} {Math.max(0, 12 - elapsedMin)}p
-            </span>
-          )}
-          {isConfirmed && (
-            <span className="kds-card__tag kds-card__tag--primary">
-              {t("Chờ Bếp")}
-            </span>
-          )}
-          {isPrep && (
-            <span className="kds-card__tag kds-card__tag--primary">
-              {t("BẾP")}
-            </span>
-          )}
-          {isReady && (
-            <span className="kds-card__tag kds-card__tag--success">
-              {t("ĐÃ BÁO KHÁCH")}
-            </span>
-          )}
+    <div className="kds-completed-strip-item">
+      <div className="kds-completed-strip-item__left">
+        <div className="kds-completed-strip-item__icon">
+          <CheckCircle2 size={16} />
         </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 4,
-            flexShrink: 0,
-          }}
-        >
-          <span
-            className={`kds-card__time-badge ${
-              isUrgent ? "kds-card__time-badge--urgent" : ""
-            }`}
-          >
-            {fmtTime(order.created_at)}
-          </span>
-          {showDateLabel && (
-            <span
-              className={`kds-card__date-label kds-card__date-label--${dateVariant}`}
-            >
-              {dateLabelText}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="kds-card__customer">
-        {order.customer_name || t("Khách")}{" "}
-        {order.customer_mssv && (
-          <span className="kds-card__customer-id">
-            (MSSV: {order.customer_mssv})
-          </span>
-        )}
-      </div>
-
-      {isPrep && (
-        <div className="kds-card__progress">
-          <div className="kds-card__progress-head">
-            <span className="kds-card__progress-label">
-              <Timer size={14} />
-              {t("Thời gian nấu")}
-            </span>
-            <span className="kds-card__progress-value">
-              {fmtElapsed(elapsed)} / 10:00
-            </span>
-          </div>
-          <div className="kds-card__progress-bar">
-            <div
-              className="kds-card__progress-fill"
-              style={{ width: `${prepPct}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {isReady && locker && (
-        <div className="kds-card__locker">
-          <div className="kds-card__locker-left">
-            <Lock size={22} className="kds-card__locker-icon" />
-            <div className="kds-card__locker-info">
-              <span className="kds-card__locker-label">
-                {t("Tủ Giữ Nóng")}
-              </span>
-              <span className="kds-card__locker-value">
-                {t("Ô SỐ")} #{String(locker.slot).padStart(2, "0")}
-              </span>
-            </div>
-          </div>
-          <span className="kds-card__locker-pin">PIN: {locker.pin}</span>
-        </div>
-      )}
-
-      <div className="kds-card__items">
-        {items.slice(0, 4).map((it, i) => (
-          <div key={i} className="kds-card__item">
-            <span className="kds-card__item-name">
-              {it.qty}x {it.name}
-            </span>
-            <span className="kds-card__item-price">
-              {money((Number(it.price) || 0) * (Number(it.qty) || 0))}
-            </span>
-          </div>
-        ))}
-
-        {items.length > 4 && (
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--st-text-muted)",
-              fontStyle: "italic",
-              textAlign: "center",
-              paddingTop: 2,
-            }}
-          >
-            +{items.length - 4} {t("món khác")}
-          </div>
-        )}
-
-        {order.note && (
-          <div className="kds-card__note">
-            <AlertCircle
-              size={12}
-              style={{ flexShrink: 0, marginTop: 2 }}
-            />
-            <span>{order.note}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="kds-card__meta">
-        <span
-          className={`kds-card__payment ${
-            order.payment === "Ví Canteen"
-              ? "kds-card__payment--success"
-              : ""
-          } ${
-            order.payment === "QR" ? "kds-card__payment--primary" : ""
-          }`}
-        >
-          <Verified size={14} />
-          {paymentLabel}
+        <span className="kds-completed-strip-item__code">
+          {order.code}
         </span>
-        <span className="kds-card__total">{money(total)}</span>
+        <span className="kds-completed-strip-item__customer">
+          {order.customer_name || t("Khách")}
+        </span>
       </div>
-
-      <div
-        className={`kds-card__actions ${
-          isPending ? "kds-card__actions--split" : ""
-        }`}
-      >
-        {isPending && (
-          <button
-            type="button"
-            className="kds-card__btn kds-card__btn--ghost"
-            onClick={onReject}
-            disabled={isProcessing}
-          >
-            <XCircle size={18} />
-            <span>{t("Từ chối")}</span>
-          </button>
-        )}
-
-        {onAdvance && (
-          <button
-            type="button"
-            className={`kds-card__btn ${
-              isPending
-                ? "kds-card__btn--primary"
-                : isConfirmed
-                ? "kds-card__btn--secondary"
-                : isPrep
-                ? "kds-card__btn--primary"
-                : "kds-card__btn--tertiary"
-            }`}
-            onClick={onAdvance}
-            disabled={isProcessing}
-          >
-            {isProcessing ? (
-              <Loader2
-                size={18}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
-            ) : isPending || isConfirmed ? (
-              <Check size={18} />
-            ) : isPrep ? (
-              <CheckCircle2 size={18} />
-            ) : (
-              <PackageCheck size={18} />
-            )}
-            <span>{actionLabel}</span>
-          </button>
-        )}
+      <div className="kds-completed-strip-item__right">
+        <span className="kds-completed-strip-item__time">
+          {fmtTimeWithLabel(order.updated_at || order.created_at)}
+        </span>
+        <span className="kds-completed-strip-item__total">
+          {money(Number(order.total) || 0)}
+        </span>
       </div>
-    </article>
-  );
-}
-
-// ============================================================
-// SUB: CompletedItem
-// ============================================================
-
-function CompletedItem({ order, t }) {
-  return (
-    <div className="kds-completed-item">
-      <div className="kds-completed-item__left">
-        <div className="kds-completed-item__icon">
-          <CheckCircle2 size={18} />
-        </div>
-        <div className="kds-completed-item__info">
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span className="kds-completed-item__code">
-              {order.code}
-            </span>
-            <span className="kds-completed-item__time">
-              {fmtTimeWithLabel(order.updated_at || order.created_at)}
-            </span>
-          </div>
-          <span className="kds-completed-item__customer">
-            {order.customer_name || t("Khách")}
-          </span>
-        </div>
-      </div>
-      <span className="kds-completed-item__total">
-        {money(Number(order.total) || 0)}
-      </span>
     </div>
   );
 }

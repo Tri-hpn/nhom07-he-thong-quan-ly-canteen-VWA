@@ -12,6 +12,15 @@
    
    Scope: class .staff-* / .emp-* / .inv86-* / .kds-* / .prep-* /
           .shifthist-* / .chat-* (role EMPLOYEE + OWNER)
+   
+   🔧 V2: Thêm section 34-40 cho layout mới (KDS full-width, 
+          lowstock, highstock, tasks, admin emp card)
+   🔧 V3: FIX layout chat — ô ghi chú trải cột 1+2, cột 3 row-span 2
+   🔧 V4: FIX KDS card vuông vắn — đồng nhất /employee và /employee/orders
+          - XÓA .kds-card--tall (gây min-height 240px)
+          - SỬA 9 class: kds-row__grid, kds-card, kds-card__head,
+            kds-card__code, kds-card__items, kds-card__actions,
+            kds-card__btn, kds-card__customer, kds-card__meta
    ============================================================ */
 
 /* ============================================================
@@ -106,7 +115,6 @@ html.dark-mode {
    2. SIDEBAR — Staff cards
    ============================================================ */
 
-/* Shift status card */
 .staff-sidebar-shift-card {
   padding: 8px 12px;
 }
@@ -161,7 +169,6 @@ html.dark-mode {
   margin-top: 2px !important;
 }
 
-/* Zone label */
 .staff-sidebar-zone-label {
   padding: 16px 16px 4px;
   font-family: var(--st-font-head);
@@ -172,7 +179,6 @@ html.dark-mode {
   color: #7a8094;
 }
 
-/* Node info footer */
 .staff-sidebar-node {
   padding: 8px 12px;
   margin: 8px 12px 0;
@@ -209,7 +215,6 @@ html.dark-mode {
   font-weight: 500;
 }
 
-/* User card */
 .staff-sidebar-user {
   margin: 12px 8px 0 !important;
   padding: 10px 12px !important;
@@ -313,7 +318,6 @@ html.dark-mode {
   50% { opacity: 0.7; transform: scale(1.1); }
 }
 
-/* Main content area */
 .staff-main-content {
   padding: 24px !important;
   width: 100% !important;
@@ -651,7 +655,6 @@ html.dark-mode {
 .staff-kpi-card__delta--up { color: var(--st-success); }
 .staff-kpi-card__delta--down { color: var(--st-danger); }
 
-/* Progress bar (multi-segment) */
 .staff-kpi-progress {
   width: 100%;
   height: 8px;
@@ -747,10 +750,6 @@ html.dark-mode {
 
 /* ============================================================
    8. KDS GRID — 3 cột cho EmployeeHome (KHÔNG scroll riêng)
-   ------------------------------------------------------------
-   .kds-grid KHÁC .kds-board:
-     - .kds-grid  : 3 cột, trang cuộn (EmployeeHome)
-     - .kds-board : 5 cột, mỗi cột scroll (EmployeeOrders)
    ============================================================ */
 
 .kds-header {
@@ -807,7 +806,6 @@ html.dark-mode {
   animation: staff-pulse 1.5s ease-in-out infinite;
 }
 
-/* Grid 3 cột */
 .kds-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -820,8 +818,6 @@ html.dark-mode {
   }
 }
 
-/* .kds-column gốc — dùng chung nhưng KHÔNG giới hạn chiều cao,
-   KHÔNG scroll riêng. */
 .kds-column {
   background: var(--st-surface-low);
   border-radius: var(--st-radius-lg);
@@ -911,7 +907,6 @@ html.dark-mode {
   color: var(--st-text-muted);
 }
 
-/* .kds-column__body — không scroll riêng cho .kds-grid */
 .kds-column__body {
   display: flex;
   flex-direction: column;
@@ -927,8 +922,6 @@ html.dark-mode {
   font-size: 12px;
 }
 
-/* ✅ Override lại .kds-column CHỈ khi nằm trong .kds-board
-   (trang EmployeeOrders — Kanban 5 cột scroll riêng) */
 .kds-board .kds-column {
   max-height: calc(100vh - 260px);
   min-height: 240px;
@@ -971,7 +964,6 @@ html.dark-mode {
   background: var(--st-text-light);
 }
 
-/* Nút "Xem thêm" chỉ tồn tại trong .kds-board */
 .kds-column__more {
   width: 100%;
   padding: 10px;
@@ -1195,7 +1187,6 @@ html.dark-mode {
   cursor: not-allowed;
 }
 
-/* Pickup ticket */
 .kds-pickup {
   background: var(--st-surface);
   border-radius: var(--st-radius-md);
@@ -1340,7 +1331,6 @@ html.dark-mode {
 .kds-pickup__btn--success:hover {
   background: #15803d;
 }
-
 /* ============================================================
    10. LIVE FEED TICKER
    ============================================================ */
@@ -1597,7 +1587,6 @@ html.dark-mode {
   margin-top: 2px;
 }
 
-/* Toggle switch 86 */
 .inv86-switch {
   position: relative;
   width: 48px;
@@ -1807,6 +1796,7 @@ html.dark-mode {
   color: var(--st-text-muted);
   font-variant-numeric: tabular-nums;
 }
+
 /* ============================================================
    13. TELEMETRY DOCK
    ============================================================ */
@@ -1938,7 +1928,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   17. CHAT WORKSPACE — 3-column layout
+   17. CHAT WORKSPACE — 3-column layout + ô ghi chú trải cột 1+2
    ============================================================ */
 
 .chat-workspace {
@@ -2141,22 +2131,112 @@ html.dark-mode {
   margin-left: 4px;
 }
 
+/* ============================================================
+   LAYOUT GRID — 3 cột + ô ghi chú trải cột 1+2
+   ------------------------------------------------------------
+   ┌─────────────┬──────────────────────┬─────────────────┐
+   │ Conv List   │   Chat Stream        │  Hồ sơ khách    │
+   │ (cột 1)     │   (cột 2)            │  Đơn hàng XL    │  ← Row 1
+   ├─────────────┴──────────────────────┤                 │
+   │ Ghi chú nội bộ (trải cột 1+2)      │  (kéo dài)      │  ← Row 2
+   └─────────────────────────────────────┴─────────────────┘
+   ============================================================ */
+
 .chat-workspace-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (min-width: 1024px) {
   .chat-workspace-grid {
     grid-template-columns: 4fr 8fr 4fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  /* Cột 3: chiếm cả 2 hàng → đáy ngang ô ghi chú */
+  .chat-workspace-grid > .chat-context {
+    grid-column: 3 / 4;
+    grid-row: 1 / 3;
+    align-self: stretch;
+    min-height: 0;
+  }
+
+  /* Cột 1: hàng 1 */
+  .chat-workspace-grid > .chat-conv {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+    align-self: start;
+  }
+
+  /* Cột 2: hàng 1 */
+  .chat-workspace-grid > .chat-main {
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+    align-self: start;
+  }
+
+  /* Ô ghi chú: hàng 2, trải cột 1+2 */
+  .chat-workspace-grid > .chat-context-card--fullwidth {
+    grid-column: 1 / 3;
+    grid-row: 2 / 3;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    align-self: stretch;
+    min-height: 0;
+  }
+
+  .chat-context-card--fullwidth .chat-internal-note {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .chat-context-card--fullwidth .chat-internal-note__textarea {
+    flex: 1;
+    min-height: 120px;
+    resize: vertical;
   }
 }
 
 @media (min-width: 1400px) {
   .chat-workspace-grid {
     grid-template-columns: 3fr 6fr 3fr;
+  }
+}
+
+/* Responsive: mobile — stack 1 cột */
+@media (max-width: 1023px) {
+  .chat-workspace-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    align-items: start;
+  }
+
+  .chat-workspace-grid > .chat-context {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .chat-workspace-grid > .chat-conv,
+  .chat-workspace-grid > .chat-main {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .chat-workspace-grid > .chat-context-card--fullwidth {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    height: auto;
+  }
+
+  .chat-context-card--fullwidth .chat-internal-note__textarea {
+    min-height: 140px;
   }
 }
 
@@ -3090,6 +3170,7 @@ html.dark-mode {
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  min-height: 0;
 }
 
 .chat-context-card {
@@ -3471,6 +3552,17 @@ html.dark-mode {
   color: var(--st-text);
 }
 
+/* ============================================================
+   GHI CHÚ NỘI BỘ — style bên trong ô trải cột 1+2
+   ============================================================ */
+
+.chat-context-card--fullwidth {
+  padding: 16px;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+}
+
 .chat-internal-note {
   display: flex;
   flex-direction: column;
@@ -3510,7 +3602,7 @@ html.dark-mode {
   font-size: 12px;
   color: var(--st-text);
   outline: none;
-  resize: none;
+  resize: vertical;
   line-height: 1.5;
   transition: all 0.15s;
 }
@@ -3542,6 +3634,7 @@ html.dark-mode {
   .chat-hero__title { font-size: 20px; }
   .chat-msg-row { max-width: 92%; }
 }
+
 /* ============================================================
    24. ORDERS DISPATCH WORKSPACE
    ============================================================ */
@@ -6157,6 +6250,7 @@ html.dark-mode {
   .menu86-audit__table th,
   .menu86-audit__table td { padding: 8px 10px; font-size: 11px; }
 }
+
 /* ============================================================
    27. KDS WORKBENCH — Console + Station tabs + KPI 5 + Filter
    ============================================================ */
@@ -6168,7 +6262,6 @@ html.dark-mode {
   width: 100%;
 }
 
-/* ---- Top console bar ---- */
 .kds-console {
   background: var(--st-surface);
   border-radius: var(--st-radius-lg);
@@ -6287,7 +6380,6 @@ html.dark-mode {
   color: var(--st-primary-container);
 }
 
-/* Station tabs */
 .kds-station-tabs {
   display: inline-flex;
   align-items: center;
@@ -6321,7 +6413,6 @@ html.dark-mode {
   box-shadow: var(--st-shadow-1);
 }
 
-/* ---- KPI row 5 ---- */
 .kds-kpi-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -6471,7 +6562,6 @@ html.dark-mode {
 
 .kds-kpi__note svg { flex-shrink: 0; }
 
-/* ---- Filter bar ---- */
 .kds-filter {
   background: var(--st-surface);
   border-radius: var(--st-radius-lg);
@@ -6617,10 +6707,6 @@ html.dark-mode {
 
 /* ============================================================
    28. KDS BOARD — Kanban 5 cột (EmployeeOrders)
-   ------------------------------------------------------------
-   CHỈ chứa .kds-board (grid responsive) — KHÔNG định nghĩa
-   .kds-column gốc (đã có ở PHẦN 8). Override .kds-board .kds-column
-   để scroll riêng.
    ============================================================ */
 
 .kds-board {
@@ -6655,15 +6741,28 @@ html.dark-mode {
   }
 }
 
-/* ---- KDS ticket card ---- */
+/* ============================================================
+   KDS CARD — 🔧 V4: ĐỒNG NHẤT cho /employee và /employee/orders
+   ------------------------------------------------------------
+   Sửa để card vuông vắn, gọn gàng như ảnh mong muốn:
+     - Padding nhỏ (10px 12px), gap 6px
+     - Head align center, min-height 28px
+     - Code font 13px + ellipsis (không wrap)
+     - Items padding 8px, gap 4px
+     - Actions gap 4px
+     - Btn min-height 38px
+     - Customer font 12px + ellipsis
+     - Meta font 11px
+   ============================================================ */
+
 .kds-card {
   background: var(--st-surface);
   border-radius: var(--st-radius-md);
-  padding: 14px;
+  padding: 10px 12px;
   box-shadow: var(--st-shadow-1);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   transition: all 0.2s;
   position: relative;
   cursor: default;
@@ -6681,18 +6780,23 @@ html.dark-mode {
 
 .kds-card__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-height: 28px;
 }
 
 .kds-card__code {
   font-family: var(--st-font-head);
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--st-text);
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .kds-card__time-badge {
@@ -6700,7 +6804,7 @@ html.dark-mode {
   border-radius: 6px;
   background: var(--st-surface-high);
   font-family: var(--st-font-body);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--st-text);
   font-variant-numeric: tabular-nums;
@@ -6741,15 +6845,18 @@ html.dark-mode {
 
 .kds-card__customer {
   font-family: var(--st-font-head);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--st-text);
   line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kds-card__customer-id {
   font-family: var(--st-font-body);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--st-text-muted);
   font-weight: 400;
 }
@@ -6757,10 +6864,10 @@ html.dark-mode {
 .kds-card__items {
   background: var(--st-surface-low);
   border-radius: var(--st-radius-md);
-  padding: 10px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .kds-card__item {
@@ -6769,7 +6876,7 @@ html.dark-mode {
   justify-content: space-between;
   gap: 8px;
   font-family: var(--st-font-body);
-  font-size: 14px;
+  font-size: 13px;
   color: var(--st-text);
 }
 
@@ -6812,7 +6919,7 @@ html.dark-mode {
   justify-content: space-between;
   gap: 8px;
   font-family: var(--st-font-body);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .kds-card__payment {
@@ -6828,7 +6935,7 @@ html.dark-mode {
 
 .kds-card__total {
   font-family: var(--st-font-head);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--st-text);
   font-variant-numeric: tabular-nums;
@@ -6942,20 +7049,32 @@ html.dark-mode {
 .kds-card__actions {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 6px;
+  gap: 4px;
 }
 
 .kds-card__actions--split {
   grid-template-columns: 1fr 1fr;
 }
 
+/* 🔧 Nút "Từ chối" + nút chính xếp DỌC */
+.kds-card__actions--stack {
+  grid-template-columns: 1fr !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+.kds-card__actions--stack .kds-card__btn {
+  width: 100%;
+}
+
 .kds-card__btn {
-  min-height: 48px;
-  padding: 10px 14px;
+  min-height: 38px;
+  padding: 8px 12px;
   border-radius: var(--st-radius-md);
   border: 0;
   font-family: var(--st-font-head);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
@@ -7014,7 +7133,6 @@ html.dark-mode {
   color: var(--st-danger);
 }
 
-/* Completed compact row */
 .kds-completed-item {
   background: var(--st-surface);
   border-radius: var(--st-radius-md);
@@ -7110,14 +7228,12 @@ html.dark-mode {
   .kds-kpi__value { font-size: 28px; }
   .kds-console__card { padding: 8px 12px; }
   .kds-console__card-value { font-size: 14px; }
-  .kds-card__btn { font-size: 12px; min-height: 44px; }
-  .kds-card { padding: 12px; }
+  .kds-card__btn { font-size: 12px; min-height: 38px; }
+  .kds-card { padding: 10px 12px; }
 }
 
 /* ============================================================
    29. EMPLOYEE CHECK-IN/OUT CONTAINERS
-   ------------------------------------------------------------
-   Markup: EmployeeCheckInOut.jsx (không dùng nữa nhưng giữ CSS)
    ============================================================ */
 
 .checkin-clock {
@@ -7171,6 +7287,7 @@ html.dark-mode {
 }
 
 html.dark-mode .checkin-clock { color: #93C5FD; }
+
 /* ============================================================
    30. SHIFT HISTORY — Lịch sử ca hôm nay (nhân viên/KDS)
    ============================================================ */
@@ -8414,12 +8531,1772 @@ html.dark-mode .prep-card__note {
   }
 }
 
-/* ============================================================
-   KẾT THÚC FILE
-   ============================================================ */
-
-/* Status filter dropdown */
 .kds-filter__select--status {
   min-width: 180px;
   padding-right: 38px;
 }
+/* ============================================================
+   34. KDS FULLWIDTH — Layout 3 dòng vertical (EmployeeHome V2)
+   ============================================================ */
+
+.kds-fullwidth {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.kds-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+}
+
+.kds-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--st-outline-light);
+}
+
+.kds-row__title {
+  font-family: var(--st-font-head);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--st-text);
+}
+
+.kds-row__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .kds-row__grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+.kds-row__empty {
+  padding: 30px 16px;
+  text-align: center;
+  color: var(--st-text-light);
+  font-family: var(--st-font-body);
+  font-size: 13px;
+  background: var(--st-surface-low);
+  border-radius: var(--st-radius-md);
+  border: 1px dashed var(--st-outline-light);
+}
+
+/* ============================================================
+   35. KDS TICKET PRIORITY — Hiệu ứng nháy cho đơn cũ nhất
+   ============================================================ */
+
+@keyframes kdsPriorityPulse {
+  0%, 100% {
+    box-shadow: 
+      0 0 0 0 rgba(239, 68, 68, 0.6),
+      var(--st-shadow-1);
+    border-color: #ef4444;
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 
+      0 0 0 10px rgba(239, 68, 68, 0),
+      0 6px 20px rgba(239, 68, 68, 0.35);
+    border-color: #fbbf24;
+    transform: scale(1.01);
+  }
+}
+
+.kds-ticket--priority {
+  position: relative;
+  border: 2px solid #ef4444;
+  animation: kdsPriorityPulse 1.8s ease-in-out infinite;
+  z-index: 1;
+}
+
+.kds-pickup--priority {
+  position: relative;
+  border: 2px solid #ef4444;
+  animation: kdsPriorityPulse 1.8s ease-in-out infinite;
+  z-index: 1;
+}
+
+.kds-ticket--priority::before,
+.kds-pickup--priority::before {
+  content: "⚡ ĐẾN LƯỢT";
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ef4444, #f59e0b);
+  color: #fff;
+  font-family: var(--st-font-head);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+  z-index: 2;
+  pointer-events: none;
+  animation: kdsPriorityLabelPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes kdsPriorityLabelPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.06); }
+}
+
+html.dark-mode .kds-ticket--priority,
+html.dark-mode .kds-pickup--priority {
+  border-color: #f87171;
+}
+
+@keyframes kdsPriorityPulseDark {
+  0%, 100% {
+    box-shadow: 
+      0 0 0 0 rgba(248, 113, 113, 0.7),
+      0 1px 3px rgba(0, 0, 0, 0.3);
+    border-color: #f87171;
+  }
+  50% {
+    box-shadow: 
+      0 0 0 10px rgba(248, 113, 113, 0),
+      0 6px 20px rgba(248, 113, 113, 0.4);
+    border-color: #fbbf24;
+  }
+}
+
+html.dark-mode .kds-ticket--priority,
+html.dark-mode .kds-pickup--priority {
+  animation: kdsPriorityPulseDark 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kds-ticket--priority,
+  .kds-pickup--priority,
+  .kds-ticket--priority::before,
+  .kds-pickup--priority::before {
+    animation: none;
+  }
+  .kds-ticket--priority,
+  .kds-pickup--priority {
+    border-color: #ef4444;
+    border-width: 2px;
+  }
+}
+
+/* ============================================================
+   36. GRID 2 CỘT — Món Cần Bổ Sung + Tồn Kho Nhiều Nhất
+   ============================================================ */
+
+.staff-workspace-bottom {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (min-width: 900px) {
+  .staff-workspace-bottom {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ============================================================
+   37. LOWSTOCK CARD — Món Cần Bổ Sung
+   ============================================================ */
+
+.lowstock-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.lowstock-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), rgba(239, 68, 68, 0.04));
+  border-bottom: 1px solid var(--st-outline-light);
+}
+
+.lowstock-card__head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.lowstock-card__head-icon {
+  color: var(--st-warning);
+  flex-shrink: 0;
+}
+
+.lowstock-card__title {
+  margin: 0;
+  font-family: var(--st-font-head);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--st-text);
+}
+
+.lowstock-card__sub {
+  font-family: var(--st-font-body);
+  font-size: 12px;
+  color: var(--st-text-muted);
+}
+
+.lowstock-card__badge {
+  padding: 3px 10px;
+  border-radius: var(--st-radius-pill);
+  font-family: var(--st-font-head);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lowstock-card__badge--danger {
+  background: var(--st-danger-bg);
+  color: var(--st-danger);
+  border: 1px solid var(--st-danger-border);
+}
+
+.lowstock-card__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lowstock-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  overflow-y: auto;
+  max-height: 420px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--st-outline) transparent;
+}
+
+.lowstock-card__list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lowstock-card__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lowstock-card__list::-webkit-scrollbar-thumb {
+  background: var(--st-outline);
+  border-radius: 3px;
+}
+
+.lowstock-card__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--st-text-light);
+  font-family: var(--st-font-body);
+  font-size: 13px;
+}
+
+.lowstock-card__empty svg {
+  color: var(--st-success);
+  opacity: 0.5;
+}
+
+.lowstock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--st-radius-md);
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.lowstock-row:hover {
+  background: var(--st-surface-low);
+}
+
+.lowstock-row--warning {
+  background: rgba(245, 158, 11, 0.04);
+  border-left-color: #f59e0b;
+}
+
+.lowstock-row--danger {
+  background: rgba(239, 68, 68, 0.05);
+  border-left-color: #ef4444;
+}
+
+.lowstock-row__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.lowstock-row__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lowstock-row__dot--warning {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+  animation: staff-pulse 2s ease-in-out infinite;
+}
+
+.lowstock-row__dot--danger {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+  animation: staff-pulse 1.4s ease-in-out infinite;
+}
+
+.lowstock-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lowstock-row__name {
+  font-family: var(--st-font-head);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--st-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lowstock-row__meta {
+  font-family: var(--st-font-body);
+  font-size: 11px;
+  color: var(--st-text-light);
+}
+
+.lowstock-row__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.lowstock-row__qty {
+  font-family: var(--st-font-body);
+  font-size: 12px;
+  color: var(--st-text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.lowstock-row__qty b {
+  font-family: var(--st-font-head);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.lowstock-row__qty--warning b { color: #b45309; }
+.lowstock-row__qty--danger {
+  font-family: var(--st-font-head);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.lowstock-row__qty--danger b { color: var(--st-danger); }
+
+.lowstock-row__push-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--st-danger-border);
+  border-radius: var(--st-radius-sm);
+  background: var(--st-surface);
+  color: var(--st-danger);
+  font-family: var(--st-font-head);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.lowstock-row__push-btn:hover:not(:disabled) {
+  background: var(--st-danger);
+  color: #fff;
+  border-color: var(--st-danger);
+}
+
+.lowstock-row__push-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.lowstock-row__push-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+html.dark-mode .lowstock-card__head {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08));
+}
+
+html.dark-mode .lowstock-row--warning {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+html.dark-mode .lowstock-row--danger {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ============================================================
+   38. HIGHSTOCK CARD — Tồn Kho Nhiều Nhất
+   ============================================================ */
+
+.highstock-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.highstock-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(22, 163, 74, 0.04));
+  border-bottom: 1px solid var(--st-outline-light);
+}
+
+.highstock-card__head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.highstock-card__head-icon {
+  color: var(--st-success);
+  flex-shrink: 0;
+}
+
+.highstock-card__title {
+  margin: 0;
+  font-family: var(--st-font-head);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--st-text);
+}
+
+.highstock-card__sub {
+  font-family: var(--st-font-body);
+  font-size: 12px;
+  color: var(--st-text-muted);
+}
+
+.highstock-card__badge {
+  padding: 3px 10px;
+  border-radius: var(--st-radius-pill);
+  background: var(--st-success-bg);
+  color: var(--st-success);
+  border: 1px solid var(--st-success-border);
+  font-family: var(--st-font-head);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.highstock-card__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.highstock-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  overflow-y: auto;
+  max-height: 420px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--st-outline) transparent;
+}
+
+.highstock-card__list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.highstock-card__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.highstock-card__list::-webkit-scrollbar-thumb {
+  background: var(--st-outline);
+  border-radius: 3px;
+}
+
+.highstock-card__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--st-text-light);
+  font-family: var(--st-font-body);
+  font-size: 13px;
+}
+
+.highstock-card__empty svg {
+  color: var(--st-primary);
+  opacity: 0.5;
+}
+
+.highstock-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--st-radius-md);
+  transition: background 0.15s;
+}
+
+.highstock-row:hover {
+  background: var(--st-surface-low);
+}
+
+.highstock-row__left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 0 42%;
+}
+
+.highstock-row__name {
+  font-family: var(--st-font-head);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--st-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.highstock-row__meta {
+  font-family: var(--st-font-body);
+  font-size: 11px;
+  color: var(--st-text-light);
+}
+
+.highstock-row__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.highstock-row__bar {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--st-radius-pill);
+  background: var(--st-surface-container);
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.highstock-row__bar-fill {
+  height: 100%;
+  border-radius: var(--st-radius-pill);
+  background: linear-gradient(90deg, var(--st-success), var(--st-primary-container));
+  transition: width 0.4s ease;
+}
+
+.highstock-row__qty {
+  font-family: var(--st-font-body);
+  font-size: 12px;
+  color: var(--st-text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 56px;
+  text-align: right;
+}
+
+.highstock-row__qty b {
+  font-family: var(--st-font-head);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--st-success);
+}
+
+html.dark-mode .highstock-card__head {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(22, 163, 74, 0.08));
+}
+
+/* ============================================================
+   39. TASKS CARD — Công Việc Được Giao (full-width)
+   ============================================================ */
+
+.tasks-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.tasks-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.06), rgba(139, 92, 246, 0.04));
+  border-bottom: 1px solid var(--st-outline-light);
+  flex-wrap: wrap;
+}
+
+.tasks-card__head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tasks-card__head-icon {
+  color: #0ea5e9;
+  flex-shrink: 0;
+}
+
+.tasks-card__title {
+  margin: 0;
+  font-family: var(--st-font-head);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--st-text);
+}
+
+.tasks-card__sub {
+  font-family: var(--st-font-body);
+  font-size: 12px;
+  color: var(--st-text-muted);
+}
+
+.tasks-card__badge {
+  padding: 3px 10px;
+  border-radius: var(--st-radius-pill);
+  background: var(--st-primary-soft);
+  color: var(--st-primary);
+  border: 1px solid var(--st-primary-dim);
+  font-family: var(--st-font-head);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tasks-card__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.tasks-card__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  overflow-y: auto;
+  max-height: 480px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--st-outline) transparent;
+}
+
+.tasks-card__list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tasks-card__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tasks-card__list::-webkit-scrollbar-thumb {
+  background: var(--st-outline);
+  border-radius: 3px;
+}
+
+.tasks-card__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--st-text-light);
+  font-family: var(--st-font-body);
+  font-size: 13px;
+}
+
+.tasks-card__empty svg {
+  color: var(--st-primary);
+  opacity: 0.4;
+}
+
+.tasks-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--st-radius-md);
+  background: var(--st-surface-low);
+  transition: all 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.tasks-row:hover {
+  background: var(--st-surface-container);
+}
+
+.tasks-row--done {
+  opacity: 0.65;
+  background: var(--st-surface);
+  border-left-color: var(--st-success);
+}
+
+.tasks-row--done:hover {
+  background: var(--st-surface-low);
+}
+
+.tasks-row__check {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 2px solid var(--st-outline);
+  border-radius: 6px;
+  background: var(--st-surface);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+  padding: 0;
+  margin-top: 1px;
+  color: #fff;
+}
+
+.tasks-row__check:hover:not(:disabled) {
+  border-color: var(--st-primary-container);
+  background: var(--st-primary-soft);
+}
+
+.tasks-row__check--done {
+  background: var(--st-success);
+  border-color: var(--st-success);
+}
+
+.tasks-row__check--done:hover:not(:disabled) {
+  background: #15803d;
+  border-color: #15803d;
+}
+
+.tasks-row__check:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.tasks-row__check:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.tasks-row__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tasks-row__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tasks-row__title {
+  font-family: var(--st-font-head);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--st-text);
+  line-height: 1.4;
+}
+
+.tasks-row__title--done {
+  text-decoration: line-through;
+  color: var(--st-text-muted);
+}
+
+.tasks-row__priority {
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid;
+  background: transparent;
+  font-family: var(--st-font-head);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tasks-row__desc {
+  margin: 0;
+  font-family: var(--st-font-body);
+  font-size: 12.5px;
+  color: var(--st-text-muted);
+  line-height: 1.5;
+}
+
+.tasks-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: var(--st-font-body);
+  font-size: 11px;
+  color: var(--st-text-light);
+  margin-top: 2px;
+}
+
+.tasks-row__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+html.dark-mode .tasks-card__head {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(139, 92, 246, 0.08));
+}
+
+html.dark-mode .tasks-row__check {
+  background: var(--st-surface);
+  border-color: var(--st-outline);
+}
+
+html.dark-mode .tasks-row__check--done {
+  background: var(--st-success);
+  border-color: var(--st-success);
+}
+
+@media (max-width: 640px) {
+  .tasks-row {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .tasks-row__check {
+    width: 20px;
+    height: 20px;
+  }
+
+  .tasks-row__title {
+    font-size: 13px;
+  }
+
+  .tasks-row__desc {
+    font-size: 12px;
+  }
+
+  .tasks-card__list {
+    max-height: 380px;
+  }
+}
+/* ============================================================
+   40. MENU86 CARD ROW — Card ngang cho EmployeeMenu
+   ============================================================ */
+
+.menu86-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .menu86-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.menu86-card-row {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  border: 1px solid var(--st-outline-light);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.menu86-card-row:hover {
+  box-shadow: var(--st-shadow-2);
+  border-color: var(--st-primary-dim);
+}
+
+.menu86-card-row--out {
+  border-color: var(--st-warning-border);
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.04),
+    var(--st-surface) 40%
+  );
+}
+
+.menu86-card-row--disabled {
+  opacity: 0.65;
+  border-color: var(--st-outline);
+  background: var(--st-surface-low);
+}
+
+.menu86-card-row--disabled .menu86-card-row__img-wrap img {
+  filter: grayscale(100%);
+}
+
+.menu86-card-row__img-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  border-radius: var(--st-radius-md);
+  overflow: hidden;
+  background: var(--st-surface-container);
+}
+
+.menu86-card-row__img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.menu86-card-row__badge-signature {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: #fff;
+  font-family: var(--st-font-head);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.35);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.menu86-card-row__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.menu86-card-row__category {
+  font-family: var(--st-font-head);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--st-text-light);
+}
+
+.menu86-card-row__name {
+  margin: 0;
+  font-family: var(--st-font-head);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--st-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.menu86-card-row__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.menu86-card-row__price-old {
+  font-family: var(--st-font-head);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--st-text-light);
+  text-decoration: line-through;
+  line-height: 1.2;
+}
+
+.menu86-card-row__price-new {
+  font-family: var(--st-font-head);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--st-primary);
+  line-height: 1.2;
+}
+
+.menu86-card-row__discount {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ef4444, #f59e0b);
+  color: #fff;
+  font-family: var(--st-font-head);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.menu86-card-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--st-font-body);
+  font-size: 11.5px;
+  color: var(--st-text-muted);
+}
+
+.menu86-card-row__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.menu86-card-row__meta-item b {
+  color: var(--st-text);
+  font-weight: 700;
+}
+
+.menu86-card-row__status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.menu86-card-row__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--st-radius-pill);
+  font-family: var(--st-font-head);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.menu86-card-row__badge--active {
+  background: var(--st-success-bg);
+  color: var(--st-success);
+  border: 1px solid var(--st-success-border);
+}
+
+.menu86-card-row__badge--low {
+  background: var(--st-warning-bg);
+  color: #b45309;
+  border: 1px solid var(--st-warning-border);
+}
+
+.menu86-card-row__badge--out {
+  background: var(--st-danger-bg);
+  color: var(--st-danger);
+  border: 1px solid var(--st-danger-border);
+}
+
+.menu86-card-row__badge--disabled {
+  background: var(--st-surface-container);
+  color: var(--st-text-muted);
+  border: 1px solid var(--st-outline);
+}
+
+.menu86-card-row__stock-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--st-font-body);
+  font-size: 11.5px;
+  color: var(--st-text-muted);
+  white-space: nowrap;
+}
+
+.menu86-card-row__stock-info b {
+  font-family: var(--st-font-head);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu86-card-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--st-outline-light);
+  flex-wrap: wrap;
+}
+
+.menu86-card-row__stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--st-surface-low);
+  border-radius: var(--st-radius-md);
+  flex-shrink: 0;
+}
+
+.menu86-card-row__step-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--st-surface);
+  border: 0;
+  color: var(--st-text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.menu86-card-row__step-btn:hover:not(:disabled) {
+  background: var(--st-surface-high);
+  color: var(--st-primary);
+}
+
+.menu86-card-row__step-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.menu86-card-row__step-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.menu86-card-row__step-value {
+  min-width: 28px;
+  text-align: center;
+  font-family: var(--st-font-head);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--st-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.menu86-card-row__quick {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.menu86-card-row__quick-btn {
+  padding: 6px 10px;
+  border-radius: var(--st-radius-sm);
+  background: var(--st-surface-low);
+  border: 1px solid var(--st-outline-light);
+  color: var(--st-primary);
+  font-family: var(--st-font-head);
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.menu86-card-row__quick-btn:hover:not(:disabled) {
+  background: var(--st-primary-dim);
+  border-color: var(--st-primary-container);
+}
+
+.menu86-card-row__quick-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.menu86-card-row__quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.menu86-card-row__toggle-out {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--st-radius-md);
+  border: 0;
+  font-family: var(--st-font-head);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.menu86-card-row__toggle-out--out {
+  background: var(--st-danger-bg);
+  color: var(--st-danger);
+  border: 1px solid var(--st-danger-border);
+}
+
+.menu86-card-row__toggle-out--out:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.15);
+}
+
+.menu86-card-row__toggle-out--reopen {
+  background: var(--st-success-bg);
+  color: var(--st-success);
+  border: 1px solid var(--st-success-border);
+}
+
+.menu86-card-row__toggle-out--reopen:hover:not(:disabled) {
+  background: rgba(22, 163, 74, 0.15);
+}
+
+.menu86-card-row__toggle-out:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.menu86-card-row__toggle-out:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .menu86-card-row {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .menu86-card-row__img-wrap {
+    width: 80px;
+    height: 80px;
+  }
+
+  .menu86-card-row__name {
+    font-size: 14px;
+  }
+
+  .menu86-card-row__price-new {
+    font-size: 15px;
+  }
+
+  .menu86-card-row__actions {
+    gap: 6px;
+  }
+
+  .menu86-card-row__toggle-out {
+    margin-left: 0;
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 420px) {
+  .menu86-card-row__img-wrap {
+    width: 72px;
+    height: 72px;
+  }
+
+  .menu86-card-row__meta {
+    gap: 8px;
+    font-size: 11px;
+  }
+}
+
+html.dark-mode .menu86-card-row {
+  background: var(--st-surface);
+  border-color: var(--st-outline-light);
+}
+
+html.dark-mode .menu86-card-row--out {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.08),
+    var(--st-surface) 40%
+  );
+}
+
+html.dark-mode .menu86-card-row__img-wrap {
+  background: var(--st-surface-container);
+}
+
+html.dark-mode .menu86-card-row__name {
+  color: #f1f5f9;
+}
+
+html.dark-mode .menu86-card-row__price-new {
+  color: #60a5fa;
+}
+
+html.dark-mode .menu86-card-row__step-btn {
+  background: var(--st-surface-low);
+  color: #e2e8f0;
+}
+
+/* ============================================================
+   41. MENU86 PAGINATION — Phân trang
+   ============================================================ */
+
+.menu86-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 14px 20px;
+  background: var(--st-surface);
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  flex-wrap: wrap;
+}
+
+.menu86-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--st-surface-low);
+  color: var(--st-text);
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-md);
+  font-family: var(--st-font-head);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.menu86-page-btn:hover:not(:disabled) {
+  background: var(--st-surface-container);
+  border-color: var(--st-primary-container);
+  color: var(--st-primary);
+  transform: translateY(-1px);
+}
+
+.menu86-page-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.menu86-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.menu86-page-indicator {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 18px;
+  background: linear-gradient(135deg, var(--st-primary-container), var(--st-primary));
+  color: var(--st-on-primary);
+  border-radius: var(--st-radius-md);
+  font-family: var(--st-font-head);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  white-space: nowrap;
+}
+
+.menu86-page-indicator__label {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.menu86-page-indicator__current {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.menu86-page-indicator__sep {
+  font-size: 16px;
+  font-weight: 400;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+
+.menu86-page-indicator__total {
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+  .menu86-pagination {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .menu86-page-btn {
+    padding: 9px 14px;
+    font-size: 12.5px;
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .menu86-page-btn span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu86-page-indicator {
+    padding: 6px 14px;
+    order: -1;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+
+  .menu86-page-indicator__current {
+    font-size: 18px;
+  }
+}
+
+html.dark-mode .menu86-pagination {
+  background: var(--st-surface);
+  border-color: var(--st-outline-light);
+}
+
+html.dark-mode .menu86-page-btn {
+  background: var(--st-surface-low);
+  color: #e2e8f0;
+  border-color: var(--st-outline);
+}
+
+html.dark-mode .menu86-page-btn:hover:not(:disabled) {
+  background: var(--st-surface-container);
+  color: #60a5fa;
+}
+/* ============================================================ */
+/* 42. KDS ROWS — Layout dòng vertical (V6/V7)                  */
+/* ------------------------------------------------------------ */
+/* 🔧 FIX: card trong mỗi dòng xếp NGANG (flex-wrap). Mỗi card   */
+/* rộng cố định 240px, tự động trải ngang.                       */
+/* ============================================================ */
+.kds-board--rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kds-row {
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-lg);
+  background: var(--st-surface);
+  overflow: hidden;
+}
+
+.kds-row__head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--st-outline-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--st-surface-low);
+  gap: 12px;
+}
+
+.kds-row__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kds-row__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.kds-row__dot--pending   { background: var(--st-danger);    box-shadow: 0 0 0 3px var(--st-danger-bg); }
+.kds-row__dot--confirmed { background: var(--st-secondary); box-shadow: 0 0 0 3px var(--st-warning-bg); }
+.kds-row__dot--prep      { background: var(--st-primary);   box-shadow: 0 0 0 3px var(--st-primary-container); }
+.kds-row__dot--ready     { background: var(--st-success);   box-shadow: 0 0 0 3px var(--st-success-bg); }
+.kds-row__dot--completed { background: var(--st-text-muted); }
+
+.kds-row__title {
+  font-family: var(--st-font-head);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--st-text);
+  white-space: nowrap;
+}
+
+.kds-row__subtitle {
+  font-size: 12px;
+  color: var(--st-text-muted);
+  font-weight: 500;
+}
+
+.kds-row__count {
+  font-family: var(--st-font-head);
+  font-weight: 800;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.kds-row__count--pending   { background: var(--st-danger-bg);    color: var(--st-danger); }
+.kds-row__count--confirmed { background: var(--st-warning-bg);   color: var(--st-secondary); }
+.kds-row__count--prep      { background: var(--st-primary-container); color: var(--st-primary); }
+.kds-row__count--ready     { background: var(--st-success-bg);   color: var(--st-success); }
+.kds-row__count--completed { background: var(--st-surface-high);    color: var(--st-text-muted); }
+
+.kds-row__body {
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.kds-row__body > .kds-card,
+.kds-row__body > article,
+.kds-row__body > .kds-ticket,
+.kds-row__body > .kds-pickup {
+  flex: 0 0 240px;
+  max-width: 240px;
+  min-width: 0;
+}
+
+.kds-row__empty {
+  flex: 1 1 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--st-text-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.kds-row__more {
+  flex: 1 1 100%;
+  padding: 10px;
+  border: 1px dashed var(--st-outline);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--st-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--st-font-head);
+  transition: all 0.15s;
+}
+.kds-row__more:hover {
+  background: var(--st-surface-low);
+  color: var(--st-text);
+  border-color: var(--st-primary);
+}
+
+/* ============================================================ */
+/* 43. ROW 5 — Gần Nhất (compact strip)                          */
+/* ============================================================ */
+.kds-row__body--strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.kds-row__body--strip > * {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.kds-completed-strip-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--st-surface-low);
+  font-size: 13px;
+  gap: 12px;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.kds-completed-strip-item:hover {
+  border-color: var(--st-outline-light);
+  background: var(--st-surface-container);
+}
+
+.kds-completed-strip-item__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.kds-completed-strip-item__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--st-success-bg);
+  color: var(--st-success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kds-completed-strip-item__code {
+  font-family: var(--st-font-head);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--st-text);
+  white-space: nowrap;
+}
+
+.kds-completed-strip-item__customer {
+  font-size: 12px;
+  color: var(--st-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kds-completed-strip-item__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.kds-completed-strip-item__time {
+  font-size: 11px;
+  color: var(--st-text-muted);
+  font-family: var(--st-font-head);
+}
+
+.kds-completed-strip-item__total {
+  font-family: var(--st-font-head);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--st-primary);
+  white-space: nowrap;
+}
+
+/* ============================================================ */
+/* 44. Priority blink — đơn cũ nhất mỗi dòng                     */
+/* ============================================================ */
+.kds-ticket--priority {
+  animation: kds-blink 1.4s ease-in-out infinite;
+  border-color: var(--st-danger) !important;
+}
+
+@keyframes kds-blink {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
+    border-color: rgba(239, 68, 68, 0.9);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+}
+
+/* ============================================================ */
+/* 45. Responsive — mobile                                        */
+/* ============================================================ */
+@media (max-width: 640px) {
+  .kds-row__body {
+    padding: 8px;
+  }
+  .kds-row__body > .kds-card,
+  .kds-row__body > article,
+  .kds-row__body > .kds-ticket,
+  .kds-row__body > .kds-pickup {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  .kds-row__head {
+    padding: 10px 12px;
+  }
+  .kds-row__title {
+    font-size: 14px;
+  }
+  .kds-row__subtitle {
+    display: none;
+  }
+}
+
+/* ============================================================
+   KẾT THÚC FILE STYLES-EMPLOYEE.CSS
+   ============================================================ */

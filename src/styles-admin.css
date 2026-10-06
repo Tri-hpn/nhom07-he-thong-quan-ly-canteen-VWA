@@ -12,6 +12,9 @@
      import "./styles-customer.css";
    
    Scope: .admin-shell (role ADMIN)
+   
+   🔧 V2: Thêm section 11-15 cho layout mới
+          (admin-menu-card, admin-employees-grid, admin-emp-card, pagination)
    ============================================================ */
 
 /* ============================================================
@@ -64,7 +67,7 @@
 
 .admin-shell .main {
   margin-left: 250px !important;
-  width: calc(100% - 250px) !important; /* compat: khớp .sidebar 250px; .topbar là sticky nên padding-top = 0 */
+  width: calc(100% - 250px) !important;
   background: var(--st-canvas) !important;
   padding-top: 0 !important;
 }
@@ -76,8 +79,6 @@
   box-sizing: border-box !important;
 }
 
-/* NOTE: chỉ ẩn page-heading khi trang tự render hero .admin-page-head (vd /owner/reports).
-   Các trang admin khác (Dashboard, Menu, Orders, Vouchers…) vẫn cần tiêu đề từ Layout. */
 .admin-shell .page-content:has(.admin-page-head) > .page-heading {
   display: none !important;
 }
@@ -608,8 +609,6 @@
 
 /* ============================================================
    9. PRINT PREVIEW MODAL — Hộp thoại in tài liệu
-   ============================================================
-   Theo HTML mẫu: modal full-screen với 2 cột (preview + settings)
    ============================================================ */
 
 .print-modal-overlay {
@@ -640,7 +639,6 @@
   gap: 8px;
 }
 
-/* Modal system bar */
 .print-modal__bar {
   display: flex;
   align-items: center;
@@ -739,7 +737,6 @@
   color: #ffffff;
 }
 
-/* Body: 2 columns */
 .print-modal__body {
   display: grid;
   grid-template-columns: 1fr;
@@ -752,7 +749,6 @@
   }
 }
 
-/* ---- LEFT: Paper canvas ---- */
 .print-canvas {
   background: var(--st-surface-low);
   border-radius: 12px;
@@ -854,7 +850,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Real A4 sheet */
 .print-canvas__stage {
   display: flex;
   justify-content: center;
@@ -880,7 +875,6 @@
   .print-sheet { padding: 24px 20px; }
 }
 
-/* Document header */
 .print-sheet__header {
   text-align: center;
   padding-bottom: 8px;
@@ -921,7 +915,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Title */
 .print-sheet__title-block {
   text-align: center;
   margin: 12px 0;
@@ -954,7 +947,6 @@
   color: var(--ad-print-ink-muted);
 }
 
-/* Parties info */
 .print-sheet__parties {
   background: var(--st-surface-low);
   border-radius: 6px;
@@ -977,7 +969,6 @@
 
 .print-sheet__parties b { font-weight: 700; }
 
-/* Data table */
 .print-sheet__table {
   border-radius: 6px;
   overflow: hidden;
@@ -1050,7 +1041,6 @@
   font-size: 13px;
 }
 
-/* Conclusion */
 .print-sheet__conclusion {
   background: var(--st-surface-low);
   border-radius: 6px;
@@ -1070,7 +1060,6 @@
 
 .print-sheet__conclusion b { font-weight: 700; }
 
-/* Signatures */
 .print-sheet__signatures {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1137,7 +1126,6 @@
   color: var(--ad-print-ink-muted);
 }
 
-/* Red stamp overlay */
 .print-sheet__stamp {
   position: absolute;
   top: 8px;
@@ -1175,7 +1163,6 @@
   font-size: 6.5px;
 }
 
-/* Footer security */
 .print-sheet__footer {
   margin-top: 16px;
   padding: 8px;
@@ -1202,7 +1189,6 @@
   flex-shrink: 0;
 }
 
-/* Canvas bottom status */
 .print-canvas__status {
   display: flex;
   flex-wrap: wrap;
@@ -1236,7 +1222,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- RIGHT: Settings inspector ---- */
 .print-inspector {
   background: var(--st-surface);
   color: var(--st-text);
@@ -1286,7 +1271,6 @@
   white-space: nowrap;
 }
 
-/* Setting group */
 .print-setting {
   display: flex;
   flex-direction: column;
@@ -1371,14 +1355,12 @@
   color: var(--st-secondary);
 }
 
-/* 2-col grid inside setting */
 .print-setting__grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
 
-/* Stepper */
 .print-stepper {
   display: flex;
   align-items: center;
@@ -1425,7 +1407,6 @@
   padding-top: 2px;
 }
 
-/* Segmented control */
 .print-segmented {
   display: grid;
   gap: 4px;
@@ -1474,7 +1455,6 @@
   flex-shrink: 0;
 }
 
-/* Advanced box */
 .print-advanced {
   padding: 12px;
   background: var(--st-surface-low);
@@ -1555,7 +1535,6 @@
   flex-shrink: 0;
 }
 
-/* Compliance note */
 .print-compliance {
   padding: 10px;
   border-radius: 8px;
@@ -1582,7 +1561,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Actions */
 .print-actions {
   padding: 12px;
   background: var(--st-surface-low);
@@ -1657,7 +1635,6 @@
   color: var(--st-text);
 }
 
-/* Footer strip */
 .print-footer-strip {
   margin-top: 16px;
   padding: 12px 16px;
@@ -2084,7 +2061,6 @@
   color: var(--st-text-muted);
 }
 
-/* Pie/Bar breakdown */
 .admin-usage-breakdown {
   display: flex;
   flex-direction: column;
@@ -2169,12 +2145,10 @@
   background: rgba(242, 243, 255, 0.6);
 }
 
-/* Row highlight cho campaign đang live/đặc biệt */
 .admin-voucher-row--highlight {
   background: rgba(242, 243, 255, 0.4);
 }
 
-/* Voucher code cell */
 .admin-voucher-cell {
   display: flex;
   align-items: flex-start;
@@ -2291,7 +2265,6 @@
   line-height: 1.4;
 }
 
-/* Discount cell */
 .admin-voucher-discount {
   display: flex;
   flex-direction: column;
@@ -2336,7 +2309,6 @@
 .admin-voucher-discount__hint--secondary { color: var(--st-secondary); }
 .admin-voucher-discount__hint--error { color: var(--st-danger); }
 
-/* Progress cell */
 .admin-voucher-progress {
   display: flex;
   flex-direction: column;
@@ -2399,7 +2371,6 @@
   font-weight: 600;
 }
 
-/* Time cell */
 .admin-voucher-time {
   display: flex;
   flex-direction: column;
@@ -2421,7 +2392,6 @@
   color: var(--st-text-muted);
 }
 
-/* Audience pill */
 .admin-voucher-audience {
   display: inline-flex;
   align-items: center;
@@ -2441,7 +2411,6 @@
   flex-shrink: 0;
 }
 
-/* Status toggle cell */
 .admin-voucher-status {
   display: flex;
   flex-direction: column;
@@ -2463,7 +2432,6 @@
   color: var(--st-text-muted);
 }
 
-/* Actions cell */
 .admin-voucher-actions {
   display: inline-flex;
   align-items: center;
@@ -2492,7 +2460,6 @@
   color: var(--st-danger);
 }
 
-/* ---- Footer / Audit ---- */
 .admin-audit-preview {
   background: var(--st-surface);
   border-radius: var(--st-radius-lg);
@@ -2584,7 +2551,6 @@
   flex-shrink: 0;
 }
 
-/* Batch generator card */
 .admin-batch-card {
   background: var(--st-surface);
   border-radius: var(--st-radius-lg);
@@ -2654,7 +2620,6 @@
   background: var(--st-primary);
 }
 
-/* ---- Pagination ---- */
 .admin-pagination {
   display: flex;
   align-items: center;
@@ -2714,7 +2679,6 @@
   box-shadow: var(--st-shadow-1);
 }
 
-/* ---- 2-col footer ---- */
 .admin-footer-2col {
   display: grid;
   grid-template-columns: 1fr;
@@ -2728,7 +2692,6 @@
   }
 }
 
-/* Responsive */
 @media (max-width: 640px) {
   .admin-flash-banner { padding: 16px; }
   .admin-flash-banner__icon { width: 44px; height: 44px; border-radius: 12px; }
@@ -2741,5 +2704,1360 @@
 }
 
 /* ============================================================
-   KẾT THÚC
+   11. ADMIN MENU CARD ROW — Card ngang cho OwnerMenu
+   ------------------------------------------------------------
+   Layout Mẫu A: Ảnh vuông 96px + info + actions
+   Admin có thêm: Tắt món + Sửa + Xoá
+   ============================================================ */
+
+.admin-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .admin-menu-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-menu-card {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  border: 1px solid var(--st-outline-light);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-menu-card:hover {
+  box-shadow: var(--st-shadow-2);
+  border-color: var(--st-primary-dim);
+}
+
+.admin-menu-card--out {
+  border-color: var(--st-warning-border);
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.04),
+    var(--st-surface) 40%
+  );
+}
+
+.admin-menu-card--disabled {
+  opacity: 0.65;
+  border-color: var(--st-outline);
+  background: var(--st-surface-low);
+}
+
+.admin-menu-card--disabled .admin-menu-card__img-wrap img {
+  filter: grayscale(100%);
+}
+
+.admin-menu-card__img-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  border-radius: var(--st-radius-md);
+  overflow: hidden;
+  background: var(--st-surface-container);
+}
+
+.admin-menu-card__img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.admin-menu-card__badge-signature {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: #fff;
+  font-family: var(--st-font-head);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.35);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.admin-menu-card__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-menu-card__category {
+  font-family: var(--st-font-head);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--st-text-light);
+}
+
+.admin-menu-card__name {
+  margin: 0;
+  font-family: var(--st-font-head);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--st-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.admin-menu-card__price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-menu-card__price-old {
+  font-family: var(--st-font-head);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--st-text-light);
+  text-decoration: line-through;
+  line-height: 1.2;
+}
+
+.admin-menu-card__price-new {
+  font-family: var(--st-font-head);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--st-primary);
+  line-height: 1.2;
+}
+
+.admin-menu-card__discount {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ef4444, #f59e0b);
+  color: #fff;
+  font-family: var(--st-font-head);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.admin-menu-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--st-font-body);
+  font-size: 11.5px;
+  color: var(--st-text-muted);
+}
+
+.admin-menu-card__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.admin-menu-card__meta-item b {
+  color: var(--st-text);
+  font-weight: 700;
+}
+
+.admin-menu-card__status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.admin-menu-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--st-radius-pill);
+  font-family: var(--st-font-head);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.admin-menu-card__badge--active {
+  background: var(--st-success-bg);
+  color: var(--st-success);
+  border: 1px solid var(--st-success-border);
+}
+
+.admin-menu-card__badge--low {
+  background: var(--st-warning-bg);
+  color: #b45309;
+  border: 1px solid var(--st-warning-border);
+}
+
+.admin-menu-card__badge--out {
+  background: var(--st-danger-bg);
+  color: var(--st-danger);
+  border: 1px solid var(--st-danger-border);
+}
+
+.admin-menu-card__badge--disabled {
+  background: var(--st-surface-container);
+  color: var(--st-text-muted);
+  border: 1px solid var(--st-outline);
+}
+
+.admin-menu-card__stock-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--st-font-body);
+  font-size: 11.5px;
+  color: var(--st-text-muted);
+  white-space: nowrap;
+}
+
+.admin-menu-card__stock-info b {
+  font-family: var(--st-font-head);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-menu-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--st-outline-light);
+  flex-wrap: wrap;
+}
+
+.admin-menu-card__stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--st-surface-low);
+  border-radius: var(--st-radius-md);
+  flex-shrink: 0;
+}
+
+.admin-menu-card__step-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--st-surface);
+  border: 0;
+  color: var(--st-text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.admin-menu-card__step-btn:hover:not(:disabled) {
+  background: var(--st-surface-high);
+  color: var(--st-primary);
+}
+
+.admin-menu-card__step-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.admin-menu-card__step-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.admin-menu-card__step-value {
+  min-width: 28px;
+  text-align: center;
+  font-family: var(--st-font-head);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--st-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.admin-menu-card__quick {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.admin-menu-card__quick-btn {
+  padding: 6px 10px;
+  border-radius: var(--st-radius-sm);
+  background: var(--st-surface-low);
+  border: 1px solid var(--st-outline-light);
+  color: var(--st-primary);
+  font-family: var(--st-font-head);
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.admin-menu-card__quick-btn:hover:not(:disabled) {
+  background: var(--st-primary-dim);
+  border-color: var(--st-primary-container);
+}
+
+.admin-menu-card__quick-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.admin-menu-card__quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.admin-menu-card__toggle-out {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--st-radius-md);
+  border: 0;
+  font-family: var(--st-font-head);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.admin-menu-card__toggle-out--out {
+  background: var(--st-danger-bg);
+  color: var(--st-danger);
+  border: 1px solid var(--st-danger-border);
+}
+
+.admin-menu-card__toggle-out--out:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.15);
+}
+
+.admin-menu-card__toggle-out--reopen {
+  background: var(--st-success-bg);
+  color: var(--st-success);
+  border: 1px solid var(--st-success-border);
+}
+
+.admin-menu-card__toggle-out--reopen:hover:not(:disabled) {
+  background: rgba(22, 163, 74, 0.15);
+}
+
+.admin-menu-card__toggle-out:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-menu-card__toggle-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--st-radius-md);
+  border: 1px solid var(--st-outline);
+  background: var(--st-surface-low);
+  color: var(--st-text-muted);
+  font-family: var(--st-font-head);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.admin-menu-card__toggle-active:hover:not(:disabled) {
+  background: var(--st-surface-container);
+  color: var(--st-text);
+}
+
+.admin-menu-card__toggle-active--off {
+  background: var(--st-surface-container);
+  color: var(--st-text);
+  border-color: var(--st-outline);
+}
+
+.admin-menu-card__toggle-active--off:hover:not(:disabled) {
+  background: var(--st-surface-high);
+}
+
+.admin-menu-card__toggle-active:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-menu-card__icon-actions {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.admin-menu-card__icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--st-radius-md);
+  background: var(--st-surface-low);
+  border: 1px solid var(--st-outline-light);
+  color: var(--st-text-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.admin-menu-card__icon-btn:hover {
+  background: var(--st-surface-container);
+  border-color: var(--st-primary-container);
+  color: var(--st-primary);
+}
+
+.admin-menu-card__icon-btn--danger:hover {
+  border-color: var(--st-danger);
+  color: var(--st-danger);
+  background: var(--st-danger-bg);
+}
+
+.admin-menu-card__icon-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.admin-menu-card__icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .admin-menu-card {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .admin-menu-card__img-wrap {
+    width: 80px;
+    height: 80px;
+  }
+
+  .admin-menu-card__name {
+    font-size: 14px;
+  }
+
+  .admin-menu-card__price-new {
+    font-size: 15px;
+  }
+
+  .admin-menu-card__actions {
+    gap: 6px;
+  }
+
+  .admin-menu-card__icon-actions {
+    margin-left: 0;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-menu-card__img-wrap {
+    width: 72px;
+    height: 72px;
+  }
+
+  .admin-menu-card__meta {
+    gap: 8px;
+    font-size: 11px;
+  }
+}
+
+html.dark-mode .admin-menu-card {
+  background: var(--st-surface);
+  border-color: var(--st-outline-light);
+}
+
+html.dark-mode .admin-menu-card--out {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.08),
+    var(--st-surface) 40%
+  );
+}
+
+html.dark-mode .admin-menu-card__img-wrap {
+  background: var(--st-surface-container);
+}
+
+html.dark-mode .admin-menu-card__name {
+  color: #f1f5f9;
+}
+
+html.dark-mode .admin-menu-card__price-new {
+  color: #60a5fa;
+}
+
+html.dark-mode .admin-menu-card__step-btn {
+  background: var(--st-surface-low);
+  color: #e2e8f0;
+}
+
+/* ---- Admin menu pagination ---- */
+.admin-menu-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 14px 20px;
+  background: var(--st-surface);
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  flex-wrap: wrap;
+}
+
+.admin-menu-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--st-surface-low);
+  color: var(--st-text);
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-md);
+  font-family: var(--st-font-head);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.admin-menu-page-btn:hover:not(:disabled) {
+  background: var(--st-surface-container);
+  border-color: var(--st-primary-container);
+  color: var(--st-primary);
+  transform: translateY(-1px);
+}
+
+.admin-menu-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.admin-menu-page-indicator {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 18px;
+  background: linear-gradient(
+    135deg,
+    var(--st-primary-container),
+    var(--st-primary)
+  );
+  color: var(--st-on-primary);
+  border-radius: var(--st-radius-md);
+  font-family: var(--st-font-head);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  white-space: nowrap;
+}
+
+.admin-menu-page-indicator__label {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.admin-menu-page-indicator__current {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.admin-menu-page-indicator__sep {
+  font-size: 16px;
+  font-weight: 400;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+
+.admin-menu-page-indicator__total {
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+  .admin-menu-pagination {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .admin-menu-page-btn {
+    padding: 9px 14px;
+    font-size: 12.5px;
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .admin-menu-page-indicator {
+    padding: 6px 14px;
+    order: -1;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+}
+
+html.dark-mode .admin-menu-pagination {
+  background: var(--st-surface);
+  border-color: var(--st-outline-light);
+}
+
+html.dark-mode .admin-menu-page-btn {
+  background: var(--st-surface-low);
+  color: #e2e8f0;
+  border-color: var(--st-outline);
+}
+
+/* ============================================================
+   12. ADMIN EMPLOYEES GRID — Card nhân viên (OwnerEmployees)
+   ============================================================ */
+
+.admin-employees-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .admin-employees-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* ---- Employee Card ---- */
+.admin-emp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--st-surface);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  border: 1px solid var(--st-outline-light);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-emp-card:hover {
+  box-shadow: var(--st-shadow-2);
+  border-color: var(--st-primary-dim);
+}
+
+.admin-emp-card--locked {
+  opacity: 0.7;
+  border-color: var(--st-outline);
+  background: var(--st-surface-low);
+}
+
+/* Header */
+.admin-emp-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-emp-card__avatar {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2634d5, #20c779);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-family: var(--st-font-head);
+  font-size: 16px;
+  font-weight: 800;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(38, 52, 213, 0.25);
+}
+
+.admin-emp-card__status-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--st-surface);
+  flex-shrink: 0;
+}
+
+.admin-emp-card__status-dot--active {
+  background: var(--st-success);
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
+}
+
+.admin-emp-card__status-dot--locked {
+  background: var(--st-danger);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+}
+
+.admin-emp-card__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-emp-card__name {
+  margin: 0;
+  font-family: var(--st-font-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--st-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-emp-card__id {
+  font-family: var(--st-font-body);
+  font-size: 11px;
+  color: var(--st-text-light);
+  font-weight: 600;
+}
+
+/* Contact info */
+.admin-emp-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--st-surface-low);
+  border-radius: var(--st-radius-md);
+}
+
+.admin-emp-card__info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--st-font-body);
+  font-size: 12px;
+  color: var(--st-text-muted);
+  min-width: 0;
+}
+
+.admin-emp-card__info-row svg {
+  color: var(--st-primary);
+  flex-shrink: 0;
+}
+
+.admin-emp-card__info-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Status row */
+.admin-emp-card__status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-emp-card__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--st-radius-pill);
+  background: var(--st-surface-container);
+  color: var(--st-text-muted);
+  font-family: var(--st-font-head);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  line-height: 1.3;
+}
+
+.admin-emp-card__chip--shift {
+  background: var(--st-primary-soft);
+  color: var(--st-primary);
+  border-color: var(--st-primary-dim);
+}
+
+.admin-emp-card__chip--att-active {
+  background: #dcfce7;
+  color: var(--st-success);
+  border-color: #bbf7d0;
+}
+
+.admin-emp-card__chip--att-done {
+  background: var(--st-surface-high);
+  color: var(--st-text-muted);
+  border-color: var(--st-outline-light);
+}
+
+.admin-emp-card__chip--att-warning {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.admin-emp-card__chip--att-neutral {
+  background: var(--st-surface-low);
+  color: var(--st-text-muted);
+}
+
+.admin-emp-card__chip--tasks {
+  background: linear-gradient(135deg, #0ea5e9, #8b5cf6);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.admin-emp-card__chip--tasks:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(139, 92, 246, 0.3);
+}
+
+/* Actions */
+.admin-emp-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--st-outline-light);
+  flex-wrap: wrap;
+}
+
+.admin-emp-card__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--st-radius-md);
+  border: 0;
+  font-family: var(--st-font-head);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.admin-emp-card__btn--primary {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.25);
+}
+
+.admin-emp-card__btn--primary:hover {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+}
+
+.admin-emp-card__btn--primary:active {
+  transform: scale(0.97);
+}
+
+.admin-emp-card__icon-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.admin-emp-card__icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--st-radius-md);
+  background: var(--st-surface-low);
+  border: 1px solid var(--st-outline-light);
+  color: var(--st-text-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.admin-emp-card__icon-btn:hover {
+  background: var(--st-surface-container);
+  border-color: var(--st-primary-container);
+  color: var(--st-primary);
+}
+
+.admin-emp-card__icon-btn--warning:hover {
+  border-color: #f59e0b;
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.admin-emp-card__icon-btn--danger:hover {
+  border-color: var(--st-danger);
+  color: var(--st-danger);
+  background: var(--st-danger-bg);
+}
+
+.admin-emp-card__icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .admin-emp-card {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .admin-emp-card__avatar {
+    width: 46px;
+    height: 46px;
+    font-size: 14px;
+  }
+
+  .admin-emp-card__status-dot {
+    width: 12px;
+    height: 12px;
+  }
+
+  .admin-emp-card__name {
+    font-size: 14px;
+  }
+
+  .admin-emp-card__actions {
+    gap: 6px;
+  }
+
+  .admin-emp-card__btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .admin-emp-card__icon-actions {
+    margin-left: 0;
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Dark mode */
+html.dark-mode .admin-emp-card {
+  background: var(--st-surface);
+  border-color: var(--st-outline-light);
+}
+
+html.dark-mode .admin-emp-card--locked {
+  background: var(--st-surface-low);
+  border-color: var(--st-outline);
+}
+
+html.dark-mode .admin-emp-card__name {
+  color: #f1f5f9;
+}
+
+html.dark-mode .admin-emp-card__info {
+  background: var(--st-surface-low);
+}
+
+html.dark-mode .admin-emp-card__chip {
+  background: var(--st-surface-container);
+  color: #cbd5e1;
+}
+
+html.dark-mode .admin-emp-card__chip--shift {
+  background: rgba(37, 99, 235, 0.2);
+  color: #93c5fd;
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+/* ============================================================
+   13. ADMIN EMPLOYEES PAGINATION
+   ============================================================ */
+
+.admin-employees-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 14px 20px;
+  background: var(--st-surface);
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-lg);
+  box-shadow: var(--st-shadow-1);
+  flex-wrap: wrap;
+}
+
+.admin-employees-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--st-surface-low);
+  color: var(--st-text);
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-md);
+  font-family: var(--st-font-head);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.admin-employees-page-btn:hover:not(:disabled) {
+  background: var(--st-surface-container);
+  border-color: var(--st-primary-container);
+  color: var(--st-primary);
+  transform: translateY(-1px);
+}
+
+.admin-employees-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.admin-employees-page-indicator {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 18px;
+  background: linear-gradient(
+    135deg,
+    var(--st-primary-container),
+    var(--st-primary)
+  );
+  color: var(--st-on-primary);
+  border-radius: var(--st-radius-md);
+  font-family: var(--st-font-head);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  white-space: nowrap;
+}
+
+.admin-employees-page-indicator__label {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.admin-employees-page-indicator__current {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.admin-employees-page-indicator__sep {
+  font-size: 16px;
+  font-weight: 400;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+
+.admin-employees-page-indicator__total {
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+  .admin-employees-pagination {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .admin-employees-page-btn {
+    padding: 9px 14px;
+    font-size: 12.5px;
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .admin-employees-page-indicator {
+    padding: 6px 14px;
+    order: -1;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+}
+/* ============================================================
+   14. ADMIN TASKS MODAL — Giao việc + Task list
+   ------------------------------------------------------------
+   Bổ sung cho modal "Giao việc" và "Danh sách công việc"
+   trong OwnerEmployees.jsx
+   ============================================================ */
+
+/* ---- Task priority badges (dùng trong modal list task) ---- */
+.admin-task-priority {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-family: var(--st-font-head);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.admin-task-priority--low {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.admin-task-priority--normal {
+  background: #eef2ff;
+  color: #2634d5;
+}
+
+.admin-task-priority--high {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.admin-task-priority--urgent {
+  background: #fee2e2;
+  color: #b91c1c;
+  animation: admin-pulse 1.8s ease-in-out infinite;
+}
+
+/* ---- Task status badges ---- */
+.admin-task-status {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-family: var(--st-font-head);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-task-status--pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.admin-task-status--done {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.admin-task-status--cancelled {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+/* ---- Task overdue badge ---- */
+.admin-task-overdue {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-family: var(--st-font-head);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+/* ---- Dark mode ---- */
+html.dark-mode .admin-task-priority--low {
+  background: #334155;
+  color: #cbd5e1;
+}
+
+html.dark-mode .admin-task-priority--normal {
+  background: rgba(37, 99, 235, 0.2);
+  color: #93c5fd;
+}
+
+html.dark-mode .admin-task-priority--high {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+html.dark-mode .admin-task-priority--urgent {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+html.dark-mode .admin-task-status--pending {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+html.dark-mode .admin-task-status--done {
+  background: rgba(22, 163, 74, 0.2);
+  color: #4ade80;
+}
+
+html.dark-mode .admin-task-status--cancelled {
+  background: #334155;
+  color: #94a3b8;
+}
+
+html.dark-mode .admin-task-overdue {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+/* ============================================================
+   15. ADMIN RESPONSIVE POLISH
+   ============================================================ */
+
+@media (max-width: 768px) {
+  /* Toolbar co lại */
+  .admin-shell .page-content > div > div:first-child {
+    gap: 8px !important;
+  }
+
+  /* Modal trong mobile */
+  .admin-shell [role="dialog"] > div {
+    padding: 18px !important;
+    max-height: 92vh !important;
+  }
+
+  /* Employee card trong tablet */
+  .admin-employees-grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+
+  /* Menu card trong tablet */
+  .admin-menu-grid {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  /* Stack toàn bộ action buttons */
+  .admin-emp-card__icon-actions {
+    gap: 3px;
+  }
+
+  .admin-emp-card__icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* Menu card icon buttons */
+  .admin-menu-card__icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* Chip nhỏ lại */
+  .admin-emp-card__chip {
+    font-size: 10.5px;
+    padding: 3px 8px;
+  }
+}
+
+/* ============================================================
+   16. ADMIN FILTER CHIPS — Filter trạng thái (Employee page)
+   ------------------------------------------------------------
+   Dùng cho chip "Tất cả / Hoạt động / Bị khóa"
+   ============================================================ */
+
+.admin-filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--st-surface);
+  border: 1px solid var(--st-outline-light);
+  border-radius: var(--st-radius-md);
+}
+
+.admin-filter-chip {
+  padding: 6px 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: var(--st-font-head);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--st-text-muted);
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.admin-filter-chip:hover {
+  background: var(--st-surface-low);
+  color: var(--st-text);
+}
+
+.admin-filter-chip.active {
+  background: var(--st-primary-container);
+  color: var(--st-on-primary);
+  box-shadow: var(--st-shadow-1);
+}
+
+html.dark-mode .admin-filter-chips {
+  background: var(--st-surface);
+  border-color: var(--st-outline-light);
+}
+
+html.dark-mode .admin-filter-chip:hover {
+  background: var(--st-surface-container);
+  color: #e2e8f0;
+}
+
+html.dark-mode .admin-filter-chip.active {
+  background: var(--st-primary-container);
+  color: var(--st-on-primary);
+}
+
+/* ============================================================
+   KẾT THÚC FILE STYLES-ADMIN.CSS
    ============================================================ */

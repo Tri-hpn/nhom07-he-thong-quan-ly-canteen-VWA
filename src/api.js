@@ -1,11 +1,10 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V3)
+// API.JS — HTTP client cho Backend Express (V4)
 // ============================================================
-// V3:
-//   - Timeout riêng cho upload (60s)
-//   - credentials chính xác (cross-origin OK)
-//   - Bỏ field "description" (backend không trả)
-//   - Strip trailing slash BASE
+// V4:
+//   - Thêm api.tasks.* (giao việc cho nhân viên)
+//   - 🔧 FIX: Thêm api.chat.getContext (lấy dữ liệu context cho chat)
+//   - Giữ nguyên toàn bộ API khác từ V3
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -230,6 +229,19 @@ export const api = {
     reject:   (id)       => req(`/shifts/${id}/reject`,  { method: "DELETE" }),
   },
 
+  // TASKS — Giao việc cho nhân viên
+  tasks: {
+    me:       ()              => req("/tasks/me"),
+    all:      (params = {})   => {
+      const q = new URLSearchParams(params).toString();
+      return req("/tasks" + (q ? `?${q}` : ""));
+    },
+    create:   (data)          => req("/tasks",             { method: "POST",   body: JSON.stringify(data) }),
+    update:   (id, data)      => req(`/tasks/${id}`,       { method: "PUT",    body: JSON.stringify(data) }),
+    remove:   (id)            => req(`/tasks/${id}`,       { method: "DELETE" }),
+    complete: (id)            => req(`/tasks/${id}/complete`, { method: "PATCH" }),
+  },
+
   // WALLET
   wallet: {
     me:           ()         => req("/wallet/me"),
@@ -288,6 +300,8 @@ export const api = {
     conversations: ()       => req("/chat/conversations"),
     messagesWith:  (userId) => req(`/chat/with/${userId}`),
     send:          (data)   => req("/chat/send", { method: "POST", body: JSON.stringify(data) }),
+    // 🔧 FIX: Thêm getContext để lấy dữ liệu cho cột 3
+    getContext:    (userId) => req(`/chat/context/${userId}`),
   },
 
   // CATALOG
