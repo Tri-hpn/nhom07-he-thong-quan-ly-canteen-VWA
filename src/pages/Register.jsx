@@ -1,9 +1,7 @@
 ﻿// ============================================================
 // REGISTER.JSX — Đăng ký tài khoản (style Login V8)
 // ============================================================
-// V2: thêm guard res.user, không đổi logic khác
-// V3: Thêm nút đăng ký Microsoft (VWA Connect)
-// V4: FIX endpoint Microsoft → dùng /organizations/ thay vì /{tenantId}/
+// V4: FIX endpoint Microsoft → dùng /organizations/ + thêm prompt=select_account
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -63,7 +61,7 @@ function startFacebookOAuth(t) {
   window.location.href = url;
 }
 
-// ✅ HÀM ĐĂNG KÝ MICROSOFT (VWA CONNECT) - FIX ENDPOINT
+// ✅ HÀM ĐĂNG KÝ MICROSOFT (VWA CONNECT)
 function startMicrosoftOAuth(t) {
   const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID;
 
@@ -78,7 +76,7 @@ function startMicrosoftOAuth(t) {
 
   const scope = encodeURIComponent("openid email profile User.Read");
 
-  // 🔧 FIX: Dùng /organizations/ thay vì /{tenantId}/
+  // 🔧 FIX: Dùng /organizations/ + prompt=select_account
   const url =
     `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?` +
     `client_id=${clientId}` +
@@ -86,6 +84,7 @@ function startMicrosoftOAuth(t) {
     `&redirect_uri=${redirectUri}` +
     `&response_mode=query` +
     `&scope=${scope}` +
+    `&prompt=select_account` +
     `&state=12345`;
 
   window.location.href = url;

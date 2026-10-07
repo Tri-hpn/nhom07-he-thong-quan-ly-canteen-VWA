@@ -1,9 +1,7 @@
 ﻿// ============================================================
 // LOGIN.JSX — Đăng nhập (style Login Animation V8)
 // ============================================================
-// V2: password min 6, không reset state khi demo, không đổi logic
-// V3: Thêm nút đăng nhập Microsoft (VWA Connect)
-// V4: FIX endpoint Microsoft → dùng /organizations/ thay vì /{tenantId}/
+// V4: FIX endpoint Microsoft → dùng /organizations/ + thêm prompt=select_account
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -67,7 +65,7 @@ function startFacebookOAuth(t) {
   window.location.href = url;
 }
 
-// ✅ HÀM ĐĂNG NHẬP MICROSOFT (VWA CONNECT) - FIX ENDPOINT
+// ✅ HÀM ĐĂNG NHẬP MICROSOFT (VWA CONNECT)
 function startMicrosoftOAuth(t) {
   const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID;
 
@@ -76,16 +74,15 @@ function startMicrosoftOAuth(t) {
     return;
   }
 
-  // URI chuyển hướng phải khớp với cái đã khai báo trên Azure
   const redirectUri = encodeURIComponent(
     window.location.origin + "/api/auth/callback/microsoft-entra-id"
   );
 
   const scope = encodeURIComponent("openid email profile User.Read");
 
-  // 🔧 FIX: Dùng /organizations/ thay vì /{tenantId}/
-  // Endpoint này cho phép mọi tài khoản thuộc tổ chức (trường học/công ty)
-  // Nếu muốn cho cả tài khoản cá nhân (Outlook/Hotmail), đổi thành /common/
+  // 🔧 FIX: Dùng /organizations/ + prompt=select_account
+  // - /organizations/ : Cho phép mọi tài khoản thuộc tổ chức (trường học/công ty)
+  // - prompt=select_account : Luôn hiện màn hình chọn tài khoản
   const url =
     `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?` +
     `client_id=${clientId}` +
@@ -93,6 +90,7 @@ function startMicrosoftOAuth(t) {
     `&redirect_uri=${redirectUri}` +
     `&response_mode=query` +
     `&scope=${scope}` +
+    `&prompt=select_account` +
     `&state=12345`;
 
   window.location.href = url;
