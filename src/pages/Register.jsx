@@ -2,6 +2,7 @@
 // REGISTER.JSX — Đăng ký tài khoản (style Login V8)
 // ============================================================
 // V2: thêm guard res.user, không đổi logic khác
+// V3: Thêm nút đăng ký Microsoft (VWA Connect)
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -58,6 +59,35 @@ function startFacebookOAuth(t) {
     `&redirect_uri=${redirectUri}` +
     `&scope=email,public_profile` +
     `&response_type=code`;
+  window.location.href = url;
+}
+
+// ✅ HÀM MỚI: Đăng ký/Đăng nhập Microsoft (VWA Connect)
+function startMicrosoftOAuth(t) {
+  const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID;
+  
+  if (!clientId) {
+    toast(t("Chưa cấu hình Microsoft Client ID"), "error");
+    return;
+  }
+
+  const redirectUri = encodeURIComponent(
+    window.location.origin + "/api/auth/callback/microsoft-entra-id"
+  );
+  
+  const tenantId = import.meta.env.VITE_MICROSOFT_TENANT_ID || "f1ea4557-ac25-41fe-9da9-089970695a61";
+  
+  const scope = encodeURIComponent("openid email profile User.Read");
+  
+  const url =
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?` +
+    `client_id=${clientId}` +
+    `&response_type=code` +
+    `&redirect_uri=${redirectUri}` +
+    `&response_mode=query` +
+    `&scope=${scope}` +
+    `&state=12345`;
+    
   window.location.href = url;
 }
 
@@ -130,7 +160,6 @@ export default function Register({ onRegister }) {
 
       setToken(res.token);
 
-      // ✅ Guard: nếu BE trả token nhưng thiếu user → không crash
       const newUser = res.user || { email: email.trim().toLowerCase() };
 
       toast(
@@ -432,7 +461,49 @@ export default function Register({ onRegister }) {
             </button>
           </div>
 
-          <p className="v8-bottom-text">
+          {/* ✅ NÚT MICROSOFT VWA CONNECT - NẰM GIỮA, DƯỚI 2 NÚT KIA */}
+          <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="v8-social"
+              onClick={() => startMicrosoftOAuth(t)}
+              disabled={loading}
+              style={{ 
+                width: '100%', 
+                maxWidth: '280px', 
+                borderColor: '#0078D4', 
+                color: '#0078D4',
+                fontWeight: '700',
+                background: '#f0f8ff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                borderRadius: '10px',
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#0078D4';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#f0f8ff';
+                e.currentTarget.style.color = '#0078D4';
+              }}
+            >
+              {/* Icon Microsoft 4 ô vuông */}
+              <svg width="16" height="16" viewBox="0 0 23 23" aria-hidden="true">
+                <path fill="#f35325" d="M1 1h10v10H1z"/>
+                <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                <path fill="#ffba08" d="M12 12h10v10H12z"/>
+              </svg>
+              {t("Đăng ký với VWA Connect")}
+            </button>
+          </div>
+
+          <p className="v8-bottom-text" style={{ marginTop: '24px' }}>
             {t("Đã có tài khoản?")}{" "}
             <Link to="/">{t("Đăng nhập ngay")}</Link>
           </p>
