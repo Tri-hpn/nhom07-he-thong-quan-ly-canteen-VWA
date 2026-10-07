@@ -3,6 +3,7 @@
 // ============================================================
 // V2: password min 6, không reset state khi demo, không đổi logic
 // V3: Thêm nút đăng nhập Microsoft (VWA Connect)
+// V4: FIX endpoint Microsoft → dùng /organizations/ thay vì /{tenantId}/
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -66,35 +67,34 @@ function startFacebookOAuth(t) {
   window.location.href = url;
 }
 
-// ✅ HÀM MỚI: Đăng nhập Microsoft (VWA Connect)
+// ✅ HÀM ĐĂNG NHẬP MICROSOFT (VWA CONNECT) - FIX ENDPOINT
 function startMicrosoftOAuth(t) {
-  // Lấy Client ID từ biến môi trường (bạn cần thêm biến này vào file .env)
   const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID;
-  
+
   if (!clientId) {
     toast(t("Chưa cấu hình Microsoft Client ID"), "error");
     return;
   }
 
-  // URI chuyển hướng phải khớp với cái bạn đã khai báo trên Azure
+  // URI chuyển hướng phải khớp với cái đã khai báo trên Azure
   const redirectUri = encodeURIComponent(
     window.location.origin + "/api/auth/callback/microsoft-entra-id"
   );
-  
-  // Tenant ID của trường (lấy từ Azure)
-  const tenantId = import.meta.env.VITE_MICROSOFT_TENANT_ID || "f1ea4557-ac25-41fe-9da9-089970695a61";
-  
+
   const scope = encodeURIComponent("openid email profile User.Read");
-  
+
+  // 🔧 FIX: Dùng /organizations/ thay vì /{tenantId}/
+  // Endpoint này cho phép mọi tài khoản thuộc tổ chức (trường học/công ty)
+  // Nếu muốn cho cả tài khoản cá nhân (Outlook/Hotmail), đổi thành /common/
   const url =
-    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?` +
+    `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?` +
     `client_id=${clientId}` +
     `&response_type=code` +
     `&redirect_uri=${redirectUri}` +
     `&response_mode=query` +
     `&scope=${scope}` +
-    `&state=12345`; // State nên được tạo ngẫu nhiên để bảo mật
-    
+    `&state=12345`;
+
   window.location.href = url;
 }
 
@@ -345,16 +345,16 @@ export default function Login({ onLogin }) {
             </button>
           </div>
 
-          {/* ✅ NÚT MICROSOFT VWA CONNECT - NẰM GIỮA, DƯỚI 2 NÚT KIA */}
+          {/* NÚT MICROSOFT VWA CONNECT */}
           <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
             <button
               type="button"
               className="v8-social"
               onClick={() => startMicrosoftOAuth(t)}
-              style={{ 
-                width: '100%', 
-                maxWidth: '280px', 
-                borderColor: '#0078D4', 
+              style={{
+                width: '100%',
+                maxWidth: '280px',
+                borderColor: '#0078D4',
                 color: '#0078D4',
                 fontWeight: '700',
                 background: '#f0f8ff',
@@ -375,7 +375,6 @@ export default function Login({ onLogin }) {
                 e.currentTarget.style.color = '#0078D4';
               }}
             >
-              {/* Icon Microsoft 4 ô vuông */}
               <svg width="16" height="16" viewBox="0 0 23 23" aria-hidden="true">
                 <path fill="#f35325" d="M1 1h10v10H1z"/>
                 <path fill="#81bc06" d="M12 1h10v10H12z"/>
