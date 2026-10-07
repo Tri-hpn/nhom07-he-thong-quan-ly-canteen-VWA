@@ -956,6 +956,88 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
     res.status(500).json({ message: "Lỗi xác thực Facebook: " + e.message });
   }
 });
+// ============ MICROSOFT OAUTH ============
+const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || "";
+const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || "";
+const MICROSOFT_TENANT_ID = process.env.MICROSOFT_TENANT_ID || "f1ea4557-ac25-41fe-9da9-089970695a61";
+const MICROSOFT_OAUTH_ENABLED = !!(MICROSOFT_CLIENT_ID && MICROSOFT_CLIENT_SECRET);
+
+app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => {
+  try {
+    if (!MICROSOFT_OAUTH_ENABLED) {
+      return res.status(503).json({ message: "Microsoft OAuth chưa được cấu hình trên server" });
+    }
+    const { code, redirectUri } = req.body || {};
+    if (!code) return res.status(400).json({ message: "Thiếu code" });
+    if (!redirectUri) return res.status(400).json({ message: "Thiếu redirectUri" });
+
+    const tokenRes = await fetch(
+      `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: MICROSOFT_CLIENT_ID,
+          client_secret: MICROSOFT_CLIENT_SECRET,
+          code,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      }
+    );
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      return res.status(400).json({ message: tokenData.error_description || "Không lấy được access token từ Microsoft" });
+    }
+
+    const userRes = await fetch("https://graph.microsoft.com/v1.0/me", {
+      headers: { Authorization: "Bearer " + tokenData.access_token },
+    });
+    const profile = await userRes.json();
+    const emailNorm = (profile.mail || profile.userPrincipalName || "").toLowerCase();
+    if (!emailNorm) return res.status(400).json({ message: "Microsoft không trả về email" });
+
+    const db = loadDB();
+    let user = db.users.find((u) => u.email === emailNorm);
+    if (!user) {
+      const id = Math.max(0, ...db.users.map((u) => u.id)) + 1;
+      user = {
+        id,
+        email: emailNorm,
+        password: "",
+        name: profile.displayName || emailNorm.split("@")[0],
+        phone: "",
+        role: "CUSTOMER",
+        status: "Hoạt động",
+        points: 0,
+        provider: "microsoft",
+        avatar: "",
+        created_at: new Date().toISOString(),
+      };
+      db.users.push(user);
+      saveDB(db);
+    }
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, name: user.name },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message });
+  }
+});
 
 // ============================================================
 // MENU

@@ -75,7 +75,7 @@ function startMicrosoftOAuth(t) {
   }
 
   const redirectUri = encodeURIComponent(
-    window.location.origin + "/api/auth/callback/microsoft-entra-id"
+     window.location.origin + "/auth/microsoft/callback"  
   );
 
   const scope = encodeURIComponent("openid email profile User.Read");

@@ -1,11 +1,9 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V5)
+// APP.JSX — Root component + Routing (V6)
 // ============================================================
-// V5 (2026-10):
-//   - 🔧 FIX #26: chặn redirect loop khi mustChangePassword
-//                 - useRef track lần redirect cuối để tránh loop
-//                 - Nếu phải đổi MK thì KHÔNG chạy role-check effect
-//   - Giữ nguyên logic khác từ V4
+// V6 (2026-10):
+//   - Thêm route /auth/microsoft/callback cho Microsoft OAuth
+//   - Giữ nguyên logic V5
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -152,10 +150,6 @@ export default function App() {
   }, [navigate, setUser]);
 
   // 🔧 FIX #26: Redirect nếu user ở path không khớp với role
-  // - Nếu mustChangePassword: skip hoàn toàn (không redirect)
-  // - Nếu đang ở trang public (/, /register, ...): skip
-  // - Nếu path đã đúng role: skip
-  // - Chống loop: nếu cùng path vừa redirect trong 1s qua → skip
   useEffect(() => {
     if (!user) return;
     if (mustChangePassword) return;
@@ -263,6 +257,16 @@ export default function App() {
             element={
               <OAuthCallback
                 provider="facebook"
+                onLoginSuccess={(u) => setUser(u)}
+              />
+            }
+          />
+          {/* ✅ THÊM ROUTE MICROSOFT CALLBACK */}
+          <Route
+            path="/auth/microsoft/callback"
+            element={
+              <OAuthCallback
+                provider="microsoft-entra-id"
                 onLoginSuccess={(u) => setUser(u)}
               />
             }
