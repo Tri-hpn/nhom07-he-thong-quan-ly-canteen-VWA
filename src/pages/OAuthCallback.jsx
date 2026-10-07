@@ -1,15 +1,7 @@
 // ============================================================
-// OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook OAuth
+// OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook/Microsoft OAuth
 // ============================================================
-// Flow:
-//   1. User click "Đăng nhập với Google" ở Login.jsx
-//   2. Redirect sang accounts.google.com (hoặc facebook.com)
-//   3. User đồng ý → Google/FB redirect về /auth/{provider}/callback?code=xxx
-//   4. Component này nhận ?code=xxx, gửi về backend exchange token
-//   5. Backend trả về JWT + user → lưu token → về trang chủ theo role
-//
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-// ✅ FIX BUG: api.auth.oauthCallback → api.oauth.callback (khớp với api.js)
+// V2: FIX redirectUri cho Microsoft - dùng /auth/microsoft/callback
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -21,16 +13,12 @@ import { api, setToken } from "../api";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function OAuthCallback({ provider, onLoginSuccess }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { t } = useI18n();
 
-  const [status, setStatus] = useState("processing"); // processing | error
+  const [status, setStatus] = useState("processing");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -38,19 +26,14 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
     const error = params.get("error");
     const errorDescription = params.get("error_description");
 
-    // ---------- User huỷ hoặc Google/FB trả lỗi ----------
     if (error) {
       const msg = errorDescription || error || t("Đăng nhập bị huỷ");
       setStatus("error");
       setErrorMsg(msg);
-      toast(
-        `${t("Đăng nhập bị huỷ")}: ${msg}`,
-        "error"
-      );
+      toast(`${t("Đăng nhập bị huỷ")}: ${msg}`, "error");
       return;
     }
 
-    // ---------- Không có code ----------
     if (!code) {
       const msg = t("Không nhận được mã xác thực từ {provider}").replace(
         "{provider}",
@@ -62,11 +45,14 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
       return;
     }
 
-    // ---------- Exchange code → token ----------
     let cancelled = false;
 
+    // 🔧 FIX: Microsoft dùng URI đã đăng ký trên Azure
     const redirectUri =
-      window.location.origin + `/auth/${provider}/callback`;
+      window.location.origin +
+      (provider === "microsoft-entra-id"
+        ? "/auth/microsoft/callback"
+        : `/auth/${provider}/callback`);
 
     api.oauth
       .callback(provider, code, redirectUri)
@@ -76,12 +62,10 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
         setToken(token);
         toast(`${t("Xin chào")} ${user.name}!`, "success");
 
-        // Gọi callback từ App.jsx để set user state
         if (onLoginSuccess) {
           onLoginSuccess(user);
         }
 
-        // Redirect theo role
         const home =
           user.role === "ADMIN"
             ? "/owner"
@@ -105,18 +89,13 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
     <div
       style={{
         minHeight: "100vh",
         display: "grid",
         placeItems: "center",
-        background:
-          "linear-gradient(135deg, #f5f3ff 0%, #eef2ff 50%, #f0f9ff 100%)",
+        background: "linear-gradient(135deg, #f5f3ff 0%, #eef2ff 50%, #f0f9ff 100%)",
         padding: 24,
       }}
     >
@@ -132,15 +111,13 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
           border: "1px solid #e5e9ef",
         }}
       >
-        {/* Brand mark */}
         <div
           style={{
             width: 56,
             height: 56,
             margin: "0 auto 20px",
             borderRadius: 14,
-            background:
-              "linear-gradient(135deg, #2634d5 0%, #3b82f6 50%, #20c779 100%)",
+            background: "linear-gradient(135deg, #2634d5 0%, #3b82f6 50%, #20c779 100%)",
             color: "#fff",
             display: "grid",
             placeItems: "center",
@@ -162,52 +139,21 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
                 marginBottom: 16,
               }}
             />
-            <h2
-              style={{
-                margin: "0 0 8px",
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#172033",
-              }}
-            >
+            <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#172033" }}>
               {t("Đang xử lý đăng nhập")}
             </h2>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 13.5,
-                color: "#64748b",
-                lineHeight: 1.6,
-              }}
-            >
+            <p style={{ margin: 0, fontSize: 13.5, color: "#64748b", lineHeight: 1.6 }}>
               {t("Vui lòng chờ trong giây lát khi chúng tôi xác thực tài khoản {provider} của bạn...")
                 .replace("{provider}", provider)}
             </p>
           </>
         ) : (
           <>
-            <AlertCircle
-              size={40}
-              style={{ color: "#ef4444", marginBottom: 14 }}
-            />
-            <h2
-              style={{
-                margin: "0 0 8px",
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#172033",
-              }}
-            >
+            <AlertCircle size={40} style={{ color: "#ef4444", marginBottom: 14 }} />
+            <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#172033" }}>
               {t("Đăng nhập thất bại")}
             </h2>
-            <p
-              style={{
-                margin: "0 0 24px",
-                fontSize: 13.5,
-                color: "#64748b",
-                lineHeight: 1.6,
-              }}
-            >
+            <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", lineHeight: 1.6 }}>
               {errorMsg}
             </p>
             <Link
