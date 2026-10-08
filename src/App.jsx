@@ -1,9 +1,10 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V6)
+// APP.JSX — Root component + Routing (V7)
 // ============================================================
-// V6 (2026-10):
-//   - Thêm route /auth/microsoft/callback cho Microsoft OAuth
-//   - Giữ nguyên logic V5
+// V7 (2026-10):
+//   - Thêm route /login để nhận token từ Microsoft redirect về
+//   - Thêm useEffect bắt token từ URL query params
+//   - Giữ nguyên toàn bộ logic V6
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -114,6 +115,24 @@ export default function App() {
 
   // ---------- Effects ----------
 
+  // ✅ FIX: Tự động đăng nhập nếu có token từ Microsoft redirect về
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const provider = params.get("provider");
+
+    if (token && provider === "microsoft") {
+      console.log("✅ [Microsoft OAuth] Nhận token từ URL, đang đăng nhập...");
+      setToken(token);
+
+      // Xóa query params khỏi URL
+      window.history.replaceState({}, "", window.location.pathname);
+
+      // Reload để AuthContext đọc token mới
+      window.location.reload();
+    }
+  }, []);
+
   // Tự động lưu cart vào localStorage
   useEffect(() => {
     try {
@@ -166,7 +185,7 @@ export default function App() {
     if (isPathInPrefix(path, rolePrefix)) return;
 
     // Các path được phép ở lại (không phải redirect)
-    const PUBLIC_PATHS = ["/", "/register", "/forgot-password", "/payment-result"];
+    const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/payment-result"];
     if (PUBLIC_PATHS.includes(path)) return;
     if (path.startsWith("/auth/")) return;
 
@@ -239,6 +258,8 @@ export default function App() {
         <CardHoverEffect />
         <Routes>
           <Route path="/" element={<Login onLogin={handleLogin} />} />
+          {/* ✅ FIX: Route /login cho Microsoft redirect về kèm token */}
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/payment-result" element={<PaymentResult />} />
@@ -264,6 +285,15 @@ export default function App() {
           {/* ✅ THÊM ROUTE MICROSOFT CALLBACK */}
           <Route
             path="/auth/microsoft/callback"
+            element={
+              <OAuthCallback
+                provider="microsoft-entra-id"
+                onLoginSuccess={(u) => setUser(u)}
+              />
+            }
+          />
+          <Route
+            path="/api/auth/callback/microsoft-entra-id"
             element={
               <OAuthCallback
                 provider="microsoft-entra-id"

@@ -1,7 +1,7 @@
 ﻿// ============================================================
 // LOGIN.JSX — Đăng nhập (style Login Animation V8)
 // ============================================================
-// V5: FIX endpoint Microsoft - dùng /organizations/ + redirectUri chuẩn
+// V6: FIX Microsoft OAuth — redirectUri khớp 100% với Azure
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -63,22 +63,23 @@ function startFacebookOAuth(t) {
 // ✅ MICROSOFT OAUTH — FIX TRIỆT ĐỂ
 function startMicrosoftOAuth(t) {
   const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID;
+  const tenantId = import.meta.env.VITE_MICROSOFT_TENANT_ID;
 
   if (!clientId) {
     toast(t("Chưa cấu hình Microsoft Client ID"), "error");
     return;
   }
 
-  // Redirect URI PHẢI KHỚP 100% với URI khai báo trên Azure
+  // ⚠️ Redirect URI PHẢI KHỚP 100% với URI đã khai báo trên Azure
   const redirectUri = encodeURIComponent(
-    window.location.origin + "/auth/microsoft/callback"
+    window.location.origin + "/api/auth/callback/microsoft-entra-id"
   );
 
   const scope = encodeURIComponent("openid email profile User.Read");
+  const tenant = tenantId || "organizations";
 
-  // Endpoint /organizations/ + prompt=select_account
   const url =
-    `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?` +
+    `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?` +
     `client_id=${clientId}` +
     `&response_type=code` +
     `&redirect_uri=${redirectUri}` +
@@ -319,7 +320,6 @@ export default function Login({ onLogin }) {
             </button>
           </div>
 
-          {/* NÚT MICROSOFT VWA CONNECT */}
           <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
             <button
               type="button"

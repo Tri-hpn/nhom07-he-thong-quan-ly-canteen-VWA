@@ -962,14 +962,31 @@ const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || "";
 const MICROSOFT_TENANT_ID = process.env.MICROSOFT_TENANT_ID || "f1ea4557-ac25-41fe-9da9-089970695a61";
 const MICROSOFT_OAUTH_ENABLED = !!(MICROSOFT_CLIENT_ID && MICROSOFT_CLIENT_SECRET);
 
-app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => {
+// ✅ Handler dùng chung cho cả GET (redirect từ Microsoft) và POST (client gọi)
+async function microsoftCallbackHandler(req, res) {
   try {
+    console.log("🔵 [Microsoft OAuth] Callback received. Method:", req.method);
+    console.log("   Query:", req.query);
+    console.log("   Body:", req.body);
+
     if (!MICROSOFT_OAUTH_ENABLED) {
       return res.status(503).json({ message: "Microsoft OAuth chưa được cấu hình trên server" });
     }
-    const { code, redirectUri } = req.body || {};
-    if (!code) return res.status(400).json({ message: "Thiếu code" });
-    if (!redirectUri) return res.status(400).json({ message: "Thiếu redirectUri" });
+
+    // ✅ Hỗ trợ cả GET (query params) và POST (body)
+    const code = req.query.code || req.body?.code;
+    // ⚠️ redirectUri PHẢI khớp 100% với Azure
+    const redirectUri =
+      req.query.redirectUri ||
+      req.body?.redirectUri ||
+      `${req.protocol}://${req.get("host")}/api/auth/callback/microsoft-entra-id`;
+
+    if (!code) {
+      console.error("❌ [Microsoft OAuth] Thiếu code");
+      return res.status(400).json({ message: "Thiếu code" });
+    }
+
+    console.log("🔵 [Microsoft OAuth] Đang đổi token với redirectUri:", redirectUri);
 
     const tokenRes = await fetch(
       `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`,
@@ -986,16 +1003,28 @@ app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => {
       }
     );
     const tokenData = await tokenRes.json();
+
     if (!tokenData.access_token) {
-      return res.status(400).json({ message: tokenData.error_description || "Không lấy được access token từ Microsoft" });
+      console.error("❌ [Microsoft OAuth] Token error:", tokenData);
+      return res.status(400).json({
+        message: tokenData.error_description || "Không lấy được access token từ Microsoft",
+      });
     }
+
+    console.log("✅ [Microsoft OAuth] Token OK, đang lấy profile...");
 
     const userRes = await fetch("https://graph.microsoft.com/v1.0/me", {
       headers: { Authorization: "Bearer " + tokenData.access_token },
     });
     const profile = await userRes.json();
     const emailNorm = (profile.mail || profile.userPrincipalName || "").toLowerCase();
-    if (!emailNorm) return res.status(400).json({ message: "Microsoft không trả về email" });
+
+    if (!emailNorm) {
+      console.error("❌ [Microsoft OAuth] Không lấy được email:", profile);
+      return res.status(400).json({ message: "Microsoft không trả về email" });
+    }
+
+    console.log("✅ [Microsoft OAuth] Profile:", emailNorm);
 
     const db = loadDB();
     let user = db.users.find((u) => u.email === emailNorm);
@@ -1016,6 +1045,9 @@ app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => {
       };
       db.users.push(user);
       saveDB(db);
+      console.log("✅ [Microsoft OAuth] Đã tạo user mới:", emailNorm);
+    } else {
+      console.log("✅ [Microsoft OAuth] User đã tồn tại:", emailNorm);
     }
 
     const token = jwt.sign(
@@ -1023,6 +1055,15 @@ app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => {
       JWT_SECRET,
       { expiresIn: "7d" }
     );
+
+    // ✅ Nếu là GET (redirect từ Microsoft) → redirect về frontend kèm token
+    if (req.method === "GET") {
+      const frontendUrl = `${req.protocol}://${req.get("host")}/login?token=${encodeURIComponent(token)}&provider=microsoft`;
+      console.log("✅ [Microsoft OAuth] Redirect về frontend:", frontendUrl);
+      return res.redirect(frontendUrl);
+    }
+
+    // ✅ Nếu là POST (client gọi) → trả JSON
     res.json({
       token,
       user: {
@@ -1035,9 +1076,18 @@ app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => {
       },
     });
   } catch (e) {
+    console.error("❌ [Microsoft OAuth] Lỗi:", e);
     res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message });
   }
-});
+}
+
+// ✅ Route GET cho redirect từ Microsoft (cả 2 dạng đường dẫn)
+app.get("/api/auth/callback/microsoft-entra-id", microsoftCallbackHandler);
+app.get("/api/auth/microsoft-entra-id/callback", microsoftCallbackHandler);
+
+// ✅ Route POST cho client gọi trực tiếp
+app.post("/api/auth/microsoft-entra-id/callback", microsoftCallbackHandler);
+app.post("/api/auth/callback/microsoft-entra-id", microsoftCallbackHandler);
 
 // ============================================================
 // MENU
