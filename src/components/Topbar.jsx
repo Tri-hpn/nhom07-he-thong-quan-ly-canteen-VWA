@@ -1,35 +1,37 @@
 ﻿// ============================================================
-// TOPBAR.JSX — Top navigation cho Customer (V4 - FIXED + i18n)
+// TOPBAR.JSX — Top navigation cho Customer (V5 - FINAL)
 // ============================================================
-// V4 (2026-10):
-//   - 🔧 FIX #34: readStoredTheme race condition
-//                 - Sync dark mode DOM + localStorage chạy TRƯỚC
-//                 - Sync state sau khi DOM đã update (dùng queueMicrotask)
-//   - Giữ nguyên logic còn lại
+// V5 (2026-10):
+//   - ✅ Bỏ dropdown profile cũ → bấm profile → mở SettingsModal (Q1:A)
+//   - ✅ Thêm nút logout icon riêng trên topbar (Q2:C)
+//   - 🔧 FIX #5 (lỗi ban đầu): Đọc token qua getToken() từ api.js
+//     thay vì sessionStorage — mobile không mất badge đơn hàng
+//   - 🔧 FIX #34 (lỗi ban đầu): Bỏ effect applyTheme thủ công —
+//     useSettings (trong SettingsModal) tự apply theme vào DOM
+//   - Dọn import không dùng
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { NavLink, Link, useNavigate, useLocation } from "react-router-dom";
 import {
-  Search, ShoppingBag, User, Bell, Sun, Moon, Globe, ChevronDown, LogOut,
-  Package, Home, UtensilsCrossed, Gift, Wallet, MessageCircle, X, Menu,
-  UserRound, Settings, LayoutDashboard, UserCog, ChefHat, Check,
+  Search, ShoppingBag, Home, UtensilsCrossed, Gift, Wallet, Package,
+  Menu, Settings, LogOut,
 } from "lucide-react";
-import { api } from "../api";
+import { api, getToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
+import { LogoVWACompact } from "./LogoVWA";
+import SettingsModal from "./SettingsModal";
+
+// ============================================================
+// CONSTANTS
+// ============================================================
 
 const CART_KEY = "canteen_cart";
 const ORDERS_SEEN_KEY = "orders_last_seen";
-import { LogoVWACompact } from "./LogoVWA";
-const LANG_KEY = "vwa_lang";
-const THEME_KEY = "vwa_theme";
 const POLL_MS = 30000;
 const BADGE_MAX = 99;
-
-const LANGUAGES = [
-  { code: "vi", flag: "🇻🇳", label: "Tiếng Việt" },
-  { code: "en", flag: "🇺🇸", label: "English" },
-];
 
 const NAV_ITEMS = [
   { key: "home",       label: "Khám phá",    icon: Home,            path: "/customer/home" },
@@ -37,7 +39,6 @@ const NAV_ITEMS = [
   { key: "promotions", label: "Khuyến mãi",  icon: Gift,            path: "/customer/promotions" },
   { key: "orders",     label: "Đơn hàng",    icon: Package,         path: "/customer/orders" },
   { key: "wallet",     label: "Ví Canteen",  icon: Wallet,          path: "/customer/wallet" },
-  { key: "profile",    label: "Tài khoản",   icon: User,            path: "/customer/profile" },
 ];
 
 const ACTIVE_ORDER_STATUSES = [
@@ -46,6 +47,10 @@ const ACTIVE_ORDER_STATUSES = [
   "Đang chuẩn bị",
   "Sẵn sàng nhận",
 ];
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 function getInitials(name) {
   if (!name) return "VWA";
@@ -69,34 +74,15 @@ function readCartCount() {
   }
 }
 
-function readStoredLang() {
-  if (typeof window === "undefined") return "vi";
-  try {
-    return localStorage.getItem(LANG_KEY) || "vi";
-  } catch {
-    return "vi";
-  }
-}
-
-// 🔧 FIX #34: đọc theme từ localStorage TRƯỚC, fallback DOM class
-function readStoredTheme() {
-  if (typeof document === "undefined") return false;
-  try {
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved === "dark") return true;
-    if (saved === "light") return false;
-    // fallback DOM
-    return document.documentElement.classList.contains("dark-mode");
-  } catch {
-    return false;
-  }
-}
-
 function isPathActive(currentPath, targetPath) {
   if (!currentPath || !targetPath) return false;
   if (currentPath === targetPath) return true;
   return currentPath.startsWith(targetPath + "/");
 }
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
 export default function CustomerTopbar({
   user,
@@ -111,25 +97,25 @@ export default function CustomerTopbar({
   const [cartCount, setCartCount] = useState(0);
   const [orderPending, setOrderPending] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [showLangMenu, setShowLangMenu] = useState(false);
-
-  const [currentLang, setCurrentLang] = useState(readStoredLang);
-  const [darkMode, setDarkMode] = useState(readStoredTheme);
+  const [showSettings, setShowSettings] = useState(false);
 
   const orderReqIdRef = useRef(0);
-  const profileMenuRef = useRef(null);
-  const langMenuRef = useRef(null);
   const searchInputRef = useRef(null);
 
+  // ============================================================
+  // READ CART
+  // ============================================================
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
 
+  // ============================================================
+  // READ ORDERS — 🔧 FIX #5: dùng getToken() thay vì sessionStorage
+  // ============================================================
   const readOrders = useCallback(async () => {
     const myReqId = ++orderReqIdRef.current;
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getToken();
       if (!token) {
         setOrderPending(0);
         return;
@@ -152,6 +138,9 @@ export default function CustomerTopbar({
     }
   }, []);
 
+  // ============================================================
+  // EFFECTS — Cart + Orders + Polling
+  // ============================================================
   useEffect(() => {
     readCart();
     readOrders();
@@ -175,69 +164,9 @@ export default function CustomerTopbar({
     };
   }, [readCart, readOrders]);
 
-  useEffect(() => {
-    const onLangChange = (e) => {
-      const newLang = e?.detail?.lang || readStoredLang();
-      setCurrentLang(newLang);
-    };
-
-    const onStorage = (e) => {
-      if (e.key === LANG_KEY && e.newValue) {
-        setCurrentLang(e.newValue);
-      }
-    };
-
-    window.addEventListener("language-change", onLangChange);
-    window.addEventListener("storage", onStorage);
-
-    return () => {
-      window.removeEventListener("language-change", onLangChange);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
-
-  // 🔧 FIX #34: sync state từ event + storage, nhưng KHÔNG tự apply DOM
-  // (để effect applyTheme chạy sau, tránh race)
-  useEffect(() => {
-    const onThemeChange = () => {
-      setDarkMode(readStoredTheme());
-    };
-
-    const onStorage = (e) => {
-      if (e.key === THEME_KEY) {
-        queueMicrotask(() => setDarkMode(readStoredTheme()));
-      }
-    };
-
-    window.addEventListener("theme-change", onThemeChange);
-    window.addEventListener("storage", onStorage);
-
-    return () => {
-      window.removeEventListener("theme-change", onThemeChange);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (
-        profileMenuRef.current &&
-        !profileMenuRef.current.contains(e.target)
-      ) {
-        setShowProfileMenu(false);
-        setShowLangMenu(false);
-      }
-      if (
-        langMenuRef.current &&
-        !langMenuRef.current.contains(e.target)
-      ) {
-        setShowLangMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
+  // ============================================================
+  // KEYBOARD SHORTCUT — Ctrl/Cmd + K để focus search
+  // ============================================================
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -250,15 +179,9 @@ export default function CustomerTopbar({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // 🔧 FIX #34: apply theme DOM + localStorage — chạy SAU mọi sync event
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    document.documentElement.classList.toggle("dark-mode", darkMode);
-    try {
-      localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light");
-    } catch {}
-  }, [darkMode]);
-
+  // ============================================================
+  // HANDLERS
+  // ============================================================
   const handleSearch = (e) => {
     e?.preventDefault?.();
     const q = searchQuery.trim();
@@ -267,23 +190,13 @@ export default function CustomerTopbar({
     setSearchQuery("");
   };
 
-  const handleLogout = () => {
-    setShowProfileMenu(false);
-    setShowLangMenu(false);
-    onLogout?.();
-  };
+  const openSettings = useCallback(() => {
+    setShowSettings(true);
+  }, []);
 
-  const handleSelectLanguage = (code) => {
-    setCurrentLang(code);
-    setShowLangMenu(false);
-    setShowProfileMenu(false);
-    try {
-      localStorage.setItem(LANG_KEY, code);
-      window.dispatchEvent(
-        new CustomEvent("language-change", { detail: { lang: code } })
-      );
-    } catch {}
-  };
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+  }, []);
 
   const renderBadge = (count) => {
     if (!count || count <= 0) return null;
@@ -294,11 +207,12 @@ export default function CustomerTopbar({
     );
   };
 
-  const currentLangObj =
-    LANGUAGES.find((l) => l.code === currentLang) || LANGUAGES[0];
-
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <header className="customer-topbar">
+      {/* ============ ROLE BAR (dòng trên) ============ */}
       <div className="customer-topbar__rolebar">
         <div className="customer-topbar__rolebar-inner">
           <div className="customer-topbar__status">
@@ -313,9 +227,11 @@ export default function CustomerTopbar({
         </div>
       </div>
 
+      {/* ============ MAIN BAR (dòng dưới) ============ */}
       <div className="customer-topbar__main">
         <div className="customer-topbar__main-inner">
           <div className="customer-topbar__left">
+            {/* Hamburger mobile */}
             <button
               type="button"
               className="customer-topbar__hamburger"
@@ -325,6 +241,7 @@ export default function CustomerTopbar({
               <Menu size={22} />
             </button>
 
+            {/* Logo */}
             <Link to="/customer/home" className="customer-topbar__logo">
               <LogoVWACompact size={36} />
               <div className="customer-topbar__logo-text">
@@ -333,6 +250,7 @@ export default function CustomerTopbar({
               </div>
             </Link>
 
+            {/* Desktop nav */}
             <nav className="customer-topbar__nav">
               {NAV_ITEMS.map((item) => {
                 const active = isPathActive(location.pathname, item.path);
@@ -351,6 +269,7 @@ export default function CustomerTopbar({
             </nav>
           </div>
 
+          {/* Search */}
           <form
             className="customer-topbar__search"
             onSubmit={handleSearch}
@@ -366,7 +285,9 @@ export default function CustomerTopbar({
             />
           </form>
 
+          {/* Right actions */}
           <div className="customer-topbar__right">
+            {/* Cart */}
             <Link
               to="/customer/cart"
               className="customer-topbar__icon-btn"
@@ -376,131 +297,54 @@ export default function CustomerTopbar({
               {renderBadge(cartCount)}
             </Link>
 
-            <div
-              className="customer-topbar__profile-wrap"
-              ref={profileMenuRef}
+            {/* Profile button — bấm vào mở SettingsModal (Q1:A) */}
+            <button
+              type="button"
+              className="customer-topbar__profile-btn"
+              onClick={openSettings}
+              aria-label={t("Cài đặt")}
+              title={t("Cài đặt")}
             >
-              <button
-                type="button"
-                className="customer-topbar__profile-btn"
-                onClick={() => {
-                  setShowProfileMenu((s) => !s);
-                  setShowLangMenu(false);
-                }}
-                aria-label={t("Tài khoản")}
-                aria-expanded={showProfileMenu}
-              >
-                <div className="customer-topbar__avatar">
-                  {user?.avatar ? (
-                    <img src={user.avatar} alt={user.name} />
-                  ) : (
-                    getInitials(user?.name)
-                  )}
-                </div>
-                <div className="customer-topbar__profile-info">
-                  <b>{user?.name || t("Khách")}</b>
-                  <span>{t("Sinh viên VWA")}</span>
-                </div>
-                <ChevronDown size={14} />
-              </button>
+              <div className="customer-topbar__avatar">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt={user.name || t("Khách")} />
+                ) : (
+                  getInitials(user?.name)
+                )}
+              </div>
+              <div className="customer-topbar__profile-info">
+                <b>{user?.name || t("Khách")}</b>
+                <span>{t("Sinh viên VWA")}</span>
+              </div>
+              <Settings size={16} />
+            </button>
 
-              {showProfileMenu && (
-                <div className="customer-topbar__dropdown">
-                  <div className="customer-topbar__dropdown-header">
-                    <b>{user?.name || t("Khách")}</b>
-                    <span>{user?.email || "user@vwa.edu.vn"}</span>
-                  </div>
-
-                  <Link
-                    to="/customer/profile"
-                    className="customer-topbar__dropdown-item"
-                    onClick={() => setShowProfileMenu(false)}
-                  >
-                    <UserRound size={16} />
-                    {t("Hồ sơ cá nhân")}
-                  </Link>
-
-                  <div ref={langMenuRef}>
-                    <button
-                      type="button"
-                      className="customer-topbar__dropdown-item"
-                      onClick={() => setShowLangMenu((s) => !s)}
-                      aria-expanded={showLangMenu}
-                    >
-                      <Globe size={16} />
-                      {t("Đổi ngôn ngữ")}
-                      <span className="customer-topbar__dropdown-lang-current">
-                        {currentLangObj.flag} {currentLangObj.label}
-                      </span>
-                      <ChevronDown
-                        size={14}
-                        className={`customer-topbar__dropdown-caret ${
-                          showLangMenu ? "is-open" : ""
-                        }`}
-                      />
-                    </button>
-
-                    {showLangMenu && (
-                      <div className="customer-topbar__lang-submenu">
-                        {LANGUAGES.map((lang) => {
-                          const isActive = currentLang === lang.code;
-                          return (
-                            <button
-                              key={lang.code}
-                              type="button"
-                              className={`customer-topbar__dropdown-item ${
-                                isActive
-                                  ? "customer-topbar__dropdown-item--active"
-                                  : ""
-                              }`}
-                              onClick={() =>
-                                handleSelectLanguage(lang.code)
-                              }
-                            >
-                              <span className="customer-topbar__lang-flag">
-                                {lang.flag}
-                              </span>
-                              <span className="customer-topbar__lang-label">
-                                {lang.label}
-                              </span>
-                              {isActive && (
-                                <Check
-                                  size={14}
-                                  className="customer-topbar__dropdown-check"
-                                />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="customer-topbar__dropdown-sep" />
-
-                  <button
-                    type="button"
-                    className="customer-topbar__dropdown-item"
-                    onClick={() => setDarkMode((d) => !d)}
-                  >
-                    {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-                    {darkMode ? t("Chế độ sáng") : t("Chế độ tối")}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="customer-topbar__dropdown-item customer-topbar__dropdown-item--danger"
-                    onClick={handleLogout}
-                  >
-                    <LogOut size={16} />
-                    {t("Đăng xuất")}
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* Logout icon riêng (Q2:C) */}
+            <button
+              type="button"
+              className="customer-topbar__icon-btn customer-topbar__logout-btn"
+              onClick={onLogout}
+              aria-label={t("Đăng xuất")}
+              title={t("Đăng xuất")}
+              style={{
+                background: "rgba(239, 68, 68, 0.1)",
+                color: "#ef4444",
+              }}
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* ============ SETTINGS MODAL (CUSTOMER) ============ */}
+      <SettingsModal
+        open={showSettings}
+        onClose={closeSettings}
+        role="CUSTOMER"
+        user={user}
+        onLogout={onLogout}
+      />
     </header>
   );
 }

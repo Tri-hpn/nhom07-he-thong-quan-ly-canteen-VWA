@@ -1,20 +1,18 @@
 // ============================================================
-// LAYOUT.JSX — Layout chính (V3 - FIXED + i18n)
+// LAYOUT.JSX — Layout chính (V4 - FINAL)
 // ============================================================
-// 🔧 FIX:
-//   - M8: hideHeading không còn cần thiết vì CSS đã ẩn toàn cục
-//         → vẫn giữ prop để tương thích ngược, không dùng
-//   - Extra: Layout KHÔNG tự ẩn heading — CSS quyết định
-//   - Extra: type="button" đầy đủ
-//   - #64: NOTE rõ PAGE_HEADINGS + lookupHeading là UNUSED
-//          (auto lookup DISABLED due to global CSS)
+// V4 (2026-10):
+//   - ✅ Thêm SettingsModal cho EMPLOYEE/ADMIN qua nút ⚙️ topbar
+//   - 🔧 FIX typo "Giỏi hàng" → "Giỏ hàng"
+//   - Giữ nguyên: PAGE_HEADINGS (auto lookup disabled do CSS global),
+//     hideHeading (backward compat), CustomerTopbar riêng
 //
 // 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { Menu, Settings } from "lucide-react";
 
 import Sidebar from "./Sidebar";
 import CustomerTopbar from "./Topbar";
@@ -22,6 +20,7 @@ import BottomNav from "./BottomNav";
 import Footer from "./Footer";
 import NotificationBell from "./NotificationBell";
 import ConfirmDialog, { LogoutIcon } from "./ConfirmDialog";
+import SettingsModal from "./SettingsModal";
 import { useI18n } from "../hooks/useI18n";
 
 // ============================================================
@@ -199,6 +198,7 @@ export default function Layout({
   const { t } = useI18n();
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const isCustomer = role === "CUSTOMER";
   const isAdmin = role === "ADMIN";
@@ -215,9 +215,6 @@ export default function Layout({
 
   // 🔧 M8 + FIX #64: Heading giờ CHỈ lấy từ props (title + subtitle).
   //         Không tự động lookup nữa vì đã có CSS ẩn toàn cục.
-  //         Nếu tương lai muốn bật lại heading auto:
-  //           1. Xóa CSS `.page-heading { display: none !important }`
-  //           2. Uncomment block dưới (dùng lookupHeading(location.pathname))
   const heading = useMemo(() => {
     if (isCustomer) return null;
 
@@ -251,6 +248,14 @@ export default function Layout({
     setShowLogoutConfirm(false);
     onLogout?.();
   }, [onLogout]);
+
+  const openSettings = useCallback(() => {
+    setShowSettings(true);
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+  }, []);
 
   // ============================================================
   // RENDER
@@ -296,7 +301,20 @@ export default function Layout({
                 <Menu size={20} />
               </button>
             </div>
+
             <div className="topbar-right">
+              {/* ⚙️ Cài đặt — mở SettingsModal */}
+              <button
+                type="button"
+                className="topbar-icon-btn"
+                onClick={openSettings}
+                aria-label={t("Cài đặt")}
+                title={t("Cài đặt")}
+              >
+                <Settings size={20} />
+              </button>
+
+              {/* 🔔 Thông báo */}
               <NotificationBell />
             </div>
           </header>
@@ -304,12 +322,6 @@ export default function Layout({
 
         {/* ============ MAIN CONTENT ============ */}
         <section className="page-content">
-          {/*
-            🔧 M8 + FIX #64: KHÔNG dùng hideHeading nữa.
-            Chỉ render heading nếu có title/subtitle từ props
-            (không auto lookup). CSS `.page-heading { display: none !important }`
-            sẽ ẩn toàn cục nếu bạn muốn.
-          */}
           {heading && (heading.title || heading.subtitle) && (
             <div className="page-heading">
               {heading.title && <h1>{heading.title}</h1>}
@@ -332,7 +344,7 @@ export default function Layout({
         icon={LogoutIcon}
         title={t("Đăng xuất khỏi Canteen VWA?")}
         message={t(
-          "Giỏi hàng hiện tại sẽ bị xoá. Bạn sẽ cần đăng nhập lại để tiếp tục."
+          "Giỏ hàng hiện tại sẽ bị xoá. Bạn sẽ cần đăng nhập lại để tiếp tục."
         )}
         confirmText={t("Đăng xuất")}
         cancelText={t("Ở lại")}
@@ -340,6 +352,17 @@ export default function Layout({
         onConfirm={handleLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}
       />
+
+      {/* ============ SETTINGS MODAL — EMPLOYEE/ADMIN ============ */}
+      {!isCustomer && (
+        <SettingsModal
+          open={showSettings}
+          onClose={closeSettings}
+          role={role}
+          user={user}
+          onLogout={onLogout}
+        />
+      )}
     </div>
   );
 }

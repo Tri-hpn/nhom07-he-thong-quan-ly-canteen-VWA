@@ -1,30 +1,29 @@
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban Board (V8)
+// EMPLOYEEORDERS.JSX — KDS Kanban Board (V9 - FINAL)
 // ============================================================
-// ✅ V8 — Thay đổi:
+// V9 (2026-10):
+//   - ✅ Nút "Tải ca trạm" mở dropdown chọn trạm
+//   - ✅ Tab Bếp Nấu / Nước & Bánh / Quầy Trả Món hoạt động thật
+//   - ✅ Toggle "Âm báo đơn" + Web Audio ding khi có đơn mới
+//   - ✅ Filter "Mọi khung giờ nhận" / "Mọi thanh toán" hoạt động
+//   - ✅ Filter trạm theo category items (server chưa trả station)
+//   - ✅ KPI "Hoàn thành trong ca" lọc đúng theo updated_at
+//   - ✅ Sort: đơn CŨ NHẤT lên đầu — nháy đỏ priority
+//   - ✅ Nháy đỏ đơn cũ nhất (đầu dòng)
+//
+// V8 (giữ):
 //   - Sort: đơn CŨ NHẤT lên đầu mỗi dòng
 //   - Nháy đỏ: đơn CŨ NHẤT (đầu dòng, bên trái)
 //   - Đơn MỚI xuất hiện bên PHẢI
-//   - Giữ nguyên thứ tự 5 dòng: Mới → Đã XN → Đang Nấu → Sẵn Sàng → Gần Nhất
-//
-// ✅ V7 (giữ nguyên):
-//   - Dùng KDSTicket mới (imported), bỏ KDSTicket cũ trong file
-//   - Prop layout="tall" để block cao hơn
-//
-// ✅ V6 (giữ nguyên):
-//   Layout 5 dòng vertical:
-//     Dòng 1: Đơn Mới (Chờ xác nhận)     → Duyệt / Từ chối
-//     Dòng 2: Đã Xác Nhận                 → Bắt đầu nấu
-//     Dòng 3: Đang Nấu (Đang chuẩn bị)   → Báo xong
-//     Dòng 4: Sẵn Sàng (Sẵn sàng nhận)   → Khách đã nhận
-//     Dòng 5: Gần Nhất (Hoàn thành)      → Compact strip
+//   - 5 dòng: Mới → Đã XN → Đang Nấu → Sẵn Sàng → Gần Nhất
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   Search, Loader2, AlertCircle, RefreshCw, Check, XCircle, ChefHat,
   CheckCircle2, Wallet, Verified, Timer, TrendingUp, User, Lock,
-  ChevronDown, PackageCheck, VolumeX,
+  ChevronDown, PackageCheck, Volume2, VolumeX, Store, Coffee,
+  UtensilsCrossed, ListFilter,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api";
@@ -49,6 +48,8 @@ import {
 const POLL_MS = 5000;
 const COMPLETED_LIMIT = 8;
 const ROW_LIMIT = 6;
+const SOUND_REPEAT_MS = 10000;
+const SOUND_STORAGE_KEY = "canteen.kds_sound_enabled";
 
 const NEXT_STATUS = {
   "Chờ xác nhận": "Đã xác nhận",
@@ -57,17 +58,76 @@ const NEXT_STATUS = {
   "Sẵn sàng nhận": "Hoàn thành",
 };
 
+// Trạm — filter theo category items
 const STATION_TABS = [
-  { id: "all", label: "Tất cả trạm" },
-  { id: "kitchen", label: "Bếp Nấu (Kitchen)" },
-  { id: "beverage", label: "Nước & Bánh" },
-  { id: "dispatch", label: "Quầy Trả Món" },
+  { id: "all",      label: "Tất cả trạm",       icon: ListFilter },
+  { id: "kitchen",  label: "Bếp Nấu (Kitchen)", icon: ChefHat },
+  { id: "beverage", label: "Nước & Bánh",        icon: Coffee },
+  { id: "dispatch", label: "Quầy Trả Món",       icon: Store },
 ];
 
 const STATION_IDS = STATION_TABS.map((s) => s.id);
 function normalizeStation(value) {
   return STATION_IDS.includes(value) ? value : "all";
 }
+
+// Category → trạm
+const CATEGORY_TO_STATION = {
+  "Cơm": "kitchen",
+  "Bún - Phở - Cháo": "kitchen",
+  "Món mặn": "kitchen",
+  "Món chay": "kitchen",
+  "Đồ chay": "kitchen",
+  "Bánh mì - Xôi": "kitchen",
+  "Ăn vặt": "beverage",
+  "Đồ ăn nhanh": "beverage",
+  "Đồ uống": "beverage",
+  "Coffee & Tea": "beverage",
+  "Nước ép - Sinh tố": "beverage",
+  "Tráng miệng": "beverage",
+  "Combo 1 người": "kitchen",
+  "Combo siêu hời": "kitchen",
+};
+
+function getOrderStation(order) {
+  // Ưu tiên server trả station
+  if (order?.station && STATION_IDS.includes(order.station)) {
+    return order.station;
+  }
+  // Fallback: suy từ category của items
+  const items = order?.items || [];
+  for (const it of items) {
+    const cat = it.category || it.menu_category || "";
+    const st = CATEGORY_TO_STATION[cat];
+    if (st) return st;
+  }
+  return "all";
+}
+
+// Payment normalize
+const PAYMENT_ALIASES = {
+  "Tiền mặt": "cash",
+  cash: "cash",
+  CASH: "cash",
+  QR: "qr",
+  VietQR: "qr",
+  "Ví Canteen": "wallet",
+  WALLET: "wallet",
+  "Thẻ": "card",
+  "Thẻ SV": "card",
+};
+
+function normalizePayment(p) {
+  return PAYMENT_ALIASES[p] || "cash";
+}
+
+// Timeframe buckets
+const TIMEFRAMES = {
+  all: null,
+  "1130": [11 * 60 + 30, 12 * 60],
+  "1200": [12 * 60, 12 * 60 + 30],
+  "1230": [12 * 60 + 30, 13 * 60],
+};
 
 // ============================================================
 // HELPERS
@@ -87,6 +147,55 @@ function calcElapsedSec(iso) {
   return Math.max(0, Math.floor((Date.now() - created) / 1000));
 }
 
+function getOrderPickupMinutes(order) {
+  // Parse từ note "Nhận hàng: 13:00 - 13:30" hoặc pickupTime
+  const src = `${order?.pickupTime || ""} ${order?.note || ""}`;
+  const m = src.match(/(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mi = parseInt(m[2], 10);
+  if (isNaN(h) || isNaN(mi)) return null;
+  return h * 60 + mi;
+}
+
+// ============================================================
+// WEB AUDIO — tiếng "ding" khi có đơn mới
+// ============================================================
+
+function playDing() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    const makeTone = (freq, startAt, duration) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startAt);
+      osc.stop(startAt + duration + 0.05);
+    };
+
+    makeTone(880, now, 0.18);
+    makeTone(1320, now + 0.16, 0.22);
+
+    setTimeout(() => {
+      try {
+        ctx.close();
+      } catch (_) {}
+    }, 700);
+  } catch (e) {
+    // Browser chặn autoplay → im lặng
+  }
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
@@ -104,7 +213,7 @@ export default function EmployeeOrders() {
   // ---- Approved shifts ----
   const [approvedShifts, setApprovedShifts] = useState([]);
 
-  // ---- Trạm (station) ----
+  // ---- Trạm (station) — sync với URL ?station= ----
   const [searchParams, setSearchParams] = useSearchParams();
   const stationParam = searchParams.get("station");
 
@@ -120,8 +229,19 @@ export default function EmployeeOrders() {
   // ---- UI state ----
   const [advancingId, setAdvancingId] = useState(null);
   const [confirmReject, setConfirmReject] = useState(null);
+  const [showStationMenu, setShowStationMenu] = useState(false);
 
-  // ✅ Kanban — giới hạn 6 đơn mỗi dòng + nút "Xem thêm"
+  // ---- Sound toggle ----
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try {
+      const v = localStorage.getItem(SOUND_STORAGE_KEY);
+      return v === null ? false : v === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  // ---- Kanban expand ----
   const [expandedRows, setExpandedRows] = useState({
     pending: false,
     confirmed: false,
@@ -131,27 +251,44 @@ export default function EmployeeOrders() {
 
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
+  const prevPendingCountRef = useRef(null);
+  const dingIntervalRef = useRef(null);
+  const soundEnabledRef = useRef(soundEnabled);
+  const stationMenuRef = useRef(null);
 
-  // ---- Helper cho expand ----
-  const toggleExpand = useCallback((key) => {
-    setExpandedRows((s) => ({ ...s, [key]: !s[key] }));
-  }, []);
+  // ============================================================
+  // SYNC SOUND REF + PERSIST
+  // ============================================================
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
-  const takeVisible = useCallback(
-    (list, key) => {
-      if (expandedRows[key]) return { visible: list, hiddenCount: 0 };
-      return {
-        visible: list.slice(0, ROW_LIMIT),
-        hiddenCount: Math.max(0, list.length - ROW_LIMIT),
-      };
-    },
-    [expandedRows]
-  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "1" : "0");
+    } catch (_) {}
+  }, [soundEnabled]);
+
+  // ============================================================
+  // CLOSE STATION MENU ON OUTSIDE CLICK
+  // ============================================================
+  useEffect(() => {
+    if (!showStationMenu) return;
+    const handler = (e) => {
+      if (
+        stationMenuRef.current &&
+        !stationMenuRef.current.contains(e.target)
+      ) {
+        setShowStationMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showStationMenu]);
 
   // ============================================================
   // APPROVED SHIFTS
   // ============================================================
-
   useEffect(() => {
     let cancelled = false;
     api.shifts
@@ -170,7 +307,6 @@ export default function EmployeeOrders() {
   // ============================================================
   // SYNC ?station=
   // ============================================================
-
   useEffect(() => {
     const next = normalizeStation(stationParam);
     setStationFilter((cur) => (cur === next ? cur : next));
@@ -179,6 +315,7 @@ export default function EmployeeOrders() {
   const changeStation = useCallback(
     (id) => {
       setStationFilter(id);
+      setShowStationMenu(false);
       const next = new URLSearchParams(searchParams);
       if (id === "all") next.delete("station");
       else next.set("station", id);
@@ -190,7 +327,6 @@ export default function EmployeeOrders() {
   // ============================================================
   // LOAD
   // ============================================================
-
   const load = useCallback(
     async (silent = false) => {
       if (inFlightRef.current) return;
@@ -245,7 +381,6 @@ export default function EmployeeOrders() {
   // ============================================================
   // GROUP ORDERS BY STATUS
   // ============================================================
-
   const rows = useMemo(() => {
     const byStatus = {
       pending: [],
@@ -263,9 +398,6 @@ export default function EmployeeOrders() {
       else if (o.status === "Hoàn thành") byStatus.completed.push(o);
     }
 
-    // 🔧 FIX V8: đơn CŨ NHẤT lên đầu mỗi dòng
-    //   → đơn ĐẦU dòng là đơn CŨ NHẤT → nháy đỏ (priority)
-    //   → đơn MỚI xuất hiện bên PHẢI
     const sortOldestFirst = (arr) =>
       arr.sort((a, b) => {
         const ta = new Date(a.created_at || a.updated_at || 0).getTime();
@@ -290,34 +422,63 @@ export default function EmployeeOrders() {
   }, [orders]);
 
   // ============================================================
-  // FILTER
+  // FILTER — search + payment + status + timeframe + station
   // ============================================================
-
   const applyFilter = useCallback(
     (list) => {
       let result = list;
 
+      // 1. Search
       if (search.trim()) {
         const q = search.toLowerCase().trim();
         result = result.filter((o) => {
           const code = (o.code || "").toLowerCase();
           const name = (o.customer_name || "").toLowerCase();
           const mssv = (o.customer_mssv || "").toLowerCase();
-          return code.includes(q) || name.includes(q) || mssv.includes(q);
+          const email = (o.customer_email || "").toLowerCase();
+          return (
+            code.includes(q) ||
+            name.includes(q) ||
+            mssv.includes(q) ||
+            email.includes(q)
+          );
         });
       }
 
+      // 2. Payment
       if (paymentFilter !== "all") {
-        result = result.filter((o) => o.payment === paymentFilter);
+        result = result.filter(
+          (o) => normalizePayment(o.payment) === paymentFilter
+        );
       }
 
+      // 3. Status
       if (statusFilter !== "all") {
         result = result.filter((o) => o.status === statusFilter);
       }
 
+      // 4. Timeframe — dựa vào pickupTime hoặc note
+      if (timeframeFilter !== "all") {
+        const range = TIMEFRAMES[timeframeFilter];
+        if (range) {
+          result = result.filter((o) => {
+            const mins = getOrderPickupMinutes(o);
+            if (mins === null) return false;
+            return mins >= range[0] && mins < range[1];
+          });
+        }
+      }
+
+      // 5. Station
+      if (stationFilter !== "all") {
+        result = result.filter(
+          (o) => getOrderStation(o) === stationFilter
+        );
+      }
+
       return result;
     },
-    [search, paymentFilter, statusFilter]
+    [search, paymentFilter, statusFilter, timeframeFilter, stationFilter]
   );
 
   const filteredRows = useMemo(
@@ -333,26 +494,32 @@ export default function EmployeeOrders() {
   );
 
   // ============================================================
-  // KPI
+  // KPI — fix "Hoàn thành trong ca" dùng updated_at
   // ============================================================
-
   const kpi = useMemo(() => {
     const today = getLocalDateStr(new Date());
+
+    // Đơn được tạo hôm nay
     const todayOrders = orders.filter((o) => {
       const d = getLocalDateStr(new Date(o.created_at || 0));
       return d === today;
     });
 
-    const completedToday = todayOrders.filter(
-      (o) => o.status === "Hoàn thành"
-    );
+    // Đơn hoàn thành hôm nay (dùng updated_at vì đơn có thể tạo hôm qua)
+    const completedToday = orders.filter((o) => {
+      if (o.status !== "Hoàn thành") return false;
+      const refDate = o.updated_at || o.received_at || o.created_at;
+      const d = getLocalDateStr(new Date(refDate || 0));
+      return d === today;
+    });
+
     const revenue = completedToday.reduce(
       (s, o) => s + (Number(o.total) || 0),
       0
     );
 
     const onTimePct =
-      completedToday.length > 0
+      todayOrders.length > 0
         ? ((completedToday.length / todayOrders.length) * 100).toFixed(1)
         : "0";
 
@@ -367,9 +534,77 @@ export default function EmployeeOrders() {
   }, [orders, rows]);
 
   // ============================================================
+  // SOUND — auto ding khi có đơn mới
+  // ============================================================
+  useEffect(() => {
+    const current = rows.pending.length;
+    const prev = prevPendingCountRef.current;
+
+    if (prev === null) {
+      prevPendingCountRef.current = current;
+      return;
+    }
+
+    if (current > prev && soundEnabledRef.current) {
+      playDing();
+    }
+    prevPendingCountRef.current = current;
+  }, [rows.pending.length]);
+
+  // Lặp ding mỗi 10s khi còn pending
+  useEffect(() => {
+    if (dingIntervalRef.current) {
+      clearInterval(dingIntervalRef.current);
+      dingIntervalRef.current = null;
+    }
+
+    if (rows.pending.length > 0 && soundEnabled) {
+      dingIntervalRef.current = setInterval(() => {
+        if (soundEnabledRef.current) playDing();
+      }, SOUND_REPEAT_MS);
+    }
+
+    return () => {
+      if (dingIntervalRef.current) {
+        clearInterval(dingIntervalRef.current);
+        dingIntervalRef.current = null;
+      }
+    };
+  }, [rows.pending.length, soundEnabled]);
+
+  const toggleSound = useCallback(() => {
+    setSoundEnabled((v) => {
+      const next = !v;
+      toast(
+        next ? t("Đã bật âm báo đơn") : t("Đã tắt âm báo đơn"),
+        next ? "success" : "info"
+      );
+      if (next) setTimeout(() => playDing(), 100);
+      return next;
+    });
+  }, [t]);
+
+  // ============================================================
+  // EXPAND HELPERS
+  // ============================================================
+  const toggleExpand = useCallback((key) => {
+    setExpandedRows((s) => ({ ...s, [key]: !s[key] }));
+  }, []);
+
+  const takeVisible = useCallback(
+    (list, key) => {
+      if (expandedRows[key]) return { visible: list, hiddenCount: 0 };
+      return {
+        visible: list.slice(0, ROW_LIMIT),
+        hiddenCount: Math.max(0, list.length - ROW_LIMIT),
+      };
+    },
+    [expandedRows]
+  );
+
+  // ============================================================
   // HERO
   // ============================================================
-
   const shiftLabel = useMemo(() => getCurrentShiftLabel(new Date()), []);
   const staffName = user?.name || t("Nhân viên");
   const staffCode = user?.employeeCode || user?.code || "";
@@ -377,7 +612,6 @@ export default function EmployeeOrders() {
   // ============================================================
   // ACTIONS
   // ============================================================
-
   const advance = useCallback(
     async (order) => {
       const id = order._id || order.id;
@@ -433,6 +667,9 @@ export default function EmployeeOrders() {
   // ============================================================
   // RENDER
   // ============================================================
+
+  const currentStationObj =
+    STATION_TABS.find((s) => s.id === stationFilter) || STATION_TABS[0];
 
   return (
     <>
@@ -507,25 +744,123 @@ export default function EmployeeOrders() {
               </div>
             </div>
 
-            <div className="kds-console__card">
-              <VolumeX
-                size={22}
-                style={{ color: "var(--st-text-muted)" }}
-              />
-              <div className="kds-console__card-info">
-                <span className="kds-console__card-label">
+            {/* 🔔 NÚT ÂM BÁO ĐƠN — toggle thật */}
+            <button
+              type="button"
+              className="kds-console__sound-btn"
+              onClick={toggleSound}
+              aria-pressed={soundEnabled}
+              title={
+                soundEnabled
+                  ? t("Đang bật — bấm để tắt")
+                  : t("Đang tắt — bấm để bật")
+              }
+            >
+              {soundEnabled ? (
+                <Volume2 size={22} style={{ color: "var(--st-success)" }} />
+              ) : (
+                <VolumeX
+                  size={22}
+                  style={{ color: "var(--st-text-muted)" }}
+                />
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  alignItems: "flex-start",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--st-font-head)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    color: "var(--st-text-muted)",
+                  }}
+                >
                   {t("Âm báo đơn")}
                 </span>
                 <span
-                  className="kds-console__card-sub"
-                  style={{ fontWeight: 700 }}
+                  className="kds-console__sound-status"
+                  style={{
+                    color: soundEnabled
+                      ? "var(--st-success)"
+                      : "var(--st-text-muted)",
+                  }}
                 >
-                  {t("Đã tắt")}
+                  {soundEnabled ? t("Đang bật") : t("Đã tắt")}
                 </span>
               </div>
-            </div>
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: soundEnabled
+                    ? "var(--st-success)"
+                    : "var(--st-outline)",
+                  flexShrink: 0,
+                  boxShadow: soundEnabled
+                    ? "0 0 0 3px rgba(24, 169, 103, 0.2)"
+                    : "none",
+                }}
+              />
+            </button>
           </div>
 
+          {/* ============ STATION TABS + DROPDOWN ============ */}
+          <div
+            ref={stationMenuRef}
+            style={{ position: "relative", flexShrink: 0 }}
+          >
+            {/* Nút "Tải ca trạm" — mở dropdown */}
+            <button
+              type="button"
+              className="kds-station-btn"
+              onClick={() => setShowStationMenu((s) => !s)}
+              aria-expanded={showStationMenu}
+              aria-haspopup="menu"
+            >
+              <currentStationObj.icon size={16} />
+              <span>
+                {stationFilter === "all"
+                  ? t("Tải ca trạm")
+                  : t(currentStationObj.label)}
+              </span>
+              <ChevronDown size={14} />
+            </button>
+
+            {/* Dropdown */}
+            {showStationMenu && (
+              <div className="kds-station-menu" role="menu">
+                {STATION_TABS.map((s) => {
+                  const Icon = s.icon;
+                  const active = stationFilter === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      role="menuitem"
+                      className={`kds-station-menu__item ${
+                        active ? "active" : ""
+                      }`}
+                      onClick={() => changeStation(s.id)}
+                    >
+                      <Icon size={16} />
+                      <span>{t(s.label)}</span>
+                      {active && <Check size={14} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Station tab chips (desktop) */}
           <div className="kds-station-tabs">
             {STATION_TABS.map((s) => (
               <button
@@ -702,9 +1037,10 @@ export default function EmployeeOrders() {
                 onChange={(e) => setPaymentFilter(e.target.value)}
               >
                 <option value="all">{t("Mọi thanh toán")}</option>
-                <option value="QR">{t("VietQR (Đã TT)")}</option>
-                <option value="Ví Canteen">{t("Ví Nội Bộ VWA")}</option>
-                <option value="Tiền mặt">{t("Tiền mặt tại quầy")}</option>
+                <option value="qr">{t("VietQR (Đã TT)")}</option>
+                <option value="wallet">{t("Ví Nội Bộ VWA")}</option>
+                <option value="cash">{t("Tiền mặt tại quầy")}</option>
+                <option value="card">{t("Thẻ SV")}</option>
               </select>
               <ChevronDown size={16} />
             </div>
@@ -714,7 +1050,7 @@ export default function EmployeeOrders() {
                 className="kds-filter__select kds-filter__select--status"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                aria-label="Lọc theo trạng thái đơn hàng"
+                aria-label={t("Lọc theo trạng thái đơn hàng")}
               >
                 <option value="all">{t("Trạng thái đơn hàng")}</option>
                 <option value="Chờ xác nhận">{t("Đơn mới")}</option>
@@ -747,7 +1083,7 @@ export default function EmployeeOrders() {
           </div>
         </div>
 
-        {/* ============ KDS BOARD — 5 ROWS VERTICAL ============ */}
+        {/* ============ KDS BOARD — 5 ROWS ============ */}
         <div className="kds-board kds-board--rows">
           {/* ROW 1: PENDING */}
           {(() => {
@@ -885,7 +1221,7 @@ export default function EmployeeOrders() {
             );
           })()}
 
-          {/* ROW 5: COMPLETED — compact strip */}
+          {/* ROW 5: COMPLETED */}
           <KDSRow
             title={t("5. Gần Nhất")}
             subtitle={t("Hoàn thành")}
@@ -935,6 +1271,110 @@ export default function EmployeeOrders() {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
         }
+
+        /* ---------- Nút "Tải ca trạm" ---------- */
+        .kds-station-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          height: 44px;
+          padding: 0 16px;
+          border-radius: var(--st-radius-md);
+          background: var(--st-primary-container);
+          color: var(--st-on-primary);
+          border: 0;
+          font-family: var(--st-font-head);
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+          box-shadow: var(--st-shadow-1);
+          white-space: nowrap;
+        }
+        .kds-station-btn:hover {
+          background: var(--st-primary);
+        }
+
+        /* ---------- Dropdown trạm ---------- */
+        .kds-station-menu {
+          position: absolute;
+          top: calc(100% + 6px);
+          right: 0;
+          z-index: 100;
+          min-width: 220px;
+          padding: 6px;
+          background: var(--st-surface);
+          border: 1px solid var(--st-outline-light);
+          border-radius: var(--st-radius-md);
+          box-shadow: var(--st-shadow-3);
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          animation: kdsStationFade 0.15s ease-out;
+        }
+
+        @keyframes kdsStationFade {
+          from { opacity: 0; transform: translateY(-4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .kds-station-menu__item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: var(--st-radius-sm);
+          background: transparent;
+          border: 0;
+          color: var(--st-text);
+          font-family: var(--st-font-head);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s;
+          white-space: nowrap;
+        }
+        .kds-station-menu__item:hover {
+          background: var(--st-surface-low);
+        }
+        .kds-station-menu__item.active {
+          background: var(--st-surface-container);
+          color: var(--st-primary);
+          font-weight: 700;
+        }
+        .kds-station-menu__item.active svg:last-child {
+          margin-left: auto;
+          color: var(--st-primary);
+        }
+
+        /* ---------- Sound button ---------- */
+        .kds-console__sound-btn {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 14px;
+          border-radius: var(--st-radius-md);
+          background: var(--st-surface-low);
+          border: 1px solid var(--st-outline-light);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .kds-console__sound-btn:hover {
+          background: var(--st-surface-container);
+          border-color: var(--st-primary-container);
+        }
+
+        @media (max-width: 768px) {
+          .kds-station-tabs {
+            display: none;
+          }
+        }
+        @media (min-width: 769px) {
+          .kds-station-btn {
+            display: none;
+          }
+        }
       `}</style>
     </>
   );
@@ -975,7 +1415,11 @@ function KDSRow({
         </span>
       </div>
 
-      <div className={`kds-row__body ${isStrip ? "kds-row__body--strip" : ""}`}>
+      <div
+        className={`kds-row__body ${
+          isStrip ? "kds-row__body--strip" : ""
+        }`}
+      >
         {hasChildren ? (
           <>
             {children}

@@ -1,28 +1,18 @@
 // ============================================================
-// KDSTICKET.JSX — Ticket đơn trong KDS board (V3)
+// KDSTICKET.JSX — Ticket đơn trong KDS board (V4 - FINAL)
 // ============================================================
-// 2 mode layout:
-//   - layout="compact" (default): dùng cho EmployeeHome
-//       → hiển thị: tên khách + timer count-up + badge timer
-//   - layout="tall": dùng cho EmployeeOrders
-//       → ẩn tên khách + timer count-up → block VUÔNG VẮN, GỌN GÀNG
-//
-// Variant trạng thái:
-//   - variant="pending"    → Chờ xác nhận → nút Duyệt Đơn (+ Từ chối nếu có onReject)
-//   - variant="confirmed"  → Đã xác nhận → nút Bắt Đầu Nấu
-//   - variant="prep"       → Đang chuẩn bị → nút Báo Xong Món
-//   - variant="ready"      → Sẵn sàng nhận → nút Khách Đã Nhận
-//   - variant="pickup"     → (legacy) card pickup riêng cho EmployeeHome
-//   - variant="preparing"  → (legacy alias) = prep
-//
-// Optional:
-//   - onReject (pending only) → hiện nút "Từ chối" XẾP DỌC trên nút chính
-//   - isPriority / urgent → nháy đỏ
+// V4 (2026-10):
+//   - ✅ Fix hiển thị payment — dùng label chuẩn
+//   - ✅ Fix hiển thị MSSV — fallback email nếu không có MSSV
+//   - ✅ Fix card height 100% — đồng đều giữa các card
+//   - ✅ Tên món dài wrap 2 dòng có ellipsis
+//   - ✅ Meta flex-shrink: 0 — không bị co
+//   - ✅ Actions margin-top: auto — ghim đáy
 // ============================================================
 
 import {
   Check, Clock, Volume2, CheckCircle2, Soup, AlertTriangle,
-  XCircle, PackageCheck, Loader2, Timer,
+  XCircle, PackageCheck, Loader2, Timer, Ban,
 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 import { money } from "./UI";
@@ -44,14 +34,23 @@ const ACTION_LABELS = {
 
 const PAYMENT_LABELS = {
   "Tiền mặt": "Tiền mặt tại quầy",
+  cash: "Tiền mặt tại quầy",
+  CASH: "Tiền mặt tại quầy",
   QR: "VietQR (Đã TT)",
+  qr: "VietQR (Đã TT)",
+  VietQR: "VietQR (Đã TT)",
   "Ví Canteen": "Ví Nội Bộ VWA",
+  WALLET: "Ví Nội Bộ VWA",
+  wallet: "Ví Nội Bộ VWA",
   "Thẻ": "Thẻ SV",
+  card: "Thẻ SV",
+  "Thẻ SV": "Thẻ SV",
 };
 
-// ────────────────────────────────────────────────────────────
-// VARIANT "pickup" — giữ nguyên để không phá vỡ code cũ (EmployeeHome)
-// ────────────────────────────────────────────────────────────
+// ============================================================
+// PICKUP TICKET (variant "pickup" — giữ nguyên)
+// ============================================================
+
 function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
   return (
     <div className="kds-pickup">
@@ -111,12 +110,13 @@ function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
   );
 }
 
-// ────────────────────────────────────────────────────────────
+// ============================================================
 // MAIN
-// ────────────────────────────────────────────────────────────
+// ============================================================
+
 export default function KDSTicket({
   variant = "prep",
-  layout = "compact", // "compact" | "tall"
+  layout = "compact",
   order,
   pickupNumber,
   elapsed = 0,
@@ -127,18 +127,16 @@ export default function KDSTicket({
   onReject,
   onRecall,
   loading = false,
-  urgent = false, // alias cho isPriority (backward compat)
+  urgent = false,
   t: tProp,
 }) {
   const { t: tHook } = useI18n();
   const t = tProp || tHook;
 
-  // Backward compat
   const priority = isPriority || urgent;
   const processing = isProcessing || loading;
   const handleAdvance = onAdvance || onAction;
 
-  // Variant "pickup" đi nhánh riêng (giữ layout cũ)
   if (variant === "pickup") {
     return (
       <PickupTicket
@@ -152,7 +150,6 @@ export default function KDSTicket({
     );
   }
 
-  // Alias "preparing" (legacy từ EmployeeHome) → dùng như "prep"
   const normalizedVariant = variant === "preparing" ? "prep" : variant;
 
   const isPending = normalizedVariant === "pending";
@@ -167,7 +164,7 @@ export default function KDSTicket({
   const isUrgent = elapsedMin >= 12;
 
   const paymentLabel =
-    PAYMENT_LABELS[order.payment] || PAYMENT_LABELS["Tiền mặt"];
+    PAYMENT_LABELS[order.payment] || order.payment || t("Tiền mặt tại quầy");
 
   const actionLabel =
     ACTION_LABELS[order.status] ||
@@ -177,7 +174,7 @@ export default function KDSTicket({
   const showDateLabel = dateVariant && dateVariant !== "today";
   const dateLabelText = (() => {
     if (!showDateLabel) return "";
-    if (dateVariant === "yesterday") return "Hôm qua";
+    if (dateVariant === "yesterday") return t("Hôm qua");
     const d = new Date(order.created_at);
     const dd = d.getDate().toString().padStart(2, "0");
     const mm = (d.getMonth() + 1).toString().padStart(2, "0");
@@ -186,19 +183,15 @@ export default function KDSTicket({
 
   const showReject = isPending && typeof onReject === "function";
 
-  const layoutClass = layout === "tall" ? "kds-card--tall" : "";
-
-  // 🔧 FIX: layout="tall" (trang orders) → ẩn tên khách + timer thừa
-  //   để block vuông vắn gọn gàng giống ảnh 2
   const isTall = layout === "tall";
 
   return (
     <article
-      className={`kds-card ${layoutClass} ${
+      className={`kds-card ${
         processing ? "kds-card--processing" : ""
       } ${priority ? "kds-ticket--priority" : ""}`}
     >
-      {/* HEAD: mã đơn + timer + badge */}
+      {/* HEAD */}
       <div className="kds-card__head">
         <div
           style={{
@@ -257,19 +250,23 @@ export default function KDSTicket({
         </div>
       </div>
 
-      {/* CUSTOMER — 🔧 ẩn khi layout="tall" */}
+      {/* CUSTOMER — ẩn khi tall; hiện MSSV/email */}
       {!isTall && (
         <div className="kds-card__customer">
           {order.customer_name || t("Khách")}{" "}
-          {order.customer_mssv && (
+          {order.customer_mssv ? (
             <span className="kds-card__customer-id">
               (MSSV: {order.customer_mssv})
             </span>
-          )}
+          ) : order.customer_email ? (
+            <span className="kds-card__customer-id">
+              ({order.customer_email})
+            </span>
+          ) : null}
         </div>
       )}
 
-      {/* TIMER count up (chỉ prep) — 🔧 ẩn khi layout="tall" */}
+      {/* TIMER */}
       {isPrep && !isTall && (
         <div
           style={{
@@ -326,14 +323,18 @@ export default function KDSTicket({
         )}
       </div>
 
-      {/* META: payment + total */}
+      {/* META */}
       <div className="kds-card__meta">
         <span
           className={`kds-card__payment ${
-            order.payment === "Ví Canteen"
+            order.payment === "Ví Canteen" || order.payment === "WALLET"
               ? "kds-card__payment--success"
               : ""
-          } ${order.payment === "QR" ? "kds-card__payment--primary" : ""}`}
+          } ${
+            order.payment === "QR" || order.payment === "VietQR"
+              ? "kds-card__payment--primary"
+              : ""
+          }`}
         >
           <CheckCircle2 size={14} />
           {paymentLabel}
@@ -363,11 +364,7 @@ export default function KDSTicket({
           <button
             type="button"
             className={`kds-card__btn ${
-              isPending
-                ? "kds-card__btn--primary"
-                : isConfirmed
-                ? "kds-card__btn--primary"
-                : isPrep
+              isPending || isConfirmed || isPrep
                 ? "kds-card__btn--primary"
                 : "kds-card__btn--tertiary"
             }`}
