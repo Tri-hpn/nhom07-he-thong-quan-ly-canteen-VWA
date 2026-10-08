@@ -962,7 +962,8 @@ const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || "";
 const MICROSOFT_TENANT_ID = process.env.MICROSOFT_TENANT_ID || "f1ea4557-ac25-41fe-9da9-089970695a61";
 const MICROSOFT_OAUTH_ENABLED = !!(MICROSOFT_CLIENT_ID && MICROSOFT_CLIENT_SECRET);
 
-app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => {
+app.get("/api/auth/microsoft-entra-id/callback", async (req, res) => { ... });
+app.post("/api/auth/microsoft-entra-id/callback", async (req, res) => { ... });
   try {
     if (!MICROSOFT_OAUTH_ENABLED) {
       return res.status(503).json({ message: "Microsoft OAuth chưa được cấu hình trên server" });
