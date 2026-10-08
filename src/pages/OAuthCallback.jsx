@@ -1,7 +1,7 @@
 // ============================================================
 // OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook/Microsoft OAuth
 // ============================================================
-// V2: FIX redirectUri cho Microsoft - dùng /auth/microsoft/callback
+// V3: FIX redirectUri cho Microsoft - dùng /api/auth/callback/microsoft-entra-id
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -48,10 +48,11 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
     let cancelled = false;
 
     // 🔧 FIX: Microsoft dùng URI đã đăng ký trên Azure
+    // Azure đã cấu hình: /api/auth/callback/microsoft-entra-id
     const redirectUri =
       window.location.origin +
       (provider === "microsoft-entra-id"
-        ? "/auth/microsoft/callback"
+        ? "/api/auth/callback/microsoft-entra-id"
         : `/auth/${provider}/callback`);
 
     api.oauth
