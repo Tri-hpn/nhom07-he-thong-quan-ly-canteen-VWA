@@ -976,10 +976,16 @@ async function microsoftCallbackHandler(req, res) {
     // ✅ Hỗ trợ cả GET (query params) và POST (body)
     const code = req.query.code || req.body?.code;
     // ⚠️ redirectUri PHẢI khớp 100% với Azure
-    const redirectUri =
-      req.query.redirectUri ||
-      req.body?.redirectUri ||
-      `${req.protocol}://${req.get("host")}/api/auth/callback/microsoft-entra-id`;
+    // ✅ FIX: Vercel chạy sau proxy → phải đọc x-forwarded-proto để biết protocol thật
+const proto =
+  String(req.get("x-forwarded-proto") || req.protocol || "https")
+    .split(",")[0]
+    .trim() || "https";
+
+const redirectUri =
+  req.query.redirectUri ||
+  req.body?.redirectUri ||
+  `${proto}://${req.get("host")}/api/auth/callback/microsoft-entra-id`;
 
     if (!code) {
       console.error("❌ [Microsoft OAuth] Thiếu code");
