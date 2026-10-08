@@ -365,15 +365,8 @@ export default function OwnerReports() {
               <span className="admin-page-head__eyebrow-dot" />
               {t("Báo cáo & Phân tích • Quyết toán tháng")}
             </span>
-            <h1 className="admin-page-head__title">
-              {t("Báo cáo doanh thu & Biên bản nghiệm thu")}
-            </h1>
-            <p className="admin-page-head__desc">
-              {t(
-                "Phân tích doanh thu theo ngày, in biên bản nghiệm thu & đối soát quyết toán trợ giá sinh viên theo chuẩn ISO 216/A4."
-              )}
-            </p>
-          </div>
+          
+                      </div>
 
           <div className="admin-page-head__actions">
             <button
