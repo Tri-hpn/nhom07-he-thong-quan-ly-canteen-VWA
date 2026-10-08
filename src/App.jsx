@@ -1,10 +1,9 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V7)
+// APP.JSX — Root component + Routing (V8)
 // ============================================================
-// V7 (2026-10):
-//   - Thêm route /login để nhận token từ Microsoft redirect về
-//   - Thêm useEffect bắt token từ URL query params
-//   - Giữ nguyên toàn bộ logic V6
+// V8 (2026-10):
+//   - ✅ FIX MOBILE: Bỏ window.location.reload() → dùng api.me() + setUser()
+//   - Giữ nguyên toàn bộ logic V7
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -109,29 +108,47 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 🔧 FIX #26: track lần redirect gần nhất để phát hiện loop
+  // 🔧 Track lần redirect gần nhất để phát hiện loop
   const lastRedirectRef = useRef({ path: "", timestamp: 0 });
   const pendingRedirectRef = useRef(null);
 
   // ---------- Effects ----------
 
-  // ✅ FIX: Tự động đăng nhập nếu có token từ Microsoft redirect về
+  // ✅ FIX MOBILE: Tự động đăng nhập nếu có token OAuth redirect về
+  // KHÔNG dùng window.location.reload() — bị block trên mobile
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
     const provider = params.get("provider");
 
-    if (token && provider === "microsoft") {
-      console.log("✅ [Microsoft OAuth] Nhận token từ URL, đang đăng nhập...");
-      setToken(token);
+    if (!token) return;
 
-      // Xóa query params khỏi URL
-      window.history.replaceState({}, "", window.location.pathname);
+    console.log("✅ [OAuth] Nhận token từ URL, provider:", provider);
+    setToken(token);
 
-      // Reload để AuthContext đọc token mới
-      window.location.reload();
-    }
-  }, []);
+    // Xóa token khỏi URL ngay lập tức
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, "", cleanUrl);
+
+    // Gọi api.me() để lấy user info và setUser → đăng nhập ngay
+    import("./api").then(({ api }) => {
+      api
+        .me()
+        .then((userData) => {
+          console.log("✅ [OAuth] Đã lấy user info:", userData);
+          if (setUser) setUser(userData);
+        })
+        .catch((err) => {
+          console.error("❌ [OAuth] Lỗi lấy user info:", err);
+          // Fallback: nếu api.me() lỗi → xóa token, về trang login
+          try {
+            localStorage.removeItem("token");
+            sessionStorage.removeItem("token");
+          } catch {}
+          window.location.href = "/";
+        });
+    });
+  }, [setUser]);
 
   // Tự động lưu cart vào localStorage
   useEffect(() => {

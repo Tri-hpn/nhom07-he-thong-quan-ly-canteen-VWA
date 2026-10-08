@@ -1,10 +1,10 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V4)
+// API.JS — HTTP client cho Backend Express (V5)
 // ============================================================
-// V4:
-//   - Thêm api.tasks.* (giao việc cho nhân viên)
-//   - 🔧 FIX: Thêm api.chat.getContext (lấy dữ liệu context cho chat)
-//   - Giữ nguyên toàn bộ API khác từ V3
+// V5:
+//   - 🔧 FIX MOBILE: dùng localStorage thay vì sessionStorage
+//     (sessionStorage bị xóa khi chuyển app trên mobile → mất token)
+//   - Giữ nguyên toàn bộ API khác từ V4
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -13,15 +13,35 @@ const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
 // ============================================================
-// TOKEN
+// TOKEN — ✅ FIX MOBILE
 // ============================================================
 export function getToken() {
-  return sessionStorage.getItem("token");
+  // ✅ Đọc từ localStorage trước, fallback sessionStorage (tương thích ngược)
+  try {
+    return (
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token") ||
+      null
+    );
+  } catch {
+    return null;
+  }
 }
 
 export function setToken(t) {
-  if (t) sessionStorage.setItem("token", t);
-  else sessionStorage.removeItem("token");
+  // ✅ Lưu vào CẢ 2 để đảm bảo tương thích trên mọi trình duyệt
+  try {
+    if (t) {
+      localStorage.setItem("token", t);
+      sessionStorage.setItem("token", t);
+    } else {
+      localStorage.removeItem("token");
+      sessionStorage.removeItem("token");
+    }
+  } catch (e) {
+    // Trường hợp trình duyệt chặn storage (chế độ private nghiêm ngặt)
+    console.warn("Không thể lưu token vào storage:", e.message);
+  }
 }
 
 // ============================================================
