@@ -149,7 +149,7 @@ function calcElapsedSec(iso) {
 
 function getOrderPickupMinutes(order) {
   // Parse từ note "Nhận hàng: 13:00 - 13:30" hoặc pickupTime
-  const src = `${order?.pickupTime || ""} ${order?.note || ""}`;
+  const src = `${order?.pickupTime || order?.pickup || ""} ${order?.note || ""}`;
   const m = src.match(/(\d{1,2}):(\d{2})/);
   if (!m) return null;
   const h = parseInt(m[1], 10);
@@ -463,7 +463,7 @@ export default function EmployeeOrders() {
         if (range) {
           result = result.filter((o) => {
             const mins = getOrderPickupMinutes(o);
-            if (mins === null) return false;
+            if (mins === null) return true;
             return mins >= range[0] && mins < range[1];
           });
         }
@@ -1058,6 +1058,7 @@ export default function EmployeeOrders() {
                 <option value="Đang chuẩn bị">{t("Đang nấu")}</option>
                 <option value="Sẵn sàng nhận">{t("Sẵn sàng nhận")}</option>
                 <option value="Hoàn thành">{t("Gần nhất")}</option>
+                <option value="Đã hủy">{t("Đã hủy")}</option>
               </select>
               <ChevronDown size={16} />
             </div>
