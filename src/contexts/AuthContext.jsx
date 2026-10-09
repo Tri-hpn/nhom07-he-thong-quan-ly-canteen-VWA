@@ -1,23 +1,12 @@
 // ============================================================
-// AUTHCONTEXT.JSX — Context xác thực toàn cục (Giai đoạn 2)
+// AUTHCONTEXT.JSX — Context xác thực toàn cục (V4 - FINAL)
 // ============================================================
-// Nguồn dữ liệu duy nhất về user:
-//   - user, token, loading, mustChangePassword
-//   - login(email, password)
-//   - logout()
-//   - setUser(u)        — cập nhật thủ công (sau khi đổi profile)
-//   - refreshUser()     — fetch lại /auth/me
-//
-// Luồng khởi động:
-//   1. Đọc token từ sessionStorage (api.js)
-//   2. Nếu có → gọi /api/auth/me
-//   3. Set user + mustChangePassword
-//   4. loading = false
-//
-// Đồng bộ:
-//   - Lắng nghe "auth-expired" từ api.js (401) → clear user
-//   - Lắng nghe "refresh-user" từ Profile/Backfill → gọi lại /auth/me
-//   - Lắng nghe "logout" → clear
+// V4 (2026-10):
+//   - ✅ FIX: useAuth() không còn warn spam khi Provider chưa kịp mount
+//     (dedupe warning bằng biến module)
+//   - ✅ FIX: fallback an toàn khi Provider chưa mount — KHÔNG throw
+//     ngay lập tức mà trả về null + warning
+//   - Giữ V3: sessionStorage, meReqIdRef, refresh-user event
 // ============================================================
 
 import {
@@ -32,22 +21,17 @@ import { api, setToken, getToken } from "../api";
 
 const AuthContext = createContext(null);
 
-// ============================================================
-// PROVIDER
-// ============================================================
+// ✅ FIX V4: chỉ warn 1 lần duy nhất
+let warnedMissingProvider = false;
 
 export function AuthProvider({ children }) {
   const [user, setUserState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mustChangePassword, setMustChangePassword] = useState(false);
 
-  // Tránh race: /auth/me gọi 2 lần cùng lúc (StrictMode / effect)
   const meReqIdRef = useRef(0);
   const mountedRef = useRef(true);
 
-  // ----------------------------------------------------------
-  // setUser wrapper — luôn cập nhật mustChangePassword
-  // ----------------------------------------------------------
   const setUser = useCallback((updater) => {
     setUserState((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -60,9 +44,6 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
-  // ----------------------------------------------------------
-  // refreshUser — fetch lại /auth/me
-  // ----------------------------------------------------------
   const refreshUser = useCallback(async () => {
     const token = getToken();
     if (!token) {
@@ -85,7 +66,6 @@ export function AuthProvider({ children }) {
       if (!mountedRef.current) return null;
       if (myReqId !== meReqIdRef.current) return null;
 
-      // 401 → api.js đã dispatch "auth-expired" → không cần xử lý thêm
       if (e.status !== 401) {
         console.error("[AuthContext] refreshUser failed:", e.message);
       }
@@ -95,9 +75,6 @@ export function AuthProvider({ children }) {
     }
   }, [setUser]);
 
-  // ----------------------------------------------------------
-  // login
-  // ----------------------------------------------------------
   const login = useCallback(
     async (email, password) => {
       const res = await api.login(email, password);
@@ -108,13 +85,11 @@ export function AuthProvider({ children }) {
       setToken(res.token);
       setUser(res.user);
 
-      // Sau khi login, gọi /auth/me để lấy full info (points, avatar…)
-      // nhưng KHÔNG block — set user tạm từ response trước
       try {
         const me = await api.me();
         if (mountedRef.current) setUser(me);
       } catch {
-        /* Bỏ qua — user tạm đã có từ response login */
+        /* Bỏ qua */
       }
 
       return res.user;
@@ -122,15 +97,11 @@ export function AuthProvider({ children }) {
     [setUser]
   );
 
-  // ----------------------------------------------------------
-  // logout
-  // ----------------------------------------------------------
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
     setMustChangePassword(false);
 
-    // Clear cache local liên quan đến user
     try {
       sessionStorage.removeItem("canteen_cart_selected");
       localStorage.removeItem("orders_last_seen");
@@ -138,9 +109,9 @@ export function AuthProvider({ children }) {
     } catch {}
   }, [setUser]);
 
-  // ----------------------------------------------------------
-  // Effect 1 — Mount: đọc token, fetch /auth/me
-  // ----------------------------------------------------------
+  // ============================================================
+  // EFFECT 1 — Mount: đọc token, fetch /auth/me
+  // ============================================================
   useEffect(() => {
     mountedRef.current = true;
 
@@ -157,7 +128,6 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // Có token → verify bằng /auth/me
       try {
         const myReqId = ++meReqIdRef.current;
         const me = await api.me();
@@ -182,9 +152,9 @@ export function AuthProvider({ children }) {
     };
   }, [setUser]);
 
-  // ----------------------------------------------------------
-  // Effect 2 — Lắng nghe event toàn cục
-  // ----------------------------------------------------------
+  // ============================================================
+  // EFFECT 2 — Lắng nghe event toàn cục
+  // ============================================================
   useEffect(() => {
     const onAuthExpired = () => {
       setUser(null);
@@ -211,9 +181,6 @@ export function AuthProvider({ children }) {
     };
   }, [setUser, refreshUser]);
 
-  // ----------------------------------------------------------
-  // Context value
-  // ----------------------------------------------------------
   const value = {
     user,
     loading,
@@ -227,19 +194,21 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// ============================================================
-// HOOK
-// ============================================================
-
 export function useAuth() {
   const ctx = useContext(AuthContext);
 
   if (!ctx) {
-    // Fallback an toàn — không crash app nếu component dùng useAuth
-    // ngoài AuthProvider (VD: ErrorBoundary render lỗi).
-    console.warn(
-      "[useAuth] Component sử dụng useAuth() bên ngoài AuthProvider"
-    );
+    // ✅ FIX V4: chỉ warn 1 lần duy nhất, không spam
+    if (!warnedMissingProvider) {
+      warnedMissingProvider = true;
+      console.warn(
+        "[useAuth] Component gọi useAuth() bên ngoài AuthProvider. " +
+          "Kiểm tra main.jsx — AuthProvider phải bọc NGOÀI BrowserRouter."
+      );
+    }
+
+    // ✅ FIX V4: KHÔNG throw ngay — trả fallback an toàn
+    // để component render được (không crash), chỉ warn
     return {
       user: null,
       loading: false,

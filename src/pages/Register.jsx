@@ -1,7 +1,9 @@
 ﻿// ============================================================
-// REGISTER.JSX — Đăng ký tài khoản (style Login V8)
+// REGISTER.JSX — Đăng ký tài khoản (V7 - FINAL)
 // ============================================================
-// V6: FIX Microsoft OAuth — redirectUri khớp 100% với Azure
+// V7 (2026-10):
+//   - ✅ FIX A11Y: thêm id + name + htmlFor cho tất cả input
+//   - Giữ V6: Microsoft OAuth redirectUri khớp Azure
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -54,7 +56,6 @@ function startFacebookOAuth(t) {
   window.location.href = url;
 }
 
-// ✅ MICROSOFT OAUTH — FIX TRIỆT ĐỂ
 function startMicrosoftOAuth(t) {
   const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID;
   const tenantId = import.meta.env.VITE_MICROSOFT_TENANT_ID;
@@ -231,11 +232,15 @@ export default function Register({ onRegister }) {
 
           {error && <div className="v8-error-box">{error}</div>}
 
-          <form onSubmit={submit} autoComplete="off">
-            <label className="v8-label">{t("Họ và tên")} *</label>
+          <form onSubmit={submit} autoComplete="off" name="register-form">
+            <label className="v8-label" htmlFor="register-name">
+              {t("Họ và tên")} *
+            </label>
             <div className="v8-input-wrap">
               <UserIcon size={16} className="v8-input-icon" />
               <input
+                id="register-name"
+                name="name"
                 type="text"
                 value={name}
                 onChange={(e) => {
@@ -250,10 +255,14 @@ export default function Register({ onRegister }) {
               />
             </div>
 
-            <label className="v8-label">{t("Email")} *</label>
+            <label className="v8-label" htmlFor="register-email">
+              {t("Email")} *
+            </label>
             <div className="v8-input-wrap">
               <Mail size={16} className="v8-input-icon" />
               <input
+                id="register-email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => {
@@ -269,7 +278,7 @@ export default function Register({ onRegister }) {
               />
             </div>
 
-            <label className="v8-label">
+            <label className="v8-label" htmlFor="register-phone">
               {t("Số điện thoại")}{" "}
               <span style={{ fontWeight: 400, color: "var(--text-light, #94a3b8)" }}>
                 ({t("không bắt buộc")})
@@ -278,6 +287,8 @@ export default function Register({ onRegister }) {
             <div className="v8-input-wrap">
               <Phone size={16} className="v8-input-icon" />
               <input
+                id="register-phone"
+                name="phone"
                 type="text"
                 value={phone}
                 onChange={(e) => {
@@ -291,10 +302,14 @@ export default function Register({ onRegister }) {
               />
             </div>
 
-            <label className="v8-label">{t("Mật khẩu")} *</label>
+            <label className="v8-label" htmlFor="register-password">
+              {t("Mật khẩu")} *
+            </label>
             <div className="v8-input-wrap">
               <LockKeyhole size={16} className="v8-input-icon" />
               <input
+                id="register-password"
+                name="password"
                 type={show ? "text" : "password"}
                 value={password}
                 onChange={(e) => {
@@ -321,10 +336,14 @@ export default function Register({ onRegister }) {
               </button>
             </div>
 
-            <label className="v8-label">{t("Xác nhận mật khẩu")} *</label>
+            <label className="v8-label" htmlFor="register-confirm">
+              {t("Xác nhận mật khẩu")} *
+            </label>
             <div className="v8-input-wrap">
               <Check size={16} className="v8-input-icon" />
               <input
+                id="register-confirm"
+                name="confirmPassword"
                 type={showConfirm ? "text" : "password"}
                 value={confirm}
                 onChange={(e) => {
@@ -352,8 +371,10 @@ export default function Register({ onRegister }) {
               </button>
             </div>
 
-            <label className="v8-check">
+            <label className="v8-check" htmlFor="register-agree">
               <input
+                id="register-agree"
+                name="agree"
                 type="checkbox"
                 checked={agree}
                 onChange={(e) => {
@@ -400,6 +421,7 @@ export default function Register({ onRegister }) {
               className="v8-social"
               onClick={() => startGoogleOAuth(t)}
               disabled={loading}
+              aria-label={t("Đăng ký bằng Google")}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -415,6 +437,7 @@ export default function Register({ onRegister }) {
               className="v8-social"
               onClick={() => startFacebookOAuth(t)}
               disabled={loading}
+              aria-label={t("Đăng ký bằng Facebook")}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2" aria-hidden="true">
                 <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z" />
@@ -429,6 +452,7 @@ export default function Register({ onRegister }) {
               className="v8-social"
               onClick={() => startMicrosoftOAuth(t)}
               disabled={loading}
+              aria-label={t("Đăng ký bằng Microsoft")}
               style={{
                 width: '100%',
                 maxWidth: '280px',

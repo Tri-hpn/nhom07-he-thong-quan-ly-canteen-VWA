@@ -1,10 +1,14 @@
 // ============================================================
-// FOODDETAILMODAL.JSX — Modal chi tiết món ăn (V3 - FIXED + i18n)
+// FOODDETAILMODAL.JSX — Modal chi tiết món ăn (V4 - FINAL)
 // ============================================================
-// 🔧 FIX:
-//   - M3: Xóa hàm addToCart() không dùng (dead code)
-//   - C2: Bỏ logic onUpdateStock — server là nguồn duy nhất
-//   - Extra: type="button" đầy đủ, clamp qty theo maxQty
+// V4 (2026-10):
+//   - ✅ FIX #1: Edit mode dùng setCart thay onUpdate (prop không tồn tại)
+//     Xử lý đủ 3 trường hợp:
+//       • Key mới chưa có → xóa key cũ, thêm key mới
+//       • Key mới trùng key khác → cộng dồn qty, xóa key cũ
+//       • Key mới trùng chính editingKey (chỉ đổi qty) → ghi đè
+//   - ✅ FIX #7: Bỏ readOnly cứng ở ReviewSection → cho phép đánh giá
+//   - Giữ nguyên: M3 (getItemId thống nhất), C2 (không onUpdateStock)
 //
 // 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
@@ -42,11 +46,6 @@ function getMaxQty(item) {
   return DEFAULT_MAX_QTY;
 }
 
-/**
- * 🔧 M3: Thống nhất lấy ID món ăn.
- * Ưu tiên `_id` (Mongo) → fallback `id` (JSON).
- * Khớp với CustomerHome / CustomerMenu / CustomerCart.
- */
 function getItemId(item) {
   return item?._id || item?.id;
 }
@@ -105,7 +104,7 @@ export default function FoodDetailModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemId]);
 
-  // Clamp qty khi maxQty thay đổi (VD: sau khi server trừ tồn kho)
+  // Clamp qty khi maxQty thay đổi
   useEffect(() => {
     if (isOutOfStock) return;
     setQty((q) => Math.min(Math.max(1, q), maxQty));
@@ -165,13 +164,10 @@ export default function FoodDetailModal({
   });
 
   // ============================================================
-  // 🔧 M3: ĐÃ XÓA hàm addToCart() không dùng.
-  //         Chỉ giữ handleAddToCart() — hàm thực tế được gọi từ UI.
+  // HANDLE ADD TO CART — có xử lý edit mode (FIX #1)
   // ============================================================
-
-  // ---------- Thêm vào giỏ ----------
   const handleAddToCart = () => {
-    // Edit mode: cập nhật item trong giỏ
+    // ========== EDIT MODE ==========
     if (editingKey) {
       if (isOutOfStock) {
         toast(t("Hết hàng"), "error");
@@ -181,17 +177,69 @@ export default function FoodDetailModal({
         toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
         return;
       }
-      const key = buildKey();
-      const entry = buildCartEntry(qty);
-      if (typeof onUpdate === "function") {
-        onUpdate(editingKey, key, entry);
+
+      const newKey = buildKey();
+      const newEntry = buildCartEntry(qty);
+      let finalQty = qty;
+      let mergedWithExisting = false;
+
+      setCart((c) => {
+        const next = { ...c };
+        const oldQty = Number(c[editingKey]?.qty) || 0;
+
+        // Trường hợp A: user chỉ đổi qty, key mới = key cũ → ghi đè
+        if (newKey === editingKey) {
+          next[editingKey] = newEntry;
+          return next;
+        }
+
+        // Trường hợp B: key mới đã tồn tại (món khác đang có sẵn)
+        const existingAtNewKey = next[newKey];
+        if (existingAtNewKey) {
+          const existQty = Number(existingAtNewKey.qty) || 0;
+          const combined = Math.min(maxQty, existQty + qty);
+          mergedWithExisting = true;
+          finalQty = combined;
+
+          // Nếu số tổng vẫn > maxQty → chặn
+          if (existQty + qty > maxQty) {
+            return next; // không thay đổi
+          }
+
+          next[newKey] = { ...existingAtNewKey, qty: combined };
+          delete next[editingKey];
+          return next;
+        }
+
+        // Trường hợp C: key mới chưa có → xóa key cũ, thêm key mới
+        delete next[editingKey];
+        next[newKey] = newEntry;
+        return next;
+      });
+
+      if (newKey !== editingKey) {
+        const existingQty =
+          Number(cart?.[newKey]?.qty) || 0;
+        if (existingQty + qty > maxQty) {
+          toast(
+            `${t("Chỉ còn")} ${maxQty - existingQty} ${t("phần")}`,
+            "error"
+          );
+          return;
+        }
       }
-      toast(`${t("Đã cập nhật")} ${entry.name}`, "success");
+
+      toast(
+        mergedWithExisting
+          ? `${t("Đã gộp")} ${finalQty} ${t("phần")} ${newEntry.name}`
+          : `${t("Đã cập nhật")} ${newEntry.name}`,
+        "success"
+      );
       onClose?.();
       return;
     }
 
-    // Add mode: thêm mới vào giỏ
+    // ========== ADD MODE ==========
     if (isOutOfStock) {
       toast(t("Hết hàng"), "error");
       return;
@@ -201,7 +249,6 @@ export default function FoodDetailModal({
     const existing = cart?.[key];
     const currentQty = Number(existing?.qty) || 0;
 
-    // Kiểm tra tổng sau khi thêm có vượt maxQty không
     if (currentQty + qty > maxQty) {
       toast(
         `${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`,
@@ -221,14 +268,13 @@ export default function FoodDetailModal({
       };
     });
 
-    // 🔧 C2: KHÔNG gọi onUpdateStock nữa — server tự trừ tồn kho
-    //         và CustomerHome sẽ refetch để đồng bộ.
-
     toast(`${t("Đã thêm")} ${name} ${t("vào giỏ")}`, "success");
     onClose?.();
   };
 
-  // ---------- Mua ngay ----------
+  // ============================================================
+  // HANDLE BUY NOW
+  // ============================================================
   const handleBuyNow = () => {
     if (isOutOfStock) {
       toast(t("Hết hàng"), "error");
@@ -258,7 +304,6 @@ export default function FoodDetailModal({
       };
     });
 
-    // 🔧 C2: KHÔNG gọi onUpdateStock nữa.
     toast(
       `${t("Đã thêm")} ${name} — ${t("chuyển đến thanh toán")}`,
       "success"
@@ -585,12 +630,8 @@ export default function FoodDetailModal({
           </b>
         </div>
 
-        {/* ===== REVIEWS ===== */}
-        <ReviewSection
-          menuItemId={itemId}
-          currentUser={user}
-          readOnly={true}
-        />
+        {/* ===== REVIEWS — FIX #7: bỏ readOnly cứng ===== */}
+        <ReviewSection menuItemId={itemId} currentUser={user} />
 
         {/* ===== ACTION BUTTONS ===== */}
         <div

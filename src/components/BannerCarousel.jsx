@@ -1,15 +1,20 @@
 // ============================================================
 // BANNERCAROUSEL.JSX — Carousel banner khuyến mãi (Customer)
 // ============================================================
-// ✅ 3 slide, tự động chuyển sau 4s (AUTO_INTERVAL)
-// ✅ Nút chuyển slide thủ công (trái/phải) + dots điều hướng
-// ✅ Tạm dừng khi hover chuột hoặc khi tab bị ẩn
-// ✅ i18n: nội dung slide dịch qua t() (nguồn tiếng Việt ở bannerSlides.js)
-// ✅ buttonLink dạng "#anchor" → cuộn mượt tới section trong trang
-// 🔧 FIX #55: reset index khi slides thay đổi (không chỉ total)
+// V2 (2026-10):
+//   - ✅ FIX #10: Fallback cho slide.buttonText khi undefined
+//     → nút không còn trống nếu ai đó truyền slide thiếu field
+//   - Giữ nguyên: FIX #55 (reset index khi slides đổi),
+//     auto-play 4s, pause on hover/tab-hidden, i18n, anchor scroll
 // ============================================================
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+} from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronLeft,
@@ -25,6 +30,7 @@ import { useI18n } from "../hooks/useI18n";
 
 const AUTO_INTERVAL = 4000;
 const TRANSITION_MS = 500;
+const DEFAULT_BUTTON_TEXT = "Xem thêm";
 
 function renderChipIcon(name, size = 13) {
   switch (name) {
@@ -52,8 +58,6 @@ export default function BannerCarousel({ slides = bannerSlides }) {
   const timerRef = useRef(null);
   const total = slides?.length || 0;
 
-  // 🔧 FIX #55: signature ổn định theo id (không theo index/total)
-  //   → khi slides đổi (rename/reorder) vẫn reset index đúng
   const slidesSignature = useMemo(
     () =>
       Array.isArray(slides)
@@ -62,7 +66,6 @@ export default function BannerCarousel({ slides = bannerSlides }) {
     [slides]
   );
 
-  // 🔧 FIX #55: deps dùng slidesSignature thay vì total
   useEffect(() => {
     setIndex(0);
   }, [slidesSignature]);
@@ -136,7 +139,6 @@ export default function BannerCarousel({ slides = bannerSlides }) {
         background: "#0f172a",
       }}
     >
-      {/* Track */}
       <div
         style={{
           display: "flex",
@@ -152,7 +154,6 @@ export default function BannerCarousel({ slides = bannerSlides }) {
         ))}
       </div>
 
-      {/* Nút chuyển slide thủ công */}
       {total > 1 && (
         <>
           <button
@@ -210,7 +211,6 @@ export default function BannerCarousel({ slides = bannerSlides }) {
         </>
       )}
 
-      {/* Dots điều hướng */}
       {total > 1 && (
         <div
           role="tablist"
@@ -263,7 +263,7 @@ export default function BannerCarousel({ slides = bannerSlides }) {
 }
 
 // ============================================================
-// SLIDE — 1 slide đơn lẻ (ảnh nền + overlay + nội dung)
+// SLIDE
 // ============================================================
 
 function Slide({ slide, isActive }) {
@@ -274,13 +274,16 @@ function Slide({ slide, isActive }) {
   const isAnchor =
     typeof slide.buttonLink === "string" && slide.buttonLink.startsWith("#");
 
-  // buttonLink dạng "#anchor" → cuộn mượt tới section trong trang
   const handleCtaClick = (e) => {
     if (!isAnchor) return;
     e.preventDefault();
     const el = document.getElementById(slide.buttonLink.slice(1));
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+
+  // ✅ FIX #10: Fallback cho buttonText và buttonLink
+  const safeButtonText = slide.buttonText || DEFAULT_BUTTON_TEXT;
+  const safeButtonLink = slide.buttonLink || "#";
 
   return (
     <div
@@ -312,7 +315,10 @@ function Slide({ slide, isActive }) {
         }}
       />
 
-      <div className="banner-content" style={{ maxWidth: 680, position: "relative", zIndex: 2 }}>
+      <div
+        className="banner-content"
+        style={{ maxWidth: 680, position: "relative", zIndex: 2 }}
+      >
         {slide.badge && (
           <span
             className="banner-badge"
@@ -396,7 +402,7 @@ function Slide({ slide, isActive }) {
         )}
 
         <Link
-          to={slide.buttonLink}
+          to={safeButtonLink}
           className="banner-btn"
           tabIndex={isActive ? 0 : -1}
           onClick={handleCtaClick}
@@ -418,7 +424,7 @@ function Slide({ slide, isActive }) {
             transform: linkHover ? "translateY(-3px)" : "translateY(0)",
           }}
         >
-          {t(slide.buttonText)}
+          {t(safeButtonText)}
         </Link>
       </div>
     </div>
