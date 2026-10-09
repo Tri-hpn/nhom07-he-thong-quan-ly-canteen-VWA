@@ -1,8 +1,9 @@
 ﻿// ============================================================
-// FORGOTPASSWORD.JSX — Khôi phục mật khẩu (style Login V8)
+// FORGOTPASSWORD.JSX — Khôi phục mật khẩu (V3 - FINAL)
 // ============================================================
-// Demo — OTP hardcode "123456"
-// 3 bước: Email → OTP + mật khẩu mới → Thành công
+// V3 (2026-10):
+//   - ✅ FIX A11Y: thêm id + name + htmlFor cho tất cả input
+//   - Giữ V2: đổi key "forgot.*" → source-text tiếng Việt
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -54,9 +55,9 @@ export default function ForgotPassword() {
     if (loading) return;
 
     const trimmedEmail = email.trim();
-    if (!trimmedEmail) return setError(t("forgot.errorEmailRequired"));
+    if (!trimmedEmail) return setError(t("Vui lòng nhập email"));
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail))
-      return setError(t("forgot.errorEmailInvalid"));
+      return setError(t("Email không hợp lệ"));
 
     setError("");
     setLoading(true);
@@ -64,14 +65,16 @@ export default function ForgotPassword() {
     try {
       await new Promise((r) => setTimeout(r, 1000));
       toast(
-        isResend ? t("forgot.toastOtpResent") : t("forgot.toastOtpSent"),
+        isResend
+          ? t("Đã gửi lại mã OTP")
+          : t("Mã OTP đã được gửi đến email của bạn"),
         "success"
       );
       setOtp(DEMO_OTP);
       if (!isResend) setStep(2);
       setCountdown(RESEND_COOLDOWN);
     } catch (err) {
-      setError(err.message || t("forgot.errorSendOtp"));
+      setError(err.message || t("Không gửi được mã OTP"));
     } finally {
       setLoading(false);
     }
@@ -86,59 +89,59 @@ export default function ForgotPassword() {
     if (e) e.preventDefault();
     if (loading) return;
 
-    if (!otp.trim()) return setError(t("forgot.errorOtpRequired"));
-    if (otp.length !== 6) return setError(t("forgot.errorOtpLength"));
+    if (!otp.trim()) return setError(t("Vui lòng nhập mã OTP"));
+    if (otp.length !== 6) return setError(t("Mã OTP phải có 6 chữ số"));
     if (newPassword.length < 6)
-      return setError(t("forgot.errorPasswordMin"));
+      return setError(t("Mật khẩu phải từ 6 ký tự"));
 
     setError("");
 
     if (otp !== DEMO_OTP) {
-      return setError(t("forgot.errorOtpWrong"));
+      return setError(t("Mã OTP không đúng. Vui lòng kiểm tra lại."));
     }
 
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 1000));
-      toast(t("forgot.toastSuccess"), "success");
+      toast(t("Đặt lại mật khẩu thành công!"), "success");
       setStep(3);
     } catch (err) {
-      setError(err.message || t("forgot.errorResetFailed"));
+      setError(err.message || t("Đặt lại mật khẩu thất bại"));
     } finally {
       setLoading(false);
     }
   };
 
   const bubbleText = useMemo(() => {
-    if (step === 3) return t("forgot.bubbleStep3");
-    if (peeking) return t("forgot.bubblePeek");
-    if (step === 2) return t("forgot.bubbleStep2");
-    return t("forgot.bubbleStep1");
+    if (step === 3) return t("Xong rồi! Đăng nhập lại nhé! 🎉");
+    if (peeking) return t("Đừng nhìn mật khẩu nhé! 🙈");
+    if (step === 2) return t("Nhập mã OTP đã gửi đến email của bạn! 📧");
+    return t("Quên mật khẩu à? Đừng lo, mình giúp! 💪");
   }, [step, peeking, t]);
 
   const caption = useMemo(() => {
     if (step === 3) {
       return {
-        b: t("forgot.captionDone"),
-        s: t("forgot.captionDoneSub"),
+        b: t("Hoàn tất!"),
+        s: t("Đăng nhập lại bằng mật khẩu mới."),
       };
     }
     return {
-      b: t("forgot.captionTitle"),
-      s: t("forgot.captionSub"),
+      b: t("Chào mừng đến Canteen VWA"),
+      s: t("Đặt món nhanh chóng, tiện lợi mỗi ngày."),
     };
   }, [step, t]);
 
   const titleText = useMemo(() => {
-    if (step === 1) return t("forgot.title1");
-    if (step === 2) return t("forgot.title2");
-    return t("forgot.title3");
+    if (step === 1) return t("Quên mật khẩu?");
+    if (step === 2) return t("Đặt lại mật khẩu");
+    return t("Đổi mật khẩu thành công");
   }, [step, t]);
 
   const subtitleText = useMemo(() => {
-    if (step === 1) return t("forgot.subtitle1");
-    if (step === 2) return t("forgot.subtitle2");
-    return t("forgot.subtitle3");
+    if (step === 1) return t("Nhập email để nhận mã xác thực");
+    if (step === 2) return t("Nhập mã OTP và mật khẩu mới");
+    return t("Bạn có thể đăng nhập bằng mật khẩu mới");
   }, [step, t]);
 
   return (
@@ -147,8 +150,8 @@ export default function ForgotPassword() {
         <div className="v8-login-brand">
           <div className="v8-brand-mark">C</div>
           <div className="v8-brand-text">
-            <b>{t("login.brandName")}</b>
-            <small>{t("login.brandSub")}</small>
+            <b>{t("CANTEEN VWA")}</b>
+            <small>{t("HỆ THỐNG QUẢN LÝ")}</small>
           </div>
         </div>
         <div className="v8-illustration-wrap">
@@ -169,9 +172,9 @@ export default function ForgotPassword() {
             <div className="v8-form-logo">
               <LogoVWACompact size={64} />
             </div>
-            <nav className="v8-tabs" aria-label="Chuyển trang">
+            <nav className="v8-tabs" aria-label={t("Chuyển trang")}>
               <Link to="/" className="v8-tab">
-                {t("forgot.backToLoginShort")}
+                {t("Đăng nhập")}
               </Link>
             </nav>
           </div>
@@ -182,19 +185,24 @@ export default function ForgotPassword() {
           {error && <div className="v8-error-box">{error}</div>}
 
           {step === 1 && (
-            <form onSubmit={sendOTP} autoComplete="off">
-              <label className="v8-label">{t("forgot.emailLabel")}</label>
+            <form onSubmit={sendOTP} autoComplete="off" name="forgot-email-form">
+              <label className="v8-label" htmlFor="forgot-email">
+                {t("Email")}
+              </label>
               <div className="v8-input-wrap">
                 <Mail size={16} className="v8-input-icon" />
                 <input
+                  id="forgot-email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
                     clearError();
                   }}
-                  placeholder={t("forgot.emailPlaceholder")}
+                  placeholder={t("email@vwa.vn")}
                   disabled={loading}
+                  autoComplete="email"
                   autoFocus
                 />
               </div>
@@ -207,11 +215,11 @@ export default function ForgotPassword() {
                 {loading ? (
                   <>
                     <Loader2 size={16} className="spin" />
-                    {t("forgot.sendingOtp")}
+                    {t("Đang gửi...")}
                   </>
                 ) : (
                   <>
-                    {t("forgot.sendOtpBtn")} <ArrowRight size={16} />
+                    {t("Gửi mã OTP")} <ArrowRight size={16} />
                   </>
                 )}
               </button>
@@ -219,12 +227,14 @@ export default function ForgotPassword() {
           )}
 
           {step === 2 && (
-            <form onSubmit={resetPassword} autoComplete="off">
-              <label className="v8-label">
-                {t("forgot.otpLabelDemo")}
+            <form onSubmit={resetPassword} autoComplete="off" name="forgot-reset-form">
+              <label className="v8-label" htmlFor="forgot-otp">
+                {t("Mã OTP (demo: 123456)")}
               </label>
               <div className="v8-input-wrap">
                 <input
+                  id="forgot-otp"
+                  name="otp"
                   value={otp}
                   onChange={(e) => {
                     const val = e.target.value
@@ -237,6 +247,7 @@ export default function ForgotPassword() {
                   maxLength={6}
                   placeholder="000000"
                   disabled={loading}
+                  autoComplete="one-time-code"
                   autoFocus
                   style={{
                     fontSize: 18,
@@ -259,7 +270,7 @@ export default function ForgotPassword() {
                 }}
               >
                 <span style={{ color: "#64748b" }}>
-                  {t("forgot.notReceived")}
+                  {t("Chưa nhận được mã?")}
                 </span>
                 <button
                   type="button"
@@ -281,24 +292,26 @@ export default function ForgotPassword() {
                 >
                   <RefreshCw size={12} />
                   {countdown > 0
-                    ? `${t("forgot.resendIn")} ${countdown}s`
-                    : t("forgot.resend")}
+                    ? `${t("Gửi lại sau")} ${countdown}s`
+                    : t("Gửi lại")}
                 </button>
               </div>
 
-              <label className="v8-label">
-                {t("forgot.passwordLabel")}
+              <label className="v8-label" htmlFor="forgot-new-password">
+                {t("Mật khẩu mới")}
               </label>
               <div className="v8-input-wrap">
                 <LockKeyhole size={16} className="v8-input-icon" />
                 <input
+                  id="forgot-new-password"
+                  name="newPassword"
                   type={showPwd ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => {
                     setNewPassword(e.target.value);
                     clearError();
                   }}
-                  placeholder={t("forgot.passwordPlaceholder")}
+                  placeholder={t("Tối thiểu 6 ký tự")}
                   disabled={loading}
                   autoComplete="new-password"
                   onFocus={() => setPeeking(true)}
@@ -313,9 +326,7 @@ export default function ForgotPassword() {
                   tabIndex={-1}
                   className="v8-eye-btn"
                   aria-label={
-                    showPwd
-                      ? t("login.hidePassword")
-                      : t("login.showPassword")
+                    showPwd ? t("Ẩn mật khẩu") : t("Hiện mật khẩu")
                   }
                 >
                   {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -331,11 +342,11 @@ export default function ForgotPassword() {
                 {loading ? (
                   <>
                     <Loader2 size={16} className="spin" />
-                    {t("forgot.resetting")}
+                    {t("Đang xử lý...")}
                   </>
                 ) : (
                   <>
-                    {t("forgot.resetBtn")} <ArrowRight size={16} />
+                    {t("Đặt lại mật khẩu")} <ArrowRight size={16} />
                   </>
                 )}
               </button>
@@ -352,21 +363,23 @@ export default function ForgotPassword() {
                   lineHeight: 1.6,
                 }}
               >
-                {t("forgot.successMsg")}
+                {t(
+                  "Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập lại."
+                )}
               </p>
               <Link
                 to="/"
                 className="v8-cta"
                 style={{ textDecoration: "none", display: "inline-flex" }}
               >
-                {t("forgot.loginNowBtn")} <ArrowRight size={16} />
+                {t("Đăng nhập ngay")} <ArrowRight size={16} />
               </Link>
             </div>
           )}
 
           {step !== 3 && (
             <p className="v8-bottom-text" style={{ marginTop: 24 }}>
-              <Link to="/">{t("forgot.backToLogin")}</Link>
+              <Link to="/">{t("← Về trang đăng nhập")}</Link>
             </p>
           )}
         </div>

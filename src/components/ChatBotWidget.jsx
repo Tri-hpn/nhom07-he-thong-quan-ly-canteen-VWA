@@ -1,17 +1,12 @@
 // ============================================================
-// CHATBOTWIDGET.JSX — Chat popup nổi (V4 - FINAL + i18n)
+// CHATBOTWIDGET.JSX — Chat popup nổi (V5 - FINAL)
 // ============================================================
-// 🔧 FIX:
-//   - C3: Customer gọi API /shifts/current-staff (public, không 403)
-//   - L19: Giờ tính ở server, client chỉ đọc is_current
-//   - M11: Listen language-change (qua useI18n)
-//   - D1: Xóa getCurrentShift() dư thừa
-//   - D2: PromptButton dùng callback onClick (không DOM manipulation)
-//   - D3: fmtTime nhận t để dịch nhãn "Hôm qua"
-//   - D5: shiftLoading chỉ set khi mở tab staff
-//   - Extra: type="button" đầy đủ
-//
-// 🌐 i18n: source-text tiếng Việt, tự dịch
+// V5 (2026-10):
+//   - ✅ FIX #3: Reset lastAiCountRef + lastStaffCountRef khi mở lại panel
+//     → scroll lần đầu hoạt động đúng
+//   - ✅ FIX #20: MSSV fallback "—" thay vì hardcode "K21-CNTT04"
+//   - ✅ Q3:C: Giữ nguyên mode hiện tại khi đóng/mở lại
+//   - Giữ nguyên: C3, L19, M11, D1-D5, i18n source-text
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -64,13 +59,6 @@ function makeId(prefix) {
   return `${prefix}-${Date.now()}-${rand}`;
 }
 
-/**
- * 🔧 D3: fmtTime cần `t` để dịch nhãn "Hôm qua".
- * Format:
- *  - Hôm nay:  "04:11"
- *  - Hôm qua:  "17:15 • Hôm qua"
- *  - Cũ hơn:   "14:30 • 08/04"
- */
 function fmtTime(iso, t) {
   if (!iso) return "";
   try {
@@ -138,7 +126,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   const [selected, setSelected] = useState(null);
   const [hasNew, setHasNew] = useState(false);
 
-  // Current staff (public API)
+  // Current staff
   const [currentStaff, setCurrentStaff] = useState(null);
   const [shiftLoading, setShiftLoading] = useState(false);
 
@@ -154,7 +142,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   const lastUserIdRef = useRef(user?.id);
 
   // ============================================================
-  // 🔧 D4: Load menu + settings lần đầu (settings có thể null)
+  // LOAD MENU + SETTINGS
   // ============================================================
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +173,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, []);
 
   // ============================================================
-  // 🔧 C3 + D5: Load current staff — chỉ khi mở panel
+  // LOAD CURRENT STAFF
   // ============================================================
   useEffect(() => {
     if (!open) return;
@@ -211,7 +199,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [open]);
 
   // ============================================================
-  // Reset khi user thay đổi
+  // RESET KHI USER ĐỔI
   // ============================================================
   useEffect(() => {
     if (lastUserIdRef.current !== user?.id) {
@@ -226,7 +214,18 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [user?.id]);
 
   // ============================================================
-  // Welcome message cho tab AI
+  // ✅ FIX #3: RESET SCROLL REFS KHI MỞ LẠI PANEL
+  // (giữ nguyên mode hiện tại — Q3:C)
+  // ============================================================
+  useEffect(() => {
+    if (open) {
+      lastAiCountRef.current = 0;
+      lastStaffCountRef.current = 0;
+    }
+  }, [open]);
+
+  // ============================================================
+  // WELCOME MESSAGE
   // ============================================================
   useEffect(() => {
     if (!open || mode !== "ai") return;
@@ -254,7 +253,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, []);
 
   // ============================================================
-  // Load staff messages
+  // LOAD STAFF
   // ============================================================
   const loadStaff = useCallback(
     async (silent = true) => {
@@ -288,7 +287,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [open, mode, loadStaff]);
 
   // ============================================================
-  // Auto-scroll: AI
+  // AUTO-SCROLL AI
   // ============================================================
   useEffect(() => {
     if (!open || mode !== "ai") return;
@@ -316,7 +315,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [open, mode, aiMessages, aiTyping]);
 
   // ============================================================
-  // Auto-scroll: Staff
+  // AUTO-SCROLL STAFF
   // ============================================================
   useEffect(() => {
     if (!open || mode !== "staff") return;
@@ -344,7 +343,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [open, mode, staffMessages]);
 
   // ============================================================
-  // Đánh dấu "có tin mới" khi widget đóng
+  // ĐÁNH DẤU CÓ TIN MỚI KHI ĐÓNG
   // ============================================================
   useEffect(() => {
     if (open) {
@@ -358,7 +357,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [open, staffMessages]);
 
   // ============================================================
-  // ESC đóng + lock body scroll
+  // ESC + LOCK BODY
   // ============================================================
   useEffect(() => {
     if (!open) return;
@@ -375,7 +374,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [open]);
 
   // ============================================================
-  // Send AI message
+  // SEND AI
   // ============================================================
   const sendAI = useCallback(
     (value) => {
@@ -429,7 +428,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   );
 
   // ============================================================
-  // Send Staff message
+  // SEND STAFF
   // ============================================================
   const sendStaff = useCallback(async () => {
     const val = staffText.trim();
@@ -456,7 +455,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [staffText, staffSending, t]);
 
   // ============================================================
-  // Quick add to cart
+  // QUICK ADD
   // ============================================================
   const quickAdd = useCallback(
     (m) => {
@@ -505,7 +504,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   );
 
   // ============================================================
-  // Toggle panel
+  // TOGGLE MODE
   // ============================================================
   const toggleMode = useCallback(() => {
     setMode((m) => (m === "ai" ? "staff" : "ai"));
@@ -516,7 +515,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   // ============================================================
   return (
     <>
-      {/* FAB */}
       {!open && (
         <button
           type="button"
@@ -530,7 +528,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
         </button>
       )}
 
-      {/* PANEL */}
       {open && (
         <div
           className="chatbot-panel-v2"
@@ -538,7 +535,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
           aria-modal="true"
           aria-label={t("Trợ lý Canteen")}
         >
-          {/* HEADER */}
           <header className="chatbot-header">
             <div className="chatbot-header__row">
               <div className="chatbot-header__info">
@@ -609,7 +605,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
             </div>
           </header>
 
-          {/* BODY */}
           <div className="chatbot-body">
             <aside className="chatbot-side chatbot-side--left">
               <LeftSidebar
@@ -666,7 +661,6 @@ export default function ChatBotWidget({ cart, setCart, user }) {
         </div>
       )}
 
-      {/* MODAL */}
       {selected && (
         <FoodDetailModal
           item={selected}
@@ -694,8 +688,9 @@ function LeftSidebar({ user, t, onPromptClick }) {
           </div>
           <div className="chatbot-profile__info">
             <b>{user?.name || t("Khách")}</b>
+            {/* ✅ FIX #20: MSSV fallback "—" thay vì hardcode */}
             <span>
-              {t("MSSV:")} {user?.studentId || "K21-CNTT04"}
+              {t("MSSV:")} {user?.studentId || "—"}
             </span>
           </div>
           <span className="chatbot-profile__badge">SV</span>
@@ -757,7 +752,6 @@ function LeftSidebar({ user, t, onPromptClick }) {
   );
 }
 
-// 🔧 D2: PromptButton dùng callback — không DOM manipulation
 function PromptButton({ icon, text, onClick }) {
   return (
     <button
@@ -843,7 +837,6 @@ function RightSidebar({ user, t, currentStaff, shiftLoading }) {
         </div>
       </div>
 
-      {/* Staff panel */}
       {shiftLoading ? (
         <div className="chatbot-card">
           <div className="chatbot-card__head">

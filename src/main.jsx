@@ -1,9 +1,12 @@
 // ============================================================
-// MAIN.JSX — Entry point (V3)
+// MAIN.JSX — Entry point (V5 - FINAL)
 // ============================================================
-// - Guard chống double-render nếu i18n reject
-// - Log rõ ràng khi i18n init
-// - StrictMode giữ nguyên (dev only double-invoke effect)
+// V5 (2026-10):
+//   - ✅ FIX CRITICAL: AuthProvider PHẢI bọc NGOÀI BrowserRouter
+//     → Không còn lỗi "AuthProvider chưa được mount"
+//     → Không còn redirect loop khi share link
+//   - ✅ FIX: Dùng createRoot 1 lần (guard bằng data-attribute)
+//   - Giữ V4: i18n init, StrictMode, ErrorBoundary, global handlers
 // ============================================================
 
 import React from "react";
@@ -42,47 +45,57 @@ const rootEl = document.getElementById("root");
 if (!rootEl) {
   throw new Error("Không tìm thấy #root trong index.html");
 }
-const root = ReactDOM.createRoot(rootEl);
 
-// ============================================================
-// GUARD — chỉ render 1 lần dù i18n resolve/reject
-// ============================================================
-let hasRendered = false;
-
-function renderApp() {
-  if (hasRendered) return;
-  hasRendered = true;
-
-  root.render(
-    <React.StrictMode>
-      <BrowserRouter
-        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      >
-        <ThemeProvider>
-          <ErrorBoundary>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
-          </ErrorBoundary>
-        </ThemeProvider>
-      </BrowserRouter>
-    </React.StrictMode>
+// ✅ FIX V5: guard gắn vào DOM — không bị reset khi HMR
+if (rootEl.dataset.reactMounted === "1") {
+  console.warn(
+    "[main] #root đã được mount — skip renderApp() để tránh double-render"
   );
-}
+} else {
+  rootEl.dataset.reactMounted = "1";
 
-// ============================================================
-// INIT I18N — không block render, có guard chống double
-// ============================================================
-(async () => {
-  try {
-    const result = initI18n();
-    if (result && typeof result.then === "function") {
-      await result;
-    }
-    console.log("[i18n] init OK");
-  } catch (err) {
-    console.error("[i18n] init failed, rendering anyway:", err);
-  } finally {
-    renderApp();
+  const root = ReactDOM.createRoot(rootEl);
+
+  function renderApp() {
+    root.render(
+      <React.StrictMode>
+        {/*
+          ✅ FIX CRITICAL: AuthProvider PHẢI bọc NGOÀI BrowserRouter
+          ─────────────────────────────────────────────────────────
+          Lý do: App.jsx gọi useAuth() ngay đầu component. Nếu
+          AuthProvider nằm trong BrowserRouter → khi StrictMode
+          double-render, context chưa kịp mount → useAuth() trả
+          fallback lỗi → redirect loop + lỗi "AuthProvider chưa mount".
+        */}
+        <AuthProvider>
+          <BrowserRouter
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
+            <ThemeProvider>
+              <ErrorBoundary>
+                <App />
+              </ErrorBoundary>
+            </ThemeProvider>
+          </BrowserRouter>
+        </AuthProvider>
+      </React.StrictMode>
+    );
   }
-})();
+
+  // ============================================================
+  // INIT I18N — không block render, có guard chống double
+  // ============================================================
+  (async () => {
+    try {
+      const result = initI18n();
+      if (result && typeof result.then === "function") {
+        await result;
+      }
+      console.log("[i18n] init OK");
+    } catch (err) {
+      console.error("[i18n] init failed, rendering anyway:", err);
+    } finally {
+      renderApp();
+    }
+  })();
+}

@@ -1,29 +1,23 @@
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban Board (V9 - FINAL)
+// EMPLOYEEORDERS.JSX — KDS Kanban + Station Filter (V11 - FINAL)
 // ============================================================
-// V9 (2026-10):
-//   - ✅ Nút "Tải ca trạm" mở dropdown chọn trạm
-//   - ✅ Tab Bếp Nấu / Nước & Bánh / Quầy Trả Món hoạt động thật
-//   - ✅ Toggle "Âm báo đơn" + Web Audio ding khi có đơn mới
-//   - ✅ Filter "Mọi khung giờ nhận" / "Mọi thanh toán" hoạt động
-//   - ✅ Filter trạm theo category items (server chưa trả station)
-//   - ✅ KPI "Hoàn thành trong ca" lọc đúng theo updated_at
-//   - ✅ Sort: đơn CŨ NHẤT lên đầu — nháy đỏ priority
-//   - ✅ Nháy đỏ đơn cũ nhất (đầu dòng)
-//
-// V8 (giữ):
-//   - Sort: đơn CŨ NHẤT lên đầu mỗi dòng
-//   - Nháy đỏ: đơn CŨ NHẤT (đầu dòng, bên trái)
-//   - Đơn MỚI xuất hiện bên PHẢI
-//   - 5 dòng: Mới → Đã XN → Đang Nấu → Sẵn Sàng → Gần Nhất
+// V11 (2026-10):
+//   - ✅ BỎ PrepBlock — mọi tab đều dùng KDSRow (giống tab "Tất cả")
+//   - ✅ Tab "Chờ xử lý" → 2 row riêng: "1. Đơn Mới" + "2. Đã Xác Nhận"
+//   - ✅ Tab "Bếp Nấu"   → 1 row: "3. Đang Nấu"
+//   - ✅ Tab "Quầy Trả Món" → 2 row: "4. Sẵn Sàng Nhận" + "5. Gần Nhất"
+//   - ✅ Tab "Tất cả"    → đủ 5 row
+//   - ✅ Xoá tab "Nước & Bánh"
+//   - ✅ Âm báo đơn: ding lặp mỗi 4s khi còn pending, dừng khi hết
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   Search, Loader2, AlertCircle, RefreshCw, Check, XCircle, ChefHat,
-  CheckCircle2, Wallet, Verified, Timer, TrendingUp, User, Lock,
-  ChevronDown, PackageCheck, Volume2, VolumeX, Store, Coffee,
-  UtensilsCrossed, ListFilter,
+  CheckCircle2, Wallet, Timer, TrendingUp, User, Lock,
+  ChevronDown, PackageCheck, Volume2, VolumeX, Store,
+  UtensilsCrossed, ListFilter, Inbox, Play, Soup, ArrowRight,
+  Clock, Flame,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api";
@@ -35,10 +29,7 @@ import { useI18n } from "../../hooks/useI18n";
 import { useAuth } from "../../contexts/AuthContext";
 import { emitOrderUpdated, onOrderUpdated } from "../../lib/orderEvents";
 import {
-  fmtTime,
-  fmtTimeWithLabel,
-  getDateLabelVariant,
-  getCurrentShiftLabel,
+  fmtTime, fmtTimeWithLabel, getDateLabelVariant, getCurrentShiftLabel,
 } from "../../lib/datetime";
 
 // ============================================================
@@ -48,7 +39,7 @@ import {
 const POLL_MS = 5000;
 const COMPLETED_LIMIT = 8;
 const ROW_LIMIT = 6;
-const SOUND_REPEAT_MS = 10000;
+const SOUND_REPEAT_MS = 4000;
 const SOUND_STORAGE_KEY = "canteen.kds_sound_enabled";
 
 const NEXT_STATUS = {
@@ -58,12 +49,11 @@ const NEXT_STATUS = {
   "Sẵn sàng nhận": "Hoàn thành",
 };
 
-// Trạm — filter theo category items
 const STATION_TABS = [
-  { id: "all",      label: "Tất cả trạm",       icon: ListFilter },
-  { id: "kitchen",  label: "Bếp Nấu (Kitchen)", icon: ChefHat },
-  { id: "beverage", label: "Nước & Bánh",        icon: Coffee },
-  { id: "dispatch", label: "Quầy Trả Món",       icon: Store },
+  { id: "all",      label: "Tất cả trạm",        icon: ListFilter },
+  { id: "pending",  label: "Chờ xử lý",           icon: Inbox },
+  { id: "kitchen",  label: "Bếp Nấu (Kitchen)",  icon: ChefHat },
+  { id: "dispatch", label: "Quầy Trả Món",        icon: Store },
 ];
 
 const STATION_IDS = STATION_TABS.map((s) => s.id);
@@ -71,30 +61,18 @@ function normalizeStation(value) {
   return STATION_IDS.includes(value) ? value : "all";
 }
 
-// Category → trạm
 const CATEGORY_TO_STATION = {
-  "Cơm": "kitchen",
-  "Bún - Phở - Cháo": "kitchen",
-  "Món mặn": "kitchen",
-  "Món chay": "kitchen",
-  "Đồ chay": "kitchen",
-  "Bánh mì - Xôi": "kitchen",
-  "Ăn vặt": "beverage",
-  "Đồ ăn nhanh": "beverage",
-  "Đồ uống": "beverage",
-  "Coffee & Tea": "beverage",
-  "Nước ép - Sinh tố": "beverage",
-  "Tráng miệng": "beverage",
-  "Combo 1 người": "kitchen",
-  "Combo siêu hời": "kitchen",
+  "Cơm": "kitchen", "Bún - Phở - Cháo": "kitchen", "Món mặn": "kitchen",
+  "Món chay": "kitchen", "Đồ chay": "kitchen", "Bánh mì - Xôi": "kitchen",
+  "Ăn vặt": "kitchen", "Đồ ăn nhanh": "kitchen", "Đồ uống": "kitchen",
+  "Coffee & Tea": "kitchen", "Nước ép - Sinh tố": "kitchen",
+  "Tráng miệng": "kitchen", "Combo 1 người": "kitchen", "Combo siêu hời": "kitchen",
 };
 
 function getOrderStation(order) {
-  // Ưu tiên server trả station
   if (order?.station && STATION_IDS.includes(order.station)) {
     return order.station;
   }
-  // Fallback: suy từ category của items
   const items = order?.items || [];
   for (const it of items) {
     const cat = it.category || it.menu_category || "";
@@ -104,24 +82,17 @@ function getOrderStation(order) {
   return "all";
 }
 
-// Payment normalize
 const PAYMENT_ALIASES = {
-  "Tiền mặt": "cash",
-  cash: "cash",
-  CASH: "cash",
-  QR: "qr",
-  VietQR: "qr",
-  "Ví Canteen": "wallet",
-  WALLET: "wallet",
-  "Thẻ": "card",
-  "Thẻ SV": "card",
+  "Tiền mặt": "cash", cash: "cash", CASH: "cash",
+  QR: "qr", VietQR: "qr",
+  "Ví Canteen": "wallet", WALLET: "wallet",
+  "Thẻ": "card", "Thẻ SV": "card",
 };
 
 function normalizePayment(p) {
   return PAYMENT_ALIASES[p] || "cash";
 }
 
-// Timeframe buckets
 const TIMEFRAMES = {
   all: null,
   "1130": [11 * 60 + 30, 12 * 60],
@@ -148,8 +119,7 @@ function calcElapsedSec(iso) {
 }
 
 function getOrderPickupMinutes(order) {
-  // Parse từ note "Nhận hàng: 13:00 - 13:30" hoặc pickupTime
-  const src = `${order?.pickupTime || ""} ${order?.note || ""}`;
+  const src = `${order?.pickupTime || order?.pickup || ""} ${order?.note || ""}`;
   const m = src.match(/(\d{1,2}):(\d{2})/);
   if (!m) return null;
   const h = parseInt(m[1], 10);
@@ -159,7 +129,7 @@ function getOrderPickupMinutes(order) {
 }
 
 // ============================================================
-// WEB AUDIO — tiếng "ding" khi có đơn mới
+// WEB AUDIO
 // ============================================================
 
 function playDing() {
@@ -187,13 +157,9 @@ function playDing() {
     makeTone(1320, now + 0.16, 0.22);
 
     setTimeout(() => {
-      try {
-        ctx.close();
-      } catch (_) {}
+      try { ctx.close(); } catch (_) {}
     }, 700);
-  } catch (e) {
-    // Browser chặn autoplay → im lặng
-  }
+  } catch (e) {}
 }
 
 // ============================================================
@@ -204,20 +170,16 @@ export default function EmployeeOrders() {
   const { t } = useI18n();
   const { user } = useAuth();
 
-  // ---- Data ----
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  // ---- Approved shifts ----
   const [approvedShifts, setApprovedShifts] = useState([]);
 
-  // ---- Trạm (station) — sync với URL ?station= ----
   const [searchParams, setSearchParams] = useSearchParams();
   const stationParam = searchParams.get("station");
 
-  // ---- Filters ----
   const [search, setSearch] = useState("");
   const [stationFilter, setStationFilter] = useState(() =>
     normalizeStation(stationParam)
@@ -226,12 +188,10 @@ export default function EmployeeOrders() {
   const [timeframeFilter, setTimeframeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // ---- UI state ----
   const [advancingId, setAdvancingId] = useState(null);
   const [confirmReject, setConfirmReject] = useState(null);
   const [showStationMenu, setShowStationMenu] = useState(false);
 
-  // ---- Sound toggle ----
   const [soundEnabled, setSoundEnabled] = useState(() => {
     try {
       const v = localStorage.getItem(SOUND_STORAGE_KEY);
@@ -241,7 +201,6 @@ export default function EmployeeOrders() {
     }
   });
 
-  // ---- Kanban expand ----
   const [expandedRows, setExpandedRows] = useState({
     pending: false,
     confirmed: false,
@@ -256,9 +215,6 @@ export default function EmployeeOrders() {
   const soundEnabledRef = useRef(soundEnabled);
   const stationMenuRef = useRef(null);
 
-  // ============================================================
-  // SYNC SOUND REF + PERSIST
-  // ============================================================
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
   }, [soundEnabled]);
@@ -269,16 +225,10 @@ export default function EmployeeOrders() {
     } catch (_) {}
   }, [soundEnabled]);
 
-  // ============================================================
-  // CLOSE STATION MENU ON OUTSIDE CLICK
-  // ============================================================
   useEffect(() => {
     if (!showStationMenu) return;
     const handler = (e) => {
-      if (
-        stationMenuRef.current &&
-        !stationMenuRef.current.contains(e.target)
-      ) {
+      if (stationMenuRef.current && !stationMenuRef.current.contains(e.target)) {
         setShowStationMenu(false);
       }
     };
@@ -286,9 +236,6 @@ export default function EmployeeOrders() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showStationMenu]);
 
-  // ============================================================
-  // APPROVED SHIFTS
-  // ============================================================
   useEffect(() => {
     let cancelled = false;
     api.shifts
@@ -304,9 +251,6 @@ export default function EmployeeOrders() {
     };
   }, []);
 
-  // ============================================================
-  // SYNC ?station=
-  // ============================================================
   useEffect(() => {
     const next = normalizeStation(stationParam);
     setStationFilter((cur) => (cur === next ? cur : next));
@@ -324,9 +268,6 @@ export default function EmployeeOrders() {
     [searchParams, setSearchParams]
   );
 
-  // ============================================================
-  // LOAD
-  // ============================================================
   const load = useCallback(
     async (silent = false) => {
       if (inFlightRef.current) return;
@@ -378,9 +319,6 @@ export default function EmployeeOrders() {
     return () => clearInterval(timer);
   }, [load]);
 
-  // ============================================================
-  // GROUP ORDERS BY STATUS
-  // ============================================================
   const rows = useMemo(() => {
     const byStatus = {
       pending: [],
@@ -421,14 +359,10 @@ export default function EmployeeOrders() {
     return { ...byStatus, completedTotal };
   }, [orders]);
 
-  // ============================================================
-  // FILTER — search + payment + status + timeframe + station
-  // ============================================================
   const applyFilter = useCallback(
     (list) => {
       let result = list;
 
-      // 1. Search
       if (search.trim()) {
         const q = search.toLowerCase().trim();
         result = result.filter((o) => {
@@ -445,40 +379,30 @@ export default function EmployeeOrders() {
         });
       }
 
-      // 2. Payment
       if (paymentFilter !== "all") {
         result = result.filter(
           (o) => normalizePayment(o.payment) === paymentFilter
         );
       }
 
-      // 3. Status
       if (statusFilter !== "all") {
         result = result.filter((o) => o.status === statusFilter);
       }
 
-      // 4. Timeframe — dựa vào pickupTime hoặc note
       if (timeframeFilter !== "all") {
         const range = TIMEFRAMES[timeframeFilter];
         if (range) {
           result = result.filter((o) => {
             const mins = getOrderPickupMinutes(o);
-            if (mins === null) return false;
+            if (mins === null) return true;
             return mins >= range[0] && mins < range[1];
           });
         }
       }
 
-      // 5. Station
-      if (stationFilter !== "all") {
-        result = result.filter(
-          (o) => getOrderStation(o) === stationFilter
-        );
-      }
-
       return result;
     },
-    [search, paymentFilter, statusFilter, timeframeFilter, stationFilter]
+    [search, paymentFilter, statusFilter, timeframeFilter]
   );
 
   const filteredRows = useMemo(
@@ -493,19 +417,14 @@ export default function EmployeeOrders() {
     [rows, applyFilter]
   );
 
-  // ============================================================
-  // KPI — fix "Hoàn thành trong ca" dùng updated_at
-  // ============================================================
   const kpi = useMemo(() => {
     const today = getLocalDateStr(new Date());
 
-    // Đơn được tạo hôm nay
     const todayOrders = orders.filter((o) => {
       const d = getLocalDateStr(new Date(o.created_at || 0));
       return d === today;
     });
 
-    // Đơn hoàn thành hôm nay (dùng updated_at vì đơn có thể tạo hôm qua)
     const completedToday = orders.filter((o) => {
       if (o.status !== "Hoàn thành") return false;
       const refDate = o.updated_at || o.received_at || o.created_at;
@@ -533,9 +452,7 @@ export default function EmployeeOrders() {
     };
   }, [orders, rows]);
 
-  // ============================================================
-  // SOUND — auto ding khi có đơn mới
-  // ============================================================
+  // Âm báo đơn — ding lặp mỗi 4s cho đến khi hết pending
   useEffect(() => {
     const current = rows.pending.length;
     const prev = prevPendingCountRef.current;
@@ -548,10 +465,10 @@ export default function EmployeeOrders() {
     if (current > prev && soundEnabledRef.current) {
       playDing();
     }
+
     prevPendingCountRef.current = current;
   }, [rows.pending.length]);
 
-  // Lặp ding mỗi 10s khi còn pending
   useEffect(() => {
     if (dingIntervalRef.current) {
       clearInterval(dingIntervalRef.current);
@@ -584,9 +501,6 @@ export default function EmployeeOrders() {
     });
   }, [t]);
 
-  // ============================================================
-  // EXPAND HELPERS
-  // ============================================================
   const toggleExpand = useCallback((key) => {
     setExpandedRows((s) => ({ ...s, [key]: !s[key] }));
   }, []);
@@ -602,16 +516,10 @@ export default function EmployeeOrders() {
     [expandedRows]
   );
 
-  // ============================================================
-  // HERO
-  // ============================================================
   const shiftLabel = useMemo(() => getCurrentShiftLabel(new Date()), []);
   const staffName = user?.name || t("Nhân viên");
   const staffCode = user?.employeeCode || user?.code || "";
 
-  // ============================================================
-  // ACTIONS
-  // ============================================================
   const advance = useCallback(
     async (order) => {
       const id = order._id || order.id;
@@ -665,8 +573,13 @@ export default function EmployeeOrders() {
   }, [confirmReject, load, t]);
 
   // ============================================================
-  // RENDER
+  // ✅ V11: Xác định row nào hiển thị theo tab — TẤT CẢ DÙNG KDSRow
   // ============================================================
+  const showRow1 = stationFilter === "all" || stationFilter === "pending";
+  const showRow2 = stationFilter === "all" || stationFilter === "pending";
+  const showRow3 = stationFilter === "all" || stationFilter === "kitchen";
+  const showRow4 = stationFilter === "all" || stationFilter === "dispatch";
+  const showRow5 = stationFilter === "all" || stationFilter === "dispatch";
 
   const currentStationObj =
     STATION_TABS.find((s) => s.id === stationFilter) || STATION_TABS[0];
@@ -676,36 +589,10 @@ export default function EmployeeOrders() {
       <div className="kds-workbench">
         {/* ERROR */}
         {error && (
-          <div
-            style={{
-              background: "var(--st-danger-bg)",
-              border: "1px solid var(--st-danger-border)",
-              borderRadius: "var(--st-radius-md)",
-              padding: "12px 16px",
-              color: "var(--st-danger)",
-              fontSize: 13,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
+          <div className="kds-error">
             <AlertCircle size={18} />
             <span style={{ flex: 1 }}>{error}</span>
-            <button
-              type="button"
-              onClick={() => load(false)}
-              style={{
-                padding: "6px 12px",
-                background: "var(--st-danger)",
-                color: "#fff",
-                border: 0,
-                borderRadius: 6,
-                cursor: "pointer",
-                fontFamily: "var(--st-font-head)",
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
+            <button type="button" onClick={() => load(false)}>
               {t("Thử lại")}
             </button>
           </div>
@@ -736,15 +623,13 @@ export default function EmployeeOrders() {
                   {staffName}
                   {staffCode && (
                     <span className="kds-console__card-sub">
-                      {" "}
-                      (ID: {staffCode})
+                      {" "}(ID: {staffCode})
                     </span>
                   )}
                 </span>
               </div>
             </div>
 
-            {/* 🔔 NÚT ÂM BÁO ĐƠN — toggle thật */}
             <button
               type="button"
               className="kds-console__sound-btn"
@@ -764,24 +649,8 @@ export default function EmployeeOrders() {
                   style={{ color: "var(--st-text-muted)" }}
                 />
               )}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
-                  alignItems: "flex-start",
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "var(--st-font-head)",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.04em",
-                    textTransform: "uppercase",
-                    color: "var(--st-text-muted)",
-                  }}
-                >
+              <div className="kds-console__sound-text">
+                <span className="kds-console__sound-label">
                   {t("Âm báo đơn")}
                 </span>
                 <span
@@ -792,18 +661,19 @@ export default function EmployeeOrders() {
                       : "var(--st-text-muted)",
                   }}
                 >
-                  {soundEnabled ? t("Đang bật") : t("Đã tắt")}
+                  {soundEnabled
+                    ? kpi.pending > 0
+                      ? `${t("Đang báo")} (${kpi.pending})`
+                      : t("Đang bật")
+                    : t("Đã tắt")}
                 </span>
               </div>
               <span
+                className="kds-console__sound-dot"
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
                   background: soundEnabled
                     ? "var(--st-success)"
                     : "var(--st-outline)",
-                  flexShrink: 0,
                   boxShadow: soundEnabled
                     ? "0 0 0 3px rgba(24, 169, 103, 0.2)"
                     : "none",
@@ -813,11 +683,7 @@ export default function EmployeeOrders() {
           </div>
 
           {/* ============ STATION TABS + DROPDOWN ============ */}
-          <div
-            ref={stationMenuRef}
-            style={{ position: "relative", flexShrink: 0 }}
-          >
-            {/* Nút "Tải ca trạm" — mở dropdown */}
+          <div ref={stationMenuRef} className="kds-station-menu-wrap">
             <button
               type="button"
               className="kds-station-btn"
@@ -834,7 +700,6 @@ export default function EmployeeOrders() {
               <ChevronDown size={14} />
             </button>
 
-            {/* Dropdown */}
             {showStationMenu && (
               <div className="kds-station-menu" role="menu">
                 {STATION_TABS.map((s) => {
@@ -860,7 +725,6 @@ export default function EmployeeOrders() {
             )}
           </div>
 
-          {/* Station tab chips (desktop) */}
           <div className="kds-station-tabs">
             {STATION_TABS.map((s) => (
               <button
@@ -907,10 +771,7 @@ export default function EmployeeOrders() {
               <span className="kds-kpi__label">
                 {t("Đang Chuẩn Bị (Prep)")}
               </span>
-              <ChefHat
-                size={20}
-                style={{ color: "var(--st-secondary)" }}
-              />
+              <ChefHat size={20} style={{ color: "var(--st-secondary)" }} />
             </div>
             <div className="kds-kpi__value-row">
               <span className="kds-kpi__value">
@@ -931,18 +792,13 @@ export default function EmployeeOrders() {
               <span className="kds-kpi__label">
                 {t("Chờ Khách Lấy (Ready)")}
               </span>
-              <PackageCheck
-                size={20}
-                style={{ color: "var(--st-primary)" }}
-              />
+              <PackageCheck size={20} style={{ color: "var(--st-primary)" }} />
             </div>
             <div className="kds-kpi__value-row">
               <span className="kds-kpi__value">
                 {String(kpi.ready).padStart(2, "0")}
               </span>
-              <span className="kds-kpi__unit">
-                {t("Tủ giữ nóng OK")}
-              </span>
+              <span className="kds-kpi__unit">{t("Tủ giữ nóng OK")}</span>
             </div>
             <div className="kds-kpi__bar">
               <div
@@ -981,10 +837,7 @@ export default function EmployeeOrders() {
               <span className="kds-kpi__label">
                 {t("Doanh Thu Tạm Tính")}
               </span>
-              <Wallet
-                size={20}
-                style={{ color: "var(--st-primary)" }}
-              />
+              <Wallet size={20} style={{ color: "var(--st-primary)" }} />
             </div>
             <div className="kds-kpi__value-row">
               <span className="kds-kpi__value" style={{ fontSize: 22 }}>
@@ -1058,6 +911,7 @@ export default function EmployeeOrders() {
                 <option value="Đang chuẩn bị">{t("Đang nấu")}</option>
                 <option value="Sẵn sàng nhận">{t("Sẵn sàng nhận")}</option>
                 <option value="Hoàn thành">{t("Gần nhất")}</option>
+                <option value="Đã hủy">{t("Đã hủy")}</option>
               </select>
               <ChevronDown size={16} />
             </div>
@@ -1073,9 +927,7 @@ export default function EmployeeOrders() {
               <RefreshCw
                 size={16}
                 style={{
-                  animation: refreshing
-                    ? "spin 1s linear infinite"
-                    : "none",
+                  animation: refreshing ? "spin 1s linear infinite" : "none",
                 }}
               />
               <span>{t("Đồng bộ KDS")}</span>
@@ -1083,165 +935,171 @@ export default function EmployeeOrders() {
           </div>
         </div>
 
-        {/* ============ KDS BOARD — 5 ROWS ============ */}
+        {/* ============ KDS BOARD ============ */}
         <div className="kds-board kds-board--rows">
-          {/* ROW 1: PENDING */}
-          {(() => {
-            const { visible, hiddenCount } = takeVisible(
-              filteredRows.pending,
-              "pending"
-            );
-            return (
-              <KDSRow
-                title={t("1. Đơn Mới")}
-                subtitle={t("Chờ xác nhận")}
-                variant="pending"
-                count={filteredRows.pending.length}
-                countLabel={t("Đơn")}
-                empty={t("Không có đơn mới")}
-                moreCount={hiddenCount}
-                onMore={() => toggleExpand("pending")}
-              >
-                {visible.map((o, idx) => (
-                  <KDSTicket
-                    key={o._id || o.id}
-                    order={o}
-                    variant="pending"
-                    layout="tall"
-                    isPriority={idx === 0 && !expandedRows.pending}
-                    isProcessing={advancingId === (o._id || o.id)}
-                    elapsed={calcElapsedSec(o.created_at)}
-                    onAdvance={() => advance(o)}
-                    onReject={() => rejectOrder(o)}
-                    t={t}
-                  />
-                ))}
-              </KDSRow>
-            );
-          })()}
+          {/* ROW 1: PENDING — hiện khi tab all hoặc pending */}
+          {showRow1 &&
+            (() => {
+              const { visible, hiddenCount } = takeVisible(
+                filteredRows.pending,
+                "pending"
+              );
+              return (
+                <KDSRow
+                  title={t("1. Đơn Mới")}
+                  subtitle={t("Chờ xác nhận")}
+                  variant="pending"
+                  count={filteredRows.pending.length}
+                  countLabel={t("Đơn")}
+                  empty={t("Không có đơn mới")}
+                  moreCount={hiddenCount}
+                  onMore={() => toggleExpand("pending")}
+                >
+                  {visible.map((o, idx) => (
+                    <KDSTicket
+                      key={o._id || o.id}
+                      order={o}
+                      variant="pending"
+                      layout="tall"
+                      isPriority={idx === 0 && !expandedRows.pending}
+                      isProcessing={advancingId === (o._id || o.id)}
+                      elapsed={calcElapsedSec(o.created_at)}
+                      onAdvance={() => advance(o)}
+                      onReject={() => rejectOrder(o)}
+                      t={t}
+                    />
+                  ))}
+                </KDSRow>
+              );
+            })()}
 
           {/* ROW 2: CONFIRMED */}
-          {(() => {
-            const { visible, hiddenCount } = takeVisible(
-              filteredRows.confirmed,
-              "confirmed"
-            );
-            return (
-              <KDSRow
-                title={t("2. Đã Xác Nhận")}
-                subtitle={t("Chờ Bếp")}
-                variant="confirmed"
-                count={filteredRows.confirmed.length}
-                countLabel={t("Đơn")}
-                empty={t("Không có đơn đã xác nhận")}
-                moreCount={hiddenCount}
-                onMore={() => toggleExpand("confirmed")}
-              >
-                {visible.map((o, idx) => (
-                  <KDSTicket
-                    key={o._id || o.id}
-                    order={o}
-                    variant="confirmed"
-                    layout="tall"
-                    isPriority={idx === 0 && !expandedRows.confirmed}
-                    isProcessing={advancingId === (o._id || o.id)}
-                    elapsed={calcElapsedSec(o.created_at)}
-                    onAdvance={() => advance(o)}
-                    t={t}
-                  />
-                ))}
-              </KDSRow>
-            );
-          })()}
+          {showRow2 &&
+            (() => {
+              const { visible, hiddenCount } = takeVisible(
+                filteredRows.confirmed,
+                "confirmed"
+              );
+              return (
+                <KDSRow
+                  title={t("2. Đã Xác Nhận")}
+                  subtitle={t("Chờ Bếp")}
+                  variant="confirmed"
+                  count={filteredRows.confirmed.length}
+                  countLabel={t("Đơn")}
+                  empty={t("Không có đơn đã xác nhận")}
+                  moreCount={hiddenCount}
+                  onMore={() => toggleExpand("confirmed")}
+                >
+                  {visible.map((o, idx) => (
+                    <KDSTicket
+                      key={o._id || o.id}
+                      order={o}
+                      variant="confirmed"
+                      layout="tall"
+                      isPriority={idx === 0 && !expandedRows.confirmed}
+                      isProcessing={advancingId === (o._id || o.id)}
+                      elapsed={calcElapsedSec(o.created_at)}
+                      onAdvance={() => advance(o)}
+                      t={t}
+                    />
+                  ))}
+                </KDSRow>
+              );
+            })()}
 
           {/* ROW 3: PREP */}
-          {(() => {
-            const { visible, hiddenCount } = takeVisible(
-              filteredRows.prep,
-              "prep"
-            );
-            return (
-              <KDSRow
-                title={t("3. Đang Nấu")}
-                subtitle={t("Đang chế biến")}
-                variant="prep"
-                count={filteredRows.prep.length}
-                countLabel={t("Đơn")}
-                empty={t("Không có đơn đang nấu")}
-                moreCount={hiddenCount}
-                onMore={() => toggleExpand("prep")}
-              >
-                {visible.map((o, idx) => (
-                  <KDSTicket
-                    key={o._id || o.id}
-                    order={o}
-                    variant="prep"
-                    layout="tall"
-                    isPriority={idx === 0 && !expandedRows.prep}
-                    isProcessing={advancingId === (o._id || o.id)}
-                    elapsed={calcElapsedSec(o.created_at)}
-                    onAdvance={() => advance(o)}
-                    t={t}
-                  />
-                ))}
-              </KDSRow>
-            );
-          })()}
+          {showRow3 &&
+            (() => {
+              const { visible, hiddenCount } = takeVisible(
+                filteredRows.prep,
+                "prep"
+              );
+              return (
+                <KDSRow
+                  title={t("3. Đang Nấu")}
+                  subtitle={t("Đang chế biến")}
+                  variant="prep"
+                  count={filteredRows.prep.length}
+                  countLabel={t("Đơn")}
+                  empty={t("Không có đơn đang nấu")}
+                  moreCount={hiddenCount}
+                  onMore={() => toggleExpand("prep")}
+                >
+                  {visible.map((o, idx) => (
+                    <KDSTicket
+                      key={o._id || o.id}
+                      order={o}
+                      variant="prep"
+                      layout="tall"
+                      isPriority={idx === 0 && !expandedRows.prep}
+                      isProcessing={advancingId === (o._id || o.id)}
+                      elapsed={calcElapsedSec(o.created_at)}
+                      onAdvance={() => advance(o)}
+                      t={t}
+                    />
+                  ))}
+                </KDSRow>
+              );
+            })()}
 
           {/* ROW 4: READY */}
-          {(() => {
-            const { visible, hiddenCount } = takeVisible(
-              filteredRows.ready,
-              "ready"
-            );
-            return (
-              <KDSRow
-                title={t("4. Sẵn Sàng Nhận")}
-                subtitle={t("Tủ giữ nóng")}
-                variant="ready"
-                count={filteredRows.ready.length}
-                countLabel={t("Đơn")}
-                empty={t("Không có đơn sẵn sàng")}
-                moreCount={hiddenCount}
-                onMore={() => toggleExpand("ready")}
-              >
-                {visible.map((o, idx) => (
-                  <KDSTicket
-                    key={o._id || o.id}
-                    order={o}
-                    variant="ready"
-                    layout="tall"
-                    isPriority={idx === 0 && !expandedRows.ready}
-                    isProcessing={advancingId === (o._id || o.id)}
-                    onAdvance={() => advance(o)}
-                    t={t}
-                  />
-                ))}
-              </KDSRow>
-            );
-          })()}
+          {showRow4 &&
+            (() => {
+              const { visible, hiddenCount } = takeVisible(
+                filteredRows.ready,
+                "ready"
+              );
+              return (
+                <KDSRow
+                  title={t("4. Sẵn Sàng Nhận")}
+                  subtitle={t("Tủ giữ nóng")}
+                  variant="ready"
+                  count={filteredRows.ready.length}
+                  countLabel={t("Đơn")}
+                  empty={t("Không có đơn sẵn sàng")}
+                  moreCount={hiddenCount}
+                  onMore={() => toggleExpand("ready")}
+                >
+                  {visible.map((o, idx) => (
+                    <KDSTicket
+                      key={o._id || o.id}
+                      order={o}
+                      variant="ready"
+                      layout="tall"
+                      isPriority={idx === 0 && !expandedRows.ready}
+                      isProcessing={advancingId === (o._id || o.id)}
+                      onAdvance={() => advance(o)}
+                      t={t}
+                    />
+                  ))}
+                </KDSRow>
+              );
+            })()}
 
           {/* ROW 5: COMPLETED */}
-          <KDSRow
-            title={t("5. Gần Nhất")}
-            subtitle={t("Hoàn thành")}
-            variant="completed"
-            count={filteredRows.completedTotal}
-            countLabel={t("Hoàn thành")}
-            empty={t("Chưa có đơn hoàn thành")}
-            isStrip
-          >
-            {filteredRows.completed.map((o) => (
-              <CompletedStripItem key={o._id || o.id} order={o} t={t} />
-            ))}
+          {showRow5 && (
+            <KDSRow
+              title={t("5. Gần Nhất")}
+              subtitle={t("Hoàn thành")}
+              variant="completed"
+              count={filteredRows.completedTotal}
+              countLabel={t("Hoàn thành")}
+              empty={t("Chưa có đơn hoàn thành")}
+              isStrip
+            >
+              {filteredRows.completed.map((o) => (
+                <CompletedStripItem key={o._id || o.id} order={o} t={t} />
+              ))}
 
-            {filteredRows.completedTotal > COMPLETED_LIMIT && (
-              <button type="button" className="kds-completed__more">
-                {t("Xem tất cả")} {filteredRows.completedTotal}{" "}
-                {t("đơn →")}
-              </button>
-            )}
-          </KDSRow>
+              {filteredRows.completedTotal > COMPLETED_LIMIT && (
+                <button type="button" className="kds-completed__more">
+                  {t("Xem tất cả")} {filteredRows.completedTotal}{" "}
+                  {t("đơn →")}
+                </button>
+              )}
+            </KDSRow>
+          )}
         </div>
       </div>
 
@@ -1270,110 +1128,6 @@ export default function EmployeeOrders() {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
-        }
-
-        /* ---------- Nút "Tải ca trạm" ---------- */
-        .kds-station-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          height: 44px;
-          padding: 0 16px;
-          border-radius: var(--st-radius-md);
-          background: var(--st-primary-container);
-          color: var(--st-on-primary);
-          border: 0;
-          font-family: var(--st-font-head);
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.15s;
-          box-shadow: var(--st-shadow-1);
-          white-space: nowrap;
-        }
-        .kds-station-btn:hover {
-          background: var(--st-primary);
-        }
-
-        /* ---------- Dropdown trạm ---------- */
-        .kds-station-menu {
-          position: absolute;
-          top: calc(100% + 6px);
-          right: 0;
-          z-index: 100;
-          min-width: 220px;
-          padding: 6px;
-          background: var(--st-surface);
-          border: 1px solid var(--st-outline-light);
-          border-radius: var(--st-radius-md);
-          box-shadow: var(--st-shadow-3);
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          animation: kdsStationFade 0.15s ease-out;
-        }
-
-        @keyframes kdsStationFade {
-          from { opacity: 0; transform: translateY(-4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .kds-station-menu__item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          border-radius: var(--st-radius-sm);
-          background: transparent;
-          border: 0;
-          color: var(--st-text);
-          font-family: var(--st-font-head);
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          text-align: left;
-          transition: background 0.15s;
-          white-space: nowrap;
-        }
-        .kds-station-menu__item:hover {
-          background: var(--st-surface-low);
-        }
-        .kds-station-menu__item.active {
-          background: var(--st-surface-container);
-          color: var(--st-primary);
-          font-weight: 700;
-        }
-        .kds-station-menu__item.active svg:last-child {
-          margin-left: auto;
-          color: var(--st-primary);
-        }
-
-        /* ---------- Sound button ---------- */
-        .kds-console__sound-btn {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 8px 14px;
-          border-radius: var(--st-radius-md);
-          background: var(--st-surface-low);
-          border: 1px solid var(--st-outline-light);
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .kds-console__sound-btn:hover {
-          background: var(--st-surface-container);
-          border-color: var(--st-primary-container);
-        }
-
-        @media (max-width: 768px) {
-          .kds-station-tabs {
-            display: none;
-          }
-        }
-        @media (min-width: 769px) {
-          .kds-station-btn {
-            display: none;
-          }
         }
       `}</style>
     </>

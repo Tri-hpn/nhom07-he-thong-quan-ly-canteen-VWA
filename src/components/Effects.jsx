@@ -1,10 +1,11 @@
 // ============================================================
-// EFFECTS.JSX — Hiệu ứng toàn cục + Toast system (V2)
+// EFFECTS.JSX — Hiệu ứng toàn cục + Toast system (V4 - FINAL)
 // ============================================================
-// ✅ TOAST DUY NHẤT 1 KIỂU: CARD (giống ConfirmDialog, không nút)
-//    - Mọi toast(msg, type) đều render dạng card trắng
-//    - Icon tròn màu theo type, tiêu đề + mô tả tuỳ chọn
-//    - Auto-dismiss sau 3s, có thể truyền options.duration
+// V4 (2026-10):
+//   - ✅ FIX double-toast do StrictMode/HMR: dedup trong 100ms
+//     Nếu cùng (message + type + title) xuất hiện trong 100ms → skip
+//   - Giữ nguyên: V3 (bỏ MutationObserver → setTimeout),
+//     CursorGlow, BgParticles, toast card UI
 // ============================================================
 
 import { useEffect } from "react";
@@ -62,6 +63,7 @@ const TOAST_CONTAINER_ID = "toast-container";
 const TOAST_MAX = 5;
 const DEFAULT_DURATION = 3000;
 const ANIMATION_OUT_MS = 200;
+const DEDUP_WINDOW_MS = 100; // ✅ V4: chống double-toast trong 100ms
 
 const ICONS = {
   success:
@@ -80,6 +82,9 @@ const CARD_ACCENT = {
   warning: { color: "#f59e0b", soft: "rgba(245, 158, 11, 0.14)" },
   info:    { color: "#2634d5", soft: "rgba(38, 52, 213, 0.10)" },
 };
+
+// ✅ V4: cache dedup — key → timestamp lần cuối
+const lastToastAt = new Map();
 
 // ============================================================
 // HELPERS
@@ -111,11 +116,6 @@ function dismissToast(el) {
 // ============================================================
 // TOAST — CHỈ 1 KIỂU: CARD
 // ============================================================
-// Cách dùng:
-//   toast("Đã lưu!", "success")
-//   toast("Đã lưu!", "success", { title: "Thành công", description: "..." })
-//   toast("Sai mật khẩu", "error", { duration: 4000 })
-// ============================================================
 
 export function toast(message, type = "info", options = {}) {
   if (typeof document === "undefined") return;
@@ -125,12 +125,30 @@ export function toast(message, type = "info", options = {}) {
     ? type
     : "info";
 
+  // ✅ V4 FIX: dedup — cùng (message + type + title) trong 100ms → bỏ qua
+  // Lý do: React.StrictMode double-invoke effect + HMR re-render
+  //        → toast() bị gọi 2 lần cho cùng 1 sự kiện
+  const dedupKey = `${safeType}|${options.title || ""}|${message}`;
+  const now = Date.now();
+  const lastAt = lastToastAt.get(dedupKey) || 0;
+
+  if (now - lastAt < DEDUP_WINDOW_MS) {
+    return; // skip — đã hiện toast này trong 100ms vừa qua
+  }
+  lastToastAt.set(dedupKey, now);
+
+  // Cleanup cache định kỳ (tránh leak memory)
+  if (lastToastAt.size > 50) {
+    for (const [k, ts] of lastToastAt) {
+      if (now - ts > 5000) lastToastAt.delete(k);
+    }
+  }
+
   const accent = CARD_ACCENT[safeType];
   const duration = Math.max(1000, options.duration || DEFAULT_DURATION);
 
   const container = getContainer();
 
-  // Xoá toast cùng id nếu có
   if (options.id) {
     const existing = container.querySelector(
       `[data-toast-id="${options.id}"]`
@@ -138,7 +156,6 @@ export function toast(message, type = "info", options = {}) {
     if (existing) existing.remove();
   }
 
-  // Giới hạn số lượng
   const current = container.children;
   if (current.length >= TOAST_MAX) {
     dismissToast(current[0]);
@@ -150,14 +167,12 @@ export function toast(message, type = "info", options = {}) {
   if (options.id) el.dataset.toastId = options.id;
   el.setAttribute("role", "alert");
 
-  // Icon tròn
   const iconWrap = document.createElement("div");
   iconWrap.className = "toast-card__icon";
   iconWrap.style.background = accent.soft;
   iconWrap.style.color = accent.color;
   iconWrap.innerHTML = ICONS[safeType];
 
-  // Body
   const body = document.createElement("div");
   body.className = "toast-card__body";
 
@@ -177,15 +192,15 @@ export function toast(message, type = "info", options = {}) {
   el.appendChild(body);
   container.appendChild(el);
 
-  // Auto dismiss
-  const timer = setTimeout(() => dismissToast(el), duration);
+  // ✅ V3: Chỉ dùng setTimeout — KHÔNG còn MutationObserver
+  const autoDismiss = setTimeout(() => {
+    dismissToast(el);
+  }, duration);
 
-  // Cleanup nếu element bị xoá khỏi DOM bằng cách khác
-  const observer = new MutationObserver(() => {
-    if (!document.body.contains(el)) {
-      clearTimeout(timer);
-      observer.disconnect();
+  // Cleanup timer nếu element bị remove thủ công trước khi hết duration
+  Promise.resolve().then(() => {
+    if (!el.isConnected) {
+      clearTimeout(autoDismiss);
     }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
 }

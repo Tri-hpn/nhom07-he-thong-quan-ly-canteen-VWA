@@ -1,32 +1,37 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V5)
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V6.2 - FINAL)
 // ============================================================
-// Layout 3 cột: Conversation list + Chat stream + Context inspector
+// V6.2 (2026-10):
+//   - ✅ FIX chấm đỏ "Chưa đọc" — chỉ hiện khi kpi.unread > 0
+//   - ✅ FIX race condition: reload convs SAU KHI loadMessages xong
+//     (đảm bảo backend đã set read=true trước khi reload)
+//   - ✅ Thêm số đếm "Chưa đọc (n)" giống các tab khác
 //
-// ✅ V3:
-//   - Badge ngày ở giữa chat khi đổi ngày (Hôm nay/Hôm qua/X ngày/dd/mm)
-//   - Auto-scroll: immediate lần đầu mở, smooth khi có tin mới
-//   - Không auto-scroll khi user kéo lên đọc tin cũ
-// 🔧 FIX #79: truyền vars vào t() thay vì .replace("{n}", ...) thủ công
-// 🔧 UI: xoá H1 + P trong chat-hero (giữ eyebrow + nút)
-// 🔧 V4: Di chuyển block "Ghi chú nội bộ" xuống dưới, trải dài cột 1+2
-// 🔧 V5: Fetch dữ liệu thật cho cột 3 Context Inspector
+// V6.1 (giữ):
+//   - Unread/Read rõ ràng: class --unread / --read
+//   - Backend filter 24h
+//   - KPI "Đang trực tuyến" fetch thật
+//   - "Đơn hàng đang xử lý" fetch đơn thật
+//   - Ẩn "Tự động báo món xong" + "Cấu hình Macros"
+//   - Loa Gọi Số: beep + toast
+//   - Nút Gọi điện: popup SĐT
+//   - Ghim: localStorage
+//   - In tem: popup print có ô ghi chú
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   MessageCircle, RefreshCw, Loader2, AlertCircle, Search, X, Phone,
   Vibrate, Printer, Pin, ImagePlus, Smile, MessageSquareMore, Ticket,
-  Send, Zap, Headset, User as UserIcon, Clock, Smartphone, Utensils,
+  Send, Bolt, Headset, User as UserIcon, Clock, Smartphone, Utensils,
   CheckCircle2, Heart, Edit3, Megaphone, Bell, ArrowLeftRight, Gift,
-  Microwave, Receipt, BadgeCheck, Sparkles, Package, Check, Bolt,
+  Microwave, Sparkles, Check, PinOff,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import {
   fmtTime,
-  fmtDateTime,
   fmtDateLabel,
   getDateLabelVariant,
 } from "../../lib/datetime";
@@ -38,6 +43,8 @@ import {
 const POLL_INTERVAL_MS = 3000;
 const SCROLL_THRESHOLD_PX = 120;
 const MAX_MESSAGE_LENGTH = 2000;
+const PINNED_STORAGE_KEY = "canteen.chat.pinned";
+const PRINT_NOTE_STORAGE_KEY = "canteen.chat.print_notes";
 
 const QUICK_MACROS = [
   "🍜 Bếp đã nhận ghi chú món",
@@ -50,6 +57,7 @@ const QUICK_MACROS = [
 
 const FILTERS = [
   { id: "all", label: "Tất cả", icon: null },
+  { id: "pinned", label: "Đã ghim", icon: null },
   { id: "unread", label: "Chưa đọc", dot: true },
   { id: "urgent", label: "Khẩn" },
   { id: "processing", label: "Xử lý" },
@@ -94,7 +102,6 @@ function fmtMoney(n) {
   return num.toLocaleString("vi-VN") + "đ";
 }
 
-// Kiểm tra 2 tin nhắn có cùng ngày không
 function sameDay(iso1, iso2) {
   if (!iso1 || !iso2) return false;
   try {
@@ -108,6 +115,74 @@ function sameDay(iso1, iso2) {
   } catch {
     return false;
   }
+}
+
+function readPinned() {
+  try {
+    const raw = localStorage.getItem(PINNED_STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.map(Number) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePinned(arr) {
+  try {
+    localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(arr));
+  } catch {}
+}
+
+function readPrintNotes() {
+  try {
+    const raw = localStorage.getItem(PRINT_NOTE_STORAGE_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === "object" ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePrintNote(orderCode, note) {
+  try {
+    const all = readPrintNotes();
+    if (note && note.trim()) all[orderCode] = note.trim();
+    else delete all[orderCode];
+    localStorage.setItem(PRINT_NOTE_STORAGE_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+function playCallBeep() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    const makeTone = (freq, startAt, duration) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.3, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startAt);
+      osc.stop(startAt + duration + 0.05);
+    };
+
+    makeTone(660, now, 0.12);
+    makeTone(880, now + 0.18, 0.12);
+    makeTone(1320, now + 0.36, 0.25);
+
+    setTimeout(() => {
+      try { ctx.close(); } catch (_) {}
+    }, 900);
+  } catch (e) {}
 }
 
 // ============================================================
@@ -129,46 +204,556 @@ function DateDivider({ iso }) {
 }
 
 // ============================================================
+// MODAL: Gọi điện
+// ============================================================
+
+function CallModal({ open, customer, onClose }) {
+  const { t } = useI18n();
+  if (!open || !customer) return null;
+
+  const phone = customer.phone || "";
+  const hasPhone = !!phone;
+
+  return (
+    <div
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.55)",
+        backdropFilter: "blur(4px)",
+        zIndex: 2147483600,
+        display: "grid",
+        placeItems: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--st-surface, #fff)",
+          borderRadius: 16,
+          padding: 28,
+          width: "100%",
+          maxWidth: 380,
+          textAlign: "center",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+        }}
+      >
+        <div
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: "50%",
+            margin: "0 auto 16px",
+            background: "linear-gradient(135deg, #18a967, #16a34a)",
+            display: "grid",
+            placeItems: "center",
+            color: "#fff",
+            boxShadow: "0 8px 24px rgba(24, 169, 103, 0.35)",
+          }}
+        >
+          <Phone size={32} />
+        </div>
+
+        <h3
+          style={{
+            margin: "0 0 6px",
+            fontFamily: "var(--st-font-head)",
+            fontSize: 18,
+            fontWeight: 700,
+            color: "var(--st-text)",
+          }}
+        >
+          {t("Gọi điện cho khách")}
+        </h3>
+
+        <p
+          style={{
+            margin: "0 0 6px",
+            fontFamily: "var(--st-font-body)",
+            fontSize: 13,
+            color: "var(--st-text-muted)",
+          }}
+        >
+          {customer.user_name || t("Khách")}
+        </p>
+
+        {hasPhone ? (
+          <div
+            style={{
+              padding: "14px 20px",
+              margin: "12px 0 20px",
+              borderRadius: 12,
+              background: "var(--st-surface-low, #f5f7fb)",
+              fontFamily: "var(--st-font-head)",
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: 0.5,
+              color: "var(--st-primary)",
+            }}
+          >
+            {phone}
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: "14px 20px",
+              margin: "12px 0 20px",
+              borderRadius: 12,
+              background: "var(--st-danger-bg, #fef2f2)",
+              fontFamily: "var(--st-font-body)",
+              fontSize: 13,
+              color: "var(--st-danger, #dc2626)",
+            }}
+          >
+            {t("Khách chưa cập nhật số điện thoại")}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid var(--st-outline-light, #e5e9ef)",
+              background: "var(--st-surface, #fff)",
+              color: "var(--st-text)",
+              fontFamily: "var(--st-font-head)",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {t("Huỷ")}
+          </button>
+          <a
+            href={hasPhone ? `tel:${phone.replace(/\s/g, "")}` : undefined}
+            onClick={(e) => {
+              if (!hasPhone) {
+                e.preventDefault();
+                toast(t("Khách chưa có số điện thoại"), "warning");
+                return;
+              }
+              setTimeout(onClose, 200);
+            }}
+            style={{
+              flex: 1,
+              padding: 12,
+              borderRadius: 10,
+              border: 0,
+              background: hasPhone
+                ? "linear-gradient(135deg, #18a967, #16a34a)"
+                : "#94a3b8",
+              color: "#fff",
+              fontFamily: "var(--st-font-head)",
+              fontSize: 14,
+              fontWeight: 700,
+              textDecoration: "none",
+              textAlign: "center",
+              cursor: hasPhone ? "pointer" : "not-allowed",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <Phone size={16} />
+            {t("Gọi")}
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MODAL: In tem dán ly
+// ============================================================
+
+function PrintLabelModal({ open, customer, order, onClose }) {
+  const { t } = useI18n();
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (open && order?.code) {
+      const all = readPrintNotes();
+      setNote(all[order.code] || "");
+    } else {
+      setNote("");
+    }
+  }, [open, order?.code]);
+
+  if (!open || !customer) return null;
+
+  const token = customer.token || genToken(customer.user_id);
+  const items = order?.items || [];
+  const orderCode = order?.code || "—";
+  const customerName = customer.user_name || t("Khách");
+
+  const saveNote = () => {
+    if (orderCode && orderCode !== "—") {
+      writePrintNote(orderCode, note);
+      toast(t("Đã lưu ghi chú cho tem"), "success");
+    }
+  };
+
+  const doPrint = () => {
+    if (orderCode && orderCode !== "—") {
+      writePrintNote(orderCode, note);
+    }
+
+    const w = window.open("", "_blank", "width=420,height=680");
+    if (!w) {
+      toast(t("Trình duyệt chặn popup. Vui lòng bật popup và thử lại."), "error");
+      return;
+    }
+
+    const esc = (s) =>
+      String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+    const itemRows = items
+      .map(
+        (it) => `
+          <tr>
+            <td class="qty">${esc(it.qty)}×</td>
+            <td class="name">${esc(it.name)}</td>
+            <td class="price">${esc(fmtMoney((Number(it.price) || 0) * (Number(it.qty) || 0)))}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const noteBlock = note.trim()
+      ? `<div class="note"><b>Ghi chú cho khách:</b><br>${esc(note.trim()).replace(/\n/g, "<br>")}</div>`
+      : "";
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Tem dán ly - ${esc(orderCode)}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            font-family: "Courier New", monospace;
+            padding: 16px;
+            margin: 0;
+            color: #000;
+          }
+          .sheet {
+            max-width: 320px;
+            margin: 0 auto;
+            border: 2px dashed #000;
+            padding: 16px;
+          }
+          h1 { margin: 0 0 4px; font-size: 18px; text-align: center; letter-spacing: 0.5px; }
+          .brand { text-align: center; font-size: 11px; margin-bottom: 12px; color: #555; }
+          .token {
+            text-align: center;
+            font-size: 36px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            padding: 8px 0;
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
+            margin: 8px 0 12px;
+          }
+          .info { font-size: 12px; line-height: 1.6; margin-bottom: 10px; }
+          .info .row { display: flex; justify-content: space-between; }
+          .info .row b { font-weight: 700; }
+          .items { border-top: 1px solid #000; padding-top: 8px; margin-top: 8px; }
+          .items table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          .items td { padding: 3px 0; vertical-align: top; }
+          .items .qty { width: 32px; font-weight: 700; }
+          .items .price { text-align: right; white-space: nowrap; padding-left: 8px; color: #333; }
+          .note {
+            margin-top: 10px;
+            padding: 8px;
+            border: 1px solid #999;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.5;
+            background: #f9f9f9;
+          }
+          .footer { margin-top: 12px; text-align: center; font-size: 10px; color: #777; }
+          @media print {
+            body { padding: 0; }
+            .sheet { border: 2px solid #000; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="sheet">
+          <h1>CANTEEN VWA</h1>
+          <div class="brand">Học viện Phụ Nữ Việt Nam</div>
+
+          <div class="token">#${esc(token)}</div>
+
+          <div class="info">
+            <div class="row"><span>Mã đơn:</span><b>${esc(orderCode)}</b></div>
+            <div class="row"><span>Khách:</span><b>${esc(customerName)}</b></div>
+          </div>
+
+          ${
+            items.length > 0
+              ? `<div class="items">
+                   <table>${itemRows}</table>
+                 </div>`
+              : `<div class="items"><i>Chưa có đơn đang xử lý</i></div>`
+          }
+
+          ${noteBlock}
+
+          <div class="footer">In lúc ${new Date().toLocaleString("vi-VN")}</div>
+        </div>
+
+        <script>
+          window.onload = function () {
+            setTimeout(function () { window.print(); }, 400);
+          };
+        <\/script>
+      </body>
+      </html>
+    `;
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.55)",
+        backdropFilter: "blur(4px)",
+        zIndex: 2147483600,
+        display: "grid",
+        placeItems: "center",
+        padding: 20,
+        overflowY: "auto",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--st-surface, #fff)",
+          borderRadius: 16,
+          padding: 24,
+          width: "100%",
+          maxWidth: 480,
+          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 16,
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontFamily: "var(--st-font-head)",
+              fontSize: 17,
+              fontWeight: 700,
+              color: "var(--st-text)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <Printer size={18} />
+            {t("In tem dán ly")}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t("Đóng")}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              border: 0,
+              background: "var(--st-surface-container, #eaedff)",
+              color: "var(--st-text-muted)",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div
+          style={{
+            padding: 14,
+            borderRadius: 12,
+            background: "var(--st-surface-low, #f5f7fb)",
+            marginBottom: 16,
+            fontFamily: "var(--st-font-body)",
+            fontSize: 13,
+            lineHeight: 1.7,
+            color: "var(--st-text)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "var(--st-text-muted)" }}>{t("Mã đơn:")}</span>
+            <b style={{ color: "var(--st-primary)" }}>{orderCode}</b>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "var(--st-text-muted)" }}>{t("Khách:")}</span>
+            <b>{customerName}</b>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "var(--st-text-muted)" }}>{t("Số token:")}</span>
+            <b style={{ color: "var(--st-primary)", fontSize: 16 }}>
+              #{token}
+            </b>
+          </div>
+        </div>
+
+        <label
+          style={{
+            display: "block",
+            marginBottom: 6,
+            fontFamily: "var(--st-font-head)",
+            fontSize: 12.5,
+            fontWeight: 700,
+            color: "var(--st-text)",
+          }}
+        >
+          {t("Ghi chú cho khách (sẽ in trên tem):")}
+        </label>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={3}
+          placeholder={t("VD: Ít đá, ít đường, không hành...")}
+          maxLength={300}
+          style={{
+            width: "100%",
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid var(--st-outline-light, #e5e9ef)",
+            background: "var(--st-surface, #fff)",
+            fontFamily: "var(--st-font-body)",
+            fontSize: 13,
+            color: "var(--st-text)",
+            outline: "none",
+            resize: "vertical",
+            boxSizing: "border-box",
+          }}
+        />
+
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          <button
+            type="button"
+            onClick={saveNote}
+            style={{
+              flex: 1,
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid var(--st-outline-light, #e5e9ef)",
+              background: "var(--st-surface, #fff)",
+              color: "var(--st-text)",
+              fontFamily: "var(--st-font-head)",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            <Check size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
+            {t("Lưu ghi chú")}
+          </button>
+          <button
+            type="button"
+            onClick={doPrint}
+            style={{
+              flex: 1,
+              padding: 12,
+              borderRadius: 10,
+              border: 0,
+              background: "linear-gradient(135deg, #004ac6, #2563eb)",
+              color: "#fff",
+              fontFamily: "var(--st-font-head)",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <Printer size={14} />
+            {t("In tem")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // MAIN COMPONENT
 // ============================================================
 
 export default function EmployeeChat() {
   const { t } = useI18n();
 
-  // ---- Conversations ----
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [convsError, setConvsError] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
 
-  // ---- Selected + messages ----
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
-  // ---- Context Inspector ----
   const [contextData, setContextData] = useState(null);
   const [loadingContext, setLoadingContext] = useState(false);
 
-  // ---- Input ----
+  const [customerOrder, setCustomerOrder] = useState(null);
+
+  const [currentStaff, setCurrentStaff] = useState([]);
+
+  const [pinnedIds, setPinnedIds] = useState(() => readPinned());
+
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
-  // ---- Internal note ----
-  const [internalNote, setInternalNote] = useState(
-    "Sinh viên lịch sự, đã cập nhật Barista đổi trà sen ít ngọt 30% đường theo yêu cầu thành công."
-  );
+  const [internalNote, setInternalNote] = useState("");
 
-  // ---- Refs ----
   const bottomRef = useRef(null);
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);
   const msgsReqIdRef = useRef(0);
 
-  // ✅ Refs cho smart scroll
   const lastMsgCountRef = useRef(0);
-  const lastConvIdRef = useRef(null); // Conversation đã scroll lần đầu
+  const lastConvIdRef = useRef(null);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -220,7 +805,6 @@ export default function EmployeeChat() {
     loadConvs(false);
   }, [loadConvs]);
 
-  // Polling
   useEffect(() => {
     const timer = setInterval(() => {
       loadConvs(true);
@@ -232,6 +816,33 @@ export default function EmployeeChat() {
   }, [loadConvs, loadMessages]);
 
   // ============================================================
+  // LOAD CURRENT STAFF
+  // ============================================================
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStaff = () => {
+      api.shifts
+        .currentStaff()
+        .then((data) => {
+          if (cancelled) return;
+          const list = Array.isArray(data) ? data : (data ? [data] : []);
+          setCurrentStaff(list);
+        })
+        .catch(() => {
+          if (!cancelled) setCurrentStaff([]);
+        });
+    };
+
+    loadStaff();
+    const timer = setInterval(loadStaff, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  // ============================================================
   // OPEN CONVERSATION
   // ============================================================
 
@@ -240,17 +851,29 @@ export default function EmployeeChat() {
       setSelected(c);
       setMessages([]);
       setInternalNote(c.note || "");
-      // ✅ Reset scroll state để scroll immediate khi load xong
+      setCustomerOrder(null);
       lastMsgCountRef.current = 0;
       lastConvIdRef.current = null;
+
+      // Optimistic: set unread = 0 NGAY khi click
+      setConversations((list) =>
+        list.map((x) =>
+          x.user_id === c.user_id ? { ...x, unread: 0 } : x
+        )
+      );
+
+      // ✅ V6.2: await loadMessages — đảm bảo backend đã set read=true
       await loadMessages(c.user_id, false);
 
-      // 🔧 FIX: Fetch context data
+      // ✅ V6.2: reload convs SAU KHI loadMessages xong
+      // (backend chắc chắn đã set read=true rồi mới reload)
+      loadConvs(true);
+
+      // Context
       setLoadingContext(true);
       api.chat
         .getContext(c.user_id)
         .then((data) => {
-          // Chỉ set data nếu vẫn đang chat với user này
           if (selectedRef.current?.user_id === c.user_id) {
             setContextData(data);
           }
@@ -258,35 +881,42 @@ export default function EmployeeChat() {
         .catch(() => setContextData(null))
         .finally(() => setLoadingContext(false));
 
-      setConversations((list) =>
-        list.map((x) =>
-          x.user_id === c.user_id ? { ...x, unread: 0 } : x
-        )
-      );
+      // Đơn đang xử lý
+      api.orders
+        .all("Tất cả")
+        .then((allOrders) => {
+          if (selectedRef.current?.user_id !== c.user_id) return;
+          const list = Array.isArray(allOrders) ? allOrders : [];
+          const myOrders = list
+            .filter(
+              (o) =>
+                o.customer_id === c.user_id &&
+                !["Hoàn thành", "Đã hủy"].includes(o.status)
+            )
+            .sort(
+              (a, b) =>
+                new Date(b.created_at).getTime() -
+                new Date(a.created_at).getTime()
+            );
+          setCustomerOrder(myOrders[0] || null);
+        })
+        .catch(() => setCustomerOrder(null));
     },
-    [loadMessages]
+    [loadMessages, loadConvs]
   );
 
   // ============================================================
-  // AUTO SCROLL (SMART)
+  // AUTO SCROLL
   // ============================================================
-  // Logic:
-  //   1. Lần đầu mở conversation (convId khác) → scroll immediate xuống cuối
-  //   2. Có tin mới (grew) + user gần cuối → scroll smooth
-  //   3. Tin cuối là tin của chính mình → scroll smooth (luôn cuộn)
-  //   4. User kéo lên đọc tin cũ (grew nhưng xa cuối) → KHÔNG scroll
 
   useEffect(() => {
     const container = messagesEndRef.current;
     if (!container) return;
 
     const convId = selected?.user_id ?? null;
-
-    // ✅ Trường hợp 1: conversation mới (hoặc lần đầu)
     const isNewConv = convId !== lastConvIdRef.current;
 
     if (isNewConv && messages.length > 0) {
-      // Đợi DOM render xong rồi scroll
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           bottomRef.current?.scrollIntoView({
@@ -300,7 +930,6 @@ export default function EmployeeChat() {
       return;
     }
 
-    // ✅ Trường hợp 2-4: chỉ xử lý khi có tin mới
     const grew = messages.length > lastMsgCountRef.current;
     if (!grew) {
       lastMsgCountRef.current = messages.length;
@@ -314,7 +943,6 @@ export default function EmployeeChat() {
       container.scrollHeight - container.scrollTop - container.clientHeight;
     const isNearBottom = distanceFromBottom < SCROLL_THRESHOLD_PX;
 
-    // ✅ Chỉ scroll nếu: tin của chính mình HOẶC user đang gần cuối
     if (isOwnMessage || isNearBottom) {
       requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({
@@ -323,7 +951,6 @@ export default function EmployeeChat() {
         });
       });
     }
-    // Nếu user đang kéo lên đọc tin cũ → KHÔNG scroll
 
     lastMsgCountRef.current = messages.length;
   }, [messages, selected?.user_id]);
@@ -337,7 +964,6 @@ export default function EmployeeChat() {
       const val = (contentOverride ?? text).trim();
       if (!val || !selected || sending) return;
       if (val.length > MAX_MESSAGE_LENGTH) {
-        // 🔧 FIX #79: truyền vars vào t() thay vì .replace("{n}", ...) thủ công
         toast(
           t("Tin nhắn tối đa {n} ký tự", { n: MAX_MESSAGE_LENGTH }),
           "error"
@@ -364,7 +990,16 @@ export default function EmployeeChat() {
           content: val,
           toUserId: selected.user_id,
         });
-        setMessages((m) => m.map((x) => (x.id === tempId ? msg : x)));
+
+        const safeMsg = {
+          ...msg,
+          id: msg?.id || tempId,
+          created_at: msg?.created_at || new Date().toISOString(),
+          from: msg?.from || "staff",
+          from_name: msg?.from_name || t("Bạn"),
+        };
+
+        setMessages((m) => m.map((x) => (x.id === tempId ? safeMsg : x)));
         loadMessages(selected.user_id, true);
       } catch (e) {
         setMessages((m) => m.filter((x) => x.id !== tempId));
@@ -400,60 +1035,119 @@ export default function EmployeeChat() {
       );
     }
 
+    if (filter === "pinned")
+      list = list.filter((c) => pinnedIds.includes(Number(c.user_id)));
     if (filter === "unread") list = list.filter((c) => c.unread > 0);
     if (filter === "urgent") list = list.filter((c) => c.urgent);
     if (filter === "processing")
       list = list.filter((c) => c.status === "processing");
 
-    return list;
-  }, [conversations, search, filter]);
+    return [...list].sort((a, b) => {
+      const ap = pinnedIds.includes(Number(a.user_id)) ? 1 : 0;
+      const bp = pinnedIds.includes(Number(b.user_id)) ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      return new Date(b.last_time || 0) - new Date(a.last_time || 0);
+    });
+  }, [conversations, search, filter, pinnedIds]);
 
   const kpi = useMemo(() => {
-    const online = 3;
+    const online = currentStaff.length;
     const total = conversations.length;
     const unread = conversations.filter((c) => c.unread > 0).length;
     const urgent = conversations.filter((c) => c.urgent).length;
-
     return { online, total, unread, urgent };
-  }, [conversations]);
+  }, [conversations, currentStaff]);
 
   // ============================================================
-  // ACTION HANDLERS
+  // ACTIONS
   // ============================================================
 
-  const handlePrintLabel = () =>
-    toast(t("Đang gửi lệnh in tem dán ly..."), "success");
-  const handleCall = () => toast(t("Đang gọi cho khách..."), "info");
-  const handleVibrate = () =>
+  const handlePrintLabel = () => {
+    if (!selected) return;
+    setShowPrintModal(true);
+  };
+
+  const handleCall = () => {
+    if (!selected) return;
+    setShowCallModal(true);
+  };
+
+  const handleVibrate = () => {
+    if (!selected) return;
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 100, 200, 100, 200]);
+    }
     toast(t("Đã gửi rung thông báo khẩn"), "success");
+  };
+
   const handleRecall = () => {
     if (!selected) return;
+    const token = selected.token || genToken(selected.user_id);
+    playCallBeep();
     toast(
-      `${t("Đang phát loa: Mời số")} #${genToken(
-        selected.user_id
-      )} ${t("đến nhận món")}`,
-      "info"
+      `📢 ${t("Đang phát loa:")} Mời số #${token} ${t("đến nhận món")}`,
+      "info",
+      {
+        variant: "card",
+        title: `📢 ${t("Đang phát loa")} #${token}`,
+        description: t(
+          "Mời quý khách đến quầy nhận món. Vui lòng chú ý loa thông báo."
+        ),
+        duration: 5000,
+      }
     );
   };
-  const handleNotify = () =>
+
+  const handleNotify = () => {
+    if (!selected) return;
     toast(t("Đã gửi thông báo 'Món đã sẵn sàng'"), "success");
-  const handleTransferAdmin = () =>
+  };
+
+  const handleTransferAdmin = () => {
     toast(t("Đã chuyển hội thoại lên Admin"), "info");
-  const handleMacros = () => toast(t("Mở cấu hình Macros..."), "info");
-  const handleAutoDone = () => toast(t("Bật tự động báo món xong"), "success");
-  const handleAddTo86 = () => toast(t("Đã báo hết món liên quan"), "warning");
-  const handleGiftVoucher = () => toast(t("Đã tặng voucher xin lỗi"), "success");
-  const handleSwapDish = () =>
+  };
+
+  const handleGiftVoucher = () => {
+    toast(t("Đã tặng voucher xin lỗi"), "success");
+  };
+
+  const handleSwapDish = () => {
     toast(t("Đã gửi yêu cầu đổi món lên bếp"), "info");
+  };
+
+  const handleTogglePin = useCallback(() => {
+    if (!selected) return;
+    const uid = Number(selected.user_id);
+
+    setPinnedIds((prev) => {
+      const isPinned = prev.includes(uid);
+      const next = isPinned
+        ? prev.filter((id) => id !== uid)
+        : [...prev, uid];
+      writePinned(next);
+
+      toast(
+        isPinned
+          ? t("Đã bỏ ghim hội thoại")
+          : t("Đã ghim hội thoại lên đầu danh sách"),
+        isPinned ? "info" : "success"
+      );
+
+      return next;
+    });
+  }, [selected, t]);
 
   // ============================================================
   // RENDER
   // ============================================================
 
+  const isSelectedPinned = selected
+    ? pinnedIds.includes(Number(selected.user_id))
+    : false;
+
   return (
     <div className="chat-workspace">
       {/* ============ HERO ============ */}
-      {/* 🔧 UI: xoá H1 + P — chỉ giữ eyebrow + cụm nút bên phải */}
       <section className="chat-hero">
         <div className="chat-hero__left">
           <span className="chat-hero__eyebrow">
@@ -463,14 +1157,6 @@ export default function EmployeeChat() {
         </div>
 
         <div className="chat-hero__actions">
-          <button type="button" className="chat-hero__action" onClick={handleAutoDone}>
-            <Zap size={18} />
-            <span>{t("Tự động báo món xong")}</span>
-          </button>
-          <button type="button" className="chat-hero__action" onClick={handleMacros}>
-            <Sparkles size={18} />
-            <span>{t("Cấu hình Macros")}</span>
-          </button>
           <button
             type="button"
             className="chat-hero__action chat-hero__action--danger"
@@ -590,10 +1276,15 @@ export default function EmployeeChat() {
                 >
                   {f.label}
                   {f.id === "all" && ` (${conversations.length})`}
-                  {f.dot && filter !== f.id && (
+                  {/* ✅ V6.2 FIX: chấm đỏ chỉ hiện khi CÓ tin chưa đọc */}
+                  {f.dot && filter !== f.id && kpi.unread > 0 && (
                     <span className="chat-conv__filter-dot" />
                   )}
+                  {f.id === "unread" && kpi.unread > 0 && ` (${kpi.unread})`}
                   {f.id === "urgent" && kpi.urgent > 0 && ` (${kpi.urgent})`}
+                  {f.id === "pinned" &&
+                    pinnedIds.length > 0 &&
+                    ` (${pinnedIds.length})`}
                 </button>
               ))}
             </div>
@@ -661,6 +1352,7 @@ export default function EmployeeChat() {
                 const hasUnread = c.unread > 0;
                 const token = c.token || genToken(c.user_id);
                 const initials = getInitials(c.user_name);
+                const isPinned = pinnedIds.includes(Number(c.user_id));
 
                 return (
                   <div
@@ -670,7 +1362,9 @@ export default function EmployeeChat() {
                     className={`chat-conv__item ${
                       isSelected ? "active" : ""
                     } ${isUrgent ? "chat-conv__item--urgent" : ""} ${
-                      !hasUnread && !isUrgent ? "chat-conv__item--muted" : ""
+                      hasUnread
+                        ? "chat-conv__item--unread"
+                        : "chat-conv__item--read"
                     }`}
                     onClick={() => openConv(c)}
                     onKeyDown={(e) => {
@@ -694,7 +1388,24 @@ export default function EmployeeChat() {
                           {initials}
                         </div>
                         <div className="chat-conv__user-info">
-                          <span className="chat-conv__user-name">
+                          <span
+                            className={`chat-conv__user-name ${
+                              hasUnread
+                                ? "chat-conv__user-name--unread"
+                                : ""
+                            }`}
+                          >
+                            {isPinned && (
+                              <Pin
+                                size={11}
+                                style={{
+                                  color: "#f59e0b",
+                                  marginRight: 4,
+                                  verticalAlign: "middle",
+                                }}
+                                fill="#f59e0b"
+                              />
+                            )}
                             {c.user_name || t("Khách")}
                             {c.isVip && (
                               <span className="chat-conv__vip-tag">
@@ -724,8 +1435,8 @@ export default function EmployeeChat() {
                     <p
                       className={`chat-conv__preview ${
                         hasUnread
-                          ? "chat-conv__preview--medium"
-                          : "chat-conv__preview--muted"
+                          ? "chat-conv__preview--unread"
+                          : "chat-conv__preview--read"
                       }`}
                     >
                       "{c.last_message || t("Chưa có tin nhắn")}"
@@ -860,11 +1571,22 @@ export default function EmployeeChat() {
                   </button>
                   <button
                     type="button"
-                    className="chat-main__icon-btn"
-                    title={t("Ghim hội thoại")}
-                    aria-label={t("Ghim hội thoại")}
+                    className={`chat-main__icon-btn ${
+                      isSelectedPinned ? "chat-main__icon-btn--pinned" : ""
+                    }`}
+                    onClick={handleTogglePin}
+                    title={
+                      isSelectedPinned ? t("Bỏ ghim") : t("Ghim hội thoại")
+                    }
+                    aria-label={
+                      isSelectedPinned ? t("Bỏ ghim") : t("Ghim hội thoại")
+                    }
                   >
-                    <Pin size={18} />
+                    {isSelectedPinned ? (
+                      <PinOff size={18} style={{ color: "#f59e0b" }} />
+                    ) : (
+                      <Pin size={18} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -892,16 +1614,12 @@ export default function EmployeeChat() {
                   messages.map((m, idx) => {
                     const isOwn = m.from === "staff";
                     const prev = messages[idx - 1];
-                    // ✅ Chèn badge ngày nếu đổi ngày
                     const showDate =
-                      !prev ||
-                      !sameDay(prev.created_at, m.created_at);
+                      !prev || !sameDay(prev.created_at, m.created_at);
 
                     return (
                       <div key={m.id}>
-                        {showDate && (
-                          <DateDivider iso={m.created_at} />
-                        )}
+                        {showDate && <DateDivider iso={m.created_at} />}
 
                         <div
                           className={`chat-msg-row ${
@@ -910,7 +1628,9 @@ export default function EmployeeChat() {
                         >
                           {!isOwn && (
                             <div className="chat-msg-avatar">
-                              {getInitials(m.from_name || selected.user_name)}
+                              {getInitials(
+                                m.from_name || selected.user_name
+                              )}
                             </div>
                           )}
 
@@ -1059,13 +1779,13 @@ export default function EmployeeChat() {
 
               <div className="chat-context-profile">
                 <div className="chat-context-profile__avatar">
-                  {(contextData?.user?.avatar || selected.user_avatar) ? (
+                  {contextData?.user?.avatar || selected.user_avatar ? (
                     <img
                       src={contextData?.user?.avatar || selected.user_avatar}
                       alt={selected.user_name}
                       onError={(e) => {
                         e.target.onerror = null;
-                        e.target.style.display = "none"; // Hide broken image
+                        e.target.style.display = "none";
                       }}
                     />
                   ) : (
@@ -1077,7 +1797,9 @@ export default function EmployeeChat() {
                 </div>
                 <div className="chat-context-profile__info">
                   <span className="chat-context-profile__name">
-                    {contextData?.user?.name || selected.user_name || t("Khách")}
+                    {contextData?.user?.name ||
+                      selected.user_name ||
+                      t("Khách")}
                   </span>
                   <span className="chat-context-profile__faculty">
                     {contextData?.user?.faculty || "—"}
@@ -1125,7 +1847,7 @@ export default function EmployeeChat() {
               </div>
             </div>
 
-            {contextData?.currentOrder ? (
+            {customerOrder ? (
               <div className="chat-context-card">
                 <div className="chat-order-inspector__head">
                   <div className="chat-order-inspector__info">
@@ -1133,7 +1855,7 @@ export default function EmployeeChat() {
                       {t("Đơn hàng đang xử lý")}
                     </span>
                     <span className="chat-order-inspector__code">
-                      {contextData.currentOrder.code}
+                      {customerOrder.code}
                     </span>
                   </div>
                   <div className="chat-order-inspector__token">
@@ -1150,13 +1872,16 @@ export default function EmployeeChat() {
                     {t("Trạng thái hiện tại")}
                   </span>
                   <span className="chat-order-inspector__status-value">
-                    {t(contextData.currentOrder.status)}
+                    {t(customerOrder.status)}
                   </span>
                 </div>
 
                 <div className="chat-order-inspector__items">
-                  {contextData.currentOrder.items.map((item, index) => (
-                    <div key={index} className="chat-order-inspector__item">
+                  {(customerOrder.items || []).map((item, index) => (
+                    <div
+                      key={index}
+                      className="chat-order-inspector__item"
+                    >
                       <div className="chat-order-inspector__item-left">
                         <span className="chat-order-inspector__item-qty">
                           {item.qty}x
@@ -1175,20 +1900,20 @@ export default function EmployeeChat() {
                 <div className="chat-order-inspector__summary">
                   <div className="chat-order-inspector__row">
                     <span>{t("Tổng cộng")}</span>
-                    <span>{fmtMoney(contextData.currentOrder.subtotal)}</span>
+                    <span>{fmtMoney(customerOrder.subtotal)}</span>
                   </div>
-                  {contextData.currentOrder.discount > 0 && (
+                  {customerOrder.discount > 0 && (
                     <div className="chat-order-inspector__row chat-order-inspector__row--success">
                       <span>{t("Giảm giá")}</span>
-                      <span>-{fmtMoney(contextData.currentOrder.discount)}</span>
+                      <span>-{fmtMoney(customerOrder.discount)}</span>
                     </div>
                   )}
                   <div className="chat-order-inspector__row chat-order-inspector__row--final">
                     <span className="chat-order-inspector__row-label">
-                      {t("Đã thu qua")} {contextData.currentOrder.payment}:
+                      {t("Đã thu qua")} {customerOrder.payment}:
                     </span>
                     <span className="chat-order-inspector__row-value">
-                      {fmtMoney(contextData.currentOrder.total)}
+                      {fmtMoney(customerOrder.total)}
                     </span>
                   </div>
                 </div>
@@ -1246,7 +1971,7 @@ export default function EmployeeChat() {
           </div>
         )}
 
-        {/* ===== BLOCK GHI CHÚ NỘI BỘ — TRẢI DÀI CỘT 1 + 2 ===== */}
+        {/* ===== GHI CHÚ NỘI BỘ ===== */}
         {selected && (
           <div className="chat-context-card chat-context-card--fullwidth">
             <div className="chat-internal-note">
@@ -1271,10 +1996,27 @@ export default function EmployeeChat() {
         )}
       </div>
 
+      {/* ===== MODALS ===== */}
+      <CallModal
+        open={showCallModal}
+        customer={selected}
+        onClose={() => setShowCallModal(false)}
+      />
+
+      <PrintLabelModal
+        open={showPrintModal}
+        customer={selected}
+        order={customerOrder}
+        onClose={() => setShowPrintModal(false)}
+      />
+
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
+        }
+        .chat-main__icon-btn--pinned {
+          background: rgba(245, 158, 11, 0.12) !important;
         }
       `}</style>
     </div>

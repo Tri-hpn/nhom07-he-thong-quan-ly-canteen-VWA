@@ -1,14 +1,15 @@
 // ============================================================
-// OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook/Microsoft OAuth
+// OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook/Microsoft
 // ============================================================
-// V3: FIX redirectUri cho Microsoft — dùng /api/auth/callback/microsoft-entra-id
+// V5 (2026-10):
+//   - ✅ FIX đường dẫn import: ../components/Effects
+//     (file nằm ở src/pages/ nên phải trỏ đúng thư mục components)
+//   - ✅ FIX LỖI 2: Guard calledRef chống double-call trong StrictMode
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import {
-  Loader2, AlertCircle,
-} from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { api, setToken } from "../api";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";
@@ -21,7 +22,14 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
   const [status, setStatus] = useState("processing");
   const [errorMsg, setErrorMsg] = useState("");
 
+  // ✅ FIX: guard chống double-call trong React.StrictMode
+  const calledRef = useRef(false);
+
   useEffect(() => {
+    // StrictMode chạy effect 2 lần → guard chặn lần 2
+    if (calledRef.current) return;
+    calledRef.current = true;
+
     const code = params.get("code");
     const error = params.get("error");
     const errorDescription = params.get("error_description");
@@ -45,10 +53,6 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
       return;
     }
 
-    let cancelled = false;
-
-    // ✅ FIX: Microsoft dùng URI đã đăng ký trên Azure
-    // Azure đã cấu hình: /api/auth/callback/microsoft-entra-id
     const redirectUri =
       window.location.origin +
       (provider === "microsoft-entra-id"
@@ -58,8 +62,6 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
     api.oauth
       .callback(provider, code, redirectUri)
       .then(({ token, user }) => {
-        if (cancelled) return;
-
         setToken(token);
         toast(`${t("Xin chào")} ${user.name}!`, "success");
 
@@ -77,16 +79,11 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
         navigate(home, { replace: true });
       })
       .catch((e) => {
-        if (cancelled) return;
         const msg = e.message || t("Đăng nhập thất bại");
         setStatus("error");
         setErrorMsg(msg);
         toast(msg, "error");
       });
-
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -96,7 +93,8 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
         minHeight: "100vh",
         display: "grid",
         placeItems: "center",
-        background: "linear-gradient(135deg, #f5f3ff 0%, #eef2ff 50%, #f0f9ff 100%)",
+        background:
+          "linear-gradient(135deg, #f5f3ff 0%, #eef2ff 50%, #f0f9ff 100%)",
         padding: 24,
       }}
     >
@@ -118,7 +116,8 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
             height: 56,
             margin: "0 auto 20px",
             borderRadius: 14,
-            background: "linear-gradient(135deg, #2634d5 0%, #3b82f6 50%, #20c779 100%)",
+            background:
+              "linear-gradient(135deg, #2634d5 0%, #3b82f6 50%, #20c779 100%)",
             color: "#fff",
             display: "grid",
             placeItems: "center",
@@ -140,21 +139,53 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
                 marginBottom: 16,
               }}
             />
-            <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#172033" }}>
+            <h2
+              style={{
+                margin: "0 0 8px",
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#172033",
+              }}
+            >
               {t("Đang xử lý đăng nhập")}
             </h2>
-            <p style={{ margin: 0, fontSize: 13.5, color: "#64748b", lineHeight: 1.6 }}>
-              {t("Vui lòng chờ trong giây lát khi chúng tôi xác thực tài khoản {provider} của bạn...")
-                .replace("{provider}", provider)}
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13.5,
+                color: "#64748b",
+                lineHeight: 1.6,
+              }}
+            >
+              {t(
+                "Vui lòng chờ trong giây lát khi chúng tôi xác thực tài khoản {provider} của bạn..."
+              ).replace("{provider}", provider)}
             </p>
           </>
         ) : (
           <>
-            <AlertCircle size={40} style={{ color: "#ef4444", marginBottom: 14 }} />
-            <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#172033" }}>
+            <AlertCircle
+              size={40}
+              style={{ color: "#ef4444", marginBottom: 14 }}
+            />
+            <h2
+              style={{
+                margin: "0 0 8px",
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#172033",
+              }}
+            >
               {t("Đăng nhập thất bại")}
             </h2>
-            <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b", lineHeight: 1.6 }}>
+            <p
+              style={{
+                margin: "0 0 24px",
+                fontSize: 13.5,
+                color: "#64748b",
+                lineHeight: 1.6,
+              }}
+            >
               {errorMsg}
             </p>
             <Link
