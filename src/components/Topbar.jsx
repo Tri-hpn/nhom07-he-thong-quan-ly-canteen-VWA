@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // TOPBAR.JSX — Top navigation cho Customer (V5 - FINAL)
 // ============================================================
 // V5 (2026-10):
@@ -16,8 +16,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { NavLink, Link, useNavigate, useLocation } from "react-router-dom";
 import {
-  Search, ShoppingBag, Home, UtensilsCrossed, Gift, Wallet, Package,
-  Menu, Settings, LogOut,
+  ShoppingBag, Home, UtensilsCrossed, Gift, Wallet, Package, Bell,
+  Menu, Settings,
 } from "lucide-react";
 import { api, getToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
@@ -96,11 +96,13 @@ export default function CustomerTopbar({
 
   const [cartCount, setCartCount] = useState(0);
   const [orderPending, setOrderPending] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [notifications, setNotifications] = useState([]);
+  const [notificationUnread, setNotificationUnread] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   const orderReqIdRef = useRef(0);
-  const searchInputRef = useRef(null);
+  const notificationMenuRef = useRef(null);
 
   // ============================================================
   // READ CART
@@ -108,6 +110,64 @@ export default function CustomerTopbar({
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
+
+  const readNotifications = useCallback(async () => {
+    try {
+      const data = await api.notifications.list();
+      const list = Array.isArray(data?.list) ? data.list : [];
+      setNotifications(list);
+      setNotificationUnread(
+        Number.isFinite(Number(data?.unread))
+          ? Number(data.unread)
+          : list.filter((n) => !n.read).length
+      );
+    } catch {
+      setNotifications([]);
+      setNotificationUnread(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    readNotifications();
+    const timer = setInterval(readNotifications, 30000);
+    return () => clearInterval(timer);
+  }, [readNotifications]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const handleNotificationClick = async (notification) => {
+    try {
+      if (!notification.read) {
+        await api.notifications.read(notification.id);
+        setNotifications((prev) => prev.map((item) =>
+          item.id === notification.id ? { ...item, read: true } : item
+        ));
+        setNotificationUnread((prev) => Math.max(0, prev - 1));
+      }
+      setShowNotifications(false);
+      if (notification.link) navigate(notification.link);
+    } catch (error) {
+      console.error("Không thể đọc thông báo:", error);
+    }
+  };
+
+  const handleReadAllNotifications = async () => {
+    try {
+      await api.notifications.readAll();
+      setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+      setNotificationUnread(0);
+    } catch (error) {
+      console.error("Không thể đọc tất cả thông báo:", error);
+    }
+  };
 
   // ============================================================
   // READ ORDERS — 🔧 FIX #5: dùng getToken() thay vì sessionStorage
@@ -165,31 +225,9 @@ export default function CustomerTopbar({
   }, [readCart, readOrders]);
 
   // ============================================================
-  // KEYBOARD SHORTCUT — Ctrl/Cmd + K để focus search
-  // ============================================================
-  useEffect(() => {
-    const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-
   // ============================================================
   // HANDLERS
   // ============================================================
-  const handleSearch = (e) => {
-    e?.preventDefault?.();
-    const q = searchQuery.trim();
-    if (!q) return;
-    navigate(`/customer/menu?q=${encodeURIComponent(q)}`);
-    setSearchQuery("");
-  };
-
   const openSettings = useCallback(() => {
     setShowSettings(true);
   }, []);
@@ -269,22 +307,6 @@ export default function CustomerTopbar({
             </nav>
           </div>
 
-          {/* Search */}
-          <form
-            className="customer-topbar__search"
-            onSubmit={handleSearch}
-          >
-            <Search size={18} className="customer-topbar__search-icon" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("Tìm kiếm món ăn, thức uống, set trưa...")}
-              className="customer-topbar__search-input"
-            />
-          </form>
-
           {/* Right actions */}
           <div className="customer-topbar__right">
             {/* Cart */}
@@ -296,6 +318,30 @@ export default function CustomerTopbar({
               <ShoppingBag size={20} />
               {renderBadge(cartCount)}
             </Link>
+
+            {/* Notifications */}
+            <div className="customer-topbar__notification-wrap" ref={notificationMenuRef}>
+              <button type="button" className="customer-topbar__icon-btn" onClick={() => setShowNotifications((prev) => !prev)} aria-label="Thông báo" title="Thông báo">
+                <Bell size={20} />
+                {notificationUnread > 0 && <span className="customer-topbar__notification-badge">{notificationUnread > 99 ? "99+" : notificationUnread}</span>}
+              </button>
+              {showNotifications && (
+                <div className="customer-topbar__notification-menu">
+                  <div className="customer-topbar__notification-header">
+                    <strong>Thông báo</strong>
+                    {notificationUnread > 0 && <button type="button" onClick={handleReadAllNotifications}>Đọc tất cả</button>}
+                  </div>
+                  <div className="customer-topbar__notification-list">
+                    {notifications.length === 0 ? <div className="customer-topbar__notification-empty">Không có thông báo</div> : notifications.map((notification) => (
+                      <button type="button" key={notification.id} className={`customer-topbar__notification-item ${!notification.read ? "is-unread" : ""}`} onClick={() => handleNotificationClick(notification)}>
+                        <strong>{notification.title || "Thông báo"}</strong>
+                        <span>{notification.content || notification.message || ""}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Profile button — bấm vào mở SettingsModal (Q1:A) */}
             <button
@@ -317,21 +363,6 @@ export default function CustomerTopbar({
                 <span>{t("Sinh viên VWA")}</span>
               </div>
               <Settings size={16} />
-            </button>
-
-            {/* Logout icon riêng (Q2:C) */}
-            <button
-              type="button"
-              className="customer-topbar__icon-btn customer-topbar__logout-btn"
-              onClick={onLogout}
-              aria-label={t("Đăng xuất")}
-              title={t("Đăng xuất")}
-              style={{
-                background: "rgba(239, 68, 68, 0.1)",
-                color: "#ef4444",
-              }}
-            >
-              <LogOut size={18} />
             </button>
           </div>
         </div>

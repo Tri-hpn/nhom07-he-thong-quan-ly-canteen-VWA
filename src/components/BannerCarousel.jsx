@@ -1,4 +1,12 @@
+﻿// ============================================================
+// BANNERCAROUSEL.JSX â€” Carousel banner khuyáº¿n mÃ£i (Customer)
 // ============================================================
+// âœ… 3 slide, tá»± Ä‘á»™ng chuyá»ƒn sau 4s (AUTO_INTERVAL)
+// âœ… NÃºt chuyá»ƒn slide thá»§ cÃ´ng (trÃ¡i/pháº£i) + dots Ä‘iá»u hÆ°á»›ng
+// âœ… Táº¡m dá»«ng khi hover chuá»™t hoáº·c khi tab bá»‹ áº©n
+// âœ… i18n: ná»™i dung slide dá»‹ch qua t() (nguá»“n tiáº¿ng Viá»‡t á»Ÿ bannerSlides.js)
+// âœ… buttonLink dáº¡ng "#anchor" â†’ cuá»™n mÆ°á»£t tá»›i section trong trang
+// ðŸ”§ FIX #55: reset index khi slides thay Ä‘á»•i (khÃ´ng chá»‰ total)
 // BANNERCAROUSEL.JSX — Carousel banner khuyến mãi (Customer)
 // ============================================================
 // V2 (2026-10):
@@ -58,6 +66,8 @@ export default function BannerCarousel({ slides = bannerSlides }) {
   const timerRef = useRef(null);
   const total = slides?.length || 0;
 
+  // ðŸ”§ FIX #55: signature á»•n Ä‘á»‹nh theo id (khÃ´ng theo index/total)
+  //   â†’ khi slides Ä‘á»•i (rename/reorder) váº«n reset index Ä‘Ãºng
   const slidesSignature = useMemo(
     () =>
       Array.isArray(slides)
@@ -66,6 +76,7 @@ export default function BannerCarousel({ slides = bannerSlides }) {
     [slides]
   );
 
+  // ðŸ”§ FIX #55: deps dÃ¹ng slidesSignature thay vÃ¬ total
   useEffect(() => {
     setIndex(0);
   }, [slidesSignature]);
@@ -115,7 +126,7 @@ export default function BannerCarousel({ slides = bannerSlides }) {
           borderRadius: 16,
         }}
       >
-        {t("Không có banner")}
+        {t("KhÃ´ng cÃ³ banner")}
       </div>
     );
   }
@@ -124,7 +135,7 @@ export default function BannerCarousel({ slides = bannerSlides }) {
     <div
       className="banner-carousel"
       role="region"
-      aria-label={t("Banner khuyến mãi")}
+      aria-label={t("Banner khuyáº¿n mÃ£i")}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       style={{
@@ -154,12 +165,13 @@ export default function BannerCarousel({ slides = bannerSlides }) {
         ))}
       </div>
 
+      {/* NÃºt chuyá»ƒn slide thá»§ cÃ´ng */}
       {total > 1 && (
         <>
           <button
             type="button"
             onClick={prev}
-            aria-label={t("Slide trước")}
+            aria-label={t("Slide trÆ°á»›c")}
             className="banner-nav banner-nav-left"
             style={{
               position: "absolute",
@@ -185,7 +197,7 @@ export default function BannerCarousel({ slides = bannerSlides }) {
           <button
             type="button"
             onClick={next}
-            aria-label={t("Slide tiếp theo")}
+            aria-label={t("Slide tiáº¿p theo")}
             className="banner-nav banner-nav-right"
             style={{
               position: "absolute",
@@ -211,10 +223,11 @@ export default function BannerCarousel({ slides = bannerSlides }) {
         </>
       )}
 
+      {/* Dots Ä‘iá»u hÆ°á»›ng */}
       {total > 1 && (
         <div
           role="tablist"
-          aria-label={t("Chọn slide")}
+          aria-label={t("Chá»n slide")}
           className="banner-dots"
           style={{
             position: "absolute",
@@ -238,7 +251,7 @@ export default function BannerCarousel({ slides = bannerSlides }) {
                 onClick={() => goTo(i)}
                 role="tab"
                 aria-selected={active}
-                aria-label={t("Đi đến slide {n}", { n: i + 1 })}
+                aria-label={t("Äi Ä‘áº¿n slide {n}", { n: i + 1 })}
                 style={{
                   width: active ? 28 : 10,
                   height: 10,
@@ -263,7 +276,7 @@ export default function BannerCarousel({ slides = bannerSlides }) {
 }
 
 // ============================================================
-// SLIDE
+// SLIDE â€” 1 slide Ä‘Æ¡n láº» (áº£nh ná»n + overlay + ná»™i dung)
 // ============================================================
 
 function Slide({ slide, isActive }) {
@@ -274,6 +287,7 @@ function Slide({ slide, isActive }) {
   const isAnchor =
     typeof slide.buttonLink === "string" && slide.buttonLink.startsWith("#");
 
+  // buttonLink dáº¡ng "#anchor" â†’ cuá»™n mÆ°á»£t tá»›i section trong trang
   const handleCtaClick = (e) => {
     if (!isAnchor) return;
     e.preventDefault();
@@ -301,7 +315,7 @@ function Slide({ slide, isActive }) {
         color: "#fff",
         display: "flex",
         alignItems: "center",
-        padding: "0 70px",
+        padding: "0 52px",
         boxSizing: "border-box",
       }}
     >
@@ -326,12 +340,12 @@ function Slide({ slide, isActive }) {
               display: "inline-block",
               background: "rgba(245, 158, 11, 0.3)",
               border: "1px solid rgba(245, 158, 11, 0.6)",
-              padding: "6px 14px",
+              padding: "5px 12px",
               borderRadius: 20,
-              fontSize: 12,
+              fontSize: 11,
               color: "#fff",
               fontWeight: 600,
-              marginBottom: 10,
+              marginBottom: 8,
             }}
           >
             {t(slide.badge)}
@@ -341,11 +355,11 @@ function Slide({ slide, isActive }) {
         <h2
           className="banner-title"
           style={{
-            fontSize: 30,
+            fontSize: 26,
             fontWeight: 800,
-            margin: "6px 0 10px",
+            margin: "4px 0 8px",
             color: "#fff",
-            lineHeight: 1.2,
+            lineHeight: 1.18,
             letterSpacing: "-0.5px",
             textShadow: "0 2px 10px rgba(0,0,0,0.5)",
           }}
@@ -356,12 +370,12 @@ function Slide({ slide, isActive }) {
         <p
           className="banner-desc"
           style={{
-            fontSize: 14,
-            lineHeight: 1.55,
+            fontSize: 13,
+            lineHeight: 1.5,
             opacity: 0.95,
-            margin: "0 0 16px",
+            margin: "0 0 12px",
             color: "#e5e7eb",
-            maxWidth: 620,
+            maxWidth: 560,
             textShadow: "0 1px 4px rgba(0,0,0,0.4)",
           }}
         >
@@ -373,9 +387,9 @@ function Slide({ slide, isActive }) {
             className="banner-chips"
             style={{
               display: "flex",
-              gap: 10,
+              gap: 8,
               flexWrap: "wrap",
-              marginBottom: 18,
+              marginBottom: 14,
               alignItems: "center",
             }}
           >
@@ -388,9 +402,9 @@ function Slide({ slide, isActive }) {
                   gap: 6,
                   background: "rgba(255,255,255,0.15)",
                   border: "1px solid rgba(255,255,255,0.25)",
-                  padding: "6px 12px",
+                  padding: "5px 10px",
                   borderRadius: 20,
-                  fontSize: 12,
+                  fontSize: 11,
                   color: "#fff",
                 }}
               >
@@ -412,10 +426,10 @@ function Slide({ slide, isActive }) {
             display: "inline-block",
             background: "#fff",
             color: "#2634d5",
-            padding: "12px 28px",
+            padding: "10px 22px",
             borderRadius: 24,
             fontWeight: 700,
-            fontSize: 13.5,
+            fontSize: 12.5,
             textDecoration: "none",
             transition: "all 0.25s ease",
             boxShadow: linkHover

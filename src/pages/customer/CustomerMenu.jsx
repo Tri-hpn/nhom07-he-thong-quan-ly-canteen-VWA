@@ -8,12 +8,13 @@
 
 import { SkeletonCard } from "../../components/Skeleton";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle, RefreshCw, Star, Search, SlidersHorizontal, Check, Shield,
   Lightbulb, Sparkles, Zap, ChevronLeft, ChevronRight, Grid3x3, List,
   RotateCcw, ShoppingCart, ArrowRight, Flame,
 } from "lucide-react";
+import { toast } from "../../components/Effects";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { useI18n } from "../../hooks/useI18n";
@@ -85,6 +86,7 @@ function translateCategory(name, t) {
 
 export default function CustomerMenu({ cart, setCart, user }) {
   const { t, tData } = useI18n();
+  const navigate = useNavigate();
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -93,7 +95,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
   const [search, setSearch] = useState("");
   const [selectedCategories, setSelectedCategories] = useState([ALL_CATEGORY]);
   const [activeTab, setActiveTab] = useState(ALL_CATEGORY);
-  const [priceRange, setPriceRange] = useState({ min: 10000, max: 80000 });
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 500000 });
   const [priceQuickFilter, setPriceQuickFilter] = useState("all");
   const [priorities, setPriorities] = useState({});
   const [calorieFilter, setCalorieFilter] = useState("all");
@@ -106,14 +108,8 @@ export default function CustomerMenu({ cart, setCart, user }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchInputRef = useRef(null);
 
-  const priceBounds = useMemo(() => {
-    const prices = items.map((m) => Number(m.price) || 0).filter((p) => p > 0);
-    if (prices.length === 0) return { min: 10000, max: 80000 };
-    const lo = Math.floor(Math.min(...prices) / 1000) * 1000;
-    const hi = Math.ceil(Math.max(...prices) / 1000) * 1000;
-    return { min: lo, max: hi <= lo ? lo + 1000 : hi };
-  }, [items]);
-  const priceSpan = Math.max(1, priceBounds.max - priceBounds.min);
+  const priceBounds = { min: 0, max: 500000 };
+  const priceSpan = priceBounds.max - priceBounds.min;
 
   useEffect(() => {
     setPriceRange({ ...priceBounds });
@@ -303,6 +299,13 @@ export default function CustomerMenu({ cart, setCart, user }) {
     setPage(1);
   };
 
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    selectedCategories.some((category) => category !== ALL_CATEGORY) ||
+    priceQuickFilter !== "all" ||
+    (items.length > 0 && (priceRange.min > priceBounds.min || priceRange.max < priceBounds.max)) ||
+    Object.values(priorities).some(Boolean) ||
+    calorieFilter !== "all";
   const setQty = (id, delta) => {
     setQuantities((q) => {
       const cur = q[id] || 1;
@@ -313,6 +316,52 @@ export default function CustomerMenu({ cart, setCart, user }) {
 
   const openModal = (item) => {
     setMode("cart");
+    setSelected(item);
+  };
+
+  const buyNowFromCard = (item, requestedQty = 1) => {
+    const id = item?._id || item?.id;
+    const available = typeof item?.stock === "number" ? item.stock : 99;
+    const quantity = Math.max(1, Number(requestedQty) || 1);
+
+    if (!id || available <= 0) {
+      toast(t("Hết hàng"), "error");
+      return;
+    }
+
+    const key = `${id}-S-`;
+    const currentQty = Number(cart?.[key]?.qty) || 0;
+
+    if (currentQty + quantity > available) {
+      toast(`${t("Chỉ còn")} ${Math.max(0, available - currentQty)} ${t("phần")}`, "error");
+      return;
+    }
+
+    const entry = {
+      ...item,
+      name: item.name,
+      price: Number(item.price) || 0,
+      qty: currentQty + quantity,
+      stock: item.stock ?? available,
+      _originalId: id,
+      _toppings: [],
+      _size: "S",
+    };
+
+    setCart((currentCart) => {
+      const actualQty = Number(currentCart?.[key]?.qty) || 0;
+      return {
+        ...currentCart,
+        [key]: { ...entry, qty: actualQty + quantity },
+      };
+    });
+
+    navigate("/customer/checkout");
+  };
+
+
+  const openBuyModal = (item) => {
+    setMode("buy");
     setSelected(item);
   };
 
@@ -390,7 +439,8 @@ export default function CustomerMenu({ cart, setCart, user }) {
                 +
               </button>
             </div>
-            <button
+            <div className="menu-food-card__button-group">
+<button
               className="menu-food-card__add-sq"
               onClick={(e) => {
                 e.stopPropagation();
@@ -401,6 +451,19 @@ export default function CustomerMenu({ cart, setCart, user }) {
               <ShoppingCart size={15} />
               {t("Thêm")}
             </button>
+<button
+  type="button"
+  className="menu-food-card__buy-sq"
+  onClick={(e) => {
+    e.stopPropagation();
+    openBuyModal(m);
+  }}
+  disabled={isOutOfStock}
+>
+  <ArrowRight size={14} />
+  {t("Mua")}
+</button>
+</div>
           </div>
         </div>
       );
@@ -483,7 +546,8 @@ export default function CustomerMenu({ cart, setCart, user }) {
               +
             </button>
           </div>
-          <button
+          <div className="menu-food-card__button-group">
+<button
             className="menu-food-card__add-sq"
             onClick={(e) => {
               e.stopPropagation();
@@ -494,6 +558,19 @@ export default function CustomerMenu({ cart, setCart, user }) {
             <ShoppingCart size={15} />
             {t("Thêm")}
           </button>
+<button
+  type="button"
+  className="menu-food-card__buy-sq"
+  onClick={(e) => {
+    e.stopPropagation();
+    openBuyModal(m);
+  }}
+  disabled={isOutOfStock}
+>
+  <ArrowRight size={14} />
+  {t("Mua")}
+</button>
+</div>
         </div>
       </div>
     );
@@ -516,17 +593,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
       )}
 
       {/* HEADER */}
-      <section className="menu-v3-header">
-        <div className="menu-v3-header__left">
-          <h1 className="menu-v3-title">
-            {t("Thực đơn & Trải nghiệm Ẩm thực")}
-          </h1>
-          <p className="menu-v3-subtitle">
-            {t("Nguồn liệu sạch chuẩn VietGAP, chế biến theo công thức dinh dưỡng cân bằng dành riêng cho giảng viên và sinh viên học viện.")}
-          </p>
-        </div>
-
-        <div className="menu-v3-header__badges">
+      <section className="menu-v3-header"><div className="menu-v3-header__badges">
           <div className="menu-v3-badge">
             <Zap size={16} />
             <span>
@@ -548,7 +615,15 @@ export default function CustomerMenu({ cart, setCart, user }) {
           <div className="menu-v3-sidebar__card">
             <div className="menu-v3-search">
               <label className="menu-v3-search__label">
-                {t("Tìm kiếm món")}
+                <svg viewBox="0 0 28 28" width="18" height="18" fill="none" stroke="#333333" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 4.5h22L16.2 13v8.4l-3.2 2V13L3 4.5z" />
+                  {hasActiveFilters && (
+                    <g>
+                      <circle cx="21" cy="21" r="5.5" fill="#333333" stroke="none" />
+                      <path d="m18.5 21 1.6 1.6 3.2-3.3" stroke="#ffffff" strokeWidth="1.5" />
+                    </g>
+                  )}
+                </svg> {t("BỘ LỌC TÌM KIẾM")}
               </label>
               <div className="menu-v3-search__wrap">
                 <Search size={16} className="menu-v3-search__icon" />
@@ -606,38 +681,57 @@ export default function CustomerMenu({ cart, setCart, user }) {
               </div>
 
               <div className="menu-v3-price-slider">
-                <div className="menu-v3-price-slider__track">
-                  <div
-                    className="menu-v3-price-slider__fill"
-                    style={{
-                      left: `${((priceRange.min - priceBounds.min) / priceSpan) * 100}%`,
-                      right: `${100 - ((priceRange.max - priceBounds.min) / priceSpan) * 100}%`,
+                <div className="menu-v3-price-slider__control">
+                  <div className="menu-v3-price-slider__track" aria-hidden="true">
+                    <div
+                      className="menu-v3-price-slider__fill"
+                      style={{
+                        left: `${((priceRange.min - priceBounds.min) / priceSpan) * 100}%`,
+                        right: `${100 - ((priceRange.max - priceBounds.min) / priceSpan) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    aria-label="Giá tối thiểu"
+                    className="menu-v3-price-slider__range menu-v3-price-slider__range--min"
+                    min={priceBounds.min}
+                    max={Math.max(priceBounds.min, priceRange.max - 1000)}
+                    step={1000}
+                    value={priceRange.min}
+                    style={{ zIndex: priceRange.min > priceBounds.max / 2 ? 5 : 3 }}
+                    onChange={(e) => {
+                      const nextMin = Number(e.target.value);
+                      setPriceRange((prev) => ({
+                        min: Math.min(nextMin, prev.max - 1000),
+                        max: prev.max,
+                      }));
+                      setPriceQuickFilter("all");
                     }}
                   />
-                  <span className="menu-v3-price-slider__thumb" style={{ left: `${((priceRange.min - priceBounds.min) / priceSpan) * 100}%` }} />
-                  <span className="menu-v3-price-slider__thumb" style={{ left: `${((priceRange.max - priceBounds.min) / priceSpan) * 100}%` }} />
+                  <input
+                    type="range"
+                    aria-label="Giá tối đa"
+                    className="menu-v3-price-slider__range menu-v3-price-slider__range--max"
+                    min={Math.min(priceBounds.max, priceRange.min + 1000)}
+                    max={priceBounds.max}
+                    step={1000}
+                    value={priceRange.max}
+                    style={{ zIndex: priceRange.max < priceBounds.max / 2 ? 5 : 4 }}
+                    onChange={(e) => {
+                      const nextMax = Number(e.target.value);
+                      setPriceRange((prev) => ({
+                        min: prev.min,
+                        max: Math.max(nextMax, prev.min + 1000),
+                      }));
+                      setPriceQuickFilter("all");
+                    }}
+                  />
                 </div>
                 <div className="menu-v3-price-slider__labels">
                   <span>{money(priceBounds.min)}</span>
                   <span>{money(priceBounds.max)}</span>
                 </div>
-              </div>
-
-              <div className="menu-v3-price-quick">
-                {[
-                  { id: "all", label: t("Tất cả") },
-                  { id: "under-25", label: t("< 25.000đ") },
-                  { id: "25-45", label: "25k - 45k" },
-                  { id: "over-45", label: t("> 45.000đ") },
-                ].map((p) => (
-                  <button
-                    key={p.id}
-                    className={`menu-v3-price-pill ${priceQuickFilter === p.id ? "active" : ""}`}
-                    onClick={() => setPriceQuickFilter(p.id)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -703,29 +797,6 @@ export default function CustomerMenu({ cart, setCart, user }) {
         </aside>
 
         <main className="menu-v3-main">
-          <div className="menu-v3-cat-tabs">
-            <button
-              className={`menu-v3-cat-tab ${activeTab === ALL_CATEGORY ? "is-active" : ""}`}
-              onClick={() => selectCategoryTab(ALL_CATEGORY)}
-            >
-              <span className="menu-v3-cat-tab__label">{t("Tất cả")}</span>
-              <span className="menu-v3-cat-tab__count">{items.length}</span>
-            </button>
-            {categoryList.map((c) => (
-              <button
-                key={c.id}
-                className={`menu-v3-cat-tab ${activeTab === c.id ? "is-active" : ""}`}
-                onClick={() => selectCategoryTab(c.id)}
-              >
-                <span className="menu-v3-cat-tab__icon">
-                  {CATEGORY_ICONS[c.id] || "🍴"}
-                </span>
-                <span className="menu-v3-cat-tab__label">{c.label}</span>
-                <span className="menu-v3-cat-tab__count">{c.count}</span>
-              </button>
-            ))}
-          </div>
-
           <div className="menu-v3-filter-bar">
             <div className="menu-v3-filter-bar__left">
               <span>{t("Hiển thị")}</span>
