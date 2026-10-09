@@ -247,7 +247,6 @@ export default function FoodDetailModal({
       return;
     }
 
-    const name = buildName();
 
     setCart((c) => {
       const e = c[key];
@@ -259,10 +258,7 @@ export default function FoodDetailModal({
     });
 
     // 🔧 C2: KHÔNG gọi onUpdateStock nữa.
-    toast(
-      `${t("Đã thêm")} ${name} — ${t("chuyển đến thanh toán")}`,
-      "success"
-    );
+    
     onClose?.();
     navigate("/customer/checkout");
   };

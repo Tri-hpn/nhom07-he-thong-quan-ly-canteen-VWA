@@ -59,6 +59,61 @@ const HOME_CATEGORIES = [
   { id: "chay",   label: "Món chay",              icon: "🥗", value: "Món chay" },
 ];
 
+function getFlashSaleStatus() {
+  const now = new Date();
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const seconds = now.getSeconds();
+
+  const lunchStart = 11 * 60;
+  const lunchEnd = 14 * 60;
+
+  if (minutes >= lunchStart && minutes < lunchEnd) {
+    const end = new Date(now);
+    end.setHours(14, 0, 0, 0);
+
+    const remainingSeconds = Math.max(
+      0,
+      Math.floor((end.getTime() - now.getTime()) / 1000)
+    );
+
+    return {
+      label: "Đang diễn ra ca trưa",
+      remainingSeconds,
+      active: true,
+    };
+  }
+
+  if (minutes < lunchStart) {
+    const start = new Date(now);
+    start.setHours(11, 0, 0, 0);
+
+    return {
+      label: "Flash Sale ca trưa bắt đầu lúc 11:00",
+      remainingSeconds: Math.max(
+        0,
+        Math.floor((start.getTime() - now.getTime()) / 1000)
+      ),
+      active: false,
+    };
+  }
+
+  return {
+    label: "Flash Sale ca trưa đã kết thúc",
+    remainingSeconds: 0,
+    active: false,
+  };
+}
+
+function formatCountdown(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds) || 0);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  return [hours, minutes, secs]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+}
 function getItemId(m) {
   return m?._id || m?.id;
 }
@@ -77,9 +132,9 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
   const isOutOfStock = m.stock === 0;
   const isHot = (m.sold || 0) >= 50;
   const hasDiscount = m.discount_percent > 0 && m.original_price > m.price;
-  const sold = m.sold || 0;
-  const total = m.total || Math.max(sold * 2, 50);
-  const remaining = Math.max(0, total - sold);
+  const sold = Math.max(0, Number(m.sold) || 0);
+  const remaining = Math.max(0, Number(m.stock ?? 0));
+  const total = sold + remaining;
   const percent = Math.min(100, total > 0 ? (sold / total) * 100 : 0);
 
   return (
@@ -213,7 +268,21 @@ export default function CustomerHome({ user, cart, setCart }) {
   const navigate = useNavigate();
   const { t, tData } = useI18n();
 
-  const [items, setItems] = useState([]);
+  const [flashSaleTick, setFlashSaleTick] = useState(0);
+  const flashSaleStatus = getFlashSaleStatus();
+  const flashSaleCountdown = formatCountdown(flashSaleStatus.remainingSeconds);
+
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    setFlashSaleTick((value) => value + 1);
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, []);
+
+const [items, setItems] = useState([]);
+  const [walletBalance, setWalletBalance] = useState(0);
   const [newItems, setNewItems] = useState([]);
   const [signatureItems, setSignatureItems] = useState([]);
   const [promotions, setPromotions] = useState([]);
@@ -259,9 +328,10 @@ export default function CustomerHome({ user, cart, setCart }) {
       setError("");
 
       try {
-        const [menuRes, promoRes] = await Promise.all([
+        const [menuRes, promoRes, walletRes] = await Promise.all([
           api.menu.listActive("", "Tất cả", "popular").catch(() => []),
           api.promotions.list().catch(() => []),
+          api.wallet.me().catch(() => ({ balance: 0 })),
         ]);
 
         if (!mountedRef.current) return;
@@ -289,6 +359,7 @@ export default function CustomerHome({ user, cart, setCart }) {
         setSignatureItems(sig);
 
         setPromotions(Array.isArray(promoRes) ? promoRes : []);
+        setWalletBalance(Number(walletRes?.balance) || 0);
       } catch (e) {
         if (mountedRef.current && !silent) {
           setError(e.message || t("Không tải được dữ liệu"));
@@ -511,10 +582,7 @@ export default function CustomerHome({ user, cart, setCart }) {
         <div className="home-welcome-glow" />
         <div className="home-welcome-content">
           <div className="home-welcome-left">
-            <div className="home-welcome-badge">
-              <Sparkles size={14} />
-              {t("Học kỳ II")} | 2024-2025
-            </div>
+            
             <h1 className="home-welcome-title">
               {t("Xin chào,")}{" "}
               <span className="home-welcome-name">
@@ -543,7 +611,7 @@ export default function CustomerHome({ user, cart, setCart }) {
                 {t("Thẻ sinh viên VWA Pay")}
               </span>
               <span className="home-wallet-value">
-                {money(user?.balance || 0)}{" "}
+                {money(walletBalance)}{" "}
                 <span className="home-wallet-unit">VNĐ</span>
               </span>
             </div>
@@ -699,7 +767,7 @@ export default function CustomerHome({ user, cart, setCart }) {
                 {t("Flash Sale Ca Trưa Sinh Viên")}
               </div>
               <h2 className="home-flash-title">
-                {t("GIẢM 30% MÓN CƠM TẤM SƯỜN NƯỚNG ĐẶC BIỆT")}
+                {tData(promotions[0], "name")}
               </h2>
               <p className="home-flash-desc">
                 {t(
@@ -729,7 +797,7 @@ export default function CustomerHome({ user, cart, setCart }) {
                 <button
                   type="button"
                   className="home-flash-cta"
-                  onClick={() => navigate("/customer/menu")}
+                  onClick={() => { setMode("buy"); setSelected(promotions[0]); }}
                 >
                   <ShoppingCart size={18} />
                   {t("Đặt món ngay")} •{" "}
@@ -749,9 +817,9 @@ export default function CustomerHome({ user, cart, setCart }) {
                     e.target.src = FALLBACK_IMG;
                   }}
                 />
-                <span className="home-flash-discount-badge">-30% OFF</span>
+                <span className="home-flash-discount-badge">-{promotions[0]?.discount_percent || 0}% OFF</span>
                 <span className="home-flash-stock-badge">
-                  {t("Chỉ còn 18 suất")}
+                  {t("\u0043\u00f2\u006e")} {Math.max(0, Number(promotions[0]?.stock ?? 0))} {t("\u0073\u0075\u1ea5\u0074")}
                 </span>
               </div>
             </div>
@@ -759,49 +827,61 @@ export default function CustomerHome({ user, cart, setCart }) {
         </div>
       )}
 
-      <div className="home-cat-section">
-        <div className="home-cat-header">
-          <h3 className="home-cat-title">{t("Danh mục món ăn")}</h3>
-          <span className="home-cat-count">{t("6 nhóm thực đơn")}</span>
+      <div className="home-advisory-box">
+        <div className="home-advisory-icon">
+          <Info size={24} />
         </div>
-        <div className="home-cat-pills">
-          {HOME_CATEGORIES.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className="home-cat-pill"
-              onClick={() => handleCategoryClick(c.id)}
-            >
-              <span className="home-cat-pill-icon">{c.icon}</span>
-              {t(c.label)}
-            </button>
-          ))}
+        <div className="home-advisory-content">
+          <h4 className="home-advisory-title">
+            {t("Lưu ý nhận món vào giờ cao điểm tại Căng tin VWA")}
+          </h4>
+          <p className="home-advisory-desc">
+            {t("Căng tin mở cửa từ")} <b>06:30 - 18:30</b>.{" "}
+            {t("Khung giờ nhận đông nhất:")}{" "}
+            <b style={{ color: "#dc2626" }}>11:30 - 12:30</b>.{" "}
+            {t(
+              "Vui lòng đặt món trước tối thiểu 15 phút để nhà bếp chuẩn bị sẵn, không cần xếp hàng đợi lấy số!"
+            )}
+          </p>
         </div>
+        <Link to="/customer/orders" className="home-advisory-btn">
+          {t("Kiểm tra đơn của tôi")}
+        </Link>
       </div>
 
-      {promotions.length > 0 && (
+      {promotions.length > 0 && flashSaleStatus.active && (
         <div className="home-flash-section">
-          <div className="home-section-head">
-            <div className="home-section-title-wrap">
-              <span className="home-section-icon home-section-icon--error">
-                <Flame size={20} />
-              </span>
-              <div>
-                <h3 className="home-section-title">
-                  {t("Flash Sale Giới Hạn Hôm Nay")}
-                </h3>
-                <p className="home-section-sub">
-                  {t("Suất trợ giá sinh viên - Cập nhật trực tiếp số lượng")}
-                </p>
-              </div>
-            </div>
-            <div className="home-section-live">
-              <span className="home-live-dot" />
-              {t("Đang diễn ra ca trưa")}
-            </div>
-          </div>
+          <div className="home-section-head home-flash-section-head">
+  <div className="home-section-title-wrap">
+    <span className="home-section-icon home-section-icon--error">
+      <Flame size={20} />
+    </span>
 
-          <div className="home-flash-grid">
+    <h3 className="home-section-title">
+      {t("Flash Sale")}
+    </h3>
+
+    <div className="home-section-live">
+      <span className="home-live-dot" />
+      {t(flashSaleStatus.label)}
+      <span className="home-flash-countdown">
+        {flashSaleStatus.active
+          ? `${t("Kết thúc sau")} ${flashSaleCountdown}`
+          : flashSaleStatus.remainingSeconds > 0
+            ? `${t("Bắt đầu sau")} ${flashSaleCountdown}`
+            : t("Đã kết thúc")}
+      </span>
+    </div>
+  </div>
+
+  <Link
+    to="/customer/menu?promotion=flash-sale"
+    className="home-section-link home-flash-view-all"
+  >
+    {t("Xem tất cả")} <ArrowRight size={16} />
+  </Link>
+</div>
+<div className="home-flash-grid">
             {promotions.slice(0, FLASH_PROMOS_LIMIT).map((m) => {
               const id = getItemId(m);
               return (
@@ -948,28 +1028,6 @@ export default function CustomerHome({ user, cart, setCart }) {
           </div>
         </div>
       )}
-
-      <div className="home-advisory-box">
-        <div className="home-advisory-icon">
-          <Info size={24} />
-        </div>
-        <div className="home-advisory-content">
-          <h4 className="home-advisory-title">
-            {t("Lưu ý nhận món vào giờ cao điểm tại Căng tin VWA")}
-          </h4>
-          <p className="home-advisory-desc">
-            {t("Căng tin mở cửa từ")} <b>06:30 - 18:30</b>.{" "}
-            {t("Khung giờ nhận đông nhất:")}{" "}
-            <b style={{ color: "#dc2626" }}>11:30 - 12:30</b>.{" "}
-            {t(
-              "Vui lòng đặt món trước tối thiểu 15 phút để nhà bếp chuẩn bị sẵn, không cần xếp hàng đợi lấy số!"
-            )}
-          </p>
-        </div>
-        <Link to="/customer/orders" className="home-advisory-btn">
-          {t("Kiểm tra đơn của tôi")}
-        </Link>
-      </div>
 
       {cartStats.totalQty > 0 && (
         <div className="home-sticky-cart">

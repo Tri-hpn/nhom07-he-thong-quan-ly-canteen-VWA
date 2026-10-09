@@ -193,6 +193,8 @@ export default function CustomerPromotions() {
   const [vouchers, setVouchers] = useState([]);
   const [publicVouchers, setPublicVouchers] = useState([]);
   const [points, setPoints] = useState(0);
+  const [pointHistory, setPointHistory] = useState([]);
+  const [showPointHistory, setShowPointHistory] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -247,6 +249,7 @@ export default function CustomerPromotions() {
         setVouchers(Array.isArray(myRes) ? myRes : []);
         setPublicVouchers(Array.isArray(pubRes) ? pubRes : []);
         setPoints(Number(pointsRes?.points) || 0);
+        setPointHistory(Array.isArray(pointsRes?.history) ? pointsRes.history : []);
       } catch (e) {
         if (mountedRef.current && !silent) {
           setError(
@@ -426,20 +429,13 @@ export default function CustomerPromotions() {
       {/* HEADER */}
       <section className="promo-header">
         <div className="promo-header__row">
-          <div className="promo-header__left">
-            <div className="promo-header__eyebrow">
-              <Leaf size={14} />
-              {t("Chương Trình Sống Xanh Học Đường")}
-            </div>
-            <h1 className="promo-title">
-              {t("Khuyến Mãi & Đổi Điểm Thưởng")}
-            </h1>
-            <p className="promo-subtitle">
-              {t("Tích lũy điểm VWA Green sau mỗi bữa ăn tại căng tin, dùng bình nước cá nhân hoặc mang hộp cơm để đổi voucher giảm giá, món ăn và quà tặng sinh thái học viện.")}
-            </p>
-          </div>
+          
+        </div>
+      </section>
 
-          <button
+      {/* POINTS HERO */}
+      <section className="promo-hero">
+        <button
             type="button"
             className="promo-header__cta"
             onClick={() => scrollToSection("my-vouchers")}
@@ -447,11 +443,6 @@ export default function CustomerPromotions() {
             <Ticket size={18} />
             {t("Ví Voucher Của Tôi")} ({active.length})
           </button>
-        </div>
-      </section>
-
-      {/* POINTS HERO */}
-      <section className="promo-hero">
         <div className="promo-hero__glow-1" />
         <div className="promo-hero__glow-2" />
 
@@ -469,12 +460,6 @@ export default function CustomerPromotions() {
             </div>
 
             <div className="promo-hero__user">
-              <div className="promo-hero__user-name">
-                {t("Xin chào, bạn!")}
-              </div>
-              <div className="promo-hero__user-meta">
-                {t("Thành viên Canteen VWA")}
-              </div>
             </div>
 
             <div className="promo-hero__points">
@@ -513,7 +498,7 @@ export default function CustomerPromotions() {
             <div className="promo-hero__actions">
               <button
                 type="button"
-                className="promo-hero__action promo-hero__action--solid"
+                className="promo-hero__action promo-hero__action--solid" onClick={() => setShowPointHistory(true)}
               >
                 <History size={16} />
                 {t("Lịch sử tích/đổi điểm")}
@@ -973,6 +958,69 @@ export default function CustomerPromotions() {
         </div>
       </section>
 
+      {/* POINT HISTORY MODAL */}
+      {showPointHistory && (
+        <div className="promo-modal-overlay" onClick={() => setShowPointHistory(false)}>
+          <div className="promo-modal promo-point-history-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="promo-modal__head">
+              <div>
+                <h3>{t("Lịch sử tích/đổi điểm")}</h3>
+                <p>{t("Theo dõi các lần cộng và sử dụng điểm của bạn")}</p>
+              </div>
+              <button type="button" onClick={() => setShowPointHistory(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="promo-point-history-list">
+              {pointHistory.length === 0 ? (
+                <div className="promo-point-history-empty">
+                  <History size={32} />
+                  <p>{t("Chưa có lịch sử tích/đổi điểm")}</p>
+                </div>
+              ) : (
+                pointHistory.map((item, index) => {
+                  const isRedeem = item.type === "redeem" || Number(item.points) < 0;
+                  const date = item.date
+                    ? new Date(item.date).toLocaleDateString("vi-VN")
+                    : "-";
+                  const time = item.date
+                    ? new Date(item.date).toLocaleTimeString("vi-VN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "";
+
+                  return (
+                    <div className="promo-point-history-item" key={`${item.code || "history"}-${item.date || index}-${index}`}>
+                      <div className={`promo-point-history-icon ${isRedeem ? "down" : "up"}`}>
+                        {isRedeem ? <Gift size={18} /> : <Receipt size={18} />}
+                      </div>
+
+                      <div className="promo-point-history-info">
+                        <b>
+                          {isRedeem
+                            ? t("Đổi voucher")
+                            : t("Tích điểm đơn hàng")}
+                        </b>
+                        <span>
+                          {item.code ? `#${item.code}` : t("Không có mã")}
+                        </span>
+                        <small>{date} {time}</small>
+                      </div>
+
+                      <strong className={isRedeem ? "down" : "up"}>
+                        {Number(item.points) > 0 ? "+" : ""}
+                        {Number(item.points) || 0} pts
+                      </strong>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {/* MODAL */}
       {openedGroup && (
         <GroupModal
@@ -994,6 +1042,91 @@ export default function CustomerPromotions() {
           to { transform: rotate(360deg); }
         }
         .promo-spin { animation: promo-spin 1s linear infinite; }
+
+.promo-point-history-modal {
+  width: min(620px, calc(100vw - 32px));
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.promo-point-history-list {
+  max-height: 58vh;
+  overflow-y: auto;
+  padding: 8px 20px 20px;
+}
+
+.promo-point-history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 4px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.promo-point-history-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+}
+
+.promo-point-history-icon.up {
+  color: #16A34A;
+  background: #DCFCE7;
+}
+
+.promo-point-history-icon.down {
+  color: #EF4444;
+  background: #FEE2E2;
+}
+
+.promo-point-history-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.promo-point-history-info b {
+  font-size: 14px;
+  color: #111827;
+}
+
+.promo-point-history-info span,
+.promo-point-history-info small {
+  color: #6B7280;
+  font-size: 12px;
+}
+
+.promo-point-history-item > strong {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.promo-point-history-item > strong.up {
+  color: #16A34A;
+}
+
+.promo-point-history-item > strong.down {
+  color: #EF4444;
+}
+
+.promo-point-history-empty {
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #6B7280;
+}
+
+.promo-point-history-empty p {
+  margin: 0;
+}
       `}</style>
     </div>
   );
