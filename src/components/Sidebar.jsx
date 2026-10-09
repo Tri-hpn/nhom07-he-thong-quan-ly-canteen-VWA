@@ -1,14 +1,12 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V5 - FIXED + i18n)
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V7 - FINAL)
 // ============================================================
-// 🔧 FIX:
-//   - L36: Logo 12px quá nhỏ → đổi thành 40px
-//   - L37: Bỏ override width/height trên brand-mark staff
-//   - #38: Đồng bộ badge key giữa MENU_CONFIG.EMPLOYEE và getBadge()
-//          + getBadge nhận alias "kds"/"kds_kanban", "prep"/"kds_prep"
-//   - Extra: type="button" đầy đủ, cleanup unused imports
-//
-// 🌐 i18n: source-text tiếng Việt, tự dịch
+// V7 (2026-10):
+//   - ✅ XOÁ menu "Chuẩn bị đơn" khỏi EMPLOYEE
+//     (đã gộp vào tab "Bếp Nấu" của trang Bàn làm việc)
+//   - Giữ nguyên: V6 (LogoVWACompact cho cả 2 role),
+//     L36/L37 (logo 40px), #38 (badge key sync),
+//     type="button", i18n
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -51,7 +49,6 @@ const ICONS = {
   promotions: Ticket,
   wallet: CreditCard,
   wallet_admin: CreditCard,
-  // Staff-specific (dark theme)
   kds_kanban: Kanban,
   kds_prep: ChefHat,
   kds_history: History,
@@ -59,10 +56,6 @@ const ICONS = {
   kds_attendance: CalendarCheck,
   kds_alerts: BellRing,
 };
-
-// ============================================================
-// MENU CONFIG
-// ============================================================
 
 const MENU_CONFIG = {
   ADMIN: {
@@ -94,10 +87,8 @@ const MENU_CONFIG = {
         label: "Nhân viên & Bếp (KDS)",
         items: [
           ["dashboard",   "Tổng quan ca làm việc", "/employee"],
-          // 🔧 FIX #38: badge "kds" → "kds_kanban" cho khớp key item
           ["kds_kanban",  "Bàn làm việc (Kanban)", "/employee/orders", { badge: "kds_kanban" }],
-          // 🔧 FIX #38: badge "prep" → "kds_prep" cho khớp key item
-          ["kds_prep",    "Chuẩn bị đơn",          "/employee/prep",   { badge: "kds_prep" }],
+          // ❌ V7: XOÁ "Chuẩn bị đơn" — đã gộp vào tab "Bếp Nấu"
           ["kds_menu",    "Thực đơn & Kho (86)",   "/employee/menu"],
           ["kds_history", "Ca làm việc",           "/employee/shifts"],
           ["kds_alerts",  "Thông báo khẩn",        "/employee/chat"],
@@ -130,10 +121,6 @@ const PROFILE_CONFIG = {
 };
 
 const ROOT_PATHS = ["/owner", "/employee", "/customer"];
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function splitTo(to) {
   const raw = String(to || "");
@@ -196,10 +183,6 @@ function readLastSeen(key) {
   }
 }
 
-// ============================================================
-// STAFF USER CARD
-// ============================================================
-
 function StaffSidebarUser({ user, onLogout, t }) {
   if (!user) return null;
 
@@ -248,10 +231,6 @@ function StaffSidebarUser({ user, onLogout, t }) {
     </div>
   );
 }
-
-// ============================================================
-// PROFILE LINK — cho ADMIN/CUSTOMER
-// ============================================================
 
 function ProfileLink({ user, role, onNavClick, t }) {
   const cfg = PROFILE_CONFIG[role];
@@ -340,10 +319,6 @@ function ProfileLink({ user, role, onNavClick, t }) {
   );
 }
 
-// ============================================================
-// MAIN SIDEBAR
-// ============================================================
-
 export default function Sidebar({ role, onLogout, user }) {
   const { t } = useI18n();
 
@@ -363,21 +338,18 @@ export default function Sidebar({ role, onLogout, user }) {
 
   const location = useLocation();
 
-  // ---------- Toggle sidebar ----------
   useEffect(() => {
     const toggle = () => setOpen((o) => !o);
     window.addEventListener("toggle-sidebar", toggle);
     return () => window.removeEventListener("toggle-sidebar", toggle);
   }, []);
 
-  // ---------- Visibility ----------
   useEffect(() => {
     const handler = () => setTabVisible(!document.hidden);
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
   }, []);
 
-  // ---------- Lock body scroll ----------
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -395,7 +367,6 @@ export default function Sidebar({ role, onLogout, user }) {
     return () => document.body.classList.remove("sidebar-open");
   }, [open]);
 
-  // ---------- ESC ----------
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -405,7 +376,6 @@ export default function Sidebar({ role, onLogout, user }) {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  // ---------- Cart ----------
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
@@ -422,7 +392,6 @@ export default function Sidebar({ role, onLogout, user }) {
     };
   }, [role, readCart]);
 
-  // ---------- Fetch counts ----------
   const fetchCounts = useCallback(async () => {
     const myReqId = ++fetchReqIdRef.current;
     try {
@@ -508,15 +477,11 @@ export default function Sidebar({ role, onLogout, user }) {
     [role]
   );
 
-  // 🔧 FIX #38: getBadge nhận cả alias "kds"/"kds_kanban" và "prep"/"kds_prep"
-  //   → đảm bảo badge Kanban + Prep hiển thị đúng bất kể MENU_CONFIG
-  //   truyền key nào (backward-compatible với các nơi khác có thể gọi).
   const getBadge = useCallback(
     (key) => {
       if (key === "orders" && orderPending > 0) return orderPending;
       if (key === "promotions" && voucherCount > 0) return voucherCount;
 
-      // Kanban: chấp nhận cả "kds" và "kds_kanban"
       if (
         (key === "kds_kanban" || key === "kds") &&
         kdsCount > 0
@@ -524,7 +489,6 @@ export default function Sidebar({ role, onLogout, user }) {
         return kdsCount;
       }
 
-      // Prep: chấp nhận cả "prep" và "kds_prep"
       if (
         (key === "prep" || key === "kds_prep") &&
         prepCount > 0
@@ -538,10 +502,6 @@ export default function Sidebar({ role, onLogout, user }) {
   );
 
   const closeSidebar = () => setOpen(false);
-
-  // ============================================================
-  // RENDER
-  // ============================================================
 
   return (
     <>
@@ -557,32 +517,22 @@ export default function Sidebar({ role, onLogout, user }) {
         className={"sidebar " + (open ? "mobile-open" : "")}
         aria-label={t("Điều hướng chính")}
       >
-        {/* BRAND HEADER */}
+        {/* ✅ V6: dùng LogoVWACompact cho CẢ 2 role */}
         <div className="brand">
-          {/*
-            🔧 L36 + L37: Logo staff trước đây size={12} + CSS width/height=12
-            → đổi thành 40px (chuẩn), bỏ override CSS size.
-          */}
-          {isStaff ? (
-            <LogoVWACompact size={40} />
-          ) : (
-            <div className="brand-mark">C</div>
-          )}
+          <LogoVWACompact size={40} />
 
           <div className="brand-text">
-            <strong>{isStaff ? "Canteen VWA" : "CANTEEN VWA"}</strong>
+            <strong>CANTEEN VWA</strong>
             <small>{isStaff ? t("KDS/SAAS") : "VWA"}</small>
           </div>
         </div>
 
-        {/* ROLE CHIP — chỉ ADMIN/CUSTOMER */}
         {!isStaff && (
           <div className="role-chip">
             {role === "ADMIN" ? t("Quản trị viên") : t("Khách hàng")}
           </div>
         )}
 
-        {/* NAV với ZONES */}
         <nav>
           {config.zones.map((zone, zIdx) => (
             <div key={zIdx}>
@@ -626,7 +576,6 @@ export default function Sidebar({ role, onLogout, user }) {
           ))}
         </nav>
 
-        {/* NODE INFO FOOTER — chỉ EMPLOYEE */}
         {isStaff && (
           <div className="staff-sidebar-node">
             <div className="staff-sidebar-node__left">
@@ -637,7 +586,6 @@ export default function Sidebar({ role, onLogout, user }) {
           </div>
         )}
 
-        {/* USER CARD */}
         {isStaff ? (
           <StaffSidebarUser user={user} onLogout={onLogout} t={t} />
         ) : (

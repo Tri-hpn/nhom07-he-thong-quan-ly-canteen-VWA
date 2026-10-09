@@ -1,8 +1,11 @@
 // ============================================================
 // CUSTOMERORDERDETAIL.JSX — Modal chi tiết đơn hàng (Customer)
 // ============================================================
-// ✅ SOURCE-TEXT I18N
-// ✅ Ngày giờ đầy đủ + nhãn "Hôm nay / Hôm qua"
+// V2 (2026-10):
+//   - ✅ FIX #2: Bọc t() cho label ở STATUS_FLOW và ALL_STEPS
+//   - Giữ nguyên: full datetime, modal review, modal huỷ/nhận
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -492,7 +495,7 @@ export default function CustomerOrderDetail({
                               fontWeight: active ? 700 : 500,
                             }}
                           >
-                            {s.label}
+                            {t(s.label)}
                           </span>
                         </div>
                       );
@@ -559,7 +562,7 @@ export default function CustomerOrderDetail({
                         color: current.color,
                       }}
                     >
-                      {current.label}
+                      {t(current.label)}
                     </span>
                   }
                 />

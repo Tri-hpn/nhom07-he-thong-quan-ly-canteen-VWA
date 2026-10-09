@@ -1,17 +1,28 @@
 // ============================================================
-// BOTTOMNAV.JSX — Bottom navigation cho Customer (V2 - design mới)
+// BOTTOMNAV.JSX — Bottom navigation cho Customer (V3 - FINAL)
 // ============================================================
-// ✅ GIỮ NGUYÊN: logic badge, poll orders, more menu, logout
-// 🎨 THAY ĐỔI: CSS classes mới theo design system
-// 🔧 FIX #56: pause poll khi tab ẩn (document.hidden + visibilitychange)
+// V3 (2026-10):
+//   - ✅ FIX #4: dùng getToken() từ api.js thay sessionStorage
+//     → badge đơn hàng hoạt động đúng trên mobile
+//   - ✅ Q2:B: Thêm mountedRef guard cho readOrders/readCart
+//     → tránh setState warning khi component unmount
+//   - Giữ nguyên: pause poll khi tab ẩn, badge, more menu, logout
+//
+// 🌐 i18n: source-text tiếng Việt, tự dịch
 // ============================================================
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
-  Home, UtensilsCrossed, ShoppingCart, Package, User, Menu, Wallet, Gift, LogOut, X,
+  Home, UtensilsCrossed, ShoppingCart, Package, User, Menu, Wallet, Gift,
+  LogOut, X,
 } from "lucide-react";
-import { api, setToken } from "../api";
+import { api, getToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
 import ConfirmDialog, { LogoutIcon } from "./ConfirmDialog";
 
@@ -69,7 +80,6 @@ export default function BottomNav({ onLogout }) {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // 🔧 FIX #56: theo dõi tab visible để pause poll khi ẩn
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
   );
@@ -78,24 +88,36 @@ export default function BottomNav({ onLogout }) {
   const location = useLocation();
 
   const orderReqIdRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  // ✅ Q2:B — mount tracking
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const readCart = useCallback(() => {
+    if (!mountedRef.current) return;
     setCartCount(readCartFromStorage());
   }, []);
 
+  // ✅ FIX #4: dùng getToken() thay sessionStorage
   const readOrders = useCallback(async () => {
     const myReqId = ++orderReqIdRef.current;
 
     try {
-      const token = sessionStorage.getItem("token");
+      const token = getToken();
       if (!token) {
-        setOrderCount(0);
+        if (mountedRef.current) setOrderCount(0);
         return;
       }
 
       const data = await api.orders.myOrders();
 
       if (myReqId !== orderReqIdRef.current) return;
+      if (!mountedRef.current) return;
 
       const lastSeen = parseInt(
         localStorage.getItem(ORDERS_SEEN_KEY) || "0",
@@ -110,11 +132,13 @@ export default function BottomNav({ onLogout }) {
 
       setOrderCount(count);
     } catch {
-      if (myReqId === orderReqIdRef.current) setOrderCount(0);
+      if (myReqId === orderReqIdRef.current && mountedRef.current) {
+        setOrderCount(0);
+      }
     }
   }, []);
 
-  // 🔧 FIX #56: lắng nghe visibilitychange
+  // Visibility tracking
   useEffect(() => {
     const handler = () => setTabVisible(!document.hidden);
     document.addEventListener("visibilitychange", handler);
@@ -133,7 +157,6 @@ export default function BottomNav({ onLogout }) {
     window.addEventListener("orders-seen", onOrder);
     window.addEventListener("order-updated", onOrder);
 
-    // 🔧 FIX #56: chỉ poll khi tab visible
     if (!tabVisible) {
       return () => {
         window.removeEventListener("cart-updated", onCart);
@@ -204,7 +227,10 @@ export default function BottomNav({ onLogout }) {
     if (onLogout) {
       onLogout();
     } else {
-      setToken(null);
+      try {
+        localStorage.removeItem("token");
+        sessionStorage.removeItem("token");
+      } catch {}
       navigate("/");
     }
   };
@@ -331,7 +357,9 @@ export default function BottomNav({ onLogout }) {
         open={confirmLogout}
         icon={LogoutIcon}
         title={t("Đăng xuất khỏi Canteen VWA?")}
-        message={t("Giỏ hàng hiện tại sẽ bị xoá. Bạn sẽ cần đăng nhập lại để tiếp tục.")}
+        message={t(
+          "Giỏ hàng hiện tại sẽ bị xoá. Bạn sẽ cần đăng nhập lại để tiếp tục."
+        )}
         confirmText={t("Đăng xuất")}
         cancelText={t("Ở lại")}
         danger

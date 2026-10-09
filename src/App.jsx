@@ -1,9 +1,13 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V8)
+// APP.JSX — Root component + Routing (V10 - FINAL)
 // ============================================================
-// V8 (2026-10):
-//   - ✅ FIX MOBILE: Bỏ window.location.reload() → dùng api.me() + setUser()
-//   - Giữ nguyên toàn bộ logic V7
+// V10 (2026-10):
+//   - ✅ XOÁ import EmployeeOrdersPrep
+//   - ✅ Route /employee/prep → redirect sang
+//     /employee/orders?station=kitchen (giữ backward compat bookmark cũ)
+//   - Giữ nguyên: V9 (đã xoá effect OAuth ?token=),
+//     cart persistence, auth-expired handler, role-based redirect,
+//     routing cho 3 role
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -49,7 +53,8 @@ import CustomerChat from "./pages/customer/CustomerChat";
 // ---------- Employee pages ----------
 import EmployeeHome from "./pages/employee/EmployeeHome";
 import EmployeeOrders from "./pages/employee/EmployeeOrders";
-import EmployeeOrdersPrep from "./pages/employee/EmployeeOrdersPrep";
+// ❌ V10: XOÁ — đã gộp vào EmployeeOrders tab "Bếp Nấu"
+// import EmployeeOrdersPrep from "./pages/employee/EmployeeOrdersPrep";
 import EmployeeMenu from "./pages/employee/EmployeeMenu";
 import EmployeeChat from "./pages/employee/EmployeeChat";
 import EmployeeShifts from "./pages/employee/EmployeeShifts";
@@ -108,47 +113,19 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 🔧 Track lần redirect gần nhất để phát hiện loop
   const lastRedirectRef = useRef({ path: "", timestamp: 0 });
   const pendingRedirectRef = useRef(null);
 
-  // ---------- Effects ----------
-
-  // ✅ FIX MOBILE: Tự động đăng nhập nếu có token OAuth redirect về
-  // KHÔNG dùng window.location.reload() — bị block trên mobile
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    const provider = params.get("provider");
-
-    if (!token) return;
-
-    console.log("✅ [OAuth] Nhận token từ URL, provider:", provider);
-    setToken(token);
-
-    // Xóa token khỏi URL ngay lập tức
-    const cleanUrl = window.location.pathname + window.location.hash;
-    window.history.replaceState({}, "", cleanUrl);
-
-    // Gọi api.me() để lấy user info và setUser → đăng nhập ngay
-    import("./api").then(({ api }) => {
-      api
-        .me()
-        .then((userData) => {
-          console.log("✅ [OAuth] Đã lấy user info:", userData);
-          if (setUser) setUser(userData);
-        })
-        .catch((err) => {
-          console.error("❌ [OAuth] Lỗi lấy user info:", err);
-          // Fallback: nếu api.me() lỗi → xóa token, về trang login
-          try {
-            localStorage.removeItem("token");
-            sessionStorage.removeItem("token");
-          } catch {}
-          window.location.href = "/";
-        });
-    });
-  }, [setUser]);
+  // ============================================================
+  // ✅ V9: ĐÃ XÓA EFFECT OAuth ?token= (đã chuyển sang Login.jsx)
+  // ============================================================
+  // Lý do xóa:
+  //   - OAuth Google/FB: redirect về /auth/google/callback
+  //     → OAuthCallback.jsx xử lý (dùng `code`)
+  //   - OAuth Microsoft: redirect về /login?token=xxx
+  //     → Login.jsx xử lý (dùng `token`)
+  //   - Giữ effect ở App → chạy song song AuthContext → RACE → 401 → văng
+  // ============================================================
 
   // Tự động lưu cart vào localStorage
   useEffect(() => {
@@ -185,7 +162,7 @@ export default function App() {
     return () => window.removeEventListener("auth-expired", handler);
   }, [navigate, setUser]);
 
-  // 🔧 FIX #26: Redirect nếu user ở path không khớp với role
+  // Redirect nếu user ở path không khớp với role
   useEffect(() => {
     if (!user) return;
     if (mustChangePassword) return;
@@ -201,8 +178,13 @@ export default function App() {
 
     if (isPathInPrefix(path, rolePrefix)) return;
 
-    // Các path được phép ở lại (không phải redirect)
-    const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/payment-result"];
+    const PUBLIC_PATHS = [
+      "/",
+      "/login",
+      "/register",
+      "/forgot-password",
+      "/payment-result",
+    ];
     if (PUBLIC_PATHS.includes(path)) return;
     if (path.startsWith("/auth/")) return;
 
@@ -275,7 +257,6 @@ export default function App() {
         <CardHoverEffect />
         <Routes>
           <Route path="/" element={<Login onLogin={handleLogin} />} />
-          {/* ✅ FIX: Route /login cho Microsoft redirect về kèm token */}
           <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -299,7 +280,6 @@ export default function App() {
               />
             }
           />
-          {/* ✅ THÊM ROUTE MICROSOFT CALLBACK */}
           <Route
             path="/auth/microsoft/callback"
             element={
@@ -466,13 +446,15 @@ export default function App() {
             }
           />
 
+          {/* ✅ V10: Redirect /employee/prep → tab "Bếp Nấu" của Bàn làm việc */}
           <Route
             path="/employee/prep"
-            element={wrap(
-              "Chuẩn bị đơn",
-              "Danh sách đơn bếp cần xử lý",
-              <EmployeeOrdersPrep />
-            )}
+            element={
+              <Navigate
+                to="/employee/orders?station=kitchen"
+                replace
+              />
+            }
           />
 
           <Route

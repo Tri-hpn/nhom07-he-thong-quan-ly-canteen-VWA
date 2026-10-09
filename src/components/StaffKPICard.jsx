@@ -1,36 +1,40 @@
 // ============================================================
 // STAFFKPICARD.JSX — KPI card có progress bar + sub-stats
 // ============================================================
-// 🔧 FIX #40: delta.pct không validate number → guard Number.isFinite
+// V2 (2026-10):
+//   - ✅ FIX #15: Clamp seg.pct về [0, 100] — không còn tràn progress bar
+//   - ✅ FIX #40 (giữ): delta.pct guard Number.isFinite
+// ============================================================
 
-import {
-  TrendingUp, TrendingDown,
-} from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
+
+// ✅ FIX #15: helper clamp pct về [0, 100]
+function clampPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+}
 
 export default function StaffKPICard({
   icon,
   label,
   value,
   unit,
-  colorVariant = "default", // default | success | primary | tertiary
-  delta, // { pct, isUp } | null
-  // Multi-segment progress: [{ pct, variant: 'success'|'warning'|'primary'|'info' }]
+  colorVariant = "default",
+  delta,
   progressSegments,
-  // Row dưới progress bar: [{ label, value, bold }]
   legendRows,
-  badge, // { icon, text, variant }
-  hint, // string | JSX
+  badge,
+  hint,
 }) {
   const { t } = useI18n();
 
-  // 🔧 FIX #40: validate delta.pct là number hữu hạn, fallback 0
   const rawPct = Number(delta?.pct);
   const safePct = Number.isFinite(rawPct) ? rawPct : 0;
 
   return (
     <div className="staff-kpi-card">
-      {/* Top */}
       <div className="staff-kpi-card__top">
         <div style={{ minWidth: 0 }}>
           <span className="staff-kpi-card__label">{label}</span>
@@ -59,9 +63,7 @@ export default function StaffKPICard({
         )}
       </div>
 
-      {/* Bottom */}
       <div className="staff-kpi-card__bottom">
-        {/* Delta hoặc legend row 1 */}
         {delta && (
           <div className="staff-kpi-card__sub">
             <span
@@ -72,7 +74,6 @@ export default function StaffKPICard({
               }`}
             >
               {delta.isUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-              {/* 🔧 FIX #40: dùng safePct thay vì delta.pct */}
               {delta.isUp ? "↑" : "↓"} {safePct}%
             </span>
             {legendRows?.[0] && (
@@ -86,21 +87,20 @@ export default function StaffKPICard({
           </div>
         )}
 
-        {/* Progress bar */}
+        {/* ✅ FIX #15: clamp pct từng segment */}
         {progressSegments && progressSegments.length > 0 && (
           <div className="staff-kpi-progress">
             {progressSegments.map((seg, i) => (
               <div
                 key={i}
                 className={`staff-kpi-progress__seg staff-kpi-progress__seg--${seg.variant}`}
-                style={{ width: `${seg.pct}%` }}
+                style={{ width: `${clampPct(seg.pct)}%` }}
                 title={seg.title}
               />
             ))}
           </div>
         )}
 
-        {/* Legend row bottom */}
         {legendRows && legendRows.length > 0 && (
           <div className="staff-kpi-card__legend">
             {legendRows.map((row, i) => (
@@ -111,7 +111,6 @@ export default function StaffKPICard({
           </div>
         )}
 
-        {/* BadgeCheck */}
         {badge && (
           <span
             className={`staff-kpi-card__badge ${
@@ -123,7 +122,6 @@ export default function StaffKPICard({
           </span>
         )}
 
-        {/* Hint */}
         {hint && <span className="staff-kpi-card__hint">{hint}</span>}
       </div>
     </div>

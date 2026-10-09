@@ -1,15 +1,20 @@
 ﻿// ============================================================
-// LOGIN.JSX — Đăng nhập (style Login Animation V8)
+// LOGIN.JSX — Đăng nhập (V8 - FINAL)
 // ============================================================
-// V6: FIX Microsoft OAuth — redirectUri khớp 100% với Azure
+// V8 (2026-10):
+//   - ✅ FIX A11Y: thêm id + name + htmlFor cho tất cả input
+//     (fix warning "form field should have id/name")
+//   - Giữ V7: handle ?token= Microsoft, OAuth 3 providers,
+//     demo accounts, remember email
 // ============================================================
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { LogoVWACompact } from "../components/LogoVWA";
 import { Link } from "react-router-dom";
 import {
   Eye, EyeOff, LockKeyhole, Mail, ArrowRight, Loader2,
 } from "lucide-react";
+import { api, setToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
 import { toast } from "../components/Effects";
 import CuteCharacters from "../components/LoginIllustration";
@@ -60,7 +65,6 @@ function startFacebookOAuth(t) {
   window.location.href = url;
 }
 
-// ✅ MICROSOFT OAUTH — FIX TRIỆT ĐỂ
 function startMicrosoftOAuth(t) {
   const clientId = import.meta.env.VITE_MICROSOFT_CLIENT_ID;
   const tenantId = import.meta.env.VITE_MICROSOFT_TENANT_ID;
@@ -70,7 +74,6 @@ function startMicrosoftOAuth(t) {
     return;
   }
 
-  // ⚠️ Redirect URI PHẢI KHỚP 100% với URI đã khai báo trên Azure
   const redirectUri = encodeURIComponent(
     window.location.origin + "/api/auth/callback/microsoft-entra-id"
   );
@@ -102,6 +105,47 @@ export default function Login({ onLogin }) {
   const [remember, setRemember] = useState(false);
   const [peeking, setPeeking] = useState(false);
 
+  const urlTokenHandledRef = useRef(false);
+
+  // Handle ?token= từ Microsoft redirect về /login
+  useEffect(() => {
+    if (urlTokenHandledRef.current) return;
+    urlTokenHandledRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get("token");
+    const providerFromUrl = params.get("provider");
+
+    if (!tokenFromUrl) return;
+
+    const cleanUrl = window.location.pathname + window.location.hash;
+    window.history.replaceState({}, "", cleanUrl);
+
+    setLoading(true);
+    setToken(tokenFromUrl);
+
+    api
+      .me()
+      .then((user) => {
+        toast(`${t("Xin chào")} ${user.name || ""}!`, "success");
+        try {
+          window.dispatchEvent(new CustomEvent("refresh-user"));
+        } catch {}
+      })
+      .catch((err) => {
+        setToken(null);
+        setError(
+          err?.message ||
+            t("Đăng nhập {provider} thất bại").replace(
+              "{provider}",
+              providerFromUrl || "OAuth"
+            )
+        );
+      })
+      .finally(() => setLoading(false));
+  }, [t]);
+
+  // Load remembered email
   useEffect(() => {
     try {
       const saved = localStorage.getItem(REMEMBER_KEY);
@@ -211,13 +255,20 @@ export default function Login({ onLogin }) {
 
           {error && <div className="v8-error-box">{error}</div>}
 
-          <form onSubmit={submit} autoComplete="off" data-form-type="other">
-            <label className="v8-label">
+          <form
+            onSubmit={submit}
+            autoComplete="off"
+            data-form-type="other"
+            name="login-form"
+          >
+            <label className="v8-label" htmlFor="login-email">
               {t("Email hoặc tên đăng nhập")}
             </label>
             <div className="v8-input-wrap">
               <Mail size={16} className="v8-input-icon" />
               <input
+                id="login-email"
+                name="email"
                 type="text"
                 value={email}
                 onChange={handleEmailChange}
@@ -231,7 +282,7 @@ export default function Login({ onLogin }) {
               />
             </div>
 
-            <label className="v8-label v8-label-row">
+            <label className="v8-label v8-label-row" htmlFor="login-password">
               <span>{t("Mật khẩu")}</span>
               <Link to="/forgot-password" className="v8-forgot">
                 {t("Quên mật khẩu?")}
@@ -240,6 +291,8 @@ export default function Login({ onLogin }) {
             <div className="v8-input-wrap">
               <LockKeyhole size={16} className="v8-input-icon" />
               <input
+                id="login-password"
+                name="password"
                 type={show ? "text" : "password"}
                 value={password}
                 onChange={handlePasswordChange}
@@ -265,8 +318,10 @@ export default function Login({ onLogin }) {
               </button>
             </div>
 
-            <label className="v8-check">
+            <label className="v8-check" htmlFor="login-remember">
               <input
+                id="login-remember"
+                name="remember"
                 type="checkbox"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
@@ -298,6 +353,7 @@ export default function Login({ onLogin }) {
               type="button"
               className="v8-social"
               onClick={() => startGoogleOAuth(t)}
+              aria-label={t("Đăng nhập bằng Google")}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -312,6 +368,7 @@ export default function Login({ onLogin }) {
               type="button"
               className="v8-social"
               onClick={() => startFacebookOAuth(t)}
+              aria-label={t("Đăng nhập bằng Facebook")}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2" aria-hidden="true">
                 <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z" />
@@ -325,6 +382,7 @@ export default function Login({ onLogin }) {
               type="button"
               className="v8-social"
               onClick={() => startMicrosoftOAuth(t)}
+              aria-label={t("Đăng nhập bằng Microsoft")}
               style={{
                 width: '100%',
                 maxWidth: '280px',

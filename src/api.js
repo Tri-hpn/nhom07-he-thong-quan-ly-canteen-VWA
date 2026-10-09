@@ -1,10 +1,14 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V5)
+// API.JS — HTTP client cho Backend Express (V6 - FINAL)
 // ============================================================
-// V5:
-//   - 🔧 FIX MOBILE: dùng localStorage thay vì sessionStorage
-//     (sessionStorage bị xóa khi chuyển app trên mobile → mất token)
-//   - Giữ nguyên toàn bộ API khác từ V4
+// V6 (2026-10):
+//   - ✅ FIX LỖI 1+2+3: Dùng sessionStorage thuần
+//     → Multi-user: 2 tab = 2 user (sessionStorage riêng mỗi tab)
+//     → Bảo mật: copy link tab mới → về login (sessionStorage trống)
+//     → Mobile: chuyển app → giữ login (iOS/Android giữ session)
+//     → Mobile kill app → mất login (chấp nhận)
+//   - ✅ FIX iOS CORS: credentials "same-origin" thay vì "omit"
+//   - ✅ Thêm memoryToken fallback nếu storage bị chặn
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -13,34 +17,39 @@ const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
 // ============================================================
-// TOKEN — ✅ FIX MOBILE
+// TOKEN — sessionStorage thuần (mỗi tab riêng)
 // ============================================================
+// sessionStorage: mỗi tab có 1 vùng riêng biệt
+//   - Tab A login admin → tab A có sessionStorage.token = adminToken
+//   - Tab B login customer → tab B có sessionStorage.token = customerToken
+//   - Tab A và B KHÔNG ảnh hưởng nhau
+//   - Mở tab C mới (copy link) → sessionStorage trống → về login
+//   - Mobile chuyển app → sessionStorage giữ nguyên (trừ khi kill app)
+// ============================================================
+
+// Fallback nếu storage bị chặn (Safari Private mode cũ, chế độ nghiêm ngặt)
+let memoryToken = null;
+
 export function getToken() {
-  // ✅ Đọc từ localStorage trước, fallback sessionStorage (tương thích ngược)
   try {
-    return (
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("token") ||
-      null
-    );
+    const t = sessionStorage.getItem("token");
+    if (t) return t;
+    return memoryToken;
   } catch {
-    return null;
+    return memoryToken;
   }
 }
 
 export function setToken(t) {
-  // ✅ Lưu vào CẢ 2 để đảm bảo tương thích trên mọi trình duyệt
+  memoryToken = t || null;
   try {
     if (t) {
-      localStorage.setItem("token", t);
       sessionStorage.setItem("token", t);
     } else {
-      localStorage.removeItem("token");
       sessionStorage.removeItem("token");
     }
   } catch (e) {
-    // Trường hợp trình duyệt chặn storage (chế độ private nghiêm ngặt)
-    console.warn("Không thể lưu token vào storage:", e.message);
+    console.warn("Không thể lưu token vào sessionStorage:", e.message);
   }
 }
 
@@ -66,7 +75,8 @@ async function req(path, options = {}) {
       ...options,
       headers,
       cache: "no-store",
-      credentials: "omit",
+      // ✅ FIX iOS CORS: "same-origin" thay vì "omit"
+      credentials: "same-origin",
       signal: controller.signal,
     });
   } catch (e) {
@@ -151,10 +161,8 @@ export const api = {
       }),
   },
 
-  // STATS
   stats: () => req("/stats"),
 
-  // MENU
   menu: {
     list: (q = "", category = "Tất cả", sort = "popular", all = false) => {
       const p = new URLSearchParams();
@@ -184,7 +192,6 @@ export const api = {
       req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")),
   },
 
-  // ORDERS
   orders: {
     create:   (data)       => req("/orders",               { method: "POST",  body: JSON.stringify(data) }),
     myOrders: ()           => req("/orders/me"),
@@ -198,7 +205,6 @@ export const api = {
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
   },
 
-  // USERS
   users: {
     list:   (role)     => req(`/users${role ? `?role=${role}` : ""}`),
     create: (data)     => req("/users",       { method: "POST",   body: JSON.stringify(data) }),
@@ -207,7 +213,6 @@ export const api = {
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
   },
 
-  // INVENTORY
   inventory: {
     list:    ()           => req("/inventory"),
     create:  (data)       => req("/inventory",               { method: "POST",   body: JSON.stringify(data) }),
@@ -217,7 +222,6 @@ export const api = {
     imports: ()           => req("/inventory/imports"),
   },
 
-  // ATTENDANCE
   attendance: {
     today:    ()        => req("/attendance/today"),
     me:       ()        => req("/attendance/me"),
@@ -230,7 +234,6 @@ export const api = {
     employees: ()       => req("/attendance/employees"),
   },
 
-  // SHIFTS
   shifts: {
     approvedToday: () => req("/shifts/approved-today"),
     currentStaff:  () => req("/shifts/current-staff"),
@@ -249,7 +252,6 @@ export const api = {
     reject:   (id)       => req(`/shifts/${id}/reject`,  { method: "DELETE" }),
   },
 
-  // TASKS — Giao việc cho nhân viên
   tasks: {
     me:       ()              => req("/tasks/me"),
     all:      (params = {})   => {
@@ -262,7 +264,6 @@ export const api = {
     complete: (id)            => req(`/tasks/${id}/complete`, { method: "PATCH" }),
   },
 
-  // WALLET
   wallet: {
     me:           ()         => req("/wallet/me"),
     transactions: ()         => req("/wallet/transactions"),
@@ -277,7 +278,6 @@ export const api = {
     reject:       (id, note) => req(`/wallet/requests/${id}/reject`,  { method: "PATCH", body: JSON.stringify({ admin_note: note || "" }) }),
   },
 
-  // REVIEWS
   reviews: {
     me:        ()           => req("/reviews/me"),
     list:      (menuItemId) => req(`/reviews/${menuItemId}`),
@@ -285,13 +285,11 @@ export const api = {
     canReview: (menuItemId) => req(`/reviews/can-review/${menuItemId}`),
   },
 
-  // POINTS
   points: {
     me:     ()     => req("/points/me"),
     redeem: (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
   },
 
-  // VOUCHERS
   vouchers: {
     me:       ()         => req("/vouchers/me"),
     public:   ()         => req("/vouchers/public"),
@@ -307,24 +305,20 @@ export const api = {
     revoke:   (id)       => req(`/vouchers/revoke/${id}`, { method: "DELETE" }),
   },
 
-  // NOTIFICATIONS
   notifications: {
     list:    ()   => req("/notifications"),
     read:    (id) => req(`/notifications/${id}/read`, { method: "POST" }),
     readAll: ()   => req("/notifications/read-all",   { method: "POST" }),
   },
 
-  // CHAT
   chat: {
     myMessages:    ()       => req("/chat/me"),
     conversations: ()       => req("/chat/conversations"),
     messagesWith:  (userId) => req(`/chat/with/${userId}`),
     send:          (data)   => req("/chat/send", { method: "POST", body: JSON.stringify(data) }),
-    // 🔧 FIX: Thêm getContext để lấy dữ liệu cho cột 3
     getContext:    (userId) => req(`/chat/context/${userId}`),
   },
 
-  // CATALOG
   toppings: {
     list: (category) =>
       req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`),
@@ -338,7 +332,6 @@ export const api = {
   },
   promotions: { list: () => req("/promotions") },
 
-  // PERMISSIONS
   permissions: {
     all:    ()              => req("/permissions"),
     me:     ()              => req("/permissions/me"),
@@ -347,7 +340,6 @@ export const api = {
       req(`/permissions/${userId}`, { method: "PUT", body: JSON.stringify({ custom }) }),
   },
 
-  // BACKUP
   backup: {
     export: ()        => req("/backup/export"),
     import: (data)    => req("/backup/import", { method: "POST", body: JSON.stringify(data), timeoutMs: UPLOAD_TIMEOUT_MS }),
@@ -355,18 +347,15 @@ export const api = {
     stats:  ()        => req("/backup/stats"),
   },
 
-  // REPORTS
   reports: {
     revenue: (period = "day") => req(`/reports/revenue?period=${period}`),
   },
 
-  // SETTINGS
   settings: {
     get:    ()     => req("/settings"),
     update: (data) => req("/settings", { method: "PUT", body: JSON.stringify(data) }),
   },
 
-  // TIME SLOTS
   timeSlots: {
     list: () => req("/time-slots"),
     update: (id, data) =>
@@ -377,7 +366,6 @@ export const api = {
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
 
-  // ADMIN — translation
   admin: {
     translationStats: () => req("/admin/translation-stats"),
     backfill:          () => req("/admin/backfill-translations", { method: "POST" }),

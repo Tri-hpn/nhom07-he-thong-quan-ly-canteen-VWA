@@ -1,4 +1,4 @@
-﻿﻿import express from "express";
+﻿﻿﻿﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -22,15 +22,13 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// ✅ BUILD VERSION
-const BUILD_VERSION = "v8-chat-context-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v11-microsoft-oauth-fix-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
-// ✅ AUTO-TRANSLATE — Fire-and-forget HOÀN TOÀN
+// AUTO-TRANSLATE
 // ============================================================
 const ASYNC_LANGS = ["en", "ja", "ko", "zh"];
 
-// 🔧 FIX #14: guard mongoReady trước khi saveDB
 function translateAsync(db, obj, fields) {
   for (const lang of ASYNC_LANGS) {
     for (const f of fields) {
@@ -64,10 +62,8 @@ function autoTranslateMenuItem(db, item, oldItem = null) {
       for (const lang of ASYNC_LANGS) delete item[`${f}_${lang}`];
       continue;
     }
-
     const oldText = oldItem ? oldItem[f] : null;
     const isChanged = !oldItem || oldText !== newText;
-
     if (isChanged) {
       for (const lang of ASYNC_LANGS) delete item[`${f}_${lang}`];
     }
@@ -85,10 +81,8 @@ function autoTranslateCategory(db, cat, oldCat = null) {
       for (const lang of ASYNC_LANGS) delete cat[`${f}_${lang}`];
       continue;
     }
-
     const oldText = oldCat ? oldCat[f] : null;
     const isChanged = !oldCat || oldText !== newText;
-
     if (isChanged) {
       for (const lang of ASYNC_LANGS) delete cat[`${f}_${lang}`];
     }
@@ -98,7 +92,7 @@ function autoTranslateCategory(db, cat, oldCat = null) {
 }
 
 // ============================================================
-// ✅ FIX TIMEZONE
+// TIMEZONE
 // ============================================================
 const VN_TIMEZONE = "Asia/Ho_Chi_Minh";
 
@@ -134,9 +128,6 @@ function getVNTime(d = new Date()) {
   return { hour, minute };
 }
 
-// ============================================================
-// ✅ Helper sinh mã đơn unique
-// ============================================================
 function generateOrderCode(db) {
   let code;
   let attempts = 0;
@@ -149,20 +140,15 @@ function generateOrderCode(db) {
   return code;
 }
 
-// ============================================================
-// ✅ Mật khẩu tạm
-// ============================================================
 const TEMP_PASSWORD_CHARS =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
 function generateTempPassword(len = 8) {
   const bytes = crypto.randomBytes(len);
   let out = "";
-
   for (let i = 0; i < len; i++) {
     out += TEMP_PASSWORD_CHARS[bytes[i] % TEMP_PASSWORD_CHARS.length];
   }
-
   return out;
 }
 
@@ -184,7 +170,7 @@ if (MONGO_URI) {
 }
 
 // ============================================================
-// ✅ DEFAULT TIME SLOTS
+// DEFAULT TIME SLOTS
 // ============================================================
 const DEFAULT_TIME_SLOTS = [
   { id: "07:00-07:30", start: "07:00", end: "07:30", enabled: true, note: "" },
@@ -300,7 +286,6 @@ function migrateMenuNutrition() {
 // ============================================================
 // SEED DATA
 // ============================================================
-// 🔧 FIX #17: precompute bcrypt hash 1 lần
 const SEED_PASSWORD_HASH = bcrypt.hashSync("123456", 10);
 
 function buildSeedData() {
@@ -334,14 +319,13 @@ function buildSeedData() {
     shifts: [],
     wallets: [],
     wallet_transactions: [],
-    // 🔧 TASKS — Giao việc cho nhân viên
     tasks: [],
     settings: { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" },
   };
 }
 
 // ============================================================
-// ✅ INIT MONGO — Lazy connect + không block module load
+// INIT MONGO
 // ============================================================
 async function initMongo() {
   console.log("════════════════════════════════════════");
@@ -399,13 +383,11 @@ async function initMongo() {
         console.error("❌ Di trú ảnh lỗi:", e.message);
       }
 
-      // 🔧 FIX #15: giữ dbCache fallback, không throw
       if (!migration.ok) {
         if (process.env.VERCEL) {
           console.warn("⚠️  Không tách được ảnh (" + (migration.error || "?") + ") — tiếp tục");
         } else {
           console.warn("⚠️  Không tách được ảnh — chạy: npm run db:migrate-images");
-          console.warn("     (Tiếp tục khởi động, nhưng ảnh base64 vẫn còn trong document)");
         }
       }
 
@@ -455,9 +437,6 @@ async function initMongo() {
   return mongoConnecting;
 }
 
-// ============================================================
-// ✅ loadDB — Lazy init, tự trigger connect
-// ============================================================
 function loadDB() {
   if (dbCache) return dbCache;
 
@@ -470,9 +449,6 @@ function loadDB() {
   return dbCache;
 }
 
-// ============================================================
-// ✅ saveDB — Queue tuần tự, KHÔNG ghi file
-// ============================================================
 let saveQueue = Promise.resolve();
 
 function saveDB(data) {
@@ -519,7 +495,6 @@ function notifyNewOrder(db, order) {
   });
 }
 
-// 🔧 FIX #2: Không dùng "đã " + newStatus.toLowerCase() nữa — dùng prefix chuẩn
 function notifyOrderStatus(db, order, newStatus) {
   if (!db.notifications) db.notifications = [];
 
@@ -542,11 +517,9 @@ function notifyOrderStatus(db, order, newStatus) {
   });
 }
 
-// 🔧 FIX #3 + #4: Hoàn kho + hoàn điểm + hoàn ví + hoàn voucher
 function rollbackCancelledOrder(db, order) {
   if (!order || order._stock_rolled_back) return;
 
-  // 1. Hoàn kho + sold
   (order.items || []).forEach((it) => {
     const m = (db.menu_items || []).find((x) => x.id == it.menu_item_id);
     if (!m) return;
@@ -554,7 +527,6 @@ function rollbackCancelledOrder(db, order) {
     m.sold = Math.max(0, (m.sold || 0) - (it.qty || 0));
   });
 
-  // 2. Hoàn điểm đã tích
   const earned = Number(order.points_earned) || 0;
   if (earned > 0) {
     const customer = (db.users || []).find((u) => u.id === order.customer_id);
@@ -564,7 +536,6 @@ function rollbackCancelledOrder(db, order) {
     order.points_earned = 0;
   }
 
-  // 3. Hoàn ví nếu thanh toán bằng Ví Canteen
   const isWalletPay = order.payment === "Ví Canteen" || order.payment === "WALLET";
   if (isWalletPay) {
     const wallet = (db.wallets || []).find((w) => w.user_id === order.customer_id);
@@ -574,14 +545,12 @@ function rollbackCancelledOrder(db, order) {
       wallet.updated_at = new Date().toISOString();
     }
 
-    // Xóa wallet_transaction thanh toán của đơn này
     if (Array.isArray(db.wallet_transactions)) {
       db.wallet_transactions = db.wallet_transactions.filter(
         (tx) => !(tx.order_code === order.code && tx.type === "payment")
       );
     }
 
-    // Ghi log hoàn tiền
     if (!db.wallet_transactions) db.wallet_transactions = [];
     const refundId = Math.max(0, ...db.wallet_transactions.map((t) => t.id)) + 1;
     db.wallet_transactions.push({
@@ -600,7 +569,6 @@ function rollbackCancelledOrder(db, order) {
     });
   }
 
-  // 4. Hoàn voucher nếu đã dùng
   if (order.voucher_code && Array.isArray(db.vouchers)) {
     const vc = db.vouchers.find(
       (v) => v.code === order.voucher_code && v.order_code === order.code
@@ -623,12 +591,11 @@ app.use(cors({
     /\.vercel\.app$/,
     /\.onrender\.com$/
   ],
-  credentials: true
 }));
 app.use(express.json({ limit: "25mb" }));
 
 // ============================================================
-// ✅ MIDDLEWARE AWAIT INIT — Trước tất cả routes
+// MIDDLEWARE AWAIT INIT
 // ============================================================
 let initPromise = null;
 
@@ -658,12 +625,12 @@ app.use(async (req, res, next) => {
 });
 
 // ============================================================
-// ✅ ẢNH MÓN ĂN
+// ẢNH MÓN ĂN
 // ============================================================
 function requestOrigin(req) {
   const proto =
     String(req.get("x-forwarded-proto") || req.protocol || "http").split(",")[0].trim() || "http";
-  const host = req.get("host");
+  const host = req.get("x-forwarded-host") || req.get("host");
   return host ? proto + "://" + host : "";
 }
 
@@ -722,7 +689,7 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
 });
 
 // ============================================================
-// ✅ JWT_SECRET
+// JWT_SECRET
 // ============================================================
 const JWT_SECRET = process.env.JWT_SECRET || "FALLBACK_SECRET_CHI_DUNG_KHI_DEV_KHONG_AN_TOAN";
 if (!process.env.JWT_SECRET) {
@@ -956,36 +923,38 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
     res.status(500).json({ message: "Lỗi xác thực Facebook: " + e.message });
   }
 });
+
 // ============ MICROSOFT OAUTH ============
 const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || "";
 const MICROSOFT_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || "";
 const MICROSOFT_TENANT_ID = process.env.MICROSOFT_TENANT_ID || "f1ea4557-ac25-41fe-9da9-089970695a61";
 const MICROSOFT_OAUTH_ENABLED = !!(MICROSOFT_CLIENT_ID && MICROSOFT_CLIENT_SECRET);
 
-// ✅ Handler dùng chung cho cả GET (redirect từ Microsoft) và POST (client gọi)
 async function microsoftCallbackHandler(req, res) {
   try {
     console.log("🔵 [Microsoft OAuth] Callback received. Method:", req.method);
     console.log("   Query:", req.query);
     console.log("   Body:", req.body);
+    console.log("   x-forwarded-host:", req.get("x-forwarded-host"));
+    console.log("   host:", req.get("host"));
 
     if (!MICROSOFT_OAUTH_ENABLED) {
       return res.status(503).json({ message: "Microsoft OAuth chưa được cấu hình trên server" });
     }
 
-    // ✅ Hỗ trợ cả GET (query params) và POST (body)
     const code = req.query.code || req.body?.code;
-    // ⚠️ redirectUri PHẢI khớp 100% với Azure
-    // ✅ FIX: Vercel chạy sau proxy → phải đọc x-forwarded-proto để biết protocol thật
-const proto =
-  String(req.get("x-forwarded-proto") || req.protocol || "https")
-    .split(",")[0]
-    .trim() || "https";
+    const proto =
+      String(req.get("x-forwarded-proto") || req.protocol || "https")
+        .split(",")[0]
+        .trim() || "https";
 
-const redirectUri =
-  req.query.redirectUri ||
-  req.body?.redirectUri ||
-  `${proto}://${req.get("host")}/api/auth/callback/microsoft-entra-id`;
+    // ✅ FIX: ưu tiên x-forwarded-host (Vite proxy) trước host
+    const fwdHost = req.get("x-forwarded-host") || req.get("host");
+
+    const redirectUri =
+      req.query.redirectUri ||
+      req.body?.redirectUri ||
+      `${proto}://${fwdHost}/api/auth/callback/microsoft-entra-id`;
 
     if (!code) {
       console.error("❌ [Microsoft OAuth] Thiếu code");
@@ -1037,16 +1006,10 @@ const redirectUri =
     if (!user) {
       const id = Math.max(0, ...db.users.map((u) => u.id)) + 1;
       user = {
-        id,
-        email: emailNorm,
-        password: "",
+        id, email: emailNorm, password: "",
         name: profile.displayName || emailNorm.split("@")[0],
-        phone: "",
-        role: "CUSTOMER",
-        status: "Hoạt động",
-        points: 0,
-        provider: "microsoft",
-        avatar: "",
+        phone: "", role: "CUSTOMER", status: "Hoạt động",
+        points: 0, provider: "microsoft", avatar: "",
         created_at: new Date().toISOString(),
       };
       db.users.push(user);
@@ -1062,21 +1025,18 @@ const redirectUri =
       { expiresIn: "7d" }
     );
 
-    // ✅ Nếu là GET (redirect từ Microsoft) → redirect về frontend kèm token
     if (req.method === "GET") {
-      const frontendUrl = `${req.protocol}://${req.get("host")}/login?token=${encodeURIComponent(token)}&provider=microsoft`;
+      // ✅ FIX: dùng x-forwarded-host cho frontend URL
+      const origin = `${proto}://${fwdHost}`;
+      const frontendUrl = `${origin}/login?token=${encodeURIComponent(token)}&provider=microsoft`;
       console.log("✅ [Microsoft OAuth] Redirect về frontend:", frontendUrl);
       return res.redirect(frontendUrl);
     }
 
-    // ✅ Nếu là POST (client gọi) → trả JSON
     res.json({
       token,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
+        id: user.id, email: user.email, name: user.name, role: user.role,
         avatar: user.avatar || "",
         must_change_password: !!user.must_change_password,
       },
@@ -1087,18 +1047,14 @@ const redirectUri =
   }
 }
 
-// ✅ Route GET cho redirect từ Microsoft (cả 2 dạng đường dẫn)
 app.get("/api/auth/callback/microsoft-entra-id", microsoftCallbackHandler);
 app.get("/api/auth/microsoft-entra-id/callback", microsoftCallbackHandler);
-
-// ✅ Route POST cho client gọi trực tiếp
 app.post("/api/auth/microsoft-entra-id/callback", microsoftCallbackHandler);
 app.post("/api/auth/callback/microsoft-entra-id", microsoftCallbackHandler);
 
 // ============================================================
 // MENU
 // ============================================================
-// 🔧 FIX #8: hỗ trợ active_only=1
 app.get("/api/menu", (req, res) => {
   try {
     const db = loadDB();
@@ -1130,7 +1086,6 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
 
     if (!body.name || !body.name.trim()) return res.status(400).json({ message: "Tên món không được để trống" });
     if (body.price !== undefined && (isNaN(Number(body.price)) || Number(body.price) < 0)) return res.status(400).json({ message: "Giá không được âm" });
-    // 🔧 FIX #9: validate stock không âm
     if (body.stock !== undefined && (isNaN(Number(body.stock)) || Number(body.stock) < 0))
       return res.status(400).json({ message: "Tồn kho không được âm" });
     if (body.discount_percent !== undefined) {
@@ -1168,7 +1123,6 @@ app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     const newData = { ...req.body };
 
     if (newData.price !== undefined && (isNaN(Number(newData.price)) || Number(newData.price) < 0)) return res.status(400).json({ message: "Giá không được âm" });
-    // 🔧 FIX #9: validate stock
     if (newData.stock !== undefined && (isNaN(Number(newData.stock)) || Number(newData.stock) < 0))
       return res.status(400).json({ message: "Tồn kho không được âm" });
     if (newData.discount_percent !== undefined) {
@@ -1251,7 +1205,6 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) return res.status(400).json({ message: "Email không hợp lệ" });
     if (db.users.find(u => u.email === emailNorm)) return res.status(400).json({ message: "Email đã được sử dụng" });
 
-    // 🔧 FIX #10: validate role
     const role = req.body.role || "EMPLOYEE";
     if (!VALID_ROLES.includes(role))
       return res.status(400).json({ message: "Role không hợp lệ. Phải là: " + VALID_ROLES.join(", ") });
@@ -1296,7 +1249,6 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
   }
 });
 
-// 🔧 FIX #11: chặn leo quyền — không cho đổi role qua endpoint này
 app.put("/api/users/:id", auth(["ADMIN"]), (req, res) => {
   try {
     const db = loadDB();
@@ -1305,7 +1257,6 @@ app.put("/api/users/:id", auth(["ADMIN"]), (req, res) => {
 
     const data = { ...req.body };
 
-    // 🔧 FIX #11: chặn đổi role
     if (data.role !== undefined && data.role !== db.users[i].role) {
       return res.status(400).json({
         message: "Không thể đổi role qua endpoint này. Vui lòng tạo tài khoản mới với role mong muốn.",
@@ -1409,7 +1360,6 @@ app.post("/api/orders", auth(), (req, res) => {
       touchedItems.push({ m, q });
     }
 
-    // 🔧 FIX #7: validate pickupTime tồn tại trong timeSlots
     const pickupSlotId = (() => {
       const direct = String(pickupTime || "").replace(/\s/g, "");
       if (/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(direct)) return direct;
@@ -1428,7 +1378,6 @@ app.post("/api/orders", auth(), (req, res) => {
       }
     }
 
-    // 🔧 FIX #5 + #6: validate voucher thuộc user + discount khớp với voucher
     let computedDiscount = 0;
 
     if (voucherCode) {
@@ -1447,12 +1396,10 @@ app.post("/api/orders", auth(), (req, res) => {
 
     const clientDiscount = Number(discount) || 0;
 
-    // Nếu client gửi discount mà không có voucher → chặn
     if (!voucherCode && clientDiscount > 0) {
       return res.status(400).json({ message: "Giảm giá không hợp lệ (không có voucher)" });
     }
 
-    // Nếu có voucher, discount phải = computedDiscount
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) {
       return res.status(400).json({
         message: `Giảm giá không khớp với voucher (client=${clientDiscount}, voucher=${computedDiscount})`
@@ -1507,7 +1454,6 @@ app.post("/api/orders", auth(), (req, res) => {
       payment, note, items: detailed, created_at: new Date().toISOString()
     };
 
-    // Mark voucher used + lưu order_code để hoàn nếu hủy
     if (usedVoucher) {
       usedVoucher.used = true;
       usedVoucher.used_at = new Date().toISOString();
@@ -1522,7 +1468,6 @@ app.post("/api/orders", auth(), (req, res) => {
     saveDB(db);
     res.status(201).json({ ...order, _id: order.id });
   } catch (e) {
-    // Rollback
     touchedItems.forEach(({ m, q }) => {
       m.stock = (m.stock || 0) + q;
       m.sold = Math.max(0, (m.sold || 0) - q);
@@ -1568,7 +1513,6 @@ app.get("/api/orders", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
 
 const VALID_ORDER_STATUSES = ["Chờ xác nhận", "Đã xác nhận", "Đang chuẩn bị", "Sẵn sàng nhận", "Hoàn thành", "Đã hủy"];
 
-// 🔧 FIX #18: EMPLOYEE chỉ được update nếu có quyền orders.process
 app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   try {
     const db = loadDB();
@@ -1690,7 +1634,6 @@ app.get("/api/points/me", auth(), (req, res) => {
   res.json({ points: u.points || 0, history });
 });
 
-// 🔧 FIX #13: giới hạn số voucher tối đa
 const MAX_ACTIVE_VOUCHERS = 50;
 
 app.post("/api/points/redeem", auth(), (req, res) => {
@@ -1731,7 +1674,6 @@ app.get("/api/vouchers", auth(["ADMIN"]), (req, res) => {
   res.json((db.vouchers || []).sort((a, b) => (b.id || 0) - (a.id || 0)));
 });
 
-// 🔧 FIX #12: validate code trùng
 app.post("/api/vouchers", auth(["ADMIN"]), (req, res) => {
   try {
     const db = loadDB();
@@ -1936,7 +1878,6 @@ app.delete("/api/categories/:id", auth(["ADMIN"]), (req, res) => {
 });
 
 // ============ WALLET ============
-// 🔧 FIX #24: validate userId
 function getOrCreateWallet(db, userId) {
   if (!db.wallets) db.wallets = [];
   const uid = Number(userId);
@@ -2169,7 +2110,18 @@ app.delete("/api/vouchers/revoke/:id", auth(["ADMIN"]), (req, res) => {
   res.json({ ok: true });
 });
 
-// ============ CHAT ============
+// ============================================================
+// CHAT — filter 24h
+// ============================================================
+const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
+
+function isRecentMessage(m) {
+  if (!m || !m.created_at) return false;
+  const t = new Date(m.created_at).getTime();
+  if (isNaN(t)) return false;
+  return Date.now() - t <= CHAT_TTL_MS;
+}
+
 function normalizeUserId(id) {
   if (id === undefined || id === null) return null;
   const n = Number(id);
@@ -2179,10 +2131,20 @@ function normalizeUserId(id) {
 app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   const db = loadDB();
   const convMap = {};
+
   (db.messages || []).forEach((m) => {
+    if (!isRecentMessage(m)) return;
     const uid = normalizeUserId(m.user_id);
     if (uid === null) return;
-    if (!convMap[uid]) convMap[uid] = { user_id: uid, user_name: m.user_name || "Khách", last_message: m.content, last_time: m.created_at, unread: 0 };
+    if (!convMap[uid]) {
+      convMap[uid] = {
+        user_id: uid,
+        user_name: m.user_name || "Khách",
+        last_message: m.content,
+        last_time: m.created_at,
+        unread: 0,
+      };
+    }
     if (m.from === "customer" && !m.read) convMap[uid].unread += 1;
     if (new Date(m.created_at) > new Date(convMap[uid].last_time)) {
       convMap[uid].last_message = m.content;
@@ -2190,29 +2152,44 @@ app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
       convMap[uid].user_name = m.user_name || convMap[uid].user_name;
     }
   });
+
   res.json(Object.values(convMap).sort((a, b) => new Date(b.last_time) - new Date(a.last_time)));
 });
 
 app.get("/api/chat/me", auth(), (req, res) => {
   const db = loadDB();
   const myId = normalizeUserId(req.user.id);
-  const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === myId).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  const list = (db.messages || [])
+    .filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
   res.json(list);
 });
 
 app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   const db = loadDB();
   const targetId = normalizeUserId(req.params.userId);
-  const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  const list = (db.messages || [])
+    .filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
   let changed = false;
   (db.messages || []).forEach((m) => {
-    if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) { m.read = true; changed = true; }
+    if (
+      normalizeUserId(m.user_id) === targetId &&
+      m.from === "customer" &&
+      !m.read
+    ) {
+      m.read = true;
+      changed = true;
+    }
   });
   if (changed) saveDB(db);
   res.json(list);
 });
 
-// 🔧 THÊM MỚI: Endpoint lấy ngữ cảnh khách hàng cho cột 3 trong /employee/chat
 app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   try {
     const db = loadDB();
@@ -2297,6 +2274,48 @@ app.post("/api/chat/send", auth(), (req, res) => {
     db.messages.push(message);
     saveDB(db);
     res.status(201).json(message);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// STAFF CURRENT — dùng cho KPI "Đang trực tuyến"
+// ============================================================
+app.get("/api/shifts/current-staff", auth(), (req, res) => {
+  try {
+    const db = loadDB();
+    const today = getLocalDateStr();
+
+    const active = (db.attendances || []).filter(
+      (a) => a.date === today && a.checkIn && !a.checkOut
+    );
+
+    if (active.length > 0) {
+      return res.json(active.map((a) => ({
+        id: a.employee_id,
+        name: a.employee_name,
+        employee_code: a.employee_code || "",
+        shift: a.shift,
+        checkIn: a.checkIn,
+        station: "",
+        phone: "",
+      })));
+    }
+
+    const shiftsToday = (db.shifts || []).filter(
+      (s) => s.date === today && s.status === "approved"
+    );
+
+    return res.json(shiftsToday.map((s) => ({
+      id: s.employee_id,
+      name: s.employee_name,
+      employee_code: "",
+      shift: s.shift,
+      checkIn: null,
+      station: s.station || "",
+      phone: "",
+    })));
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -2457,7 +2476,6 @@ app.post("/api/attendance/checkin", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
       else return res.status(400).json({ message: "Hiện không trong khung giờ làm việc (06:30-18:30). Vui lòng chọn ca thủ công." });
     }
 
-    // 🔧 FIX #19: validate shift
     if (!SHIFT_START_HOUR[shift]) {
       return res.status(400).json({ message: "Ca không hợp lệ. Chỉ hỗ trợ: Ca sáng, Ca chiều" });
     }
@@ -2633,7 +2651,6 @@ app.get("/api/backup/export", auth(["ADMIN"]), (req, res) => {
   res.json({ version: "1.0", exported_at: new Date().toISOString(), exported_by: req.user.name, data: db });
 });
 
-// 🔧 FIX #22: validate schema backup
 app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
   try {
     const { data } = req.body;
@@ -2642,7 +2659,6 @@ app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
     if (!Array.isArray(data.menu_items)) return res.status(400).json({ message: "File backup thiếu mảng menu_items" });
     if (data.users.length === 0) return res.status(400).json({ message: "File backup không có user nào" });
 
-    // Validate mỗi user có id + email + role
     for (const u of data.users) {
       if (!u.id || !u.email || !VALID_ROLES.includes(u.role)) {
         return res.status(400).json({ message: "User trong backup không hợp lệ (thiếu id/email/role)" });
@@ -2679,7 +2695,6 @@ app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
       attendances: db.attendances?.length || 0,
       imports: db.imports?.length || 0,
       price_history: db.price_history?.length || 0,
-      // 🔧 TASKS — Giao việc cho nhân viên
       tasks: db.tasks?.length || 0,
       db_size_bytes: JSON.stringify(db).length
     });
@@ -2813,7 +2828,6 @@ app.get("/api/settings", auth(), (req, res) => {
   res.json({ ...empty, ...(db.settings || {}) });
 });
 
-// 🔧 FIX #21: validate timeSlots schema khi update
 app.put("/api/settings", auth(["ADMIN"]), (req, res) => {
   try {
     const db = loadDB();
@@ -2822,7 +2836,6 @@ app.put("/api/settings", auth(["ADMIN"]), (req, res) => {
     allowed.forEach(k => {
       if (req.body[k] === undefined) return;
 
-      // Validate timeSlots
       if (k === "timeSlots") {
         const arr = req.body[k];
         if (!Array.isArray(arr)) {
@@ -3009,9 +3022,7 @@ app.delete("/api/shifts/:id", auth(["ADMIN"]), (req, res) => {
   res.json({ ok: true });
 });
 
-// ============================================================
-// TASKS — Giao việc cho nhân viên
-// ============================================================
+// ============ TASKS ============
 const VALID_TASK_STATUSES = ["pending", "done", "cancelled"];
 const VALID_TASK_PRIORITIES = ["low", "normal", "high", "urgent"];
 
@@ -3209,6 +3220,7 @@ const healthHandler = (_, res) => res.json({
   version: BUILD_VERSION,
   timezone: VN_TIMEZONE,
   autoTranslate: { mode: "async-only", langs: ASYNC_LANGS },
+  chat: { ttlHours: 24 },
   oauth: {
     google: GOOGLE_OAUTH_ENABLED,
     facebook: FACEBOOK_OAUTH_ENABLED,
@@ -3225,7 +3237,6 @@ app.get("/api/", healthHandler);
 const PORT = process.env.PORT || 3000;
 
 // ============ BACKUP RESET ============
-// 🔧 FIX #23: cho phép custom token
 app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
   try {
     const { confirm } = req.body;
@@ -3259,18 +3270,15 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
   }
 });
 
-// ✅ Export app
 export default app;
 
-// ============================================================
-// ✅ LOCAL DEV: chạy app.listen() sau khi init
-// ============================================================
 const IS_VERCEL = !!process.env.VERCEL;
 
 if (!IS_VERCEL) {
   getInitPromise().then(() => {
     app.listen(PORT, () => {
       console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+      console.log("   💬 Chat TTL: 24h");
     });
   });
 } else {
