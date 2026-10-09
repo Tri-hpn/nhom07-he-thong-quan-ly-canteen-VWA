@@ -6,7 +6,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Search, Lock, Unlock, Trash2, Eye, Pencil, Mail, Phone, Ticket, Gift, Ban, X, Copy, Check, Users, Globe, User as UserIcon, Loader2, AlertCircle, Edit,
+    Search, Lock, Unlock, Trash2, Eye, Pencil, Mail, Phone, Ticket, Gift, Ban, X, Copy, Check, Users, Globe, User as UserIcon, Loader2, AlertCircle, Edit, GraduationCap, Shield, UserRound, RotateCcw,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -41,6 +41,22 @@ function validatePhone(phone, t) {
   }
   return null;
 }
+// ============================================================
+// ✅ PHÂN LOẠI KHÁCH HÀNG THEO EMAIL
+// ============================================================
+function getCustomerType(email) {
+  const e = String(email || "").toLowerCase().trim();
+
+  if (e.endsWith("@vwa.edu.vn")) return "Giảng viên";
+  if (e.endsWith("@hpn.edu.vn")) return "Sinh viên";
+  return "Khách";
+}
+
+const TYPE_BADGE = {
+  "Giảng viên": { color: "#8b5cf6", bg: "#ede9fe", icon: "🎓" },
+  "Sinh viên":  { color: "#0EA5E9", bg: "#e0f2fe", icon: "🎓" },
+  "Khách":      { color: "#f59e0b", bg: "#fef3c7", icon: "👤" },
+};
 
 // ============================================================
 // CONSTANTS
@@ -68,13 +84,22 @@ export default function OwnerCustomers() {
     ],
     [t]
   );
+  const CUSTOMER_TYPE_FILTERS = useMemo(
+    () => [
+      { id: "all",        label: t("Tất cả loại") },
+      { id: "Giảng viên", label: t("Giảng viên") },
+      { id: "Sinh viên",  label: t("Sinh viên")  },
+      { id: "Khách",      label: t("Khách")      },
+    ],
+    [t]
+  );
 
   // ---------- List state ----------
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");  const [filterType, setFilterType] = useState("all");
 
   // ---------- Detail modal ----------
   const [detail, setDetail] = useState(null);
@@ -142,10 +167,19 @@ export default function OwnerCustomers() {
       locked,
     };
   }, [list]);
+  // ✅ Đếm số lượng theo phân loại
+  const typeCounts = useMemo(() => {
+    const counts = { all: list.length };
+    for (const c of list) {
+      const t2 = getCustomerType(c.email);
+      counts[t2] = (counts[t2] || 0) + 1;
+    }
+    return counts;
+  }, [list]);
 
   // ---------- Filter + Search (memo) ✅ #12.1 ----------
 
-  const filtered = useMemo(() => {
+    const filtered = useMemo(() => {
     let result = list;
 
     // Filter status
@@ -155,6 +189,13 @@ export default function OwnerCustomers() {
       );
     } else if (filterStatus === "locked") {
       result = result.filter((c) => c.status === "Bị khóa");
+    }
+
+    // ✅ Filter theo PHÂN LOẠI (dựa vào email)
+    if (filterType !== "all") {
+      result = result.filter(
+        (c) => getCustomerType(c.email) === filterType
+      );
     }
 
     // Search không dấu
@@ -169,13 +210,14 @@ export default function OwnerCustomers() {
     }
 
     return result;
-  }, [list, q, filterStatus]);
+  }, [list, q, filterStatus, filterType]);
 
-  const hasFilter = q.trim() !== "" || filterStatus !== "all";
-
-  const clearFilters = () => {
+  const hasFilter =
+    q.trim() !== "" || filterStatus !== "all" || filterType !== "all";
+    const clearFilters = () => {
     setQ("");
     setFilterStatus("all");
+    setFilterType("all");
   };
 
   // ---------- Confirm helpers ----------
@@ -355,153 +397,232 @@ export default function OwnerCustomers() {
     <>
       <div>
         {/* ============================================================
-            TOOLBAR — Search + Filter status
+            TOOLBAR — Search + Filter (2 rows)
             ============================================================ */}
         <div
           style={{
-            display: "flex",
-            gap: 12,
+            background: "var(--card-bg, #fff)",
+            border: "1px solid var(--border-color, #e7ebf0)",
+            borderRadius: 12,
+            padding: "12px 16px",
             marginBottom: 20,
-            flexWrap: "wrap",
-            alignItems: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
           }}
         >
-          {/* Search */}
+          {/* Row 1: Search + Counter + Clear */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              background: "var(--card-bg, #fff)",
-              border: "1px solid var(--border-color, #e5e9ef)",
-              borderRadius: 10,
-              padding: "10px 14px",
-              flex: 1,
-              maxWidth: 400,
+              gap: 12,
+              flexWrap: "wrap",
             }}
           >
-            <Search size={18} style={{ color: "var(--text-light, #8993a3)" }} />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t("Tìm theo tên, email, SĐT...")}
+            <div
               style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                background: "var(--bg-tertiary, #f8fafc)",
+                border: "1px solid var(--border-color, #e5e9ef)",
+                borderRadius: 10,
+                padding: "9px 14px",
                 flex: 1,
-                border: 0,
-                outline: "none",
-                fontSize: 13,
-                background: "transparent",
-                color: "var(--text-primary, #172033)",
+                minWidth: 240,
+                maxWidth: 480,
               }}
-            />
-            {q && (
-              <button
-                onClick={() => setQ("")}
+            >
+              <Search size={16} style={{ color: "var(--text-light, #8993a3)", flexShrink: 0 }} />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={t("Tìm theo tên, email, SĐT...")}
                 style={{
-                  background: "transparent",
+                  flex: 1,
                   border: 0,
-                  cursor: "pointer",
-                  color: "var(--text-light, #8993a3)",
-                  padding: 2,
+                  outline: "none",
+                  background: "transparent",
+                  color: "var(--text-primary, #172033)",
+                  fontSize: 13,
+                  minWidth: 0,
                 }}
-                aria-label={t("Xoá tìm kiếm")}
+              />
+              {q && (
+                <button
+                  onClick={() => setQ("")}
+                  style={{
+                    background: "transparent",
+                    border: 0,
+                    cursor: "pointer",
+                    color: "var(--text-light, #8993a3)",
+                    padding: 2,
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                  aria-label={t("Xóa tìm kiếm")}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }} />
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                color: "var(--text-muted, #64748b)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Users size={15} />
+              <b style={{ color: "var(--text-primary, #172033)" }}>{filtered.length}</b>
+              {t("khách hàng")}
+            </div>
+            {hasFilter && (
+              <button
+                onClick={clearFilters}
+                style={{
+                  padding: "7px 14px",
+                  background: "transparent",
+                  border: "1px solid var(--border-color, #cbd5e1)",
+                  color: "var(--text-primary, #172033)",
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  whiteSpace: "nowrap",
+                }}
               >
-                <X size={14} />
+                <RotateCcw size={13} />
+                {t("Xóa bộ lọc")}
               </button>
             )}
           </div>
-
-          {/* ✅ #12.3: Status filter chips */}
+          {/* Row 2: Trạng thái | Phân loại */}
           <div
             style={{
-              display: "inline-flex",
-              gap: 3,
-              background: "var(--bg-tertiary, #f5f7fb)",
-              padding: 4,
-              borderRadius: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              flexWrap: "wrap",
             }}
           >
-            {STATUS_FILTERS.map((f) => {
-              const active = filterStatus === f.id;
-              const count = statusCounts[f.id] || 0;
-              return (
-                <button
-                  key={f.id}
-                  onClick={() => setFilterStatus(f.id)}
-                  style={{
-                    padding: "7px 12px",
-                    background: active ? "#2634d5" : "transparent",
-                    color: active ? "#fff" : "var(--text-muted, #475569)",
-                    border: 0,
-                    borderRadius: 7,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {f.label}
-                  <span
-                    style={{
-                      background: active
-                        ? "rgba(255,255,255,0.3)"
-                        : "var(--card-bg, #e2e8f0)",
-                      color: active ? "#fff" : "var(--text-muted, #64748b)",
-                      minWidth: 18,
-                      height: 16,
-                      padding: "0 5px",
-                      borderRadius: 8,
-                      fontSize: 10,
-                      fontWeight: 800,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Clear filter */}
-          {hasFilter && (
-            <button
-              onClick={clearFilters}
-              style={{
-                padding: "9px 14px",
-                background: "transparent",
-                border: "1px solid #ef4444",
-                color: "#ef4444",
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <X size={13} /> {t("Xoá lọc")}
-            </button>
-          )}
-
-          {/* Counter */}
-          <div
-            style={{
-              fontSize: 13,
-              color: "var(--text-muted, #64748b)",
-              marginLeft: "auto",
-            }}
-          >
-            <b style={{ color: "var(--text-primary, #172033)" }}>
-              {filtered.length}
-            </b>{" "}
-            {t("khách hàng")}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Shield size={15} style={{ color: "var(--text-primary, #172033)" }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", whiteSpace: "nowrap" }}>
+                  {t("Trạng thái")}
+                </span>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  background: "var(--bg-tertiary, #f1f5f9)", color: "var(--text-muted, #64748b)",
+                  minWidth: 20, height: 18, padding: "0 6px", borderRadius: 9,
+                  fontSize: 10.5, fontWeight: 700,
+                }}>
+                  {statusCounts.all || 0}
+                </span>
+              </div>
+              <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                {STATUS_FILTERS.map((f) => {
+                  const active = filterStatus === f.id;
+                  const count = statusCounts[f.id] || 0;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => setFilterStatus(f.id)}
+                      style={{
+                        padding: "5px 12px",
+                        background: active ? "#2634d5" : "var(--card-bg, #fff)",
+                        color: active ? "#fff" : "var(--text-muted, #475569)",
+                        border: "1px solid " + (active ? "#2634d5" : "var(--border-color, #e5e9ef)"),
+                        borderRadius: 999,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {active && <Check size={12} />}
+                      {f.label}
+                      <span style={{
+                        background: active ? "rgba(255,255,255,0.25)" : "var(--bg-tertiary, #f1f5f9)",
+                        color: active ? "#fff" : "var(--text-muted, #64748b)",
+                        minWidth: 18, height: 16, padding: "0 5px", borderRadius: 8,
+                        fontSize: 10, fontWeight: 800,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ width: 1, height: 24, background: "var(--border-color, #e7ebf0)", flexShrink: 0 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <UserRound size={15} style={{ color: "var(--text-primary, #172033)" }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", whiteSpace: "nowrap" }}>
+                  {t("Phân loại")}
+                </span>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  background: "var(--bg-tertiary, #f1f5f9)", color: "var(--text-muted, #64748b)",
+                  minWidth: 20, height: 18, padding: "0 6px", borderRadius: 9,
+                  fontSize: 10.5, fontWeight: 700,
+                }}>
+                  {typeCounts.all || 0}
+                </span>
+              </div>
+              <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                {CUSTOMER_TYPE_FILTERS.map((f) => {
+                  const active = filterType === f.id;
+                  const count = typeCounts[f.id] || 0;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => setFilterType(f.id)}
+                      style={{
+                        padding: "5px 12px",
+                        background: active ? "#2634d5" : "var(--card-bg, #fff)",
+                        color: active ? "#fff" : "var(--text-muted, #475569)",
+                        border: "1px solid " + (active ? "#2634d5" : "var(--border-color, #e5e9ef)"),
+                        borderRadius: 999,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {active && <Check size={12} />}
+                      {f.label}
+                      <span style={{
+                        background: active ? "rgba(255,255,255,0.25)" : "var(--bg-tertiary, #f1f5f9)",
+                        color: active ? "#fff" : "var(--text-muted, #64748b)",
+                        minWidth: 18, height: 16, padding: "0 5px", borderRadius: 8,
+                        fontSize: 10, fontWeight: 800,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -579,6 +700,7 @@ export default function OwnerCustomers() {
                     <th style={thStyle}>{t("Khách hàng")}</th>
                     <th style={thStyle}>{t("Liên hệ")}</th>
                     <th style={thStyle}>{t("Điểm")}</th>
+                    <th style={thStyle}>{t("Loại")}</th>
                     <th style={thStyle}>{t("Trạng thái")}</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tác")}</th>
                   </tr>
@@ -643,7 +765,9 @@ export default function OwnerCustomers() {
                           {fmtNumber(c.points || 0)} {t("điểm")}
                         </b>
                       </td>
-
+                      <td style={tdStyle}>
+                        <CustomerTypeBadge type={getCustomerType(c.email)} />
+                      </td>
                       <td style={tdStyle}>
                         <StatusBadge status={c.status || "Hoạt động"} t={t} />
                       </td>
@@ -700,7 +824,7 @@ export default function OwnerCustomers() {
                   {!filtered.length && (
                     <tr>
                       <td
-                        colSpan="6"
+                        colSpan="7"
                         style={{
                           textAlign: "center",
                           padding: 40,
@@ -1240,6 +1364,28 @@ function StatusBadge({ status, t }) {
       }}
     >
       {t(status)}
+    </span>
+  );
+}
+
+function CustomerTypeBadge({ type }) {
+  const meta = TYPE_BADGE[type] || TYPE_BADGE["Khách"];
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 10px",
+        borderRadius: 12,
+        fontSize: 11,
+        fontWeight: 700,
+        background: meta.bg,
+        color: meta.color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {meta.icon} {type}
     </span>
   );
 }
