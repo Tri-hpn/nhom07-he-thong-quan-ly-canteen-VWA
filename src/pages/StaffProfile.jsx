@@ -1,27 +1,17 @@
 // ============================================================
-// STAFFPROFILE.JSX — Hồ sơ Nhân viên / Admin (V2)
+// STAFFPROFILE.JSX — Hồ sơ Nhân viên / Admin (V3 - FINAL)
 // ============================================================
-// V2:
-//   - Nén avatar trước khi gửi (max 512px, quality 0.85)
-//   - Tránh document chính phình do avatar base64
+// V3 (2026-10):
+//   - ✅ Hiển thị mã GV (teacher_code) nếu có
+//   - ✅ Hiển thị năm vào + đơn vị (parse từ mã GV)
+//   - ✅ Gợi ý liên hệ admin nếu chưa có mã GV
+//   - Giữ V2: nén avatar, đổi mật khẩu
 // ============================================================
 
 import { useState, useEffect } from "react";
 import {
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Save,
-  Shield,
-  Camera,
-  Pencil,
-  X,
-  Check,
-  Lock,
-  KeyRound,
-  Eye,
-  EyeOff,
+  User, Mail, Phone, MapPin, Save, Shield, Camera, Pencil, X, Check,
+  Lock, KeyRound, Eye, EyeOff, BadgeCheck, GraduationCap, Building2,
 } from "lucide-react";
 import { api } from "../api";
 import { toast } from "../components/Effects";
@@ -206,6 +196,8 @@ export default function StaffProfile({
     .toUpperCase();
   const avatarSrc = editing ? form.avatar : user?.avatar;
 
+  const hasTeacherCode = !!user?.teacher_code;
+
   return (
     <div
       className="profile-grid"
@@ -311,6 +303,71 @@ export default function StaffProfile({
           </div>
         </div>
 
+        {/* ✅ MỚI: Mã GV */}
+        {hasTeacherCode && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "#f0f9ff",
+              border: "1px solid #bae6fd",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10.5,
+                color: "#0369a1",
+                textTransform: "uppercase",
+                letterSpacing: 0.4,
+                marginBottom: 4,
+                fontWeight: 700,
+              }}
+            >
+              {t("Mã giảng viên")}
+            </div>
+            <div
+              style={{
+                fontSize: 15,
+                fontFamily: "ui-monospace, monospace",
+                fontWeight: 800,
+                color: "#0c4a6e",
+                letterSpacing: 0.5,
+              }}
+            >
+              {user.teacher_code}
+            </div>
+            {user.year_in && (
+              <div style={{ fontSize: 11, color: "#0369a1", marginTop: 4 }}>
+                {t("Vào năm")} {user.year_in}
+                {user.unit_code ? ` · ${t("Đơn vị")} ${user.unit_code}` : ""}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Gợi ý nếu chưa có mã GV */}
+        {!hasTeacherCode && user?.email?.includes("@vwa.edu.vn") && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "#fef3c7",
+              border: "1px solid #fcd34d",
+              fontSize: 12,
+              color: "#92400e",
+              lineHeight: 1.5,
+            }}
+          >
+            ⚠️{" "}
+            {t(
+              "Tài khoản của bạn chưa có mã giảng viên. Vui lòng liên hệ phòng Tổ chức để được cấp."
+            )}
+          </div>
+        )}
+
         <button
           onClick={() => setShowPwdModal(true)}
           className="btn-change-pwd"
@@ -395,6 +452,35 @@ export default function StaffProfile({
               label={t("Họ và tên")}
               value={user?.name}
             />
+
+            {/* ✅ MỚI: Mã GV */}
+            {hasTeacherCode && (
+              <InfoRow
+                icon={<BadgeCheck size={16} />}
+                label={t("Mã giảng viên")}
+                value={user.teacher_code}
+                note={t("Do phòng Tổ chức cấp")}
+                mono
+              />
+            )}
+
+            {/* ✅ MỚI: Năm vào + đơn vị */}
+            {hasTeacherCode && user?.year_in && (
+              <InfoRow
+                icon={<GraduationCap size={16} />}
+                label={t("Năm vào trường")}
+                value={String(user.year_in)}
+              />
+            )}
+
+            {hasTeacherCode && user?.unit_code && (
+              <InfoRow
+                icon={<Building2 size={16} />}
+                label={t("Đơn vị")}
+                value={user.unit_code}
+              />
+            )}
+
             <InfoRow
               icon={<Mail size={16} />}
               label={t("Email")}
@@ -482,6 +568,9 @@ export default function StaffProfile({
   );
 }
 
+// ============================================================
+// Password Modal
+// ============================================================
 function PasswordModal({ onClose }) {
   const { t } = useI18n();
   const [form, setForm] = useState({
@@ -645,9 +734,7 @@ function PasswordModal({ onClose }) {
           />
         </div>
 
-        <label style={labelStyle}>
-          {t("Xác nhận mật khẩu mới")}
-        </label>
+        <label style={labelStyle}>{t("Xác nhận mật khẩu mới")}</label>
         <div style={inputWrapStyle()}>
           <Check size={16} style={iconStyle} />
           <input
@@ -698,7 +785,10 @@ function PasswordModal({ onClose }) {
   );
 }
 
-function InfoRow({ icon, label, value, note }) {
+// ============================================================
+// InfoRow
+// ============================================================
+function InfoRow({ icon, label, value, note, mono = false }) {
   return (
     <div
       style={{
@@ -752,6 +842,8 @@ function InfoRow({ icon, label, value, note }) {
             color: "var(--text-primary, #172033)",
             fontWeight: 600,
             wordBreak: "break-word",
+            fontFamily: mono ? "ui-monospace, monospace" : "inherit",
+            letterSpacing: mono ? 0.5 : "normal",
           }}
         >
           {value}
@@ -761,6 +853,9 @@ function InfoRow({ icon, label, value, note }) {
   );
 }
 
+// ============================================================
+// Styles
+// ============================================================
 const cardStyle = {
   background: "var(--card-bg, #fff)",
   border: "1px solid var(--border-color, #e7ebf0)",

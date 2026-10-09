@@ -1,14 +1,13 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V6 - FINAL)
+// API.JS — HTTP client cho Backend Express (V7 - FINAL)
 // ============================================================
-// V6 (2026-10):
-//   - ✅ FIX LỖI 1+2+3: Dùng sessionStorage thuần
-//     → Multi-user: 2 tab = 2 user (sessionStorage riêng mỗi tab)
-//     → Bảo mật: copy link tab mới → về login (sessionStorage trống)
-//     → Mobile: chuyển app → giữ login (iOS/Android giữ session)
-//     → Mobile kill app → mất login (chấp nhận)
-//   - ✅ FIX iOS CORS: credentials "same-origin" thay vì "omit"
-//   - ✅ Thêm memoryToken fallback nếu storage bị chặn
+// V7 (2026-10):
+//   - ✅ Thêm api.users.setPoints — set điểm user (ADMIN)
+//   - ✅ Thêm api.users.unlinkMssv — gỡ liên kết MSSV (ADMIN)
+//   - ✅ Thêm api.users.schoolInfo — cập nhật school info (ADMIN)
+//   - ✅ Thêm api.school.* — parse MSSV/mã GV, majors map
+//   - Giữ V6: sessionStorage thuần, memoryToken fallback,
+//     credentials same-origin
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -19,15 +18,7 @@ const UPLOAD_TIMEOUT_MS = 60000;
 // ============================================================
 // TOKEN — sessionStorage thuần (mỗi tab riêng)
 // ============================================================
-// sessionStorage: mỗi tab có 1 vùng riêng biệt
-//   - Tab A login admin → tab A có sessionStorage.token = adminToken
-//   - Tab B login customer → tab B có sessionStorage.token = customerToken
-//   - Tab A và B KHÔNG ảnh hưởng nhau
-//   - Mở tab C mới (copy link) → sessionStorage trống → về login
-//   - Mobile chuyển app → sessionStorage giữ nguyên (trừ khi kill app)
-// ============================================================
 
-// Fallback nếu storage bị chặn (Safari Private mode cũ, chế độ nghiêm ngặt)
 let memoryToken = null;
 
 export function getToken() {
@@ -75,7 +66,6 @@ async function req(path, options = {}) {
       ...options,
       headers,
       cache: "no-store",
-      // ✅ FIX iOS CORS: "same-origin" thay vì "omit"
       credentials: "same-origin",
       signal: controller.signal,
     });
@@ -211,6 +201,40 @@ export const api = {
     update: (id, data) => req(`/users/${id}`, { method: "PUT",    body: JSON.stringify(data) }),
     remove: (id)       => req(`/users/${id}`, { method: "DELETE" }),
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
+
+    // ✅ V7 — MỚI: Set điểm user (ADMIN)
+    setPoints: (id, data) =>
+      req(`/users/${id}/points`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+
+    // ✅ V7 — MỚI: Cập nhật thông tin trường (ADMIN override)
+    schoolInfo: (id, data) =>
+      req(`/users/${id}/school-info`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+
+    // ✅ V7 — MỚI: Gỡ liên kết MSSV (ADMIN)
+    unlinkMssv: (id) =>
+      req(`/users/${id}/unlink-mssv`, { method: "DELETE" }),
+  },
+
+  // ✅ V7 — MỚI: SCHOOL / MAJORS MAP
+  school: {
+    parseStudent: (code) =>
+      req(`/school/parse-student/${encodeURIComponent(code)}`),
+    parseTeacher: (code) =>
+      req(`/school/parse-teacher/${encodeURIComponent(code)}`),
+    majorsMap: () => req("/school/majors-map"),
+    updateMajorsMap: (map) =>
+      req("/school/majors-map", {
+        method: "PUT",
+        body: JSON.stringify({ map }),
+      }),
+    resetMajorsMap: () =>
+      req("/school/majors-map/reset", { method: "POST" }),
   },
 
   inventory: {

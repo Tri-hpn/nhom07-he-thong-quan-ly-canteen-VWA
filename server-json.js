@@ -1,4 +1,4 @@
-﻿﻿﻿﻿import express from "express";
+﻿﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -22,7 +22,7 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const BUILD_VERSION = "v11-microsoft-oauth-fix-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v12-school-integration-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // AUTO-TRANSLATE
@@ -150,6 +150,212 @@ function generateTempPassword(len = 8) {
     out += TEMP_PASSWORD_CHARS[bytes[i] % TEMP_PASSWORD_CHARS.length];
   }
   return out;
+}
+
+// ============================================================
+// MÃ NGÀNH — MSSV / MÃ GV (VWA format) — V12
+// ============================================================
+// Format MSSV: YY + MMMM + SSSS = 10 số
+//   YY   = năm nhập học (23 → 2023)
+//   MMMM = cụm mã ngành (7482, 7341, ...)
+//   SSSS = STT sinh viên
+//
+// Format Mã GV: YYYYNN-NNNNNNN = 15 ký tự
+//   YYYY    = năm vào
+//   NN      = mã đơn vị
+//   NNNNNNN = STT GV
+
+const DEFAULT_MAJORS_MAP = {
+  "7310": {
+    code_full: "7310101 / 7310109",
+    name: "Kinh tế / Kinh tế số",
+    faculty: "Khoa Kinh tế",
+  },
+  "7319": {
+    code_full: "7310399",
+    name: "Giới và Phát triển",
+    faculty: "Khoa Giới & Phát triển",
+  },
+  "7314": {
+    code_full: "7310401",
+    name: "Tâm lý học",
+    faculty: "Khoa Tâm lý",
+  },
+  "7324": {
+    code_full: "7320104",
+    name: "Truyền thông đa phương tiện",
+    faculty: "Khoa Truyền thông",
+  },
+  "7341": {
+    code_full: "7340101",
+    name: "Quản trị kinh doanh",
+    faculty: "Khoa Kinh tế - Quản trị",
+  },
+  "7345": {
+    code_full: "7340115",
+    name: "Marketing",
+    faculty: "Khoa Kinh tế - Quản trị",
+  },
+  "7381": {
+    code_full: "7380101 / 7380107",
+    name: "Luật / Luật kinh tế",
+    faculty: "Khoa Luật",
+  },
+  "7482": {
+    code_full: "7480201",
+    name: "Công nghệ thông tin / Thiết kế Game",
+    faculty: "Khoa Công nghệ Thông tin & Truyền thông",
+  },
+  "7761": {
+    code_full: "7760101",
+    name: "Công tác xã hội",
+    faculty: "Khoa Công tác Xã hội",
+  },
+  "7813": {
+    code_full: "7810103",
+    name: "Quản trị dịch vụ du lịch và lữ hành",
+    faculty: "Khoa Du lịch",
+  },
+};
+
+function getMajorsMap(db) {
+  if (!db.settings) db.settings = {};
+  if (!db.settings.majorsMap || typeof db.settings.majorsMap !== "object") {
+    db.settings.majorsMap = { ...DEFAULT_MAJORS_MAP };
+  }
+  return db.settings.majorsMap;
+}
+
+/**
+ * Parse MSSV VWA: YY + MMMM + SSSS (10 số)
+ */
+function parseStudentCode(mssv, db) {
+  if (!mssv) return null;
+  const clean = String(mssv).trim().replace(/\s/g, "");
+
+  if (!/^\d{10}$/.test(clean)) {
+    return { raw: clean, valid: false, note: "MSSV phải là 10 chữ số" };
+  }
+
+  const yearIn = 2000 + parseInt(clean.slice(0, 2), 10);
+  const majorCode = clean.slice(2, 6);
+  const sequence = clean.slice(6);
+
+  const map = getMajorsMap(db);
+  const major = map[majorCode];
+
+  return {
+    raw: clean,
+    valid: true,
+    year_in: yearIn,
+    major_code: majorCode,
+    major_name: major?.name || "",
+    major_code_full: major?.code_full || "",
+    faculty: major?.faculty || "",
+    sequence,
+    mapped: !!major,
+    note: major ? "" : `Mã ngành "${majorCode}" chưa có trong bảng`,
+  };
+}
+
+/**
+ * Parse Mã GV VWA: YYYYNN-NNNNNNN (15 ký tự)
+ */
+function parseTeacherCode(code, db) {
+  if (!code) return null;
+  const clean = String(code).trim().replace(/\s/g, "");
+
+  if (!/^\d{6}-\d{7}$/.test(clean)) {
+    return { raw: clean, valid: false, note: "Mã GV phải có format YYYYNN-NNNNNNN" };
+  }
+
+  const [prefix, sequence] = clean.split("-");
+  const yearIn = parseInt(prefix.slice(0, 4), 10);
+  const unitCode = prefix.slice(4);
+
+  return { raw: clean, valid: true, year_in: yearIn, unit_code: unitCode, sequence };
+}
+
+/**
+ * Auto-fill user profile từ MSSV / Mã GV
+ */
+function autoFillFromCode(db, user) {
+  if (!user) return false;
+  let changed = false;
+
+  if (user.role === "CUSTOMER") {
+    let code = user.student_code;
+    if (!code && user.email) {
+      const match = String(user.email).match(/^(\d{10})@/);
+      if (match) { code = match[1]; user.student_code = code; changed = true; }
+    }
+    if (code && !user.manual_override) {
+      const parsed = parseStudentCode(code, db);
+      if (parsed?.valid) {
+        if (user.year_in !== parsed.year_in) { user.year_in = parsed.year_in; changed = true; }
+        if (user.major_code !== parsed.major_code) { user.major_code = parsed.major_code; changed = true; }
+        if (parsed.mapped) {
+          if (user.major_name !== parsed.major_name) { user.major_name = parsed.major_name; changed = true; }
+          if (user.faculty !== parsed.faculty) { user.faculty = parsed.faculty; changed = true; }
+          if (user.major_code_full !== parsed.major_code_full) { user.major_code_full = parsed.major_code_full; changed = true; }
+        }
+        user.mssv_parsed_at = new Date().toISOString();
+      }
+    }
+  }
+
+  if (user.role === "EMPLOYEE" || user.role === "ADMIN") {
+    if (user.teacher_code && !user.manual_override) {
+      const parsed = parseTeacherCode(user.teacher_code, db);
+      if (parsed?.valid) {
+        if (user.year_in !== parsed.year_in) { user.year_in = parsed.year_in; changed = true; }
+        if (user.unit_code !== parsed.unit_code) { user.unit_code = parsed.unit_code; changed = true; }
+        user.mssv_parsed_at = new Date().toISOString();
+      }
+    }
+  }
+
+  return changed;
+}
+
+/**
+ * Phân loại email Microsoft: SV (@hpn.edu.vn), GV (@vwa.edu.vn), Khác
+ */
+function classifyEmail(email) {
+  if (!email) return null;
+  const lower = String(email).toLowerCase().trim();
+
+  // Sinh viên: @hpn.edu.vn
+  if (lower.endsWith("@hpn.edu.vn")) {
+    const local = lower.split("@")[0];
+    if (/^\d{10}$/.test(local)) {
+      return { role: "CUSTOMER", code_type: "STUDENT", code: local };
+    }
+    return { role: "CUSTOMER", code_type: "STUDENT", code: "" };
+  }
+
+  // Giảng viên: @vwa.edu.vn
+  if (lower.endsWith("@vwa.edu.vn")) {
+    const local = lower.split("@")[0];
+    if (/^\d{6}-\d{7}$/.test(local)) {
+      return { role: "EMPLOYEE", code_type: "TEACHER", code: local };
+    }
+    return { role: "EMPLOYEE", code_type: "TEACHER", code: "" };
+  }
+
+  // Domain khác
+  return { role: "CUSTOMER", code_type: "NONE", code: "" };
+}
+
+/**
+ * Mask email để hiển thị an toàn: 2374820202@hpn.edu.vn → 23***02@hpn.edu.vn
+ */
+function maskEmail(email) {
+  if (!email) return "";
+  const [local, domain] = String(email).split("@");
+  if (!domain) return email;
+  if (local.length <= 4) return "***@" + domain;
+  return local.slice(0, 2) + "***" + local.slice(-2) + "@" + domain;
 }
 
 // ============================================================
@@ -320,10 +526,10 @@ function buildSeedData() {
     wallets: [],
     wallet_transactions: [],
     tasks: [],
+    points_history: [],
     settings: { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" },
   };
 }
-
 // ============================================================
 // INIT MONGO
 // ============================================================
@@ -728,6 +934,11 @@ app.post("/api/auth/login", (req, res) => {
     if (!user) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
     const ok = bcrypt.compareSync(password, user.password);
     if (!ok) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
+
+    // ✅ Auto-fill MSSV/mã GV mỗi lần login
+    const filled = autoFillFromCode(db, user);
+    if (filled) saveDB(db);
+
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
     res.json({
       token,
@@ -747,7 +958,7 @@ app.post("/api/auth/login", (req, res) => {
 
 app.post("/api/auth/register", (req, res) => {
   try {
-    const { email, password, name, phone } = req.body || {};
+    const { email, password, name, phone, student_code } = req.body || {};
     const emailNorm = String(email || "").trim().toLowerCase();
     const nameNorm = String(name || "").trim();
     if (!emailNorm || !password || !nameNorm) return res.status(400).json({ message: "Thiếu thông tin" });
@@ -755,16 +966,60 @@ app.post("/api/auth/register", (req, res) => {
     if (password.length < 6) return res.status(400).json({ message: "Mật khẩu phải từ 6 ký tự" });
     if (phone && !/^[0-9]{10,11}$/.test(String(phone).trim()))
       return res.status(400).json({ message: "SĐT phải 10-11 số" });
+
+    // ✅ Validate MSSV nếu có
+    let parsedMssv = "";
+    if (student_code) {
+      const clean = String(student_code).trim();
+      if (!/^\d{10}$/.test(clean)) {
+        return res.status(400).json({ message: "MSSV phải là 10 chữ số" });
+      }
+      parsedMssv = clean;
+    }
+
     const db = loadDB();
     if (db.users.find(u => u.email === emailNorm))
       return res.status(400).json({ message: "Email đã được sử dụng" });
+
+    // ✅ Check MSSV trùng
+    if (parsedMssv) {
+      const existing = db.users.find(u => u.student_code === parsedMssv);
+      if (existing) {
+        return res.status(400).json({
+          message: "MSSV này đã được liên kết với tài khoản khác. Vui lòng đăng nhập bằng tài khoản trường.",
+          code: "MSSV_ALREADY_LINKED",
+          linked_email_masked: maskEmail(existing.email),
+        });
+      }
+    }
+
     const hash = bcrypt.hashSync(password, 10);
     const id = Math.max(0, ...db.users.map(u => u.id)) + 1;
-    const user = { id, email: emailNorm, password: hash, name: nameNorm, phone: String(phone || "").trim(), role: "CUSTOMER", status: "Hoạt động", points: 0 };
+    const user = {
+      id, email: emailNorm, password: hash, name: nameNorm,
+      phone: String(phone || "").trim(),
+      role: "CUSTOMER", status: "Hoạt động", points: 0,
+      student_code: parsedMssv,
+      created_at: new Date().toISOString(),
+    };
+
+    // ✅ Auto-fill từ MSSV
+    autoFillFromCode(db, user);
+
     db.users.push(user);
     saveDB(db);
+
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-    res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    res.status(201).json({
+      token,
+      user: {
+        id: user.id, email: user.email, name: user.name, role: user.role,
+        student_code: user.student_code || "",
+        major_name: user.major_name || "",
+        faculty: user.faculty || "",
+        year_in: user.year_in || null,
+      },
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -798,6 +1053,11 @@ app.get("/api/auth/me", auth(), (req, res) => {
   const db = loadDB();
   const u = db.users.find(x => x.id === req.user.id);
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
+
+  // ✅ Auto-fill mỗi lần gọi
+  const changed = autoFillFromCode(db, u);
+  if (changed) saveDB(db);
+
   res.json({
     id: u.id,
     email: u.email,
@@ -807,6 +1067,15 @@ app.get("/api/auth/me", auth(), (req, res) => {
     phone: u.phone || "",
     address: u.address || "",
     avatar: u.avatar || "",
+    student_code: u.student_code || "",
+    teacher_code: u.teacher_code || "",
+    year_in: u.year_in || null,
+    major_code: u.major_code || "",
+    major_code_full: u.major_code_full || "",
+    major_name: u.major_name || "",
+    faculty: u.faculty || "",
+    unit_code: u.unit_code || "",
+    manual_override: !!u.manual_override,
     must_change_password: !!u.must_change_password,
   });
 });
@@ -816,7 +1085,38 @@ app.put("/api/auth/profile", auth(), (req, res) => {
     const db = loadDB();
     const u = db.users.find(x => x.id === req.user.id);
     if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
-    const { name, phone, avatar, address, email } = req.body;
+    const { name, phone, avatar, address, email, student_code } = req.body;
+
+    // ✅ Xử lý MSSV nếu có gửi lên
+    if (student_code !== undefined) {
+      const clean = String(student_code || "").trim();
+
+      // Nếu user đã có MSSV → không cho đổi
+      if (u.student_code && u.student_code !== clean) {
+        return res.status(403).json({
+          message: "MSSV đã liên kết, không thể thay đổi. Liên hệ admin để gỡ liên kết.",
+          code: "MSSV_LOCKED",
+        });
+      }
+
+      // Nếu là MSSV mới → validate + check trùng
+      if (clean) {
+        if (!/^\d{10}$/.test(clean)) {
+          return res.status(400).json({ message: "MSSV phải là 10 chữ số" });
+        }
+        const existing = db.users.find(x => x.id !== u.id && x.student_code === clean);
+        if (existing) {
+          return res.status(400).json({
+            message: "MSSV này đã được liên kết với tài khoản khác.",
+            code: "MSSV_ALREADY_LINKED",
+            linked_email_masked: maskEmail(existing.email),
+          });
+        }
+        u.student_code = clean;
+        autoFillFromCode(db, u);
+      }
+    }
+
     if (email && email !== u.email) {
       const emailNorm = email.toLowerCase().trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm))
@@ -835,7 +1135,17 @@ app.put("/api/auth/profile", auth(), (req, res) => {
     if (avatar !== undefined) u.avatar = avatar;
     if (address !== undefined) u.address = address.trim();
     saveDB(db);
-    res.json({ id: u.id, email: u.email, name: u.name, role: u.role, phone: u.phone, avatar: u.avatar, address: u.address, points: u.points });
+    res.json({
+      id: u.id, email: u.email, name: u.name, role: u.role,
+      phone: u.phone, avatar: u.avatar, address: u.address,
+      points: u.points,
+      student_code: u.student_code || "",
+      teacher_code: u.teacher_code || "",
+      year_in: u.year_in || null,
+      major_code: u.major_code || "",
+      major_name: u.major_name || "",
+      faculty: u.faculty || "",
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -934,7 +1244,6 @@ async function microsoftCallbackHandler(req, res) {
   try {
     console.log("🔵 [Microsoft OAuth] Callback received. Method:", req.method);
     console.log("   Query:", req.query);
-    console.log("   Body:", req.body);
     console.log("   x-forwarded-host:", req.get("x-forwarded-host"));
     console.log("   host:", req.get("host"));
 
@@ -947,8 +1256,6 @@ async function microsoftCallbackHandler(req, res) {
       String(req.get("x-forwarded-proto") || req.protocol || "https")
         .split(",")[0]
         .trim() || "https";
-
-    // ✅ FIX: ưu tiên x-forwarded-host (Vite proxy) trước host
     const fwdHost = req.get("x-forwarded-host") || req.get("host");
 
     const redirectUri =
@@ -960,8 +1267,6 @@ async function microsoftCallbackHandler(req, res) {
       console.error("❌ [Microsoft OAuth] Thiếu code");
       return res.status(400).json({ message: "Thiếu code" });
     }
-
-    console.log("🔵 [Microsoft OAuth] Đang đổi token với redirectUri:", redirectUri);
 
     const tokenRes = await fetch(
       `https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`,
@@ -986,8 +1291,6 @@ async function microsoftCallbackHandler(req, res) {
       });
     }
 
-    console.log("✅ [Microsoft OAuth] Token OK, đang lấy profile...");
-
     const userRes = await fetch("https://graph.microsoft.com/v1.0/me", {
       headers: { Authorization: "Bearer " + tokenData.access_token },
     });
@@ -1001,22 +1304,89 @@ async function microsoftCallbackHandler(req, res) {
 
     console.log("✅ [Microsoft OAuth] Profile:", emailNorm);
 
-    const db = loadDB();
+     const db = loadDB();
+    const classify = classifyEmail(emailNorm);
+    console.log("🔍 [Microsoft OAuth] Classify:", classify);
+
     let user = db.users.find((u) => u.email === emailNorm);
-    if (!user) {
+    let isNewUser = false;
+    let autoFilled = false;
+
+    // ============================================================
+    // ✅ V13: SV + GV đều là CUSTOMER (đều là khách hàng canteen)
+    // EMPLOYEE = nhân viên canteen (do admin cấp, không dùng Microsoft)
+    // ============================================================
+
+    if (user) {
+      // ✅ TK đã tồn tại (login lần trước hoặc admin đã tạo)
+      console.log("✅ [Microsoft OAuth] User đã tồn tại:", emailNorm);
+
+      // Update provider nếu chưa có
+      if (!user.provider) user.provider = "microsoft";
+
+      // Update name nếu trống
+      if (profile.displayName && !user.name) user.name = profile.displayName;
+
+      // ✅ Fill student_code nếu là SV + chưa có
+      if (emailNorm.endsWith("@hpn.edu.vn") && classify.code && !user.student_code) {
+        user.student_code = classify.code;
+      }
+
+      // ✅ Fill teacher_code nếu là GV email dạng số + chưa có
+      if (emailNorm.endsWith("@vwa.edu.vn") && classify.code && !user.teacher_code) {
+        const local = emailNorm.split("@")[0];
+        if (/^\d{6}-\d{7}$/.test(local)) {
+          user.teacher_code = local;
+        }
+      }
+
+      autoFilled = autoFillFromCode(db, user);
+      saveDB(db);
+
+    } else {
+      // ============================================================
+      // ✅ Tạo TK CUSTOMER mới cho SV / GV / Domain khác
+      // ============================================================
       const id = Math.max(0, ...db.users.map((u) => u.id)) + 1;
+      const local = emailNorm.split("@")[0];
+      const isStudent = emailNorm.endsWith("@hpn.edu.vn");
+      const isTeacher = emailNorm.endsWith("@vwa.edu.vn");
+      const isTeacherWithCode = isTeacher && /^\d{6}-\d{7}$/.test(local);
+
       user = {
         id, email: emailNorm, password: "",
-        name: profile.displayName || emailNorm.split("@")[0],
-        phone: "", role: "CUSTOMER", status: "Hoạt động",
+        name: profile.displayName || local,
+        phone: profile.mobilePhone || "",
+        role: "CUSTOMER", status: "Hoạt động",
         points: 0, provider: "microsoft", avatar: "",
+        student_code: isStudent ? (classify.code || "") : "",
+        teacher_code: isTeacherWithCode ? local : "",
         created_at: new Date().toISOString(),
       };
       db.users.push(user);
+
+      // Tạo wallet mặc định
+      if (!db.wallets) db.wallets = [];
+      db.wallets.push({
+        user_id: id, balance: 0,
+        bank_name: "", bank_account: "", bank_account_name: "",
+        linked_at: "", created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      autoFilled = autoFillFromCode(db, user);
       saveDB(db);
-      console.log("✅ [Microsoft OAuth] Đã tạo user mới:", emailNorm);
-    } else {
-      console.log("✅ [Microsoft OAuth] User đã tồn tại:", emailNorm);
+      isNewUser = true;
+
+      if (isTeacherWithCode) {
+        console.log("✅ [Microsoft OAuth] Đã tạo GV (CUSTOMER) mới + wallet:", emailNorm);
+      } else if (isStudent) {
+        console.log("✅ [Microsoft OAuth] Đã tạo SV (CUSTOMER) mới + wallet:", emailNorm);
+      } else if (isTeacher) {
+        console.log("✅ [Microsoft OAuth] Đã tạo GV (CUSTOMER, không mã) mới + wallet:", emailNorm);
+      } else {
+        console.log("✅ [Microsoft OAuth] Đã tạo CUSTOMER mới (domain khác) + wallet:", emailNorm);
+      }
     }
 
     const token = jwt.sign(
@@ -1026,7 +1396,6 @@ async function microsoftCallbackHandler(req, res) {
     );
 
     if (req.method === "GET") {
-      // ✅ FIX: dùng x-forwarded-host cho frontend URL
       const origin = `${proto}://${fwdHost}`;
       const frontendUrl = `${origin}/login?token=${encodeURIComponent(token)}&provider=microsoft`;
       console.log("✅ [Microsoft OAuth] Redirect về frontend:", frontendUrl);
@@ -1039,6 +1408,13 @@ async function microsoftCallbackHandler(req, res) {
         id: user.id, email: user.email, name: user.name, role: user.role,
         avatar: user.avatar || "",
         must_change_password: !!user.must_change_password,
+        student_code: user.student_code || "",
+        teacher_code: user.teacher_code || "",
+        major_name: user.major_name || "",
+        faculty: user.faculty || "",
+        year_in: user.year_in || null,
+        is_new_user: isNewUser,
+        auto_filled: autoFilled,
       },
     });
   } catch (e) {
@@ -1209,6 +1585,19 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
     if (!VALID_ROLES.includes(role))
       return res.status(400).json({ message: "Role không hợp lệ. Phải là: " + VALID_ROLES.join(", ") });
 
+    // ✅ Validate mã GV nếu có
+    let cleanTeacherCode = "";
+    if (req.body.teacher_code) {
+      const clean = String(req.body.teacher_code).trim();
+      if (!/^\d{6}-\d{7}$/.test(clean)) {
+        return res.status(400).json({ message: "Mã GV phải có format YYYYNN-NNNNNNN (VD: 202212-0114175)" });
+      }
+      if (db.users.find(u => u.teacher_code === clean)) {
+        return res.status(400).json({ message: "Mã GV này đã được sử dụng" });
+      }
+      cleanTeacherCode = clean;
+    }
+
     const id = Math.max(0, ...db.users.map(u => u.id)) + 1;
 
     const useTempPassword = !req.body.password;
@@ -1232,9 +1621,14 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
       role,
       status: "Hoạt động",
       points: 0,
+      teacher_code: cleanTeacherCode,
       must_change_password: mustChange,
       created_at: new Date().toISOString(),
     };
+
+    // ✅ Auto-fill từ mã GV
+    if (cleanTeacherCode) autoFillFromCode(db, user);
+
     db.users.push(user);
     saveDB(db);
 
@@ -1286,7 +1680,24 @@ app.put("/api/users/:id", auth(["ADMIN"]), (req, res) => {
         data.must_change_password === "true";
     }
 
+    // ✅ Validate teacher_code nếu admin sửa
+    if (data.teacher_code !== undefined) {
+      const clean = String(data.teacher_code || "").trim();
+      if (clean) {
+        if (!/^\d{6}-\d{7}$/.test(clean)) {
+          return res.status(400).json({ message: "Mã GV phải có format YYYYNN-NNNNNNN" });
+        }
+        const dup = db.users.find(u => u.id != req.params.id && u.teacher_code === clean);
+        if (dup) return res.status(400).json({ message: "Mã GV này đã được sử dụng" });
+      }
+      data.teacher_code = clean;
+    }
+
     db.users[i] = { ...db.users[i], ...data };
+
+    // ✅ Auto-fill lại
+    autoFillFromCode(db, db.users[i]);
+
     saveDB(db);
     res.json({ ok: true });
   } catch (e) {
@@ -1325,6 +1736,176 @@ app.post("/api/users/:id/reset-password", auth(["ADMIN"]), (req, res) => {
   }
 });
 
+// ============================================================
+// ✅ V12: SCHOOL / MAJORS MAP APIs
+// ============================================================
+
+// Public: parse MSSV
+app.get("/api/school/parse-student/:code", (req, res) => {
+  try {
+    const db = loadDB();
+    res.json(parseStudentCode(req.params.code, db));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// Public: parse mã GV
+app.get("/api/school/parse-teacher/:code", (req, res) => {
+  try {
+    const db = loadDB();
+    res.json(parseTeacherCode(req.params.code, db));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// Public: xem bảng mã ngành
+app.get("/api/school/majors-map", (req, res) => {
+  try {
+    const db = loadDB();
+    res.json(getMajorsMap(db));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ADMIN: cập nhật bảng mã ngành
+app.put("/api/school/majors-map", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const { map } = req.body;
+    if (!map || typeof map !== "object" || Array.isArray(map)) {
+      return res.status(400).json({ message: "map phải là object {code: {name, faculty, code_full}}" });
+    }
+    const clean = {};
+    for (const [code, info] of Object.entries(map)) {
+      if (!/^\d{3,4}$/.test(code)) continue;
+      if (!info || typeof info !== "object") continue;
+      clean[code] = {
+        name: String(info.name || "").slice(0, 200),
+        faculty: String(info.faculty || "").slice(0, 200),
+        code_full: String(info.code_full || "").slice(0, 20),
+      };
+    }
+    if (!db.settings) db.settings = {};
+    db.settings.majorsMap = clean;
+    saveDB(db);
+    res.json({ ok: true, map: clean });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ADMIN: reset bảng mã ngành
+app.post("/api/school/majors-map/reset", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    if (!db.settings) db.settings = {};
+    db.settings.majorsMap = { ...DEFAULT_MAJORS_MAP };
+    saveDB(db);
+    res.json({ ok: true, map: db.settings.majorsMap });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ADMIN: set điểm user
+app.put("/api/users/:id/points", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const u = db.users.find((x) => x.id == req.params.id);
+    if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
+    const { points, reason } = req.body;
+    const p = Number(points);
+    if (!Number.isFinite(p) || p < 0) {
+      return res.status(400).json({ message: "Điểm phải là số >= 0" });
+    }
+    const old = u.points || 0;
+    u.points = p;
+    u.points_updated_at = new Date().toISOString();
+    u.points_updated_by = req.user.name;
+    if (reason) u.points_reason = String(reason).slice(0, 200);
+
+    if (!db.points_history) db.points_history = [];
+    const hid = Math.max(0, ...db.points_history.map(h => h.id)) + 1;
+    db.points_history.push({
+      id: hid, user_id: u.id, user_name: u.name,
+      old_points: old, new_points: p, delta: p - old,
+      reason: reason || "Admin điều chỉnh",
+      changed_by: req.user.name, changed_by_id: req.user.id,
+      created_at: new Date().toISOString(),
+    });
+
+    saveDB(db);
+    res.json({ ok: true, user: { id: u.id, name: u.name, points: u.points } });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ADMIN: override school info
+app.put("/api/users/:id/school-info", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const u = db.users.find((x) => x.id == req.params.id);
+    if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
+
+    const { student_code, teacher_code, major_code, major_name, faculty, year_in, manual_override } = req.body;
+
+    if (student_code !== undefined) {
+      const clean = String(student_code || "").trim();
+      if (clean && !/^\d{10}$/.test(clean)) {
+        return res.status(400).json({ message: "MSSV phải là 10 chữ số" });
+      }
+      u.student_code = clean;
+    }
+    if (teacher_code !== undefined) u.teacher_code = String(teacher_code || "").trim();
+    if (major_code !== undefined) u.major_code = String(major_code || "").trim();
+    if (major_name !== undefined) u.major_name = String(major_name || "").trim();
+    if (faculty !== undefined) u.faculty = String(faculty || "").trim();
+    if (year_in !== undefined) u.year_in = Number(year_in) || null;
+    if (manual_override !== undefined) u.manual_override = !!manual_override;
+
+    if (!u.manual_override) autoFillFromCode(db, u);
+
+    saveDB(db);
+    res.json({
+      ok: true,
+      user: {
+        id: u.id, name: u.name, student_code: u.student_code,
+        teacher_code: u.teacher_code, major_code: u.major_code,
+        major_name: u.major_name, faculty: u.faculty, year_in: u.year_in,
+        manual_override: !!u.manual_override,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ADMIN: gỡ liên kết MSSV
+app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const u = db.users.find((x) => x.id == req.params.id);
+    if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
+
+    delete u.student_code;
+    delete u.major_code;
+    delete u.major_code_full;
+    delete u.major_name;
+    delete u.faculty;
+    delete u.year_in;
+    delete u.mssv_parsed_at;
+    u.manual_override = false;
+
+    saveDB(db);
+    res.json({ ok: true, message: `Đã gỡ liên kết MSSV của ${u.name}` });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 // ============================================================
 // ORDERS
 // ============================================================
@@ -2696,6 +3277,7 @@ app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
       imports: db.imports?.length || 0,
       price_history: db.price_history?.length || 0,
       tasks: db.tasks?.length || 0,
+      points_history: db.points_history?.length || 0,
       db_size_bytes: JSON.stringify(db).length
     });
   } catch (e) {
@@ -3258,6 +3840,7 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
     db.imports = [];
     db.price_history = [];
     db.reviews = [];
+    db.points_history = [];
     (db.users || []).forEach(u => { u.points = 0; });
     (db.menu_items || []).forEach(m => {
       if (m.stock !== undefined) m.stock = Math.max(m.stock, 30);
