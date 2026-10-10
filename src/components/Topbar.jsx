@@ -1,16 +1,12 @@
 // ============================================================
-// TOPBAR.JSX — Top navigation cho Customer (V5 - FINAL)
+// TOPBAR.JSX — Top navigation cho Customer (V6 - FINAL)
 // ============================================================
-// V5 (2026-10):
-//   - ✅ Bỏ dropdown profile cũ → bấm profile → mở SettingsModal (Q1:A)
-//   - ✅ Thêm nút logout icon riêng trên topbar (Q2:C)
-//   - 🔧 FIX #5 (lỗi ban đầu): Đọc token qua getToken() từ api.js
-//     thay vì sessionStorage — mobile không mất badge đơn hàng
-//   - 🔧 FIX #34 (lỗi ban đầu): Bỏ effect applyTheme thủ công —
-//     useSettings (trong SettingsModal) tự apply theme vào DOM
-//   - Dọn import không dùng
-//
-// 🌐 i18n: source-text tiếng Việt, tự dịch
+// V6 (2026-10):
+//   - 🔧 FIX i18n: đổi label NAV sang key có trong en.json
+//     "Khám phá" → "Trang chủ"
+//     "Khuyến mãi" → "Khuyến mãi & Ưu đãi"
+//     "Ví Canteen" → "Ví"
+//   - Giữ nguyên toàn bộ logic khác từ V5
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -33,12 +29,13 @@ const ORDERS_SEEN_KEY = "orders_last_seen";
 const POLL_MS = 30000;
 const BADGE_MAX = 99;
 
+// 🔧 V6: đổi label sang key có trong en.json
 const NAV_ITEMS = [
-  { key: "home",       label: "Khám phá",    icon: Home,            path: "/customer/home" },
-  { key: "menu",       label: "Thực đơn",    icon: UtensilsCrossed, path: "/customer/menu" },
-  { key: "promotions", label: "Khuyến mãi",  icon: Gift,            path: "/customer/promotions" },
-  { key: "orders",     label: "Đơn hàng",    icon: Package,         path: "/customer/orders" },
-  { key: "wallet",     label: "Ví Canteen",  icon: Wallet,          path: "/customer/wallet" },
+  { key: "home",       label: "Trang chủ",             icon: Home,            path: "/customer/home" },
+  { key: "menu",       label: "Thực đơn",              icon: UtensilsCrossed, path: "/customer/menu" },
+  { key: "promotions", label: "Khuyến mãi & Ưu đãi",   icon: Gift,            path: "/customer/promotions" },
+  { key: "orders",     label: "Đơn hàng",              icon: Package,         path: "/customer/orders" },
+  { key: "wallet",     label: "Ví",                    icon: Wallet,          path: "/customer/wallet" },
 ];
 
 const ACTIVE_ORDER_STATUSES = [
@@ -104,9 +101,7 @@ export default function CustomerTopbar({
   const orderReqIdRef = useRef(0);
   const notificationMenuRef = useRef(null);
 
-  // ============================================================
-  // READ CART
-  // ============================================================
+  // ---------- READ CART ----------
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
@@ -135,7 +130,10 @@ export default function CustomerTopbar({
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
-      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target)) {
+      if (
+        notificationMenuRef.current &&
+        !notificationMenuRef.current.contains(event.target)
+      ) {
         setShowNotifications(false);
       }
     };
@@ -147,9 +145,11 @@ export default function CustomerTopbar({
     try {
       if (!notification.read) {
         await api.notifications.read(notification.id);
-        setNotifications((prev) => prev.map((item) =>
-          item.id === notification.id ? { ...item, read: true } : item
-        ));
+        setNotifications((prev) =>
+          prev.map((item) =>
+            item.id === notification.id ? { ...item, read: true } : item
+          )
+        );
         setNotificationUnread((prev) => Math.max(0, prev - 1));
       }
       setShowNotifications(false);
@@ -162,16 +162,16 @@ export default function CustomerTopbar({
   const handleReadAllNotifications = async () => {
     try {
       await api.notifications.readAll();
-      setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+      setNotifications((prev) =>
+        prev.map((item) => ({ ...item, read: true }))
+      );
       setNotificationUnread(0);
     } catch (error) {
       console.error("Không thể đọc tất cả thông báo:", error);
     }
   };
 
-  // ============================================================
-  // READ ORDERS — 🔧 FIX #5: dùng getToken() thay vì sessionStorage
-  // ============================================================
+  // ---------- READ ORDERS ----------
   const readOrders = useCallback(async () => {
     const myReqId = ++orderReqIdRef.current;
     try {
@@ -198,9 +198,6 @@ export default function CustomerTopbar({
     }
   }, []);
 
-  // ============================================================
-  // EFFECTS — Cart + Orders + Polling
-  // ============================================================
   useEffect(() => {
     readCart();
     readOrders();
@@ -224,10 +221,7 @@ export default function CustomerTopbar({
     };
   }, [readCart, readOrders]);
 
-  // ============================================================
-  // ============================================================
-  // HANDLERS
-  // ============================================================
+  // ---------- HANDLERS ----------
   const openSettings = useCallback(() => {
     setShowSettings(true);
   }, []);
@@ -250,7 +244,7 @@ export default function CustomerTopbar({
   // ============================================================
   return (
     <header className="customer-topbar">
-      {/* ============ ROLE BAR (dòng trên) ============ */}
+      {/* ROLE BAR */}
       <div className="customer-topbar__rolebar">
         <div className="customer-topbar__rolebar-inner">
           <div className="customer-topbar__status">
@@ -265,11 +259,10 @@ export default function CustomerTopbar({
         </div>
       </div>
 
-      {/* ============ MAIN BAR (dòng dưới) ============ */}
+      {/* MAIN BAR */}
       <div className="customer-topbar__main">
         <div className="customer-topbar__main-inner">
           <div className="customer-topbar__left">
-            {/* Hamburger mobile */}
             <button
               type="button"
               className="customer-topbar__hamburger"
@@ -279,7 +272,6 @@ export default function CustomerTopbar({
               <Menu size={22} />
             </button>
 
-            {/* Logo */}
             <Link to="/customer/home" className="customer-topbar__logo">
               <LogoVWACompact size={36} />
               <div className="customer-topbar__logo-text">
@@ -288,7 +280,6 @@ export default function CustomerTopbar({
               </div>
             </Link>
 
-            {/* Desktop nav */}
             <nav className="customer-topbar__nav">
               {NAV_ITEMS.map((item) => {
                 const active = isPathActive(location.pathname, item.path);
@@ -307,9 +298,8 @@ export default function CustomerTopbar({
             </nav>
           </div>
 
-          {/* Right actions */}
+          {/* RIGHT ACTIONS */}
           <div className="customer-topbar__right">
-            {/* Cart */}
             <Link
               to="/customer/cart"
               className="customer-topbar__icon-btn"
@@ -319,31 +309,67 @@ export default function CustomerTopbar({
               {renderBadge(cartCount)}
             </Link>
 
-            {/* Notifications */}
-            <div className="customer-topbar__notification-wrap" ref={notificationMenuRef}>
-              <button type="button" className="customer-topbar__icon-btn" onClick={() => setShowNotifications((prev) => !prev)} aria-label="Thông báo" title="Thông báo">
+            <div
+              className="customer-topbar__notification-wrap"
+              ref={notificationMenuRef}
+            >
+              <button
+                type="button"
+                className="customer-topbar__icon-btn"
+                onClick={() => setShowNotifications((prev) => !prev)}
+                aria-label={t("Thông báo")}
+                title={t("Thông báo")}
+              >
                 <Bell size={20} />
-                {notificationUnread > 0 && <span className="customer-topbar__notification-badge">{notificationUnread > 99 ? "99+" : notificationUnread}</span>}
+                {notificationUnread > 0 && (
+                  <span className="customer-topbar__notification-badge">
+                    {notificationUnread > 99 ? "99+" : notificationUnread}
+                  </span>
+                )}
               </button>
+
               {showNotifications && (
                 <div className="customer-topbar__notification-menu">
                   <div className="customer-topbar__notification-header">
-                    <strong>Thông báo</strong>
-                    {notificationUnread > 0 && <button type="button" onClick={handleReadAllNotifications}>Đọc tất cả</button>}
+                    <strong>{t("Thông báo")}</strong>
+                    {notificationUnread > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleReadAllNotifications}
+                      >
+                        {t("Đọc tất cả")}
+                      </button>
+                    )}
                   </div>
                   <div className="customer-topbar__notification-list">
-                    {notifications.length === 0 ? <div className="customer-topbar__notification-empty">Không có thông báo</div> : notifications.map((notification) => (
-                      <button type="button" key={notification.id} className={`customer-topbar__notification-item ${!notification.read ? "is-unread" : ""}`} onClick={() => handleNotificationClick(notification)}>
-                        <strong>{notification.title || "Thông báo"}</strong>
-                        <span>{notification.content || notification.message || ""}</span>
-                      </button>
-                    ))}
+                    {notifications.length === 0 ? (
+                      <div className="customer-topbar__notification-empty">
+                        {t("Không có thông báo")}
+                      </div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <button
+                          type="button"
+                          key={notification.id}
+                          className={`customer-topbar__notification-item ${
+                            !notification.read ? "is-unread" : ""
+                          }`}
+                          onClick={() => handleNotificationClick(notification)}
+                        >
+                          <strong>
+                            {notification.title || t("Thông báo")}
+                          </strong>
+                          <span>
+                            {notification.content || notification.message || ""}
+                          </span>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Profile button — bấm vào mở SettingsModal (Q1:A) */}
             <button
               type="button"
               className="customer-topbar__profile-btn"
@@ -368,7 +394,6 @@ export default function CustomerTopbar({
         </div>
       </div>
 
-      {/* ============ SETTINGS MODAL (CUSTOMER) ============ */}
       <SettingsModal
         open={showSettings}
         onClose={closeSettings}

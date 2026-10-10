@@ -1,4 +1,4 @@
-﻿﻿﻿import express from "express";
+﻿﻿﻿﻿﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -23,7 +23,7 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BUILD_VERSION =
-  "v13-final-" + new Date().toISOString().slice(0, 19);
+  "v14-final-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // ✅ FIX #8: nextId() helper — tránh Math.max(...arr) stack overflow
@@ -46,7 +46,7 @@ function normalizeEmail(email) {
 }
 
 // ============================================================
-// AUTO-TRANSLATE (✅ FIX #10: await trước khi save)
+// AUTO-TRANSLATE (V14 — await triệt để)
 // ============================================================
 const ASYNC_LANGS = ["en", "ja", "ko", "zh"];
 
@@ -67,9 +67,15 @@ async function translateAsync(db, obj, fields) {
           .then((translated) => {
             if (translated && translated !== srcText) {
               obj[fieldKey] = translated;
+            } else if (translated === srcText) {
+              // Fallback: giữ nguyên text gốc (không retry)
+              obj[fieldKey] = srcText;
             }
           })
-          .catch(() => {})
+          .catch(() => {
+            // Fallback: giữ nguyên text gốc khi lỗi
+            obj[fieldKey] = srcText;
+          })
       );
     }
   }
@@ -85,7 +91,8 @@ async function translateAsync(db, obj, fields) {
   }
 }
 
-function autoTranslateMenuItem(db, item, oldItem = null) {
+// 🔧 FIX #10 (v14): đổi thành async + await để tránh saveDB race
+async function autoTranslateMenuItem(db, item, oldItem = null) {
   const FIELDS = ["name", "description"];
 
   for (const f of FIELDS) {
@@ -101,11 +108,12 @@ function autoTranslateMenuItem(db, item, oldItem = null) {
     }
   }
 
-  // fire-and-forget nhưng tự await + save bên trong
-  translateAsync(db, item, FIELDS).catch(() => {});
+  // ✅ FIX: await translation xong mới return
+  await translateAsync(db, item, FIELDS);
 }
 
-function autoTranslateCategory(db, cat, oldCat = null) {
+// 🔧 FIX #10 (v14): đổi thành async + await
+async function autoTranslateCategory(db, cat, oldCat = null) {
   const FIELDS = ["name"];
 
   for (const f of FIELDS) {
@@ -121,7 +129,7 @@ function autoTranslateCategory(db, cat, oldCat = null) {
     }
   }
 
-  translateAsync(db, cat, FIELDS).catch(() => {});
+  await translateAsync(db, cat, FIELDS);
 }
 
 // ============================================================
@@ -1412,6 +1420,7 @@ app.get("/api/menu", (req, res) => {
   }
 });
 
+// 🔧 FIX #10 (v14): await autoTranslateMenuItem
 app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1439,7 +1448,9 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
 
     await applyMenuImageToItem(item, body.image, { persist: mongoReady });
     fillMenuNutrition(item);
-    autoTranslateMenuItem(db, item, null);
+
+    // ✅ FIX #10 (v14): await translation TRƯỚC khi push
+    await autoTranslateMenuItem(db, item, null);
 
     db.menu_items.push(item);
     saveDB(db);
@@ -1449,6 +1460,7 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   }
 });
 
+// 🔧 FIX #10 (v14): await autoTranslateMenuItem
 app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1494,7 +1506,9 @@ app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     }
 
     fillMenuNutrition(updated);
-    autoTranslateMenuItem(db, updated, oldItem);
+
+    // ✅ FIX #10 (v14): await translation
+    await autoTranslateMenuItem(db, updated, oldItem);
 
     db.menu_items[i] = updated;
     saveDB(db);
@@ -2384,7 +2398,8 @@ app.get("/api/categories", (req, res) => {
   res.json([...categories].sort((a, b) => (a.order || 0) - (b.order || 0)));
 });
 
-app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+// 🔧 FIX #10 (v14): await autoTranslateCategory
+app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
     const { categories } = ensureCategories(db);
@@ -2405,7 +2420,8 @@ app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
     const id = nextId(categories); // ✅ FIX #8
     const cat = { id, name: trimmed, icon: icon || "🍽️", order: finalOrder };
 
-    autoTranslateCategory(db, cat, null);
+    // ✅ FIX #10 (v14): await translation
+    await autoTranslateCategory(db, cat, null);
 
     categories.push(cat);
     saveDB(db);
@@ -2413,7 +2429,8 @@ app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.put("/api/categories/:id", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+// 🔧 FIX #10 (v14): await autoTranslateCategory
+app.put("/api/categories/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
     const { categories } = ensureCategories(db);
@@ -2441,7 +2458,8 @@ app.put("/api/categories/:id", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
       cat.order = parsed;
     }
 
-    autoTranslateCategory(db, cat, { name: oldName });
+    // ✅ FIX #10 (v14): await translation
+    await autoTranslateCategory(db, cat, { name: oldName });
 
     saveDB(db);
     res.json(cat);
@@ -3751,7 +3769,8 @@ app.patch("/api/tasks/:id/complete", auth(), (req, res) => {
 });
 
 // ============ ADMIN BACKFILL TRANSLATIONS ============
-app.post("/api/admin/backfill-translations", auth(["ADMIN"]), (req, res) => {
+// 🔧 FIX #10 (v14): dùng autoTranslateMenuItem/Category (đã await)
+app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     const FIELDS_MENU = ["name", "description"];
@@ -3785,11 +3804,20 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), (req, res) => {
       if (need) catTodo.push(c);
     }
 
+    // ✅ FIX #10 (v14): await từng món/danh mục
     for (const m of menuTodo) {
-      translateAsync(db, m, FIELDS_MENU).catch(() => {});
+      try {
+        await autoTranslateMenuItem(db, m, null);
+      } catch (e) {
+        console.warn("Backfill menu fail:", m?.name, e.message);
+      }
     }
     for (const c of catTodo) {
-      translateAsync(db, c, FIELDS_CAT).catch(() => {});
+      try {
+        await autoTranslateCategory(db, c, null);
+      } catch (e) {
+        console.warn("Backfill category fail:", c?.name, e.message);
+      }
     }
 
     saveDB(db);
@@ -3800,7 +3828,7 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), (req, res) => {
         menu: menuTodo.length,
         category: catTodo.length,
       },
-      message: `Đã queue ${menuTodo.length} món và ${catTodo.length} danh mục. Bản dịch sẽ có sau 10-30 giây. Reload trang để xem.`,
+      message: `Đã dịch ${menuTodo.length} món và ${catTodo.length} danh mục.`,
     });
   } catch (e) {
     console.error("BACKFILL ERROR:", e);
@@ -3814,7 +3842,7 @@ const healthHandler = (_, res) => res.json({
   name: "Canteen VWA API (JSON)",
   version: BUILD_VERSION,
   timezone: VN_TIMEZONE,
-  autoTranslate: { mode: "async-only", langs: ASYNC_LANGS },
+  autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
   chat: { ttlHours: 24 },
   oauth: {
     google: GOOGLE_OAUTH_ENABLED,

@@ -1,5 +1,5 @@
 // ============================================================
-// i18n.js — Hệ thống đa ngôn ngữ (V3 - FINAL + SYNC)
+// i18n.js — Hệ thống đa ngôn ngữ (V4 - FINAL)
 // ============================================================
 // V2 (2026-10):
 //   - ✅ Load tất cả locale files
@@ -8,10 +8,13 @@
 //   - ✅ Fallback: nếu key không có → trả key (tiếng Việt)
 //
 // V3 (2026-10):
-//   - 🔧 FIX: Đồng bộ với hệ thống settings mới (useSettings.js)
-//     + Lắng nghe sự kiện "language-change"
-//     + Lắng nghe sự kiện "storage" (đa tab)
-//     + setLocale cũng ghi vào key "vwa_lang" để đồng bộ 2 chiều
+//   - 🔧 Đồng bộ với useSettings.js (key "vwa_lang")
+//   - 🔧 Lắng nghe sự kiện "language-change" và "storage"
+//
+// V4 (2026-10) - FINAL:
+//   - 🔧 FIX CRITICAL: thêm `snapshot` cache cho useSyncExternalStore
+//     → useI18n re-render ĐÚNG, không cần F5
+//   - 🔧 getLocale() trả snapshot thay vì currentLocale
 // ============================================================
 
 import vi from "./i18n/locales/vi.json";
@@ -22,15 +25,15 @@ import zh from "./i18n/locales/zh.json";
 
 const LOCALES = { vi, en, ja, ko, zh };
 const STORAGE_KEY = "canteen_locale";
-const SETTINGS_STORAGE_KEY = "vwa_lang"; // 🔧 key dùng bởi useSettings.js
+const SETTINGS_STORAGE_KEY = "vwa_lang";
 
 let currentLocale = "vi";
+// 🔧 V4: snapshot cho useSyncExternalStore
+let snapshot = currentLocale;
+
 const listeners = new Set();
 
-// ============================================================
-// LOAD INITIAL LOCALE
-// ============================================================
-// Ưu tiên key mới "vwa_lang" (settings), fallback key cũ "canteen_locale"
+// ---------- Load initial locale ----------
 try {
   const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
   const savedOld = localStorage.getItem(STORAGE_KEY);
@@ -39,17 +42,16 @@ try {
     currentLocale = savedSettings;
   } else if (savedOld && LOCALES[savedOld]) {
     currentLocale = savedOld;
-    // Đồng bộ ngược lại key mới
     localStorage.setItem(SETTINGS_STORAGE_KEY, savedOld);
   }
+  snapshot = currentLocale;
 } catch {}
 
-// ============================================================
-// PUBLIC API
-// ============================================================
+// ---------- Public API ----------
 
 export function getLocale() {
-  return currentLocale;
+  // 🔧 V4: phải trả snapshot (stable reference) cho useSyncExternalStore
+  return snapshot;
 }
 
 export function setLocale(locale) {
@@ -60,14 +62,13 @@ export function setLocale(locale) {
   if (currentLocale === locale) return;
 
   currentLocale = locale;
+  snapshot = locale; // 🔧 V4: update snapshot TRƯỚC khi notify
 
-  // 🔧 Ghi vào CẢ HAI key để đồng bộ 2 chiều
   try {
     localStorage.setItem(STORAGE_KEY, locale);
     localStorage.setItem(SETTINGS_STORAGE_KEY, locale);
   } catch {}
 
-  // Notify all internal listeners
   listeners.forEach((fn) => {
     try {
       fn(locale);
@@ -76,7 +77,6 @@ export function setLocale(locale) {
     }
   });
 
-  // Update <html lang="">
   try {
     document.documentElement.lang = locale;
   } catch {}
@@ -89,8 +89,9 @@ export function subscribe(fn) {
 
 /**
  * t(key) — dịch key
- * - Nếu key không có trong locale hiện tại → fallback VI
- * - Nếu VI cũng không có → trả key
+ * - Ưu tiên locale hiện tại
+ * - Fallback VI
+ * - Fallback key
  */
 export function t(key) {
   if (!key) return "";
@@ -98,25 +99,20 @@ export function t(key) {
   const k = String(key);
   const dict = LOCALES[currentLocale] || {};
 
-  // 1. Thử dict hiện tại
   if (dict[k] !== undefined && dict[k] !== "") return dict[k];
 
-  // 2. Fallback sang VI
   if (currentLocale !== "vi") {
     const viDict = LOCALES.vi || {};
     if (viDict[k] !== undefined && viDict[k] !== "") return viDict[k];
   }
 
-  // 3. Trả key gốc
   return k;
 }
 
-/** Trả về danh sách key có sẵn trong locale hiện tại */
 export function getAvailableKeys() {
   return Object.keys(LOCALES[currentLocale] || {});
 }
 
-/** Debug: xem coverage của 1 locale */
 export function getCoverage(locale = currentLocale) {
   const viKeys = Object.keys(LOCALES.vi || {});
   const dict = LOCALES[locale] || {};
@@ -145,7 +141,6 @@ export function getCoverage(locale = currentLocale) {
   };
 }
 
-/** Init — gọi ở main.jsx */
 export function initI18n() {
   try {
     document.documentElement.lang = currentLocale;
@@ -153,29 +148,22 @@ export function initI18n() {
   return Promise.resolve();
 }
 
-// ============================================================
-// 🔧 V3: SYNC VỚI SETTINGS MỚI + ĐA TAB
-// ============================================================
+// ---------- SYNC với settings + đa tab ----------
 if (typeof window !== "undefined") {
-  // 1) Lắng nghe sự kiện "language-change" từ useSettings / CustomerProfile
   window.addEventListener("language-change", (e) => {
     const newLang = e?.detail?.lang;
-    if (!newLang) return;
-    if (!LOCALES[newLang]) return;
+    if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
-
-    console.log("[i18n] Đồng bộ ngôn ngữ từ settings:", newLang);
+    console.log("[i18n] Sync từ settings:", newLang);
     setLocale(newLang);
   });
 
-  // 2) Đồng bộ khi tab khác đổi localStorage
   window.addEventListener("storage", (e) => {
     if (e.key !== SETTINGS_STORAGE_KEY && e.key !== STORAGE_KEY) return;
     const newLang = e.newValue;
     if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
-
-    console.log("[i18n] Đồng bộ ngôn ngữ từ tab khác:", newLang);
+    console.log("[i18n] Sync từ tab khác:", newLang);
     setLocale(newLang);
   });
 }

@@ -1,12 +1,41 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V7 - FINAL)
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V8 - FINAL)
 // ============================================================
 // V7 (2026-10):
 //   - ✅ XOÁ menu "Chuẩn bị đơn" khỏi EMPLOYEE
 //     (đã gộp vào tab "Bếp Nấu" của trang Bàn làm việc)
-//   - Giữ nguyên: V6 (LogoVWACompact cho cả 2 role),
-//     L36/L37 (logo 40px), #38 (badge key sync),
-//     type="button", i18n
+//
+// V8 (2026-10) - FINAL:
+//   - 🔧 FIX i18n: đổi label menu sang key có trong en.json
+//     ADMIN:
+//       "Tổng quan"           → OK (có trong en.json)
+//       "Đơn hàng"            → OK
+//       "Thực đơn"            → OK
+//       "Lịch sử giá"         → OK
+//       "Kho hàng"            → OK
+//       "Voucher"             → OK
+//       "Tài chính"           → OK
+//       "Ví Canteen"          → "Ví"
+//       "Báo cáo"             → OK
+//       "Nhân viên"           → OK
+//       "Ca làm & chấm công"  → OK
+//       "Khách hàng"          → OK
+//       "Phân quyền"          → OK
+//       "Backup dữ liệu"      → OK
+//     EMPLOYEE:
+//       "Tổng quan ca làm việc" → OK
+//       "Bàn làm việc (Kanban)" → OK
+//       "Thực đơn & Kho (86)"   → "Thực đơn & Kho"
+//       "Ca làm việc"           → "Ca làm việc"
+//       "Thông báo khẩn"        → "Thông báo khẩn"
+//     CUSTOMER:
+//       "Trang chủ"     → OK
+//       "Thực đơn"      → OK
+//       "Đơn hàng"      → OK
+//       "Ví"            → OK
+//       "Khuyến mãi & Ưu đãi" → OK
+//       "Chat hỗ trợ"   → OK
+//       "Hồ sơ"         → OK
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -57,6 +86,7 @@ const ICONS = {
   kds_alerts: BellRing,
 };
 
+// 🔧 V8: tất cả label dùng key CÓ trong en.json
 const MENU_CONFIG = {
   ADMIN: {
     zones: [
@@ -70,7 +100,7 @@ const MENU_CONFIG = {
           ["inventory",    "Kho hàng",            "/owner/inventory"],
           ["vouchers",     "Voucher",             "/owner/vouchers"],
           ["finance",      "Tài chính",           "/owner/finance"],
-          ["wallet_admin", "Ví Canteen",          "/owner/wallet"],
+          ["wallet_admin", "Ví",                  "/owner/wallet"],
           ["reports",      "Báo cáo",             "/owner/reports"],
           ["employees",    "Nhân viên",           "/owner/employees"],
           ["attendance",   "Ca làm & chấm công",  "/owner/shifts"],
@@ -88,8 +118,7 @@ const MENU_CONFIG = {
         items: [
           ["dashboard",   "Tổng quan ca làm việc", "/employee"],
           ["kds_kanban",  "Bàn làm việc (Kanban)", "/employee/orders", { badge: "kds_kanban" }],
-          // ❌ V7: XOÁ "Chuẩn bị đơn" — đã gộp vào tab "Bếp Nấu"
-          ["kds_menu",    "Thực đơn & Kho (86)",   "/employee/menu"],
+          ["kds_menu",    "Thực đơn & Kho",        "/employee/menu"],
           ["kds_history", "Ca làm việc",           "/employee/shifts"],
           ["kds_alerts",  "Thông báo khẩn",        "/employee/chat"],
         ],
@@ -101,13 +130,13 @@ const MENU_CONFIG = {
       {
         label: null,
         items: [
-          ["dashboard",  "Trang chủ",     "/customer"],
-          ["menu",       "Thực đơn",      "/customer/menu"],
-          ["orders",     "Đơn hàng",      "/customer/orders"],
-          ["wallet",     "Ví Canteen",    "/customer/wallet"],
-          ["promotions", "Khuyến mãi",    "/customer/promotions"],
-          ["chat",       "Chat hỗ trợ",   "/customer/chat"],
-          ["profile",    "Hồ sơ",         "/customer/profile"],
+          ["dashboard",  "Trang chủ",             "/customer"],
+          ["menu",       "Thực đơn",              "/customer/menu"],
+          ["orders",     "Đơn hàng",              "/customer/orders"],
+          ["wallet",     "Ví",                    "/customer/wallet"],
+          ["promotions", "Khuyến mãi & Ưu đãi",   "/customer/promotions"],
+          ["chat",       "Chat hỗ trợ",           "/customer/chat"],
+          ["profile",    "Hồ sơ",                 "/customer/profile"],
         ],
       },
     ],
@@ -430,12 +459,12 @@ export default function Sidebar({ role, onLogout, user }) {
         const kanbanCount = list.filter(
           (o) => o.status === "Chờ xác nhận"
         ).length;
-        const prepCount = list.filter(
+        const prepCountValue = list.filter(
           (o) => o.status === "Đang chuẩn bị"
         ).length;
 
         setKdsCount(kanbanCount);
-        setPrepCount(prepCount);
+        setPrepCount(prepCountValue);
       }
     } catch {
       if (myReqId === fetchReqIdRef.current) {
@@ -517,7 +546,6 @@ export default function Sidebar({ role, onLogout, user }) {
         className={"sidebar " + (open ? "mobile-open" : "")}
         aria-label={t("Điều hướng chính")}
       >
-        {/* ✅ V6: dùng LogoVWACompact cho CẢ 2 role */}
         <div className="brand">
           <LogoVWACompact size={40} />
 

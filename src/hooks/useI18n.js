@@ -1,38 +1,37 @@
 // ============================================================
-// useI18n.js — Hook đa ngôn ngữ (V5 - FINAL)
+// useI18n.js — Hook đa ngôn ngữ (V6 - FINAL)
 // ============================================================
 // V5 (2026-10):
 //   - ✅ FIX CRITICAL: thêm tData() — dịch field dữ liệu
-//     (name, description...) của menu items, categories...
-//   - ✅ tData fallback: lang=vi → obj[field], thiếu → obj[field]
-//   - Giữ V4: fallback thông minh cho t(key)
+//
+// V6 (2026-10) - FINAL:
+//   - 🔧 FIX CRITICAL: dùng useSyncExternalStore → re-render ĐÚNG
+//     khi locale thay đổi (KHÔNG cần F5)
+//   - 🔧 Xoá biến setLocale bị trùng tên
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { getLocale, subscribe, t as tGlobal } from "../lib/i18n";
+import { useCallback, useSyncExternalStore } from "react";
+import {
+  getLocale,
+  subscribe,
+  setLocale as setLocaleGlobal,
+  t as tGlobal,
+} from "../lib/i18n";
 
 const isDev = import.meta.env.DEV;
-
-// Cache cảnh báo để không spam console
 const warnedKeys = new Set();
 
 export function useI18n() {
-  const [locale, setLocale] = useState(() => getLocale());
-
-  useEffect(() => {
-    const unsubscribe = subscribe((newLocale) => {
-      setLocale(newLocale);
-    });
-    return unsubscribe;
-  }, []);
+  // 🔧 V6: useSyncExternalStore — React 18+ official way
+  const locale = useSyncExternalStore(
+    subscribe,
+    getLocale,
+    getLocale // SSR fallback
+  );
 
   /**
    * t(key, params) — dịch key UI
-   * Fallback order:
-   *   1. dict[key] chính xác
-   *   2. dict[key.trim()]
-   *   3. dict[key.normalize()]
-   *   4. key (tiếng Việt gốc)
+   * Fallback: dict[key] → dict[trim] → dict[normalize] → key
    */
   const t = useCallback(
     (key, params) => {
@@ -41,23 +40,19 @@ export function useI18n() {
       const k = String(key);
       let translated = tGlobal(k);
 
-      // ✅ FIX: nếu trả về chính key → thử biến thể
       if (translated === k || !translated) {
-        // Thử trimmed
         const trimmed = k.trim();
         if (trimmed !== k) {
           const t2 = tGlobal(trimmed);
           if (t2 && t2 !== trimmed) translated = t2;
         }
 
-        // Thử normalize (bỏ space đầu/cuối, gộp space giữa)
         const normalized = k.replace(/\s+/g, " ").trim();
         if (translated === k && normalized !== k) {
           const t3 = tGlobal(normalized);
           if (t3 && t3 !== normalized) translated = t3;
         }
 
-        // Cảnh báo missing key (chỉ 1 lần/key, chỉ dev)
         if (isDev && translated === k && !warnedKeys.has(k)) {
           warnedKeys.add(k);
           if (k.length > 0 && k.length < 200 && !k.startsWith("/")) {
@@ -66,7 +61,6 @@ export function useI18n() {
         }
       }
 
-      // Thay params
       if (params && typeof translated === "string") {
         translated = translated.replace(/\{(\w+)\}/g, (match, name) => {
           return params[name] !== undefined ? String(params[name]) : match;
@@ -75,21 +69,12 @@ export function useI18n() {
 
       return translated || k;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [locale]
   );
 
   /**
-   * ✅ FIX CRITICAL: tData(obj, field) — dịch field dữ liệu
-   *
-   * Cách dùng:
-   *   tData(menuItem, "name")        → "Cơm gà" hoặc "Chicken rice"
-   *   tData(menuItem, "description") → mô tả tương ứng
-   *   tData(category, "name")        → tên danh mục
-   *
-   * Fallback:
-   *   1. lang=vi → obj[field] gốc
-   *   2. Có obj[`${field}_${lang}`] và không rỗng → trả bản dịch
-   *   3. Fallback → obj[field] (tiếng Việt gốc)
+   * tData(obj, field) — dịch field dữ liệu (name, description...)
    */
   const tData = useCallback(
     (obj, field) => {
@@ -97,22 +82,21 @@ export function useI18n() {
 
       const lang = locale || "vi";
 
-      // 1. Tiếng Việt → trả field gốc
-      if (lang === "vi") {
-        return obj[field] || "";
-      }
+      if (lang === "vi") return obj[field] || "";
 
-      // 2. Ưu tiên bản dịch `field_<lang>`
       const translated = obj[`${field}_${lang}`];
       if (typeof translated === "string" && translated.trim()) {
         return translated;
       }
 
-      // 3. Fallback về tiếng Việt gốc
       return obj[field] || "";
     },
     [locale]
   );
+
+  const setLocale = useCallback((newLang) => {
+    setLocaleGlobal(newLang);
+  }, []);
 
   return { t, tData, locale, setLocale };
 }
