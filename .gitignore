@@ -80,3 +80,14 @@ desktop.ini
 *.swp
 *~
 # ==== END ====
+
+# Backup files
+.backup/
+.backup-quickfix/
+.backup-locales/
+*.bak
+*.backup-*.json
+*-failed.json
+backfill-failed-*.json
+canteen-db.backup-*.json
+translate-cache.backup*
