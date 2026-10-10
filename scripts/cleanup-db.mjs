@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // ============================================================
-// CLEANUP-DB.MJS — Auto-clean canteen-db.json
+// CLEANUP-DB.MJS — Auto-clean canteen-db.json (V2 - FINAL)
 // ============================================================
-// Fix các bug data:
-//   - #3  : Encoding hỏng "Ch? x�c nh?n" → "Chờ xác nhận"
-//   - #16 : Orphan user_id (notifications, shifts, attendances, ...)
-//   - #17 : attendances[].employee_name không khớp employee_id
-//   - #21 : vouchers[] skip id (re-sequence)
+// V2 (2026-10):
+//   - ✅ FIX #13: Mapping status rõ ràng hơn (thay vì heuristic)
+//     + cảnh báo warning khi không match được
+//   - Giữ V1: encoding, orphan user_id, employee_name, voucher id
 // ============================================================
 
 import fs from "node:fs";
@@ -17,28 +16,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.join(__dirname, "..");
 const DB_FILE = path.join(ROOT_DIR, "canteen-db.json");
 
-// ✅ FIX (LỖI #11): backup ngay cạnh DB — KHÔNG dùng path.join("..", __dirname, ...)
-// trước đây tạo path lai `../full/path/file` gây ghi sai chỗ.
 const BACKUP_FILE = path.join(
   ROOT_DIR,
   `canteen-db.backup-${Date.now()}.json`
 );
 
-// ---------- Load ----------
 if (!fs.existsSync(DB_FILE)) {
   console.error("❌ Không tìm thấy canteen-db.json tại:", DB_FILE);
   process.exit(1);
 }
 
 const raw = fs.readFileSync(DB_FILE, "utf-8");
-
-// Backup trước khi sửa
 fs.writeFileSync(BACKUP_FILE, raw, "utf-8");
 console.log(`💾 Backup: ${path.basename(BACKUP_FILE)}`);
 
 const db = JSON.parse(raw);
 
-// ---------- Helper ----------
+// ============================================================
+// HELPERS
+// ============================================================
 const VALID_STATUSES = [
   "Chờ xác nhận",
   "Đã xác nhận",
@@ -48,12 +44,59 @@ const VALID_STATUSES = [
   "Đã hủy",
 ];
 
+// ✅ FIX #13: Mapping rõ ràng — key là chuỗi normalized,
+// value là status chuẩn. Không đoán mò.
+const STATUS_REPAIR_MAP = {
+  // "cho xac nhan" và các biến thể
+  "cho xac nhan": "Chờ xác nhận",
+  "choxacnhan": "Chờ xác nhận",
+  "cho xac nh?n": "Chờ xác nhận",
+  "ch? xac nh?n": "Chờ xác nhận",
+  "cho xc nhan": "Chờ xác nhận",
+  "ch? x�c nh?n": "Chờ xác nhận",
+
+  // "da xac nhan"
+  "da xac nhan": "Đã xác nhận",
+  "daxacnhan": "Đã xác nhận",
+  "da xac nh?n": "Đã xác nhận",
+  "d� x�c nh?n": "Đã xác nhận",
+
+  // "dang chuan bi"
+  "dang chuan bi": "Đang chuẩn bị",
+  "dangchuanbi": "Đang chuẩn bị",
+  "dang chu?n b?": "Đang chuẩn bị",
+  "dang chu?n bi": "Đang chuẩn bị",
+
+  // "san sang nhan"
+  "san sang nhan": "Sẵn sàng nhận",
+  "sansangnhan": "Sẵn sàng nhận",
+  "s?n s�ng nh?n": "Sẵn sàng nhận",
+
+  // "hoan thanh"
+  "hoan thanh": "Hoàn thành",
+  "hoanthanh": "Hoàn thành",
+  "ho�n th�nh": "Hoàn thành",
+
+  // "da huy"
+  "da huy": "Đã hủy",
+  "dahuy": "Đã hủy",
+  "d� h?y": "Đã hủy",
+  "da hu?": "Đã hủy",
+};
+
+// ✅ FIX #13: normalize giữ nguyên dấu tiếng Việt, chỉ lower + trim
+function normalizeStatus(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const report = {
   encodingFixed: 0,
+  encodingUnmatched: 0,
   orphanUsers: [],
-  orphanRefsRemoved: 0,
   nameFixed: 0,
-  voucherReseq: 0,
 };
 
 // ============================================================
@@ -64,28 +107,30 @@ console.log("\n🔧 Fix #3: Encoding order status...");
 (db.orders || []).forEach((o) => {
   if (o.status && !VALID_STATUSES.includes(o.status)) {
     const original = o.status;
-    // Đoán trạng thái gần nhất dựa vào ký tự còn lại
-    const norm = original
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
+    const norm = normalizeStatus(original);
 
-    if (norm.includes("x") && norm.includes("nh")) o.status = "Chờ xác nhận";
-    else if (norm.includes("h") && norm.includes("y")) o.status = "Đã hủy";
-    else if (norm.includes("hoan")) o.status = "Hoàn thành";
-    else if (norm.includes("xac") && norm.includes("nhan"))
-      o.status = "Đã xác nhận";
-    else if (norm.includes("chuan")) o.status = "Đang chuẩn bị";
-    else if (norm.includes("san")) o.status = "Sẵn sàng nhận";
+    // ✅ FIX #13: thử map trực tiếp
+    let fixed = STATUS_REPAIR_MAP[norm];
 
-    if (o.status !== original) {
+    // ✅ FIX #13: nếu không match, thử normalize NFD để bỏ dấu
+    if (!fixed) {
+      const nfd = norm
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d");
+      fixed = STATUS_REPAIR_MAP[nfd];
+    }
+
+    if (fixed) {
+      o.status = fixed;
       report.encodingFixed++;
       console.log(
-        `   ✅ Order #${o.id} (${o.code}): "${original}" → "${o.status}"`
+        `   ✅ Order #${o.id} (${o.code}): "${original}" → "${fixed}"`
       );
     } else {
+      report.encodingUnmatched++;
       console.log(
-        `   ⚠️  Order #${o.id} (${o.code}): "${original}" — không match → giữ nguyên`
+        `   ⚠️  Order #${o.id} (${o.code}): "${original}" — KHÔNG match mapping, giữ nguyên`
       );
     }
   }
@@ -98,7 +143,6 @@ console.log("\n🔧 Fix #16: Orphan user_id...");
 
 const validUserIds = new Set((db.users || []).map((u) => Number(u.id)));
 
-// Tìm orphan refs (để báo cáo, KHÔNG xóa — giữ lịch sử)
 const COLLECTIONS_WITH_USER_REF = [
   { name: "notifications", field: "user_id" },
   { name: "messages", field: "user_id" },
@@ -131,17 +175,13 @@ if (report.orphanUsers.length === 0) {
   );
   report.orphanUsers.slice(0, 10).forEach((k) => console.log(`      • ${k}`));
   if (report.orphanUsers.length > 10) {
-    console.log(
-      `      ... và ${report.orphanUsers.length - 10} refs khác`
-    );
+    console.log(`      ... và ${report.orphanUsers.length - 10} refs khác`);
   }
-  console.log(
-    "   💡 Khuyến nghị: thêm user id 4, 5 vào DB hoặc xóa thủ công"
-  );
+  console.log("   💡 Khuyến nghị: thêm user id 4, 5 vào DB hoặc xóa thủ công");
 }
 
 // ============================================================
-// #17: attendances employee_name không khớp employee_id
+// #17: attendances employee_name
 // ============================================================
 console.log("\n🔧 Fix #17: Attendance employee_name...");
 
@@ -165,9 +205,6 @@ if (report.nameFixed === 0) {
   console.log("   ✅ Tất cả attendance name đã đúng");
 }
 
-// ============================================================
-// #17 (extra): shifts employee_name cũng cần check
-// ============================================================
 (db.shifts || []).forEach((s) => {
   const correctName = userMap.get(Number(s.employee_id));
   if (correctName && s.employee_name && s.employee_name !== correctName) {
@@ -177,7 +214,7 @@ if (report.nameFixed === 0) {
 });
 
 // ============================================================
-// #21: Vouchers skip id — chỉ báo cáo, KHÔNG re-sequence
+// #21: Vouchers skip id
 // ============================================================
 console.log("\n🔧 Fix #21: Vouchers id sequence...");
 
@@ -196,9 +233,7 @@ if (gaps.length === 0) {
   console.log("   ✅ Không có gap trong voucher id");
 } else {
   console.log(`   ⚠️  ${gaps.length} gap: [${gaps.join(", ")}]`);
-  console.log(
-    "   💡 KHÔNG re-sequence vì có thể làm hỏng FK (claimed_from, order_code)"
-  );
+  console.log("   💡 KHÔNG re-sequence vì có thể làm hỏng FK (claimed_from, order_code)");
   console.log("   💡 Gap là bình thường — voucher có thể bị xóa");
 }
 
@@ -212,6 +247,7 @@ console.log("\n" + "═".repeat(60));
 console.log("✨ CLEANUP HOÀN TẤT");
 console.log("═".repeat(60));
 console.log(`   Encoding status fixed : ${report.encodingFixed}`);
+console.log(`   Encoding UNMATCHED    : ${report.encodingUnmatched}`);
 console.log(`   Attendance name fixed : ${report.nameFixed}`);
 console.log(`   Orphan refs detected  : ${report.orphanUsers.length}`);
 console.log(`   Voucher gaps          : ${gaps.length}`);

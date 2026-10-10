@@ -1,13 +1,13 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V7 - FINAL)
+// API.JS — HTTP client cho Backend Express (V8 - FINAL)
 // ============================================================
-// V7 (2026-10):
-//   - ✅ Thêm api.users.setPoints — set điểm user (ADMIN)
-//   - ✅ Thêm api.users.unlinkMssv — gỡ liên kết MSSV (ADMIN)
-//   - ✅ Thêm api.users.schoolInfo — cập nhật school info (ADMIN)
-//   - ✅ Thêm api.school.* — parse MSSV/mã GV, majors map
-//   - Giữ V6: sessionStorage thuần, memoryToken fallback,
-//     credentials same-origin
+// V8 (2026-10):
+//   - ✅ FIX #21: Safari private mode — memoryToken fallback rõ ràng
+//     + sessionStorage try/catch
+//   - ✅ Thêm api.orders.call — log voice call (backend đã có route)
+//   - ✅ Thêm api.health — test nhanh server
+//   - ✅ Thêm api.users.listByRole — helper filter
+//   - Giữ V7: setPoints, unlinkMssv, schoolInfo, school.*
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -16,32 +16,52 @@ const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
 // ============================================================
-// TOKEN — sessionStorage thuần (mỗi tab riêng)
+// TOKEN — sessionStorage + memoryToken fallback (Safari private mode)
 // ============================================================
-
 let memoryToken = null;
 
-export function getToken() {
+/** Kiểm tra sessionStorage có dùng được không (Safari private mode chặn) */
+let sessionStorageAvailable = (() => {
   try {
-    const t = sessionStorage.getItem("token");
-    if (t) return t;
-    return memoryToken;
+    const k = "__test__";
+    sessionStorage.setItem(k, "1");
+    sessionStorage.removeItem(k);
+    return true;
   } catch {
-    return memoryToken;
+    return false;
   }
+})();
+
+export function getToken() {
+  if (sessionStorageAvailable) {
+    try {
+      const t = sessionStorage.getItem("token");
+      if (t) return t;
+    } catch {
+      sessionStorageAvailable = false;
+    }
+  }
+  return memoryToken;
 }
 
 export function setToken(t) {
   memoryToken = t || null;
-  try {
-    if (t) {
-      sessionStorage.setItem("token", t);
-    } else {
-      sessionStorage.removeItem("token");
+  if (sessionStorageAvailable) {
+    try {
+      if (t) {
+        sessionStorage.setItem("token", t);
+      } else {
+        sessionStorage.removeItem("token");
+      }
+    } catch (e) {
+      console.warn("[api] sessionStorage không dùng được, chuyển sang memoryToken:", e.message);
+      sessionStorageAvailable = false;
     }
-  } catch (e) {
-    console.warn("Không thể lưu token vào sessionStorage:", e.message);
   }
+}
+
+export function clearToken() {
+  setToken(null);
 }
 
 // ============================================================
@@ -89,8 +109,9 @@ async function req(path, options = {}) {
     clearTimeout(timeoutId);
   }
 
+  // ✅ FIX #21: 401 → xóa token + dispatch event (chỉ khi CÓ token)
   if (res.status === 401 && token) {
-    setToken(null);
+    clearToken();
     try {
       window.dispatchEvent(new CustomEvent("auth-expired"));
     } catch {}
@@ -128,6 +149,9 @@ async function req(path, options = {}) {
 // ============================================================
 export const api = {
   _base: BASE,
+
+  // ✅ MỚI: Health check — test nhanh server
+  health: () => req(""),
 
   // AUTH
   login: (email, password) =>
@@ -193,35 +217,35 @@ export const api = {
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received:  (id)         => req(`/orders/${id}/received`, { method: "POST" }),
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
+    // ✅ MỚI: log voice call
+    call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
 
   users: {
     list:   (role)     => req(`/users${role ? `?role=${role}` : ""}`),
+    // ✅ MỚI: helper
+    listByRole: (role) => req(`/users?role=${encodeURIComponent(role)}`),
     create: (data)     => req("/users",       { method: "POST",   body: JSON.stringify(data) }),
     update: (id, data) => req(`/users/${id}`, { method: "PUT",    body: JSON.stringify(data) }),
     remove: (id)       => req(`/users/${id}`, { method: "DELETE" }),
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
 
-    // ✅ V7 — MỚI: Set điểm user (ADMIN)
     setPoints: (id, data) =>
       req(`/users/${id}/points`, {
         method: "PUT",
         body: JSON.stringify(data),
       }),
 
-    // ✅ V7 — MỚI: Cập nhật thông tin trường (ADMIN override)
     schoolInfo: (id, data) =>
       req(`/users/${id}/school-info`, {
         method: "PUT",
         body: JSON.stringify(data),
       }),
 
-    // ✅ V7 — MỚI: Gỡ liên kết MSSV (ADMIN)
     unlinkMssv: (id) =>
       req(`/users/${id}/unlink-mssv`, { method: "DELETE" }),
   },
 
-  // ✅ V7 — MỚI: SCHOOL / MAJORS MAP
   school: {
     parseStudent: (code) =>
       req(`/school/parse-student/${encodeURIComponent(code)}`),

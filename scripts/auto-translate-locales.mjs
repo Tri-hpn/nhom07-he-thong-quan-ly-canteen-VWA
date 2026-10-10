@@ -1,22 +1,21 @@
 #!/usr/bin/env node
 // ============================================================
-// BACKFILL-FROM-MONGO.MJS — Dịch bù dữ liệu menu/category
+// AUTO-TRANSLATE-LOCALES.MJS — Dịch file locale JSON (V4 - FINAL)
 // ============================================================
-// V2 (2026-10):
-//   - 🔧 FIX #73: handle Mongo connection drop — auto reconnect
-//   - Thêm check mongoose.connection.readyState trước mỗi batch write
+// V4 (2026-10):
+//   - ✅ FIX #14: KHÔNG connect Mongo (chỉ xử lý file locale)
+//   - ✅ FIX: retry key bị skip (Google trả text gốc)
+//   - ✅ Log chi tiết hơn: coverage %
 // ============================================================
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import mongoose from "mongoose";
-import dotenv from "dotenv";
 import { translateWithRetry, sleep } from "./lib/google-translate.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.join(__dirname, "..");
-dotenv.config({ path: path.join(ROOT_DIR, ".env") });
+const LOCALES_DIR = path.join(ROOT_DIR, "src", "lib", "i18n", "locales");
 
 // ---------- CLI args ----------
 const args = process.argv.slice(2);
@@ -27,51 +26,21 @@ const FLAGS = {
   })(),
   force: args.includes("--force"),
   dryRun: args.includes("--dry-run"),
+  untilDone: args.includes("--until-done"),
+  maxRounds: (() => {
+    const i = args.indexOf("--max-rounds");
+    return i >= 0 && args[i + 1] ? parseInt(args[i + 1], 10) : 5;
+  })(),
   delayMs: (() => {
     const i = args.indexOf("--delay");
-    return i >= 0 && args[i + 1] ? parseInt(args[i + 1], 10) : 600;
+    return i >= 0 && args[i + 1] ? parseInt(args[i + 1], 10) : 400;
   })(),
 };
 
-// ---------- Constants ----------
-const MAIN_COLLECTION = "canteen_db";
-const MAIN_DOC_ID = "main";
 const ALL_LANGS = ["en", "ja", "ko", "zh"];
 const LANGS = FLAGS.lang ? [FLAGS.lang] : ALL_LANGS;
 
-const MENU_FIELDS = ["name", "description"];
-const CATEGORY_FIELDS = ["name"];
-
-// 🔧 FIX #73: helper đảm bảo connection còn sống
-async function ensureMongoConnected(MONGO_URI) {
-  const state = mongoose.connection.readyState;
-  // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
-  if (state === 1) return true;
-
-  console.log("🔄 Mongo connection lost. Đang reconnect...");
-  try {
-    if (state !== 0) {
-      await mongoose.disconnect().catch(() => {});
-    }
-    await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 15000 });
-    console.log("✅ Reconnect thành công");
-    return true;
-  } catch (e) {
-    console.error("❌ Reconnect fail:", e.message);
-    return false;
-  }
-}
-
-// ---------- Progress ----------
-function fmtDuration(ms) {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
-  if (m > 0) return `${m}m ${s % 60}s`;
-  return `${s}s`;
-}
-
+// ---------- Helpers ----------
 function progressBar(done, total, prefix = "") {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const barLen = 30;
@@ -80,226 +49,163 @@ function progressBar(done, total, prefix = "") {
   process.stdout.write(`\r${prefix} [${bar}] ${pct}% (${done}/${total})    `);
 }
 
-// ---------- Main ----------
-async function main() {
-  const MONGO_URI = process.env.MONGO_URI;
+async function translateLangOnce(lang) {
+  const sourceFile = path.join(LOCALES_DIR, "_source.json");
+  const dictFile = path.join(LOCALES_DIR, `${lang}.json`);
 
-  console.log("═".repeat(70));
-  console.log("🌐 BACKFILL TRANSLATIONS FROM MONGO (V2 — auto-reconnect)");
-  console.log("═".repeat(70));
-  console.log("");
-
-  if (!MONGO_URI) {
-    console.error("❌ Thiếu MONGO_URI trong .env");
-    console.error("   Thêm dòng: MONGO_URI=mongodb+srv://...");
-    process.exit(1);
+  if (!fs.existsSync(sourceFile)) {
+    console.error(`❌ Không tìm thấy _source.json tại ${sourceFile}`);
+    return { lang, ok: false, error: "no-source" };
   }
 
-  console.log(`📡 Kết nối MongoDB...`);
-  const t0 = Date.now();
-  await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 15000 });
-  console.log(`✅ Đã kết nối (${Date.now() - t0}ms): ${mongoose.connection.db.databaseName}\n`);
+  const source = JSON.parse(fs.readFileSync(sourceFile, "utf-8"));
+  const sourceKeys = Object.keys(source);
 
-  // ---------- Load doc ----------
-  const coll = mongoose.connection.db.collection(MAIN_COLLECTION);
-  const doc = await coll.findOne({ _id: MAIN_DOC_ID });
-  if (!doc || !doc.data) {
-    console.error("❌ Không tìm thấy document chính (canteen_db.main)");
-    await mongoose.disconnect();
-    process.exit(1);
+  let dict = {};
+  if (fs.existsSync(dictFile)) {
+    dict = JSON.parse(fs.readFileSync(dictFile, "utf-8"));
   }
 
-  const db = doc.data;
-  const menuItems = Array.isArray(db.menu_items) ? db.menu_items : [];
-  const categories = Array.isArray(db.categories) ? db.categories : [];
+  // Tìm key cần dịch: chưa có HOẶC value = key (chưa dịch)
+  const todo = sourceKeys.filter((k) => {
+    const v = dict[k];
+    if (!v) return true;                    // chưa có
+    if (v === k) return true;               // giống key = chưa dịch
+    if (!String(v).trim()) return true;     // rỗng
+    return false;
+  });
 
-  console.log(`📦 Đã tải:`);
-  console.log(`   • ${menuItems.length} món ăn`);
-  console.log(`   • ${categories.length} danh mục`);
-  console.log(`   • Ngôn ngữ đích: ${LANGS.join(", ")}`);
-  console.log(`   • Delay: ${FLAGS.delayMs}ms/req`);
-  if (FLAGS.force) console.log("   • Force mode: BẬT (dịch lại tất cả)");
-  if (FLAGS.dryRun) console.log("   • Dry-run: BẬT (chỉ xem, không ghi)");
-  console.log("");
-
-  // ---------- Count tasks ----------
-  let totalTasks = 0;
-  const menuTasks = [];
-  const catTasks = [];
-
-  for (const m of menuItems) {
-    for (const field of MENU_FIELDS) {
-      const text = m[field];
-      if (!text || !String(text).trim()) continue;
-      for (const lang of LANGS) {
-        const key = `${field}_${lang}`;
-        const hasTranslation = m[key] && m[key] !== text;
-        if (FLAGS.force || !hasTranslation) {
-          totalTasks++;
-          menuTasks.push({ item: m, field, lang, text });
-        }
-      }
-    }
+  if (todo.length === 0) {
+    console.log(`✅ [${lang}] Đã dịch đủ ${sourceKeys.length} keys`);
+    return { lang, ok: true, done: 0, total: 0 };
   }
 
-  for (const c of categories) {
-    for (const field of CATEGORY_FIELDS) {
-      const text = c[field];
-      if (!text || !String(text).trim()) continue;
-      for (const lang of LANGS) {
-        const key = `${field}_${lang}`;
-        const hasTranslation = c[key] && c[key] !== text;
-        if (FLAGS.force || !hasTranslation) {
-          totalTasks++;
-          catTasks.push({ item: c, field, lang, text });
-        }
-      }
-    }
-  }
-
-  const allTasks = [...menuTasks, ...catTasks];
-
-  console.log(`🎯 Tổng task cần dịch: ${totalTasks}`);
-  console.log(`   • Menu: ${menuTasks.length}`);
-  console.log(`   • Category: ${catTasks.length}`);
-  const etaMs = totalTasks * FLAGS.delayMs;
-  console.log(`   • ETA: ~${fmtDuration(etaMs)}`);
-  console.log("");
-
-  if (totalTasks === 0) {
-    console.log("✨ Không có gì cần dịch. Done!");
-    await mongoose.disconnect();
-    process.exit(0);
-  }
+  console.log(`\n🌐 [${lang}] Cần dịch ${todo.length}/${sourceKeys.length} keys`);
 
   if (FLAGS.dryRun) {
-    console.log("🧪 Dry-run — 20 task đầu tiên:");
-    allTasks.slice(0, 20).forEach((t) => {
-      const type = t.item.name ? "menu" : "category";
-      console.log(`   [${type}] ${t.field}_${t.lang}: "${String(t.text).slice(0, 50)}"`);
+    console.log(`🧪 [${lang}] Dry-run — 10 key đầu:`);
+    todo.slice(0, 10).forEach((k) => {
+      console.log(`   • "${k.slice(0, 60)}"`);
     });
-    if (allTasks.length > 20) {
-      console.log(`   ... và ${allTasks.length - 20} task khác`);
-    }
-    await mongoose.disconnect();
-    process.exit(0);
+    return { lang, ok: true, done: 0, total: todo.length, dryRun: true };
   }
 
-  // ---------- Bắt đầu ----------
-  console.log("─".repeat(70));
-  console.log("🚀 Bắt đầu dịch...");
-  console.log("─".repeat(70));
-  console.log("");
-
-  const startTime = Date.now();
   let done = 0;
   let failed = 0;
-  const failedList = [];
 
-  for (const task of allTasks) {
-    const { item, field, lang, text } = task;
-    const key = `${field}_${lang}`;
-
+  for (const key of todo) {
     try {
-      const translated = await translateWithRetry(text, lang, "vi", 5);
+      const translated = await translateWithRetry(key, lang, "vi", 3);
 
-      if (!translated || translated === text) {
-        throw new Error("Google trả về text gốc (không dịch)");
-      }
-
-      item[key] = translated;
+      // ✅ FIX: nếu Google trả về text gốc → vẫn lưu (để không retry nữa)
+      // Nhưng đánh dấu là "unchanged"
+      dict[key] = translated || key;
       done++;
-
-      progressBar(done, totalTasks, "🌐");
+      progressBar(done + failed, todo.length, `🌐 ${lang}`);
     } catch (err) {
       failed++;
-      failedList.push({ field, lang, text: String(text).slice(0, 60), error: err.message });
+      dict[key] = key; // fallback
+      if (failed <= 5) {
+        console.log(`\n  [FAIL] ${key.slice(0, 40)}: ${err.message}`);
+      }
     }
 
-    if (FLAGS.delayMs > 0 && done + failed < totalTasks) {
+    if (FLAGS.delayMs > 0) {
       await sleep(FLAGS.delayMs);
     }
 
-    // 🔧 FIX #73: Ghi Mongo mỗi 50 task + check connection
-    if ((done + failed) % 50 === 0 && done > 0) {
-      const stillOk = await ensureMongoConnected(MONGO_URI);
-      if (stillOk) {
-        try {
-          await coll.updateOne(
-            { _id: MAIN_DOC_ID },
-            { $set: { data: db } }
-          );
-        } catch (e) {
-          console.error("\n⚠️  Batch write fail:", e.message, "— tiếp tục chạy");
-        }
-      }
+    // Lưu tạm mỗi 20 key
+    if ((done + failed) % 20 === 0) {
+      const sorted = {};
+      Object.keys(dict).sort().forEach((k) => { sorted[k] = dict[k]; });
+      fs.writeFileSync(dictFile, JSON.stringify(sorted, null, 2) + "\n", "utf-8");
     }
   }
 
-  process.stdout.write("\n\n");
+  process.stdout.write("\n");
 
-  // ---------- Save final ----------
-  console.log("💾 Ghi Mongo...");
-  const stillOk = await ensureMongoConnected(MONGO_URI);
-  if (stillOk) {
-    await coll.updateOne(
-      { _id: MAIN_DOC_ID },
-      { $set: { data: db } }
-    );
-    console.log("✅ Đã ghi.\n");
-  } else {
-    console.error("❌ Không thể reconnect để ghi kết quả cuối cùng.");
-    console.error("   Dữ liệu đã dịch bị MẤT. Vui lòng chạy lại.");
-    await mongoose.disconnect().catch(() => {});
-    process.exit(1);
+  // Sắp xếp theo thứ tự _source
+  const finalDict = {};
+  for (const k of sourceKeys) {
+    if (dict[k] !== undefined) finalDict[k] = dict[k];
   }
+  fs.writeFileSync(dictFile, JSON.stringify(finalDict, null, 2) + "\n", "utf-8");
 
-  // ---------- Report ----------
-  const elapsed = Date.now() - startTime;
-  console.log("═".repeat(70));
-  console.log("📊 KẾT QUẢ");
-  console.log("═".repeat(70));
-  console.log(`   Đã dịch thành công: ${done}/${totalTasks}`);
-  console.log(`   Thất bại:           ${failed}`);
-  console.log(`   Thời gian:          ${fmtDuration(elapsed)}`);
-  if (done > 0) {
-    const rate = (done / (elapsed / 1000)).toFixed(1);
-    console.log(`   Tốc độ:             ${rate} task/s`);
-  }
-  console.log("");
+  const translated = Object.entries(finalDict).filter(
+    ([k, v]) => v && v !== k
+  ).length;
+  const pct = Math.round((translated / sourceKeys.length) * 1000) / 10;
 
-  if (failedList.length > 0) {
-    console.log("⚠️  Chi tiết lỗi (20 đầu tiên):");
-    failedList.slice(0, 20).forEach((f) => {
-      console.log(`   [${f.lang}] ${f.field}: "${f.text}" — ${f.error}`);
-    });
-    if (failedList.length > 20) {
-      console.log(`   ... và ${failedList.length - 20} lỗi khác`);
-    }
+  console.log(`✅ [${lang}] ${translated}/${sourceKeys.length} (${pct}%) — failed: ${failed}`);
 
-    const logFile = path.join(ROOT_DIR, `backfill-failed-${Date.now()}.json`);
-    fs.writeFileSync(logFile, JSON.stringify(failedList, null, 2), "utf-8");
-    console.log(`\n💾 Log lỗi: ${path.basename(logFile)}`);
-    console.log(`   Chạy lại script để retry: node scripts/backfill-from-mongo.mjs`);
-  } else {
-    console.log("🎉 Không có task nào thất bại!");
-  }
-
-  console.log("");
-  console.log("📝 Bước tiếp theo:");
-  console.log("   1. Deploy lại (nếu cần) để frontend thấy bản dịch mới");
-  console.log("   2. F5 trang web → đổi ngôn ngữ → kiểm tra");
-  console.log("");
-
-  await mongoose.disconnect();
-  process.exit(failed === 0 ? 0 : 1);
+  return { lang, ok: true, done, failed, total: todo.length, pct };
 }
 
-main().catch(async (err) => {
+// ---------- Main ----------
+async function main() {
+  console.log("═".repeat(70));
+  console.log("🌐 AUTO-TRANSLATE LOCALES (V4 — không cần Mongo)");
+  console.log("═".repeat(70));
+  console.log("");
+
+  if (FLAGS.dryRun) console.log("🧪 Dry-run: BẬT\n");
+
+  let round = 0;
+  const maxRounds = FLAGS.untilDone ? FLAGS.maxRounds : 1;
+
+  while (round < maxRounds) {
+    round++;
+    if (maxRounds > 1) {
+      console.log(`\n🔁 Round ${round}/${maxRounds}`);
+    }
+
+    let allDone = true;
+    const results = [];
+
+    for (const lang of LANGS) {
+      const r = await translateLangOnce(lang);
+      results.push(r);
+      if (r.total > 0) allDone = false;
+    }
+
+    if (allDone || FLAGS.dryRun) break;
+    if (round < maxRounds) {
+      console.log("\n⏳ Chờ 5s trước round tiếp theo...");
+      await sleep(5000);
+    }
+  }
+
+  console.log("\n" + "═".repeat(70));
+  console.log("📊 HOÀN TẤT");
+  console.log("═".repeat(70));
+  console.log("");
+
+  // In coverage cuối
+  const sourceFile = path.join(LOCALES_DIR, "_source.json");
+  if (fs.existsSync(sourceFile)) {
+    const source = JSON.parse(fs.readFileSync(sourceFile, "utf-8"));
+    const sourceKeys = Object.keys(source);
+    console.log(`📖 Source: ${sourceKeys.length} keys\n`);
+
+    for (const lang of ALL_LANGS) {
+      const dictFile = path.join(LOCALES_DIR, `${lang}.json`);
+      if (!fs.existsSync(dictFile)) {
+        console.log(`❌ [${lang}] File không tồn tại`);
+        continue;
+      }
+      const dict = JSON.parse(fs.readFileSync(dictFile, "utf-8"));
+      const translated = sourceKeys.filter(
+        (k) => dict[k] && dict[k] !== k
+      ).length;
+      const pct = Math.round((translated / sourceKeys.length) * 1000) / 10;
+      const icon = pct >= 90 ? "✅" : pct >= 50 ? "⚠️" : "❌";
+      console.log(`${icon} [${lang}] ${translated}/${sourceKeys.length} (${pct}%)`);
+    }
+  }
+}
+
+main().catch((err) => {
   console.error("\n❌ Fatal:", err.message);
   console.error(err.stack);
-  try {
-    await mongoose.disconnect();
-  } catch {}
   process.exit(1);
 });

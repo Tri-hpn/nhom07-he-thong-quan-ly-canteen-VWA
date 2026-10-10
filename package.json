@@ -15,11 +15,23 @@
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "ports": "node scripts/free-dev-ports.mjs --dry",
 
+    "check": "node --check server-json.js && node --check menuImageStore.js && node --check autoTranslate.js",
+
     "translate": "node scripts/auto-translate-locales.mjs",
     "translate:watch": "node scripts/auto-translate-locales.mjs --watch",
     "translate:force": "node scripts/auto-translate-locales.mjs --force",
     "translate:dry": "node scripts/auto-translate-locales.mjs --dry-run",
     "translate:until-done": "node scripts/auto-translate-locales.mjs --until-done --max-rounds 10",
+
+    "i18n:report": "node scripts/i18n-report.mjs",
+    "i18n:translate": "node scripts/auto-translate-locales.mjs --until-done --max-rounds 10",
+    "i18n:translate:force": "node scripts/auto-translate-locales.mjs --force --until-done --max-rounds 10",
+    "i18n:dry": "node scripts/auto-translate-locales.mjs --dry-run",
+    "i18n:cleanup": "node scripts/cleanup-i18n-source.mjs",
+    "i18n:check": "node scripts/check-i18n-duplicate.mjs && node scripts/check-locale-coverage.mjs",
+    "i18n:fix-duplicate": "node scripts/fix-i18n-duplicate.mjs",
+    "i18n:sync": "node scripts/i18n-cleanup-sync.mjs",
+    "i18n:diagnostic": "node scripts/i18n-diagnostic.mjs",
 
     "translate:db": "node scripts/backfill-from-mongo.mjs",
     "translate:db:dry": "node scripts/backfill-from-mongo.mjs --dry-run",
@@ -58,6 +70,6 @@
     "vite": "^5.4.10"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=20.0.0"
   }
 }

@@ -1,10 +1,11 @@
 ﻿// ============================================================
-// LOGIN.JSX — Đăng nhập (V9 - FINAL)
+// LOGIN.JSX — Đăng nhập (V10 - FINAL)
 // ============================================================
-// V9 (2026-10):
-//   - ✅ Toast thông minh sau OAuth Microsoft: báo đã đồng bộ MSSV/mã GV
-//   - ✅ Phân biệt toast cho SV, GV, user mới, user cũ
-//   - Giữ V8: a11y id/name/htmlFor, OAuth 3 providers, demo accounts
+// V10 (2026-10):
+//   - ✅ FIX #19: useEffect dependency [t] → dùng tRef để
+//     không chạy lại khi user đổi ngôn ngữ
+//   - Giữ V9: toast thông minh sau OAuth Microsoft,
+//     phân biệt SV/GV/user mới/user cũ
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -106,6 +107,12 @@ export default function Login({ onLogin }) {
 
   const urlTokenHandledRef = useRef(false);
 
+  // ✅ FIX #19: dùng ref cho t() để effect không phụ thuộc [t]
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+
   // ============================================================
   // Handle ?token= từ Microsoft redirect về /login
   // ============================================================
@@ -128,7 +135,8 @@ export default function Login({ onLogin }) {
     api
       .me()
       .then((user) => {
-        // ✅ V9: Toast thông minh tùy vào loại user
+        // ✅ FIX #19: dùng tRef.current() thay vì t()
+        const tr = tRef.current;
         try {
           const hasMssv = !!user.student_code;
           const hasTeacherCode = !!user.teacher_code;
@@ -137,56 +145,48 @@ export default function Login({ onLogin }) {
           const hasMajor = !!user.major_name;
 
           if (hasMssv && hasMajor) {
-            // SV có MSSV + ngành
             toast(
-              t("Đã đồng bộ MSSV {code} — {major}").replace(
-                "{code}",
-                user.student_code
-              ).replace("{major}", user.major_name),
+              tr("Đã đồng bộ MSSV {code} — {major}")
+                .replace("{code}", user.student_code)
+                .replace("{major}", user.major_name),
               "success"
             );
           } else if (hasMssv) {
-            // SV có MSSV nhưng chưa map ngành
             toast(
-              t("Đã đồng bộ MSSV {code}").replace(
+              tr("Đã đồng bộ MSSV {code}").replace(
                 "{code}",
                 user.student_code
               ),
               "success"
             );
           } else if (hasTeacherCode) {
-            // GV có mã GV
             toast(
-              t("Đã đồng bộ mã giảng viên {code}").replace(
+              tr("Đã đồng bộ mã giảng viên {code}").replace(
                 "{code}",
                 user.teacher_code
               ),
               "success"
             );
           } else if (isTeacher) {
-            // GV email tên (không có mã)
             toast(
-              `${t("Xin chào")} ${user.name || ""}! ${t("Vào hồ sơ để cập nhật thông tin nếu cần.")}`,
+              `${tr("Xin chào")} ${user.name || ""}! ${tr("Vào hồ sơ để cập nhật thông tin nếu cần.")}`,
               "success"
             );
           } else if (isStudent) {
-            // SV chưa có MSSV (email lạ)
             toast(
-              `${t("Xin chào")} ${user.name || ""}! ${t("Vào hồ sơ để liên kết MSSV.")}`,
+              `${tr("Xin chào")} ${user.name || ""}! ${tr("Vào hồ sơ để liên kết MSSV.")}`,
               "info",
               { duration: 5000 }
             );
           } else {
-            // User domain khác
             toast(
-              `${t("Xin chào")} ${user.name || ""}! ${t("Vào hồ sơ để cập nhật MSSV (nếu là sinh viên).")}`,
+              `${tr("Xin chào")} ${user.name || ""}! ${tr("Vào hồ sơ để cập nhật MSSV (nếu là sinh viên).")}`,
               "info",
               { duration: 5000 }
             );
           }
         } catch {
-          // Fallback toast
-          toast(`${t("Xin chào")} ${user.name || ""}!`, "success");
+          toast(`${tr("Xin chào")} ${user.name || ""}!`, "success");
         }
 
         try {
@@ -197,14 +197,16 @@ export default function Login({ onLogin }) {
         setToken(null);
         setError(
           err?.message ||
-            t("Đăng nhập {provider} thất bại").replace(
+            tRef.current("Đăng nhập {provider} thất bại").replace(
               "{provider}",
               providerFromUrl || "OAuth"
             )
         );
       })
       .finally(() => setLoading(false));
-  }, [t]);
+    // ✅ FIX #19: bỏ [t] — effect chỉ chạy 1 lần khi mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load remembered email
   useEffect(() => {
