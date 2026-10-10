@@ -12,7 +12,7 @@ import {
   Search, Lock, Unlock, Trash2, Eye, Pencil, Mail, Phone, Ticket, Gift,
   Ban, X, Copy, Check, Users, Globe, User as UserIcon, Loader2,
   AlertCircle, Edit, Award, GraduationCap, Unlink, Plus, RefreshCw,
-  Save,
+  Save, UserRound,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -37,6 +37,21 @@ function validatePhone(phone, t) {
   if (!/^0\d{9,10}$/.test(p)) return t("SĐT phải bắt đầu bằng 0 và có 10-11 chữ số");
   return null;
 }
+
+// ✅ PHÂN LOẠI KHÁCH HÀNG THEO EMAIL
+function getCustomerType(email) {
+  const e = String(email || "").toLowerCase().trim();
+  if (e.endsWith("@vwa.edu.vn")) return "Giảng viên";
+  if (e.endsWith("@hpn.edu.vn")) return "Sinh viên";
+  return "Khách";
+}
+
+const TYPE_BADGE = {
+  "Giảng viên": { color: "#8b5cf6", bg: "#ede9fe", icon: "🎓" },
+  "Sinh viên":  { color: "#0EA5E9", bg: "#e0f2fe", icon: "🎓" },
+  "Khách":      { color: "#f59e0b", bg: "#fef3c7", icon: "👤" },
+};
+
 
 // ============================================================
 // CONSTANTS
@@ -64,6 +79,16 @@ export default function OwnerCustomers() {
     [t]
   );
 
+  const CUSTOMER_TYPE_FILTERS = useMemo(
+    () => [
+      { id: "all",        label: t("Tất cả loại") },
+      { id: "Giảng viên", label: t("Giảng viên") },
+      { id: "Sinh viên",  label: t("Sinh viên")  },
+      { id: "Khách",      label: t("Khách")      },
+    ],
+    [t]
+  );
+
   // ---------- Customer list state ----------
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -71,6 +96,7 @@ export default function OwnerCustomers() {
   const [q, setQ] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFaculty, setFilterFaculty] = useState("all");
+  const [filterType, setFilterType] = useState("all");
 
   // ---------- Detail modal ----------
   const [detail, setDetail] = useState(null);
@@ -173,6 +199,16 @@ export default function OwnerCustomers() {
     return { all: list.length, active, locked };
   }, [list]);
 
+  // ✅ Đếm số lượng theo phân loại
+  const typeCounts = useMemo(() => {
+    const counts = { all: list.length };
+    for (const c of list) {
+      const t2 = getCustomerType(c.email);
+      counts[t2] = (counts[t2] || 0) + 1;
+    }
+    return counts;
+  }, [list]);
+
   const facultyOptions = useMemo(() => {
     const set = new Set();
     list.forEach((c) => {
@@ -197,6 +233,10 @@ export default function OwnerCustomers() {
       result = result.filter((c) => c.major_code === filterFaculty);
     }
 
+    if (filterType !== "all") {
+      result = result.filter((c) => getCustomerType(c.email) === filterType);
+    }
+
     if (q.trim()) {
       const s = normalize(q);
       result = result.filter(
@@ -210,14 +250,15 @@ export default function OwnerCustomers() {
     }
 
     return result;
-  }, [list, q, filterStatus, filterFaculty]);
+  }, [list, q, filterStatus, filterFaculty, filterType]);
 
-  const hasFilter = q.trim() !== "" || filterStatus !== "all" || filterFaculty !== "all";
+  const hasFilter = q.trim() !== "" || filterStatus !== "all" || filterFaculty !== "all" || filterType !== "all";
 
   const clearFilters = () => {
     setQ("");
     setFilterStatus("all");
     setFilterFaculty("all");
+    setFilterType("all");
   };
 
   // ---------- Majors filter ----------
@@ -752,6 +793,61 @@ export default function OwnerCustomers() {
                     </button>
                   );
                 })}
+
+              {/* ✅ PHÂN LOẠI chips */}
+              <div
+                style={{
+                  display: "inline-flex",
+                  gap: 3,
+                  background: "var(--bg-tertiary, #f5f7fb)",
+                  padding: 4,
+                  borderRadius: 10,
+                }}
+              >
+                {CUSTOMER_TYPE_FILTERS.map((f) => {
+                  const active = filterType === f.id;
+                  const count = typeCounts[f.id] || 0;
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => setFilterType(f.id)}
+                      style={{
+                        padding: "7px 12px",
+                        background: active ? "#2634d5" : "transparent",
+                        color: active ? "#fff" : "var(--text-muted, #475569)",
+                        border: 0,
+                        borderRadius: 7,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {f.label}
+                      <span
+                        style={{
+                          background: active ? "rgba(255,255,255,0.3)" : "var(--card-bg, #e2e8f0)",
+                          color: active ? "#fff" : "var(--text-muted, #64748b)",
+                          minWidth: 18,
+                          height: 16,
+                          padding: "0 5px",
+                          borderRadius: 8,
+                          fontSize: 10,
+                          fontWeight: 800,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
               </div>
 
               {facultyOptions.length > 0 && (
@@ -834,9 +930,9 @@ export default function OwnerCustomers() {
             >
               {loading && (
                 <SkeletonTable
-                  columns={7}
+                  columns={8}
                   rows={5}
-                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Điểm"), t("Trạng thái"), t("Thao tác")]}
+                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Điểm"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
                 />
               )}
 
@@ -882,6 +978,7 @@ export default function OwnerCustomers() {
                         <th style={thStyle}>{t("Liên hệ")}</th>
                         <th style={thStyle}>{t("MSSV · Ngành")}</th>
                         <th style={thStyle}>{t("Điểm")}</th>
+                        <th style={thStyle}>{t("Loại")}</th>
                         <th style={thStyle}>{t("Trạng thái")}</th>
                         <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tác")}</th>
                       </tr>
@@ -955,6 +1052,10 @@ export default function OwnerCustomers() {
                             </td>
 
                             <td style={tdStyle}>
+                              <CustomerTypeBadge type={getCustomerType(c.email)} />
+                            </td>
+
+                            <td style={tdStyle}>
                               <StatusBadge status={c.status || "Hoạt động"} t={t} />
                             </td>
 
@@ -995,7 +1096,7 @@ export default function OwnerCustomers() {
 
                       {!filtered.length && (
                         <tr>
-                          <td colSpan="7" style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}>
+                          <td colSpan="8" style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}>
                             <Users size={36} style={{ opacity: 0.35, marginBottom: 10 }} />
                             <div>
                               {hasFilter
@@ -1631,6 +1732,14 @@ function StatusBadge({ status, t }) {
   );
 }
 
+function CustomerTypeBadge({ type }) {
+  const meta = TYPE_BADGE[type] || TYPE_BADGE["Khách"];
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: meta.bg, color: meta.color, whiteSpace: "nowrap" }}>
+      {meta.icon} {type}
+    </span>
+  );
+}
 function IconButton({ children, onClick, title, color = "var(--text-primary, #172033)", bg = "var(--card-bg, #fff)" }) {
   return (
     <button onClick={onClick} title={title} aria-label={title} style={{ padding: 6, border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 6, background: bg, cursor: "pointer", color, display: "grid", placeItems: "center", width: 30, height: 30, flexShrink: 0 }}>
