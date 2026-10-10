@@ -12,7 +12,7 @@ import {
   Search, Lock, Unlock, Trash2, Eye, Pencil, Mail, Phone, Ticket, Gift,
   Ban, X, Copy, Check, Users, Globe, User as UserIcon, Loader2,
   AlertCircle, Edit, Award, GraduationCap, Unlink, Plus, RefreshCw,
-  Save, UserRound,
+  Save, UserRound, ChevronDown, RotateCcw, Shield,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -38,6 +38,29 @@ function validatePhone(phone, t) {
   return null;
 }
 
+// ✅ XẾP HẠNG THÀNH VIÊN THEO CHI TIÊU (VND)
+function getMemberTier(totalSpent) {
+  const t = Number(totalSpent) || 0;
+  if (t >= 4000000) return "Hạng Kim cương";
+  if (t >= 2500000) return "Hạng Vàng";
+  if (t >= 1000000) return "Hạng Bạc";
+  return "Thành viên mới";
+}
+
+const TIER_BADGE = {
+  "Thành viên mới": { color: "#64748b", bg: "#f1f5f9", icon: "👤" },
+  "Hạng Bạc":       { color: "#475569", bg: "#e2e8f0", icon: "🥈" },
+  "Hạng Vàng":      { color: "#f59e0b", bg: "#fef3c7", icon: "🏆" },
+  "Hạng Kim cương": { color: "#0EA5E9", bg: "#e0f2fe", icon: "💎" },
+};
+
+const TIER_THRESHOLDS = [
+  { id: "all",             label: "Tất cả hạng" },
+  { id: "Thành viên mới",  label: "Thành viên mới" },
+  { id: "Hạng Bạc",        label: "Hạng Bạc" },
+  { id: "Hạng Vàng",       label: "Hạng Vàng" },
+  { id: "Hạng Kim cương",  label: "Hạng Kim cương" },
+];
 // ✅ PHÂN LOẠI KHÁCH HÀNG THEO EMAIL
 function getCustomerType(email) {
   const e = String(email || "").toLowerCase().trim();
@@ -97,6 +120,11 @@ export default function OwnerCustomers() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFaculty, setFilterFaculty] = useState("all");
   const [filterType, setFilterType] = useState("all");
+  const [filterTier, setFilterTier] = useState("all");
+  const [orders, setOrders] = useState([]);
+  const [openStatus, setOpenStatus] = useState(false);
+  const [openType, setOpenType] = useState(false);
+  const [openTier, setOpenTier] = useState(false);
 
   // ---------- Detail modal ----------
   const [detail, setDetail] = useState(null);
@@ -152,6 +180,15 @@ export default function OwnerCustomers() {
     }
   }, [t]);
 
+  const loadOrders = useCallback(async () => {
+    try {
+      const data = await api.orders.all("Tất cả");
+      setOrders(Array.isArray(data) ? data : []);
+    } catch {
+      setOrders([]);
+    }
+  }, []);
+
   // ============================================================
   // LOAD MAJORS MAP
   // ============================================================
@@ -170,7 +207,8 @@ export default function OwnerCustomers() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    loadOrders();
+  }, [load, loadOrders]);
 
   useEffect(() => {
     if (activeTab === "majors" && Object.keys(majorsMap).length === 0) {
@@ -209,6 +247,29 @@ export default function OwnerCustomers() {
     return counts;
   }, [list]);
 
+  // ✅ Map user_id → tổng chi tiêu (đơn Hoàn thành)
+  const tierSpentMap = useMemo(() => {
+    const map = {};
+    for (const o of orders) {
+      if (o.status !== "Hoàn thành") continue;
+      const uid = o.user_id || o.customer_id;
+      if (uid == null) continue;
+      map[uid] = (map[uid] || 0) + (Number(o.total) || 0);
+    }
+    return map;
+  }, [orders]);
+
+  // ✅ Đếm số lượng theo hạng
+  const tierCounts = useMemo(() => {
+    const counts = { all: list.length };
+    for (const c of list) {
+      const spent = tierSpentMap[c.id] || 0;
+      const tier = getMemberTier(spent);
+      counts[tier] = (counts[tier] || 0) + 1;
+    }
+    return counts;
+  }, [list, tierSpentMap]);
+
   const facultyOptions = useMemo(() => {
     const set = new Set();
     list.forEach((c) => {
@@ -237,6 +298,13 @@ export default function OwnerCustomers() {
       result = result.filter((c) => getCustomerType(c.email) === filterType);
     }
 
+    if (filterTier !== "all") {
+      result = result.filter((c) => {
+        const spent = tierSpentMap[c.id] || 0;
+        return getMemberTier(spent) === filterTier;
+      });
+    }
+
     if (q.trim()) {
       const s = normalize(q);
       result = result.filter(
@@ -250,15 +318,16 @@ export default function OwnerCustomers() {
     }
 
     return result;
-  }, [list, q, filterStatus, filterFaculty, filterType]);
+  }, [list, q, filterStatus, filterFaculty, filterType, filterTier, tierSpentMap]);
 
-  const hasFilter = q.trim() !== "" || filterStatus !== "all" || filterFaculty !== "all" || filterType !== "all";
+  const hasFilter = q.trim() !== "" || filterStatus !== "all" || filterFaculty !== "all" || filterType !== "all" || filterTier !== "all";
 
   const clearFilters = () => {
     setQ("");
     setFilterStatus("all");
     setFilterFaculty("all");
     setFilterType("all");
+    setFilterTier("all");
   };
 
   // ---------- Majors filter ----------
@@ -689,13 +758,20 @@ export default function OwnerCustomers() {
             ============================================================ */}
         {activeTab === "customers" && (
           <>
+            {/* ============================================================
+                HỘP 1: Search + Counter + Clear
+                ============================================================ */}
             <div
               style={{
+                background: "var(--card-bg, #fff)",
+                border: "1px solid var(--border-color, #e7ebf0)",
+                borderRadius: 12,
+                padding: "12px 16px",
+                marginBottom: 16,
                 display: "flex",
-                gap: 12,
-                marginBottom: 20,
-                flexWrap: "wrap",
                 alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
               }}
             >
               <div
@@ -703,15 +779,15 @@ export default function OwnerCustomers() {
                   display: "flex",
                   alignItems: "center",
                   gap: 10,
-                  background: "var(--card-bg, #fff)",
+                  background: "var(--bg-tertiary, #f8fafc)",
                   border: "1px solid var(--border-color, #e5e9ef)",
                   borderRadius: 10,
-                  padding: "10px 14px",
+                  padding: "9px 14px",
                   flex: 1,
-                  maxWidth: 400,
+                  minWidth: 240,
                 }}
               >
-                <Search size={18} style={{ color: "var(--text-light, #8993a3)" }} />
+                <Search size={18} style={{ color: "var(--text-light, #8993a3)", flexShrink: 0 }} />
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
@@ -720,9 +796,10 @@ export default function OwnerCustomers() {
                     flex: 1,
                     border: 0,
                     outline: "none",
-                    fontSize: 13,
                     background: "transparent",
                     color: "var(--text-primary, #172033)",
+                    fontSize: 13,
+                    minWidth: 0,
                   }}
                 />
                 {q && (
@@ -734,7 +811,10 @@ export default function OwnerCustomers() {
                       cursor: "pointer",
                       color: "var(--text-light, #8993a3)",
                       padding: 2,
+                      display: "grid",
+                      placeItems: "center",
                     }}
+                    aria-label={t("Xóa tìm kiếm")}
                   >
                     <X size={14} />
                   </button>
@@ -744,179 +824,170 @@ export default function OwnerCustomers() {
               <div
                 style={{
                   display: "inline-flex",
-                  gap: 3,
-                  background: "var(--bg-tertiary, #f5f7fb)",
-                  padding: 4,
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 14px",
+                  background: "var(--bg-tertiary, #f8fafc)",
                   borderRadius: 10,
+                  fontSize: 13,
+                  color: "var(--text-primary, #172033)",
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
                 }}
               >
-                {STATUS_FILTERS.map((f) => {
-                  const active = filterStatus === f.id;
-                  const count = statusCounts[f.id] || 0;
-                  return (
-                    <button
-                      key={f.id}
-                      onClick={() => setFilterStatus(f.id)}
-                      style={{
-                        padding: "7px 12px",
-                        background: active ? "#2634d5" : "transparent",
-                        color: active ? "#fff" : "var(--text-muted, #475569)",
-                        border: 0,
-                        borderRadius: 7,
-                        cursor: "pointer",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {f.label}
-                      <span
-                        style={{
-                          background: active ? "rgba(255,255,255,0.3)" : "var(--card-bg, #e2e8f0)",
-                          color: active ? "#fff" : "var(--text-muted, #64748b)",
-                          minWidth: 18,
-                          height: 16,
-                          padding: "0 5px",
-                          borderRadius: 8,
-                          fontSize: 10,
-                          fontWeight: 800,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-
-              {/* ✅ PHÂN LOẠI chips */}
-              <div
-                style={{
-                  display: "inline-flex",
-                  gap: 3,
-                  background: "var(--bg-tertiary, #f5f7fb)",
-                  padding: 4,
-                  borderRadius: 10,
-                }}
-              >
-                {CUSTOMER_TYPE_FILTERS.map((f) => {
-                  const active = filterType === f.id;
-                  const count = typeCounts[f.id] || 0;
-                  return (
-                    <button
-                      key={f.id}
-                      onClick={() => setFilterType(f.id)}
-                      style={{
-                        padding: "7px 12px",
-                        background: active ? "#2634d5" : "transparent",
-                        color: active ? "#fff" : "var(--text-muted, #475569)",
-                        border: 0,
-                        borderRadius: 7,
-                        cursor: "pointer",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {f.label}
-                      <span
-                        style={{
-                          background: active ? "rgba(255,255,255,0.3)" : "var(--card-bg, #e2e8f0)",
-                          color: active ? "#fff" : "var(--text-muted, #64748b)",
-                          minWidth: 18,
-                          height: 16,
-                          padding: "0 5px",
-                          borderRadius: 8,
-                          fontSize: 10,
-                          fontWeight: 800,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
+                <Users size={16} />
+                <b>{filtered.length}</b>
+                <span style={{ color: "var(--text-muted, #64748b)", fontWeight: 500 }}>
+                  {t("khách hàng")}
+                </span>
               </div>
-              </div>
-
-              {facultyOptions.length > 0 && (
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    background: "var(--card-bg, #fff)",
-                    border: "1px solid var(--border-color, #e5e9ef)",
-                    borderRadius: 10,
-                    padding: "6px 12px",
-                  }}
-                >
-                  <GraduationCap size={14} style={{ color: "#2634d5" }} />
-                  <select
-                    value={filterFaculty}
-                    onChange={(e) => setFilterFaculty(e.target.value)}
-                    style={{
-                      border: 0,
-                      outline: "none",
-                      background: "transparent",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "var(--text-primary, #172033)",
-                      cursor: "pointer",
-                      maxWidth: 200,
-                    }}
-                  >
-                    <option value="all">{t("Tất cả ngành")}</option>
-                    {facultyOptions.map((f) => (
-                      <option key={f.code} value={f.code}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               {hasFilter && (
                 <button
                   onClick={clearFilters}
                   style={{
-                    padding: "9px 14px",
-                    background: "transparent",
-                    border: "1px solid #ef4444",
-                    color: "#ef4444",
-                    borderRadius: 8,
-                    fontSize: 12,
+                    padding: "9px 16px",
+                    background: "var(--card-bg, #fff)",
+                    border: "1px solid var(--border-color, #cbd5e1)",
+                    color: "var(--text-primary, #172033)",
+                    borderRadius: 10,
+                    fontSize: 13,
                     fontWeight: 600,
                     cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 6,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <X size={13} /> {t("Xoá lọc")}
+                  <RotateCcw size={14} />
+                  {t("Xóa lọc")}
                 </button>
               )}
+            </div>
 
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-muted, #64748b)",
-                  marginLeft: "auto",
-                }}
-              >
-                <b style={{ color: "var(--text-primary, #172033)" }}>{filtered.length}</b>{" "}
-                {t("khách hàng")}
+            {/* ============================================================
+                HỘP 2: 3 cụm filter (Trạng thái | Phân loại | Hạng)
+                ============================================================ */}
+            <div
+              style={{
+                background: "var(--card-bg, #fff)",
+                border: "1px solid var(--border-color, #e7ebf0)",
+                borderRadius: 12,
+                padding: "16px 20px",
+                marginBottom: 20,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 20,
+                alignItems: "start",
+              }}
+            >
+              {/* Cụm 1: Trạng thái */}
+              <div>
+                <button
+                  onClick={() => setOpenStatus((v) => !v)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, background: "transparent", border: 0, cursor: "pointer", padding: 0, width: "100%", textAlign: "left", marginBottom: openStatus ? 10 : 0 }}
+                >
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", color: "#2634d5", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                    <Shield size={16} />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", flex: 1 }}>
+                    {t("Trạng thái")}
+                  </span>
+                  <ChevronDown size={14} style={{ color: "var(--text-muted, #64748b)", transition: "transform 0.2s", transform: openStatus ? "rotate(180deg)" : "rotate(0deg)" }} />
+                </button>
+                {openStatus && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {STATUS_FILTERS.map((f) => {
+                      const active = filterStatus === f.id;
+                      const count = statusCounts[f.id] || 0;
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => setFilterStatus(f.id)}
+                          style={{ padding: "6px 12px", background: active ? "#2634d5" : "var(--card-bg, #fff)", color: active ? "#fff" : "var(--text-muted, #475569)", border: "1px solid " + (active ? "#2634d5" : "var(--border-color, #e5e9ef)"), borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
+                        >
+                          {f.label}
+                          <span style={{ background: active ? "rgba(255,255,255,0.25)" : "var(--bg-tertiary, #f1f5f9)", color: active ? "#fff" : "var(--text-muted, #64748b)", minWidth: 18, height: 16, padding: "0 5px", borderRadius: 8, fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Cụm 2: Phân loại */}
+              <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
+                <button
+                  onClick={() => setOpenType((v) => !v)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, background: "transparent", border: 0, cursor: "pointer", padding: 0, width: "100%", textAlign: "left", marginBottom: openType ? 10 : 0 }}
+                >
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", color: "#2634d5", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                    <UserRound size={16} />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", flex: 1 }}>
+                    {t("Phân loại")}
+                  </span>
+                  <ChevronDown size={14} style={{ color: "var(--text-muted, #64748b)", transition: "transform 0.2s", transform: openType ? "rotate(180deg)" : "rotate(0deg)" }} />
+                </button>
+                {openType && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {CUSTOMER_TYPE_FILTERS.map((f) => {
+                      const active = filterType === f.id;
+                      const count = typeCounts[f.id] || 0;
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => setFilterType(f.id)}
+                          style={{ padding: "6px 12px", background: active ? "#2634d5" : "var(--card-bg, #fff)", color: active ? "#fff" : "var(--text-muted, #475569)", border: "1px solid " + (active ? "#2634d5" : "var(--border-color, #e5e9ef)"), borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
+                        >
+                          {f.label}
+                          <span style={{ background: active ? "rgba(255,255,255,0.25)" : "var(--bg-tertiary, #f1f5f9)", color: active ? "#fff" : "var(--text-muted, #64748b)", minWidth: 18, height: 16, padding: "0 5px", borderRadius: 8, fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Cụm 3: Hạng */}
+              <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
+                <button
+                  onClick={() => setOpenTier((v) => !v)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, background: "transparent", border: 0, cursor: "pointer", padding: 0, width: "100%", textAlign: "left", marginBottom: openTier ? 10 : 0 }}
+                >
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", color: "#2634d5", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                    <Award size={16} />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", flex: 1 }}>
+                    {t("Hạng")}
+                  </span>
+                  <ChevronDown size={14} style={{ color: "var(--text-muted, #64748b)", transition: "transform 0.2s", transform: openTier ? "rotate(180deg)" : "rotate(0deg)" }} />
+                </button>
+                {openTier && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {TIER_THRESHOLDS.map((f) => {
+                      const active = filterTier === f.id;
+                      const count = tierCounts[f.id] || 0;
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => setFilterTier(f.id)}
+                          style={{ padding: "6px 12px", background: active ? "#2634d5" : "var(--card-bg, #fff)", color: active ? "#fff" : "var(--text-muted, #475569)", border: "1px solid " + (active ? "#2634d5" : "var(--border-color, #e5e9ef)"), borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}
+                        >
+                          {f.label}
+                          <span style={{ background: active ? "rgba(255,255,255,0.25)" : "var(--bg-tertiary, #f1f5f9)", color: active ? "#fff" : "var(--text-muted, #64748b)", minWidth: 18, height: 16, padding: "0 5px", borderRadius: 8, fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -930,9 +1001,9 @@ export default function OwnerCustomers() {
             >
               {loading && (
                 <SkeletonTable
-                  columns={8}
+                  columns={9}
                   rows={5}
-                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Điểm"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
+                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Điểm"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
                 />
               )}
 
@@ -978,6 +1049,7 @@ export default function OwnerCustomers() {
                         <th style={thStyle}>{t("Liên hệ")}</th>
                         <th style={thStyle}>{t("MSSV · Ngành")}</th>
                         <th style={thStyle}>{t("Điểm")}</th>
+                        <th style={thStyle}>{t("Hạng")}</th>
                         <th style={thStyle}>{t("Loại")}</th>
                         <th style={thStyle}>{t("Trạng thái")}</th>
                         <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tác")}</th>
@@ -1052,6 +1124,10 @@ export default function OwnerCustomers() {
                             </td>
 
                             <td style={tdStyle}>
+                              <MemberTierBadge spent={tierSpentMap[c.id] || 0} />
+                            </td>
+
+                            <td style={tdStyle}>
                               <CustomerTypeBadge type={getCustomerType(c.email)} />
                             </td>
 
@@ -1096,7 +1172,7 @@ export default function OwnerCustomers() {
 
                       {!filtered.length && (
                         <tr>
-                          <td colSpan="8" style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}>
+                          <td colSpan="9" style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}>
                             <Users size={36} style={{ opacity: 0.35, marginBottom: 10 }} />
                             <div>
                               {hasFilter
@@ -1732,6 +1808,15 @@ function StatusBadge({ status, t }) {
   );
 }
 
+function MemberTierBadge({ spent }) {
+  const tier = getMemberTier(spent);
+  const meta = TIER_BADGE[tier] || TIER_BADGE["Thành viên mới"];
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: meta.bg, color: meta.color, whiteSpace: "nowrap" }}>
+      {meta.icon} {tier}
+    </span>
+  );
+}
 function CustomerTypeBadge({ type }) {
   const meta = TYPE_BADGE[type] || TYPE_BADGE["Khách"];
   return (
