@@ -481,7 +481,28 @@ function buildSeedData() {
     ],
     toppings: [],
     orders: [],
-    inventory: [],
+    inventory: [
+      { code: "NL001", name: "Gạo",       qty: 100, unit: "kg",  min: 10 },
+      { code: "NL002", name: "Thịt gà",   qty: 12,  unit: "kg",  min: 10 },
+      { code: "NL003", name: "Thịt bò",   qty: 8,   unit: "kg",  min: 10 },
+      { code: "NL004", name: "Bún",       qty: 15,  unit: "kg",  min: 10 },
+      { code: "NL005", name: "Thịt heo",  qty: 25,  unit: "kg",  min: 10 },
+      { code: "NL006", name: "Phở",       qty: 30,  unit: "kg",  min: 10 },
+      { code: "NL007", name: "Mì",        qty: 20,  unit: "kg",  min: 10 },
+      { code: "NL008", name: "Trứng gà",  qty: 100, unit: "cái", min: 10 },
+      { code: "NL009", name: "Rau sống",  qty: 20,  unit: "kg",  min: 10 },
+      { code: "NL010", name: "Cà chua",   qty: 15,  unit: "kg",  min: 10 },
+      { code: "NL011", name: "Hành",      qty: 10,  unit: "kg",  min: 10 },
+      { code: "NL012", name: "Dầu ăn",    qty: 20,  unit: "lít", min: 10 },
+      { code: "NL013", name: "Nước mắm",  qty: 10,  unit: "lít", min: 10 },
+      { code: "NL014", name: "Cà phê",    qty: 8,   unit: "kg",  min: 10 },
+      { code: "NL015", name: "Bánh mì",   qty: 100, unit: "cái", min: 10 },
+      { code: "NL016", name: "Sữa đặc",   qty: 20,  unit: "hộp", min: 10 },
+      { code: "NL017", name: "Trà",       qty: 5,   unit: "kg",  min: 10 },
+      { code: "NL018", name: "Đậu hũ",    qty: 15,  unit: "kg",  min: 10 },
+      { code: "NL019", name: "Xúc xích",  qty: 100, unit: "cái", min: 10 },
+      { code: "NL020", name: "Khoai tây", qty: 30,  unit: "kg",  min: 10 },
+    ],
     notifications: [],
     vouchers: [],
     reviews: [],
@@ -590,6 +611,36 @@ async function initMongo() {
         console.log("✅ Đã seed DB lên MongoDB");
       } else {
         dbCache = doc.data;
+
+        // ✅ AUTO-REFILL: Nếu inventory < 20 items → nạp lại 20 items
+        if (!Array.isArray(dbCache.inventory) || dbCache.inventory.length < 20) {
+          console.log("⚠️  Inventory thiếu items → auto-refill 20 nguyên liệu...");
+          dbCache.inventory = [
+            { code: "NL001", name: "Gạo",       qty: 100, unit: "kg",  min: 10 },
+            { code: "NL002", name: "Thịt gà",   qty: 12,  unit: "kg",  min: 10 },
+            { code: "NL003", name: "Thịt bò",   qty: 8,   unit: "kg",  min: 10 },
+            { code: "NL004", name: "Bún",       qty: 15,  unit: "kg",  min: 10 },
+            { code: "NL005", name: "Thịt heo",  qty: 25,  unit: "kg",  min: 10 },
+            { code: "NL006", name: "Phở",       qty: 30,  unit: "kg",  min: 10 },
+            { code: "NL007", name: "Mì",        qty: 20,  unit: "kg",  min: 10 },
+            { code: "NL008", name: "Trứng gà",  qty: 100, unit: "cái", min: 10 },
+            { code: "NL009", name: "Rau sống",  qty: 20,  unit: "kg",  min: 10 },
+            { code: "NL010", name: "Cà chua",   qty: 15,  unit: "kg",  min: 10 },
+            { code: "NL011", name: "Hành",      qty: 10,  unit: "kg",  min: 10 },
+            { code: "NL012", name: "Dầu ăn",    qty: 20,  unit: "lít", min: 10 },
+            { code: "NL013", name: "Nước mắm",  qty: 10,  unit: "lít", min: 10 },
+            { code: "NL014", name: "Cà phê",    qty: 8,   unit: "kg",  min: 10 },
+            { code: "NL015", name: "Bánh mì",   qty: 100, unit: "cái", min: 10 },
+            { code: "NL016", name: "Sữa đặc",   qty: 20,  unit: "hộp", min: 10 },
+            { code: "NL017", name: "Trà",       qty: 5,   unit: "kg",  min: 10 },
+            { code: "NL018", name: "Đậu hũ",    qty: 15,  unit: "kg",  min: 10 },
+            { code: "NL019", name: "Xúc xích",  qty: 100, unit: "cái", min: 10 },
+            { code: "NL020", name: "Khoai tây", qty: 30,  unit: "kg",  min: 10 },
+          ];
+          saveDB(dbCache);
+          console.log("✅ Đã refill 20 nguyên liệu và save vào DB");
+        }
+
         // ✅ FIX #2: normalize email khi load DB
         if (Array.isArray(dbCache.users)) {
           for (const u of dbCache.users) {
@@ -3519,16 +3570,32 @@ app.post("/api/inventory/:code/import", auth(["ADMIN", "EMPLOYEE"]), (req, res) 
     const db = loadDB();
     const item = db.inventory?.find(x => x.code === req.params.code);
     if (!item) return res.status(404).json({ message: "Không tìm thấy nguyên liệu" });
-    const { qty, note, supplier } = req.body;
+    const { qty, note, supplier, unitCost } = req.body;
     if (!qty || +qty <= 0) return res.status(400).json({ message: "Số lượng không hợp lệ" });
     const importQty = +qty;
+    const cost = unitCost ? importQty * +unitCost : 0;
     const before = item.qty;
     item.qty += importQty;
     item.last_import = new Date().toISOString();
     if (!db.imports) db.imports = [];
     const id = nextId(db.imports);
-    const record = { id, code: item.code, name: item.name, qty: importQty, before, after: item.qty, unit: item.unit, supplier: supplier || "", note: note || "", imported_by: req.user.name, imported_by_id: req.user.id, created_at: new Date().toISOString() };
+    const record = { id, code: item.code, name: item.name, qty: importQty, before, after: item.qty, unit: item.unit, supplier: supplier || "", note: note || "", unit_cost: +unitCost || 0, cost, imported_by: req.user.name, imported_by_id: req.user.id, created_at: new Date().toISOString() };
     db.imports.push(record);
+    if (cost > 0) {
+      if (!db.settings) db.settings = {};
+      if (!db.settings.expenses) db.settings.expenses = [];
+      const expId = Date.now() + Math.floor(Math.random() * 1000);
+      db.settings.expenses.push({
+        id: expId,
+        title: "Nhập " + importQty + item.unit + " " + item.name,
+        amount: cost,
+        category: "Nhập hàng",
+        note: "Mã NL: " + item.code + (supplier ? " · NCC: " + supplier : ""),
+        date: new Date().toISOString(),
+        source: "import",
+        import_id: id,
+      });
+    }
     saveDB(db);
     res.status(201).json({ message: "Nhập kho thành công", item, record });
   } catch (e) {
