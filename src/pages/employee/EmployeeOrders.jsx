@@ -119,6 +119,7 @@ function calcElapsedSec(iso) {
 }
 
 function getOrderPickupMinutes(order) {
+  // Parse từ note "Nhận hàng: 13:00 - 13:30" hoặc pickupTime
   const src = `${order?.pickupTime || order?.pickup || ""} ${order?.note || ""}`;
   const m = src.match(/(\d{1,2}):(\d{2})/);
   if (!m) return null;
