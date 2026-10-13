@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿import express from "express";
+﻿﻿﻿﻿﻿﻿﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -23,7 +23,7 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BUILD_VERSION =
-  "v14-final-" + new Date().toISOString().slice(0, 19);
+  "v15-chat-admin-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // ✅ FIX #8: nextId() helper — tránh Math.max(...arr) stack overflow
@@ -68,12 +68,10 @@ async function translateAsync(db, obj, fields) {
             if (translated && translated !== srcText) {
               obj[fieldKey] = translated;
             } else if (translated === srcText) {
-              // Fallback: giữ nguyên text gốc (không retry)
               obj[fieldKey] = srcText;
             }
           })
           .catch(() => {
-            // Fallback: giữ nguyên text gốc khi lỗi
             obj[fieldKey] = srcText;
           })
       );
@@ -82,7 +80,6 @@ async function translateAsync(db, obj, fields) {
 
   if (tasks.length === 0) return;
 
-  // ✅ FIX #10: await translation xong rồi mới save
   try {
     await Promise.allSettled(tasks);
     if (mongoReady) saveDB(db);
@@ -91,7 +88,6 @@ async function translateAsync(db, obj, fields) {
   }
 }
 
-// 🔧 FIX #10 (v14): đổi thành async + await để tránh saveDB race
 async function autoTranslateMenuItem(db, item, oldItem = null) {
   const FIELDS = ["name", "description"];
 
@@ -108,11 +104,9 @@ async function autoTranslateMenuItem(db, item, oldItem = null) {
     }
   }
 
-  // ✅ FIX: await translation xong mới return
   await translateAsync(db, item, FIELDS);
 }
 
-// 🔧 FIX #10 (v14): đổi thành async + await
 async function autoTranslateCategory(db, cat, oldCat = null) {
   const FIELDS = ["name"];
 
@@ -471,7 +465,7 @@ function buildSeedData() {
   return {
     users: [
       { id: 1, name: "Quản trị viên", email: "admin@vwa.vn", password: SEED_PASSWORD_HASH, role: "ADMIN", status: "Hoạt động", phone: "0900000001", points: 0, created_at: "2025-01-01T00:00:00.000Z" },
-      { id: 2, name: "Trần Văn Trí", email: "nhanvien@vwa.vn", password: SEED_PASSWORD_HASH, role: "EMPLOYEE", status: "Hoạt động", phone: "", points: 50, created_at: "2025-01-01T00:00:00.000Z" },
+      { id: 2, name: "Trần Văn Trí", email: "nhanvien@vwa.vn", password: SEED_PASSWORD_HASH, role: "EMPLOYEE", status: "Hoạt động", phone: "", points: 50, chat_enabled: true, created_at: "2025-01-01T00:00:00.000Z" },
       { id: 3, name: "Trần Văn Trí", email: "sinhvien@vwa.vn", password: SEED_PASSWORD_HASH, role: "CUSTOMER", status: "Hoạt động", phone: "", points: 1959, created_at: "2025-01-01T00:00:00.000Z" },
     ],
     menu_items: [],
@@ -500,7 +494,20 @@ function buildSeedData() {
     wallet_transactions: [],
     tasks: [],
     points_history: [],
-    settings: { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" },
+    // ✅ MỚI: chat admin
+    chat_transfer_requests: [],
+    chat_conversations: {},
+    settings: {
+      bank: "VCB",
+      account: "",
+      accountName: "",
+      hotline: "",
+      email: "",
+      address: "",
+      qrCustomImage: "",
+      // ✅ MỚI: công tắc chat toàn hệ thống
+      chat_enabled_global: true,
+    },
   };
 }
 
@@ -589,6 +596,14 @@ async function initMongo() {
             if (u.email) u.email = normalizeEmail(u.email);
           }
         }
+
+        // ✅ MỚI: đảm bảo có schema chat
+        const chatChanged = ensureChatSchema(dbCache);
+        if (chatChanged) {
+          console.log("💬 Đã migration chat schema (chat_enabled, transfer_requests)");
+          saveDB(dbCache);
+        }
+
         console.log(
           "✅ Đã load DB trong " + (Date.now() - t1) + "ms: " +
           (dbCache.menu_items?.length || 0) + " món, " +
@@ -637,9 +652,6 @@ function loadDB() {
 
 let saveQueue = Promise.resolve();
 
-// ============================================================
-// ✅ FIX #4: saveDBOrThrow() — throw nếu save fail (để rollback)
-// ============================================================
 function saveDB(data) {
   dbCache = data;
 
@@ -665,7 +677,6 @@ function saveDB(data) {
   console.warn("⚠️ saveDB: MongoDB chưa kết nối — dữ liệu CHỈ lưu trong RAM");
 }
 
-// ✅ FIX #4: await version — dùng trong /api/orders để rollback chính xác
 async function saveDBOrThrow(data) {
   dbCache = data;
 
@@ -682,8 +693,6 @@ async function saveDBOrThrow(data) {
     );
     return;
   }
-
-  // Không có Mongo → chỉ lưu RAM, coi như thành công
 }
 
 // ============================================================
@@ -693,7 +702,7 @@ function notifyNewOrder(db, order) {
   if (!db.notifications) db.notifications = [];
   const staff = db.users.filter(u => u.role === "ADMIN" || u.role === "EMPLOYEE");
   staff.forEach(s => {
-    const id = nextId(db.notifications); // ✅ FIX #8
+    const id = nextId(db.notifications);
     db.notifications.push({
       id, user_id: s.id,
       title: "Đơn hàng mới",
@@ -717,7 +726,7 @@ function notifyOrderStatus(db, order, newStatus) {
     "Đã hủy":        "Đơn hàng " + order.code + " đã bị hủy",
   };
 
-  const id = nextId(db.notifications); // ✅ FIX #8
+  const id = nextId(db.notifications);
   db.notifications.push({
     id, user_id: order.customer_id,
     title: TITLE_BY_STATUS[newStatus] || ("Đơn hàng " + order.code + " cập nhật: " + newStatus),
@@ -762,7 +771,7 @@ function rollbackCancelledOrder(db, order) {
     }
 
     if (!db.wallet_transactions) db.wallet_transactions = [];
-    const refundId = nextId(db.wallet_transactions); // ✅ FIX #8
+    const refundId = nextId(db.wallet_transactions);
     db.wallet_transactions.push({
       id: refundId,
       code: "REF" + Date.now().toString().slice(-8),
@@ -923,7 +932,7 @@ app.post("/api/auth/login", (req, res) => {
     const emailNorm = normalizeEmail(email);
     if (!emailNorm || !password) return res.status(400).json({ message: "Thiếu email/mật khẩu" });
     const db = loadDB();
-    const user = db.users.find(u => normalizeEmail(u.email) === emailNorm); // ✅ FIX #2
+    const user = db.users.find(u => normalizeEmail(u.email) === emailNorm);
     if (!user) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
     const ok = bcrypt.compareSync(password, user.password);
     if (!ok) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
@@ -969,7 +978,7 @@ app.post("/api/auth/register", (req, res) => {
     }
 
     const db = loadDB();
-    if (db.users.find(u => normalizeEmail(u.email) === emailNorm)) // ✅ FIX #2
+    if (db.users.find(u => normalizeEmail(u.email) === emailNorm))
       return res.status(400).json({ message: "Email đã được sử dụng" });
 
     if (parsedMssv) {
@@ -984,7 +993,7 @@ app.post("/api/auth/register", (req, res) => {
     }
 
     const hash = bcrypt.hashSync(password, 10);
-    const id = nextId(db.users); // ✅ FIX #8
+    const id = nextId(db.users);
     const user = {
       id, email: emailNorm, password: hash, name: nameNorm,
       phone: String(phone || "").trim(),
@@ -1102,7 +1111,7 @@ app.put("/api/auth/profile", auth(), (req, res) => {
       }
     }
 
-    if (email && normalizeEmail(email) !== normalizeEmail(u.email)) { // ✅ FIX #2
+    if (email && normalizeEmail(email) !== normalizeEmail(u.email)) {
       const emailNorm = normalizeEmail(email);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm))
         return res.status(400).json({ message: "Email không hợp lệ" });
@@ -1420,7 +1429,6 @@ app.get("/api/menu", (req, res) => {
   }
 });
 
-// 🔧 FIX #10 (v14): await autoTranslateMenuItem
 app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1442,14 +1450,12 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
         : body.original_price;
     }
 
-    // ✅ FIX #6: id ở CUỐI để không bị body ghi đè
     const id = nextId(db.menu_items);
     const item = { active: 1, sold: 0, image: "", ...body, id };
 
     await applyMenuImageToItem(item, body.image, { persist: mongoReady });
     fillMenuNutrition(item);
 
-    // ✅ FIX #10 (v14): await translation TRƯỚC khi push
     await autoTranslateMenuItem(db, item, null);
 
     db.menu_items.push(item);
@@ -1460,7 +1466,6 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   }
 });
 
-// 🔧 FIX #10 (v14): await autoTranslateMenuItem
 app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1469,7 +1474,6 @@ app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     const oldItem = db.menu_items[i];
     const newData = { ...req.body };
 
-    // ✅ FIX #7: không cho đổi id qua body
     delete newData.id;
 
     if (newData.price !== undefined && (isNaN(Number(newData.price)) || Number(newData.price) < 0)) return res.status(400).json({ message: "Giá không được âm" });
@@ -1489,7 +1493,7 @@ app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
 
     if (newData.price !== undefined && Number(newData.price) !== Number(oldItem.price)) {
       if (!db.price_history) db.price_history = [];
-      const historyId = nextId(db.price_history); // ✅ FIX #8
+      const historyId = nextId(db.price_history);
       db.price_history.push({
         id: historyId, menu_item_id: oldItem.id, menu_item_name: oldItem.name,
         old_price: oldItem.price, new_price: Number(newData.price),
@@ -1507,7 +1511,6 @@ app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
 
     fillMenuNutrition(updated);
 
-    // ✅ FIX #10 (v14): await translation
     await autoTranslateMenuItem(db, updated, oldItem);
 
     db.menu_items[i] = updated;
@@ -1555,7 +1558,7 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
     const emailNorm = normalizeEmail(req.body.email);
     if (!emailNorm) return res.status(400).json({ message: "Thiếu email" });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) return res.status(400).json({ message: "Email không hợp lệ" });
-    if (db.users.find(u => normalizeEmail(u.email) === emailNorm)) // ✅ FIX #2
+    if (db.users.find(u => normalizeEmail(u.email) === emailNorm))
       return res.status(400).json({ message: "Email đã được sử dụng" });
 
     const role = req.body.role || "EMPLOYEE";
@@ -1574,7 +1577,7 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
       cleanTeacherCode = clean;
     }
 
-    const id = nextId(db.users); // ✅ FIX #8
+    const id = nextId(db.users);
 
     const useTempPassword = !req.body.password;
     const tempPassword = useTempPassword
@@ -1599,6 +1602,8 @@ app.post("/api/users", auth(["ADMIN"]), (req, res) => {
       points: 0,
       teacher_code: cleanTeacherCode,
       must_change_password: mustChange,
+      // ✅ MỚI: nhân viên mới mặc định được chat
+      chat_enabled: role === "EMPLOYEE" ? true : undefined,
       created_at: new Date().toISOString(),
     };
 
@@ -1794,7 +1799,7 @@ app.put("/api/users/:id/points", auth(["ADMIN"]), (req, res) => {
     if (reason) u.points_reason = String(reason).slice(0, 200);
 
     if (!db.points_history) db.points_history = [];
-    const hid = nextId(db.points_history); // ✅ FIX #8
+    const hid = nextId(db.points_history);
     db.points_history.push({
       id: hid, user_id: u.id, user_name: u.name,
       old_points: old, new_points: p, delta: p - old,
@@ -1872,7 +1877,7 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), (req, res) => {
 });
 
 // ============================================================
-// ✅ FIX #5: ORDERS — optimistic locking + saveDBOrThrow
+// ORDERS
 // ============================================================
 app.post("/api/orders", auth(), async (req, res) => {
   const db = loadDB();
@@ -1889,7 +1894,6 @@ app.post("/api/orders", auth(), async (req, res) => {
     const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
 
-    // ✅ FIX #5: gom món theo menu_item_id để check 1 lần
     const qtyByItem = new Map();
     for (const it of items) {
       const q = Number(it.qty);
@@ -1971,7 +1975,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
-    // ✅ FIX #5: trừ stock atomically trong RAM (đã validate ở trên)
     touchedItems.forEach(({ m, q }) => {
       m.stock = (m.stock || 0) - q;
       m.sold = (m.sold || 0) + q;
@@ -1986,12 +1989,12 @@ app.post("/api/orders", auth(), async (req, res) => {
     customer = db.users.find(u => u.id === req.user.id);
     if (customer) customer.points = (customer.points || 0) + pointsEarned;
 
-    const id = nextId(db.orders); // ✅ FIX #8
+    const id = nextId(db.orders);
     const code = generateOrderCode(db);
 
     if (isWalletPay) {
       if (!db.wallet_transactions) db.wallet_transactions = [];
-      const wtxId = nextId(db.wallet_transactions); // ✅ FIX #8
+      const wtxId = nextId(db.wallet_transactions);
       walletTx = {
         id: wtxId, code: "PAY" + Date.now().toString().slice(-8),
         user_id: req.user.id, user_name: req.user.name, user_email: req.user.email,
@@ -2022,12 +2025,10 @@ app.post("/api/orders", auth(), async (req, res) => {
 
     notifyNewOrder(db, order);
 
-    // ✅ FIX #4: await save — nếu fail sẽ vào catch để rollback
     await saveDBOrThrow(db);
 
     res.status(201).json({ ...order, _id: order.id });
   } catch (e) {
-    // Rollback
     touchedItems.forEach(({ m, q }) => {
       m.stock = (m.stock || 0) + q;
       m.sold = Math.max(0, (m.sold || 0) - q);
@@ -2047,7 +2048,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       delete usedVoucher.used_at;
       delete usedVoucher.order_code;
     }
-    // ✅ FIX #4: lưu trạng thái đã rollback (nếu còn Mongo)
     try { await saveDBOrThrow(db); } catch { /* ignore */ }
     res.status(400).json({ message: e.message });
   }
@@ -2201,7 +2201,7 @@ app.post("/api/reviews", auth(), (req, res) => {
     const hasPurchased = (db.orders || []).some(o => o.customer_id === req.user.id && o.status === "Hoàn thành" && (o.items || []).some(it => it.menu_item_id == menuItemId));
     if (!hasPurchased) return res.status(403).json({ message: "Bạn cần mua món này để có thể đánh giá" });
 
-    const id = nextId(db.reviews); // ✅ FIX #8
+    const id = nextId(db.reviews);
     const review = { id, menu_item_id: menuItemId, user_id: req.user.id, user_name: req.user.name, rating: +rating, comment: comment || "", created_at: new Date().toISOString() };
     db.reviews.push(review);
 
@@ -2256,7 +2256,7 @@ app.post("/api/points/redeem", auth(), (req, res) => {
     if ((u.points || 0) < points) return res.status(400).json({ message: "Không đủ điểm" });
     u.points -= points;
     const value = points * 100;
-    const voucherId = nextId(db.vouchers); // ✅ FIX #8
+    const voucherId = nextId(db.vouchers);
     const code = "VOUCHER" + String(voucherId).padStart(4, "0");
     const voucher = { id: voucherId, code, user_id: req.user.id, value, points_used: points, used: false, created_at: new Date().toISOString() };
     db.vouchers.push(voucher);
@@ -2285,7 +2285,7 @@ app.post("/api/vouchers", auth(["ADMIN"]), (req, res) => {
       return res.status(400).json({ message: "Mã voucher đã tồn tại" });
     }
 
-    const id = nextId(db.vouchers); // ✅ FIX #8
+    const id = nextId(db.vouchers);
     const voucher = { id, code: codeNorm, value: +value, user_id: user_id ? +user_id : null, points_used: +points_used || 0, used: false, created_at: new Date().toISOString() };
     db.vouchers.push(voucher);
     saveDB(db);
@@ -2350,7 +2350,7 @@ app.post("/api/vouchers/claim/:id", auth(), (req, res) => {
     if (!template) return res.status(404).json({ message: "Voucher không tồn tại hoặc đã hết" });
     const alreadyClaimed = (db.vouchers || []).find(v => v.user_id === req.user.id && v.claimed_from === template.id);
     if (alreadyClaimed) return res.status(400).json({ message: "Bạn đã nhận voucher này rồi" });
-    const id = nextId(db.vouchers); // ✅ FIX #8
+    const id = nextId(db.vouchers);
     const newVoucher = { id, code: template.code + "-U" + req.user.id, value: template.value, user_id: req.user.id, points_used: 0, used: false, claimed_from: template.id, created_at: new Date().toISOString() };
     db.vouchers.push(newVoucher);
     saveDB(db);
@@ -2398,7 +2398,6 @@ app.get("/api/categories", (req, res) => {
   res.json([...categories].sort((a, b) => (a.order || 0) - (b.order || 0)));
 });
 
-// 🔧 FIX #10 (v14): await autoTranslateCategory
 app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2417,10 +2416,9 @@ app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
       finalOrder = Math.max(0, ...categories.map(c => c.order || 0)) + 1;
     }
 
-    const id = nextId(categories); // ✅ FIX #8
+    const id = nextId(categories);
     const cat = { id, name: trimmed, icon: icon || "🍽️", order: finalOrder };
 
-    // ✅ FIX #10 (v14): await translation
     await autoTranslateCategory(db, cat, null);
 
     categories.push(cat);
@@ -2429,7 +2427,6 @@ app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// 🔧 FIX #10 (v14): await autoTranslateCategory
 app.put("/api/categories/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2458,7 +2455,6 @@ app.put("/api/categories/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => 
       cat.order = parsed;
     }
 
-    // ✅ FIX #10 (v14): await translation
     await autoTranslateCategory(db, cat, { name: oldName });
 
     saveDB(db);
@@ -2495,7 +2491,6 @@ function getOrCreateWallet(db, userId) {
   return w;
 }
 
-// ✅ FIX #1: GET /api/wallet/me — chỉ save khi THỰC SỰ tạo ví mới
 app.get("/api/wallet/me", auth(), (req, res) => {
   const db = loadDB();
   const existed = (db.wallets || []).some(
@@ -2522,7 +2517,7 @@ app.post("/api/wallet/deposit", auth(), (req, res) => {
     if (!["QR", "CASH"].includes(method)) return res.status(400).json({ message: "Phương thức không hợp lệ" });
 
     if (!db.wallet_transactions) db.wallet_transactions = [];
-    const id = nextId(db.wallet_transactions); // ✅ FIX #8
+    const id = nextId(db.wallet_transactions);
     const code = "DEP" + Date.now().toString().slice(-8);
     const tx = { id, code, user_id: req.user.id, user_name: req.user.name, user_email: req.user.email, type: "deposit", amount: amt, method, status: "pending", note: note || "", admin_note: "", created_at: new Date().toISOString() };
     db.wallet_transactions.push(tx);
@@ -2542,7 +2537,7 @@ app.post("/api/wallet/withdraw", auth(), (req, res) => {
     if (!w.bank_account) return res.status(400).json({ message: "Chưa liên kết tài khoản ngân hàng" });
 
     if (!db.wallet_transactions) db.wallet_transactions = [];
-    const id = nextId(db.wallet_transactions); // ✅ FIX #8
+    const id = nextId(db.wallet_transactions);
     const code = "WDR" + Date.now().toString().slice(-8);
     const tx = {
       id, code, user_id: req.user.id, user_name: req.user.name, user_email: req.user.email,
@@ -2652,7 +2647,7 @@ app.post("/api/wallet/pay", auth(), (req, res) => {
     const w = getOrCreateWallet(db, req.user.id);
     if (w.balance < amt) return res.status(400).json({ message: "Số dư ví không đủ" });
     if (!db.wallet_transactions) db.wallet_transactions = [];
-    const id = nextId(db.wallet_transactions); // ✅ FIX #8
+    const id = nextId(db.wallet_transactions);
     const tx = {
       id, code: "PAY" + Date.now().toString().slice(-8), user_id: req.user.id, user_name: req.user.name,
       type: "payment", amount: amt, method: "WALLET", status: "approved",
@@ -2718,6 +2713,135 @@ app.delete("/api/vouchers/revoke/:id", auth(["ADMIN"]), (req, res) => {
 });
 
 // ============================================================
+// ✅ MỚI: CHAT ADMIN — Helpers
+// ============================================================
+
+/**
+ * Đảm bảo DB có đủ field chat (migration lazy)
+ */
+function ensureChatSchema(db) {
+  if (!db) return false;
+  let changed = false;
+
+  // settings.chat_enabled_global
+  if (!db.settings) db.settings = {};
+  if (typeof db.settings.chat_enabled_global !== "boolean") {
+    db.settings.chat_enabled_global = true;
+    changed = true;
+  }
+
+  // users.chat_enabled (chỉ cho EMPLOYEE, mặc định true)
+  if (Array.isArray(db.users)) {
+    for (const u of db.users) {
+      if (u.role === "EMPLOYEE" && typeof u.chat_enabled !== "boolean") {
+        u.chat_enabled = true;
+        changed = true;
+      }
+    }
+  }
+
+  // chat_transfer_requests collection
+  if (!Array.isArray(db.chat_transfer_requests)) {
+    db.chat_transfer_requests = [];
+    changed = true;
+  }
+
+  // chat_conversations metadata (assigned_to / assigned_admin_id)
+  if (!db.chat_conversations) {
+    db.chat_conversations = {};
+    changed = true;
+  }
+
+  return changed;
+}
+
+/**
+ * Lấy danh sách userId mà Admin đang tiếp quản
+ */
+function getAdminAssignedUserIds(db) {
+  if (!db.chat_conversations) return [];
+  return Object.entries(db.chat_conversations)
+    .filter(([, meta]) => meta && meta.assigned_to === "admin")
+    .map(([uid]) => Number(uid))
+    .filter((n) => !isNaN(n));
+}
+
+/**
+ * Check xem 1 nhân viên có được phép chat không
+ * - Global tắt → không ai được
+ * - Employee.chat_enabled = false → không được
+ */
+function isStaffAllowedToChat(db, userId) {
+  if (!db) return false;
+  const globalOn = db.settings?.chat_enabled_global !== false;
+  if (!globalOn) return false;
+
+  const u = (db.users || []).find((x) => x.id === userId);
+  if (!u) return false;
+  if (u.role !== "EMPLOYEE" && u.role !== "ADMIN") return false;
+  if (u.role === "ADMIN") return true; // Admin luôn được gửi
+
+  return u.chat_enabled !== false;
+}
+
+/**
+ * Tìm transfer request đang pending của 1 customer
+ */
+function findPendingTransferForCustomer(db, customerId) {
+  if (!Array.isArray(db.chat_transfer_requests)) return null;
+  return db.chat_transfer_requests.find(
+    (r) => r.customer_id === customerId && r.status === "pending"
+  ) || null;
+}
+
+/**
+ * Build danh sách conversations cho ADMIN
+ * - Trả về giống /api/chat/conversations
+ * - Thêm: assigned_to, assigned_admin_id, has_pending_transfer
+ */
+function buildAdminConversations(db) {
+  const convMap = {};
+
+  (db.messages || []).forEach((m) => {
+    if (!isRecentMessage(m)) return;
+    const uid = normalizeUserId(m.user_id);
+    if (uid === null) return;
+
+    if (!convMap[uid]) {
+      convMap[uid] = {
+        user_id: uid,
+        user_name: m.user_name || "Khách",
+        last_message: m.content,
+        last_time: m.created_at,
+        unread: 0,
+      };
+    }
+    if (m.from === "customer" && !m.read) convMap[uid].unread += 1;
+    if (new Date(m.created_at) > new Date(convMap[uid].last_time)) {
+      convMap[uid].last_message = m.content;
+      convMap[uid].last_time = m.created_at;
+      convMap[uid].user_name = m.user_name || convMap[uid].user_name;
+    }
+  });
+
+  // Gắn metadata assigned_to + has_pending_transfer
+  const conversations = Object.values(convMap).map((c) => {
+    const meta = db.chat_conversations?.[String(c.user_id)] || {};
+    const pendingReq = findPendingTransferForCustomer(db, c.user_id);
+    return {
+      ...c,
+      assigned_to: meta.assigned_to || null,
+      assigned_admin_id: meta.assigned_admin_id || null,
+      has_pending_transfer: !!pendingReq,
+    };
+  });
+
+  return conversations.sort(
+    (a, b) => new Date(b.last_time) - new Date(a.last_time)
+  );
+}
+
+// ============================================================
 // CHAT — filter 24h
 // ============================================================
 const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -2737,6 +2861,7 @@ function normalizeUserId(id) {
 
 app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   const db = loadDB();
+  ensureChatSchema(db);
   const convMap = {};
 
   (db.messages || []).forEach((m) => {
@@ -2862,10 +2987,11 @@ app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => 
 app.post("/api/chat/send", auth(), (req, res) => {
   try {
     const db = loadDB();
+    ensureChatSchema(db);
     const { content, toUserId } = req.body;
     if (!content?.trim()) return res.status(400).json({ message: "Tin nhắn trống" });
     if (!db.messages) db.messages = [];
-    const id = nextId(db.messages); // ✅ FIX #8
+
     const isStaff = req.user.role === "ADMIN" || req.user.role === "EMPLOYEE";
     let userId, userName;
     if (isStaff) {
@@ -2873,14 +2999,371 @@ app.post("/api/chat/send", auth(), (req, res) => {
       if (userId === null) return res.status(400).json({ message: "Thiếu toUserId" });
       const customer = db.users.find((u) => normalizeUserId(u.id) === userId);
       userName = customer?.name || "Khách";
+
+      // ✅ MỚI: kiểm tra quyền chat của nhân viên
+      if (req.user.role === "EMPLOYEE") {
+        if (!isStaffAllowedToChat(db, req.user.id)) {
+          return res.status(403).json({
+            message: "Admin đã tắt quyền chat của bạn. Vui lòng liên hệ quản trị viên.",
+            code: "CHAT_DISABLED",
+          });
+        }
+        // Nếu Admin đang giữ hội thoại này → chặn NV
+        const meta = db.chat_conversations?.[String(userId)];
+        if (meta && meta.assigned_to === "admin") {
+          return res.status(403).json({
+            message: "Admin đang xử lý hội thoại này. Bạn không thể gửi tin.",
+            code: "CHAT_HELD_BY_ADMIN",
+          });
+        }
+      }
     } else {
       userId = normalizeUserId(req.user.id);
       userName = req.user.name;
     }
-    const message = { id, user_id: userId, user_name: userName, from: isStaff ? "staff" : "customer", from_name: req.user.name, content: content.trim(), read: false, created_at: new Date().toISOString() };
+
+    const id = nextId(db.messages);
+    const message = {
+      id,
+      user_id: userId,
+      user_name: userName,
+      from: isStaff ? "staff" : "customer",
+      from_name: req.user.name,
+      from_role: isStaff ? req.user.role : "CUSTOMER",
+      content: content.trim(),
+      read: false,
+      created_at: new Date().toISOString(),
+    };
     db.messages.push(message);
     saveDB(db);
     res.status(201).json(message);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// ✅ MỚI: CHAT ADMIN — Endpoints
+// ============================================================
+
+// ---------- 1. Admin: List tất cả hội thoại ----------
+app.get("/api/chat/admin/conversations", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+    res.json(buildAdminConversations(db));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 2. Admin: Đọc tin nhắn với 1 khách ----------
+app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const targetId = normalizeUserId(req.params.userId);
+
+    const list = (db.messages || [])
+      .filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    let changed = false;
+    (db.messages || []).forEach((m) => {
+      if (
+        normalizeUserId(m.user_id) === targetId &&
+        m.from === "customer" &&
+        !m.read
+      ) {
+        m.read = true;
+        changed = true;
+      }
+    });
+    if (changed) saveDB(db);
+
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 3. Admin: Trạng thái chat của nhân viên ----------
+app.get("/api/chat/admin/staff-status", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+
+    const staff = (db.users || [])
+      .filter((u) => u.role === "EMPLOYEE")
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        chat_enabled: u.chat_enabled !== false,
+      }));
+
+    res.json({
+      global_enabled: db.settings?.chat_enabled_global !== false,
+      staff,
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 4. Admin: Bật/tắt chat per-employee ----------
+app.patch("/api/chat/admin/staff/:id/chat", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+    const u = (db.users || []).find((x) => x.id == req.params.id);
+    if (!u) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
+    if (u.role !== "EMPLOYEE") {
+      return res.status(400).json({ message: "Chỉ áp dụng cho nhân viên" });
+    }
+
+    const enabled = req.body?.enabled !== false;
+    u.chat_enabled = enabled;
+    saveDB(db);
+
+    res.json({
+      ok: true,
+      staff: {
+        id: u.id,
+        name: u.name,
+        chat_enabled: enabled,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 5. Admin: Bật/tắt công tắc global ----------
+app.patch("/api/chat/admin/global-chat", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+    const enabled = req.body?.enabled !== false;
+    db.settings.chat_enabled_global = enabled;
+    saveDB(db);
+    res.json({ ok: true, global_enabled: enabled });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 6. Admin: List yêu cầu chuyển tiếp ----------
+app.get("/api/chat/admin/transfer-requests", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+
+    const status = String(req.query.status || "pending").toLowerCase();
+    let list = [...(db.chat_transfer_requests || [])];
+
+    if (status !== "all") {
+      list = list.filter((r) => r.status === status);
+    }
+
+    const enriched = list.map((r) => {
+      const customer = (db.users || []).find((u) => u.id === r.customer_id);
+      const staff = (db.users || []).find((u) => u.id === r.from_staff_id);
+      return {
+        ...r,
+        customer_name: customer?.name || `Khách #${r.customer_id}`,
+        customer_email: customer?.email || "",
+        from_staff_name: staff?.name || `NV #${r.from_staff_id}`,
+      };
+    });
+
+    enriched.sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
+
+    res.json(enriched);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 7. Admin: Duyệt/từ chối yêu cầu chuyển tiếp ----------
+app.patch(
+  "/api/chat/admin/transfer-requests/:id",
+  auth(["ADMIN"]),
+  (req, res) => {
+    try {
+      const db = loadDB();
+      ensureChatSchema(db);
+
+      const r = (db.chat_transfer_requests || []).find(
+        (x) => x.id == req.params.id
+      );
+      if (!r) return res.status(404).json({ message: "Không tìm thấy yêu cầu" });
+      if (r.status !== "pending") {
+        return res.status(400).json({ message: "Yêu cầu đã được xử lý" });
+      }
+
+      const newStatus = String(req.body?.status || "").toLowerCase();
+      if (!["accepted", "rejected"].includes(newStatus)) {
+        return res.status(400).json({ message: "status phải là accepted hoặc rejected" });
+      }
+
+      r.status = newStatus;
+      r.resolved_at = new Date().toISOString();
+      r.resolved_by = req.user.id;
+      r.resolved_by_name = req.user.name;
+      if (req.body?.note) r.note = String(req.body.note).slice(0, 500);
+
+      if (newStatus === "accepted") {
+        if (!db.chat_conversations) db.chat_conversations = {};
+        db.chat_conversations[String(r.customer_id)] = {
+          assigned_to: "admin",
+          assigned_admin_id: req.user.id,
+          assigned_at: new Date().toISOString(),
+        };
+      }
+
+      saveDB(db);
+      res.json({ ok: true, request: r });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
+    }
+  }
+);
+
+// ---------- 8. Employee: Tạo yêu cầu chuyển tiếp ----------
+app.post("/api/chat/transfer-request", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+
+    const customerId = normalizeUserId(
+      req.body?.customerId ?? req.body?.user_id
+    );
+    if (customerId === null) {
+      return res.status(400).json({ message: "Thiếu customerId" });
+    }
+
+    const customer = (db.users || []).find((u) => u.id === customerId);
+    if (!customer) {
+      return res.status(404).json({ message: "Không tìm thấy khách" });
+    }
+
+    const existing = findPendingTransferForCustomer(db, customerId);
+    if (existing) {
+      return res.status(400).json({
+        message: "Đã có yêu cầu chuyển tiếp đang chờ cho khách này",
+        code: "ALREADY_PENDING",
+        request: existing,
+      });
+    }
+
+    const id = nextId(db.chat_transfer_requests);
+    const record = {
+      id,
+      customer_id: customerId,
+      from_staff_id: req.user.id,
+      from_staff_name: req.user.name,
+      from_staff_role: req.user.role,
+      reason: String(req.body?.reason || "").slice(0, 500),
+      status: "pending",
+      created_at: new Date().toISOString(),
+      resolved_at: null,
+      resolved_by: null,
+    };
+
+    db.chat_transfer_requests.push(record);
+    saveDB(db);
+
+    if (!db.notifications) db.notifications = [];
+    const admins = (db.users || []).filter((u) => u.role === "ADMIN");
+    admins.forEach((adm) => {
+      const nid = nextId(db.notifications);
+      db.notifications.push({
+        id: nid,
+        user_id: adm.id,
+        title: "Yêu cầu chuyển tiếp chat",
+        content: `${req.user.name} xin chuyển hội thoại với "${customer.name}" lên Admin`,
+        type: "chat",
+        link: "/owner/chat",
+        read: false,
+        created_at: new Date().toISOString(),
+      });
+    });
+    saveDB(db);
+
+    res.status(201).json({ ok: true, request: record });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 9. Admin: Tiếp quản hội thoại ----------
+app.post("/api/chat/admin/takeover/:userId", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+
+    const targetId = normalizeUserId(req.params.userId);
+    if (targetId === null) return res.status(400).json({ message: "userId không hợp lệ" });
+
+    if (!db.chat_conversations) db.chat_conversations = {};
+    db.chat_conversations[String(targetId)] = {
+      assigned_to: "admin",
+      assigned_admin_id: req.user.id,
+      assigned_at: new Date().toISOString(),
+    };
+
+    (db.chat_transfer_requests || []).forEach((r) => {
+      if (r.customer_id === targetId && r.status === "pending") {
+        r.status = "accepted";
+        r.resolved_at = new Date().toISOString();
+        r.resolved_by = req.user.id;
+        r.resolved_by_name = req.user.name;
+      }
+    });
+
+    saveDB(db);
+    res.json({ ok: true, assigned_to: "admin" });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 10. Admin: Trả về cho nhân viên ----------
+app.post("/api/chat/admin/release/:userId", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+
+    const targetId = normalizeUserId(req.params.userId);
+    if (targetId === null) return res.status(400).json({ message: "userId không hợp lệ" });
+
+    if (db.chat_conversations) {
+      delete db.chat_conversations[String(targetId)];
+    }
+
+    saveDB(db);
+    res.json({ ok: true, assigned_to: null });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ---------- 11. Employee: Trạng thái chat của mình ----------
+app.get("/api/chat/my-status", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+
+    const enabled = isStaffAllowedToChat(db, req.user.id);
+    const assigned_to_admin_users = getAdminAssignedUserIds(db);
+
+    res.json({
+      enabled,
+      global_enabled: db.settings?.chat_enabled_global !== false,
+      assigned_to_admin_users,
+    });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -3043,7 +3526,7 @@ app.post("/api/inventory/:code/import", auth(["ADMIN", "EMPLOYEE"]), (req, res) 
     item.qty += importQty;
     item.last_import = new Date().toISOString();
     if (!db.imports) db.imports = [];
-    const id = nextId(db.imports); // ✅ FIX #8
+    const id = nextId(db.imports);
     const record = { id, code: item.code, name: item.name, qty: importQty, before, after: item.qty, unit: item.unit, supplier: supplier || "", note: note || "", imported_by: req.user.name, imported_by_id: req.user.id, created_at: new Date().toISOString() };
     db.imports.push(record);
     saveDB(db);
@@ -3101,7 +3584,7 @@ app.post("/api/attendance/checkin", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
     const late = nowMinutes > shiftStartMinutes + 15;
     const status = late ? "Đi muộn" : "Đúng giờ";
 
-    const id = nextId(db.attendances); // ✅ FIX #8
+    const id = nextId(db.attendances);
     const attendance = { id, employee_id: req.user.id, employee_name: req.user.name, date: today, shift, checkIn: now.toISOString(), checkOut: null, hours: 0, status, note: "", created_at: now.toISOString() };
     db.attendances.push(attendance);
     saveDB(db);
@@ -3266,7 +3749,6 @@ app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
     if (!Array.isArray(data.menu_items)) return res.status(400).json({ message: "File backup thiếu mảng menu_items" });
     if (data.users.length === 0) return res.status(400).json({ message: "File backup không có user nào" });
 
-    // ✅ FIX #2: normalize email trước khi import
     for (const u of data.users) {
       if (u.email) u.email = normalizeEmail(u.email);
     }
@@ -3309,6 +3791,7 @@ app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
       price_history: db.price_history?.length || 0,
       tasks: db.tasks?.length || 0,
       points_history: db.points_history?.length || 0,
+      chat_transfer_requests: db.chat_transfer_requests?.length || 0,
       db_size_bytes: JSON.stringify(db).length
     });
   } catch (e) {
@@ -3437,6 +3920,7 @@ app.post("/api/time-slots/reset", auth(["ADMIN"]), (req, res) => {
 // ============ SETTINGS ============
 app.get("/api/settings", auth(), (req, res) => {
   const db = loadDB();
+  ensureChatSchema(db);
   const empty = { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" };
   res.json({ ...empty, ...(db.settings || {}) });
 });
@@ -3534,7 +4018,7 @@ app.post("/api/shifts/register", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
     if (!emp) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
     let created = 0;
     let skipped = 0;
-    let nextIdVal = nextId(db.shifts); // ✅ FIX #8
+    let nextIdVal = nextId(db.shifts);
     dates.forEach(date => {
       shifts.forEach(shift => {
         const exists = db.shifts.find(s => s.employee_id === req.user.id && s.date === date && s.shift === shift);
@@ -3579,7 +4063,7 @@ app.post("/api/shifts/bulk", auth(["ADMIN"]), (req, res) => {
     if (!emp) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
     let created = 0;
     let skipped = 0;
-    let nextIdVal = nextId(db.shifts); // ✅ FIX #8
+    let nextIdVal = nextId(db.shifts);
     dates.forEach(date => {
       shifts.forEach(shift => {
         const exists = db.shifts.find(s => s.employee_id == employee_id && s.date === date && s.shift === shift);
@@ -3603,7 +4087,7 @@ app.post("/api/shifts", auth(["ADMIN"]), (req, res) => {
     if (!emp) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
     const existing = db.shifts.find(s => s.employee_id == employee_id && s.date === date && s.shift === shift);
     if (existing) return res.status(400).json({ message: "Nhân viên đã được phân ca này rồi" });
-    const id = nextId(db.shifts); // ✅ FIX #8
+    const id = nextId(db.shifts);
     const record = { id, employee_id: +employee_id, employee_name: emp.name, date, shift, note: note || "", status: "approved", source: "admin", created_by: req.user.name, created_at: new Date().toISOString() };
     db.shifts.push(record);
     saveDB(db);
@@ -3697,7 +4181,7 @@ app.post("/api/tasks", auth(["ADMIN"]), (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy nhân viên" });
     }
 
-    const id = nextId(db.tasks); // ✅ FIX #8
+    const id = nextId(db.tasks);
     const task = {
       id,
       title: String(title).trim(),
@@ -3769,7 +4253,6 @@ app.patch("/api/tasks/:id/complete", auth(), (req, res) => {
 });
 
 // ============ ADMIN BACKFILL TRANSLATIONS ============
-// 🔧 FIX #10 (v14): dùng autoTranslateMenuItem/Category (đã await)
 app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -3804,7 +4287,6 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) =
       if (need) catTodo.push(c);
     }
 
-    // ✅ FIX #10 (v14): await từng món/danh mục
     for (const m of menuTodo) {
       try {
         await autoTranslateMenuItem(db, m, null);
@@ -3843,7 +4325,7 @@ const healthHandler = (_, res) => res.json({
   version: BUILD_VERSION,
   timezone: VN_TIMEZONE,
   autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
-  chat: { ttlHours: 24 },
+  chat: { ttlHours: 24, admin: true },
   oauth: {
     google: GOOGLE_OAUTH_ENABLED,
     facebook: FACEBOOK_OAUTH_ENABLED,
@@ -3882,6 +4364,8 @@ app.post("/api/backup/reset", auth(["ADMIN"]), (req, res) => {
     db.price_history = [];
     db.reviews = [];
     db.points_history = [];
+    db.chat_transfer_requests = [];
+    db.chat_conversations = {};
     (db.users || []).forEach(u => { u.points = 0; });
     (db.menu_items || []).forEach(m => {
       if (m.stock !== undefined) m.stock = Math.max(m.stock, 30);
@@ -3903,6 +4387,7 @@ if (!IS_VERCEL) {
     app.listen(PORT, () => {
       console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
       console.log("   💬 Chat TTL: 24h");
+      console.log("   🛡️  Chat Admin: enabled");
     });
   });
 } else {

@@ -359,12 +359,59 @@ export const api = {
     readAll: ()   => req("/notifications/read-all",   { method: "POST" }),
   },
 
-  chat: {
+    chat: {
     myMessages:    ()       => req("/chat/me"),
     conversations: ()       => req("/chat/conversations"),
     messagesWith:  (userId) => req(`/chat/with/${userId}`),
     send:          (data)   => req("/chat/send", { method: "POST", body: JSON.stringify(data) }),
     getContext:    (userId) => req(`/chat/context/${userId}`),
+
+    // ============================================================
+    // ADMIN — Quản lý & giám sát chat
+    // ============================================================
+    admin: {
+      // Giám sát
+      conversations:  (params = {}) => {
+        const q = new URLSearchParams(params).toString();
+        return req("/chat/admin/conversations" + (q ? `?${q}` : ""));
+      },
+      messagesWith:   (userId) => req(`/chat/admin/messages/${userId}`),
+
+      // Kiểm soát nhân viên
+      staffStatus:    ()       => req("/chat/admin/staff-status"),
+      toggleStaff:    (id, enabled) =>
+        req(`/chat/admin/staff/${id}/chat`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !!enabled }),
+        }),
+      toggleGlobal:   (enabled) =>
+        req("/chat/admin/global-chat", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !!enabled }),
+        }),
+
+      // Chuyển tiếp
+      transferRequests: (status = "pending") =>
+        req(`/chat/admin/transfer-requests?status=${encodeURIComponent(status)}`),
+      resolveTransfer: (id, status, note = "") =>
+        req(`/chat/admin/transfer-requests/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status, note }),
+        }),
+      // NV bấm nút "Chuyển Admin"
+      requestTransfer: (data) =>
+        req("/chat/transfer-request", {
+          method: "POST",
+          body: JSON.stringify(data || {}),
+        }),
+
+      // Tiếp quản / trả về
+      takeover: (userId) => req(`/chat/admin/takeover/${userId}`, { method: "POST" }),
+      release:  (userId) => req(`/chat/admin/release/${userId}`,  { method: "POST" }),
+
+      // Trạng thái chat của chính NV (để hiện banner)
+      myChatStatus: () => req("/chat/my-status"),
+    },
   },
 
   toppings: {
