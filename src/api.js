@@ -1,14 +1,13 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V6 - FINAL)
+// API.JS — HTTP client cho Backend Express (V8 - FINAL)
 // ============================================================
-// V6 (2026-10):
-//   - ✅ FIX LỖI 1+2+3: Dùng sessionStorage thuần
-//     → Multi-user: 2 tab = 2 user (sessionStorage riêng mỗi tab)
-//     → Bảo mật: copy link tab mới → về login (sessionStorage trống)
-//     → Mobile: chuyển app → giữ login (iOS/Android giữ session)
-//     → Mobile kill app → mất login (chấp nhận)
-//   - ✅ FIX iOS CORS: credentials "same-origin" thay vì "omit"
-//   - ✅ Thêm memoryToken fallback nếu storage bị chặn
+// V8 (2026-10):
+//   - ✅ FIX #21: Safari private mode — memoryToken fallback rõ ràng
+//     + sessionStorage try/catch
+//   - ✅ Thêm api.orders.call — log voice call (backend đã có route)
+//   - ✅ Thêm api.health — test nhanh server
+//   - ✅ Thêm api.users.listByRole — helper filter
+//   - Giữ V7: setPoints, unlinkMssv, schoolInfo, school.*
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -17,40 +16,52 @@ const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
 // ============================================================
-// TOKEN — sessionStorage thuần (mỗi tab riêng)
+// TOKEN — sessionStorage + memoryToken fallback (Safari private mode)
 // ============================================================
-// sessionStorage: mỗi tab có 1 vùng riêng biệt
-//   - Tab A login admin → tab A có sessionStorage.token = adminToken
-//   - Tab B login customer → tab B có sessionStorage.token = customerToken
-//   - Tab A và B KHÔNG ảnh hưởng nhau
-//   - Mở tab C mới (copy link) → sessionStorage trống → về login
-//   - Mobile chuyển app → sessionStorage giữ nguyên (trừ khi kill app)
-// ============================================================
-
-// Fallback nếu storage bị chặn (Safari Private mode cũ, chế độ nghiêm ngặt)
 let memoryToken = null;
 
-export function getToken() {
+/** Kiểm tra sessionStorage có dùng được không (Safari private mode chặn) */
+let sessionStorageAvailable = (() => {
   try {
-    const t = sessionStorage.getItem("token");
-    if (t) return t;
-    return memoryToken;
+    const k = "__test__";
+    sessionStorage.setItem(k, "1");
+    sessionStorage.removeItem(k);
+    return true;
   } catch {
-    return memoryToken;
+    return false;
   }
+})();
+
+export function getToken() {
+  if (sessionStorageAvailable) {
+    try {
+      const t = sessionStorage.getItem("token");
+      if (t) return t;
+    } catch {
+      sessionStorageAvailable = false;
+    }
+  }
+  return memoryToken;
 }
 
 export function setToken(t) {
   memoryToken = t || null;
-  try {
-    if (t) {
-      sessionStorage.setItem("token", t);
-    } else {
-      sessionStorage.removeItem("token");
+  if (sessionStorageAvailable) {
+    try {
+      if (t) {
+        sessionStorage.setItem("token", t);
+      } else {
+        sessionStorage.removeItem("token");
+      }
+    } catch (e) {
+      console.warn("[api] sessionStorage không dùng được, chuyển sang memoryToken:", e.message);
+      sessionStorageAvailable = false;
     }
-  } catch (e) {
-    console.warn("Không thể lưu token vào sessionStorage:", e.message);
   }
+}
+
+export function clearToken() {
+  setToken(null);
 }
 
 // ============================================================
@@ -75,7 +86,6 @@ async function req(path, options = {}) {
       ...options,
       headers,
       cache: "no-store",
-      // ✅ FIX iOS CORS: "same-origin" thay vì "omit"
       credentials: "same-origin",
       signal: controller.signal,
     });
@@ -99,8 +109,9 @@ async function req(path, options = {}) {
     clearTimeout(timeoutId);
   }
 
+  // ✅ FIX #21: 401 → xóa token + dispatch event (chỉ khi CÓ token)
   if (res.status === 401 && token) {
-    setToken(null);
+    clearToken();
     try {
       window.dispatchEvent(new CustomEvent("auth-expired"));
     } catch {}
@@ -138,6 +149,9 @@ async function req(path, options = {}) {
 // ============================================================
 export const api = {
   _base: BASE,
+
+  // ✅ MỚI: Health check — test nhanh server
+  health: () => req(""),
 
   // AUTH
   login: (email, password) =>
@@ -203,14 +217,48 @@ export const api = {
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received:  (id)         => req(`/orders/${id}/received`, { method: "POST" }),
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
+    // ✅ MỚI: log voice call
+    call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
 
   users: {
     list:   (role)     => req(`/users${role ? `?role=${role}` : ""}`),
+    // ✅ MỚI: helper
+    listByRole: (role) => req(`/users?role=${encodeURIComponent(role)}`),
     create: (data)     => req("/users",       { method: "POST",   body: JSON.stringify(data) }),
     update: (id, data) => req(`/users/${id}`, { method: "PUT",    body: JSON.stringify(data) }),
     remove: (id)       => req(`/users/${id}`, { method: "DELETE" }),
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
+
+    setPoints: (id, data) =>
+      req(`/users/${id}/points`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+
+    schoolInfo: (id, data) =>
+      req(`/users/${id}/school-info`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+
+    unlinkMssv: (id) =>
+      req(`/users/${id}/unlink-mssv`, { method: "DELETE" }),
+  },
+
+  school: {
+    parseStudent: (code) =>
+      req(`/school/parse-student/${encodeURIComponent(code)}`),
+    parseTeacher: (code) =>
+      req(`/school/parse-teacher/${encodeURIComponent(code)}`),
+    majorsMap: () => req("/school/majors-map"),
+    updateMajorsMap: (map) =>
+      req("/school/majors-map", {
+        method: "PUT",
+        body: JSON.stringify({ map }),
+      }),
+    resetMajorsMap: () =>
+      req("/school/majors-map/reset", { method: "POST" }),
   },
 
   inventory: {
@@ -311,12 +359,59 @@ export const api = {
     readAll: ()   => req("/notifications/read-all",   { method: "POST" }),
   },
 
-  chat: {
+    chat: {
     myMessages:    ()       => req("/chat/me"),
     conversations: ()       => req("/chat/conversations"),
     messagesWith:  (userId) => req(`/chat/with/${userId}`),
     send:          (data)   => req("/chat/send", { method: "POST", body: JSON.stringify(data) }),
     getContext:    (userId) => req(`/chat/context/${userId}`),
+
+    // ============================================================
+    // ADMIN — Quản lý & giám sát chat
+    // ============================================================
+    admin: {
+      // Giám sát
+      conversations:  (params = {}) => {
+        const q = new URLSearchParams(params).toString();
+        return req("/chat/admin/conversations" + (q ? `?${q}` : ""));
+      },
+      messagesWith:   (userId) => req(`/chat/admin/messages/${userId}`),
+
+      // Kiểm soát nhân viên
+      staffStatus:    ()       => req("/chat/admin/staff-status"),
+      toggleStaff:    (id, enabled) =>
+        req(`/chat/admin/staff/${id}/chat`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !!enabled }),
+        }),
+      toggleGlobal:   (enabled) =>
+        req("/chat/admin/global-chat", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !!enabled }),
+        }),
+
+      // Chuyển tiếp
+      transferRequests: (status = "pending") =>
+        req(`/chat/admin/transfer-requests?status=${encodeURIComponent(status)}`),
+      resolveTransfer: (id, status, note = "") =>
+        req(`/chat/admin/transfer-requests/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status, note }),
+        }),
+      // NV bấm nút "Chuyển Admin"
+      requestTransfer: (data) =>
+        req("/chat/transfer-request", {
+          method: "POST",
+          body: JSON.stringify(data || {}),
+        }),
+
+      // Tiếp quản / trả về
+      takeover: (userId) => req(`/chat/admin/takeover/${userId}`, { method: "POST" }),
+      release:  (userId) => req(`/chat/admin/release/${userId}`,  { method: "POST" }),
+
+      // Trạng thái chat của chính NV (để hiện banner)
+      myChatStatus: () => req("/chat/my-status"),
+    },
   },
 
   toppings: {

@@ -4535,7 +4535,261 @@ html.dark-mode .toast-card__desc {
   .toast-card__title { font-size: 14px; }
   .toast-card__desc { font-size: 12.5px; }
 }
+/* ============================================================
+   STUDENTCODEINPUT — Ô nhập MSSV (fix thiếu style)
+   ============================================================ */
 
+.sc-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.sc-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 2px;
+}
+
+.sc-required {
+  color: #ef4444;
+  font-weight: 800;
+}
+
+.sc-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.sc-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  transition: all 0.2s;
+}
+
+.sc-input-wrap:focus-within {
+  border-color: #1f2937;
+  box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.08);
+}
+
+.sc-input-wrap--error {
+  border-color: #ef4444;
+}
+
+.sc-input-wrap--error:focus-within {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.sc-input-wrap--success {
+  border-color: #16a34a;
+}
+
+.sc-input-wrap--locked {
+  background: #f8fafc;
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+.sc-input-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.sc-input-wrap:focus-within .sc-input-icon {
+  color: #1f2937;
+}
+
+.sc-input-wrap input {
+  flex: 1;
+  min-width: 0;
+  border: 0 !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  color: #172033;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.sc-input-wrap input::placeholder {
+  color: #cbd5e1;
+  letter-spacing: 0;
+}
+
+.sc-input-wrap input:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+}
+
+.sc-clear-btn {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.sc-clear-btn:hover {
+  background: #e2e8f0;
+  color: #172033;
+}
+
+.sc-icon-success {
+  color: #16a34a;
+  flex-shrink: 0;
+}
+
+.sc-spin {
+  color: #1f2937;
+  flex-shrink: 0;
+  animation: spin 1s linear infinite;
+}
+
+.sc-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 4px;
+}
+
+.sc-hint--error {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.sc-hint--warning {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.sc-hint--info {
+  color: #0284c7;
+  font-weight: 500;
+}
+
+.sc-preview {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.sc-preview-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.sc-preview-label {
+  color: #64748b;
+  font-weight: 500;
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+.sc-preview-value {
+  color: #166534;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.sc-preview-value--muted {
+  color: #64748b;
+  font-weight: 500;
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+}
+
+/* Dark mode */
+html.dark-mode .sc-label {
+  color: #cbd5e1;
+}
+
+html.dark-mode .sc-input-wrap {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+html.dark-mode .sc-input-wrap:focus-within {
+  border-color: #f1f5f9;
+  box-shadow: 0 0 0 3px rgba(241, 245, 249, 0.1);
+}
+
+html.dark-mode .sc-input-wrap input {
+  color: #f1f5f9;
+}
+
+html.dark-mode .sc-input-wrap input::placeholder {
+  color: #64748b;
+}
+
+html.dark-mode .sc-input-wrap--locked {
+  background: #0f172a;
+}
+
+html.dark-mode .sc-clear-btn {
+  background: #334155;
+  color: #cbd5e1;
+}
+
+html.dark-mode .sc-clear-btn:hover {
+  background: #475569;
+  color: #f1f5f9;
+}
+
+html.dark-mode .sc-preview {
+  background: rgba(22, 163, 74, 0.12);
+  border-color: rgba(22, 163, 74, 0.35);
+}
+
+html.dark-mode .sc-preview-label {
+  color: #94a3b8;
+}
+
+html.dark-mode .sc-preview-value {
+  color: #4ade80;
+}
 /* ============================================================
    KẾT THÚC FILE
    ============================================================ */

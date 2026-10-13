@@ -1,12 +1,10 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V7 - FINAL)
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V9 - FINAL)
 // ============================================================
-// V7 (2026-10):
-//   - ✅ XOÁ menu "Chuẩn bị đơn" khỏi EMPLOYEE
-//     (đã gộp vào tab "Bếp Nấu" của trang Bàn làm việc)
-//   - Giữ nguyên: V6 (LogoVWACompact cho cả 2 role),
-//     L36/L37 (logo 40px), #38 (badge key sync),
-//     type="button", i18n
+// V9 (2026-10):
+//   - ✅ Thêm menu "Chat & Hỗ trợ" cho ADMIN (/owner/chat)
+//   - ✅ Badge số yêu cầu chuyển tiếp chat đang chờ
+//   - Giữ V8: label dùng key có trong en.json
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -70,11 +68,13 @@ const MENU_CONFIG = {
           ["inventory",    "Kho hàng",            "/owner/inventory"],
           ["vouchers",     "Voucher",             "/owner/vouchers"],
           ["finance",      "Tài chính",           "/owner/finance"],
-          ["wallet_admin", "Ví Canteen",          "/owner/wallet"],
+          ["wallet_admin", "Ví",                  "/owner/wallet"],
           ["reports",      "Báo cáo",             "/owner/reports"],
           ["employees",    "Nhân viên",           "/owner/employees"],
           ["attendance",   "Ca làm & chấm công",  "/owner/shifts"],
           ["customers",    "Khách hàng",          "/owner/customers"],
+          // ✅ V9: Chat & Hỗ trợ
+          ["chat",         "Chat & Hỗ trợ",       "/owner/chat", { badge: "chat" }],
           ["permissions",  "Phân quyền",          "/owner/permissions"],
           ["backup",       "Backup dữ liệu",      "/owner/backup"],
         ],
@@ -88,8 +88,7 @@ const MENU_CONFIG = {
         items: [
           ["dashboard",   "Tổng quan ca làm việc", "/employee"],
           ["kds_kanban",  "Bàn làm việc (Kanban)", "/employee/orders", { badge: "kds_kanban" }],
-          // ❌ V7: XOÁ "Chuẩn bị đơn" — đã gộp vào tab "Bếp Nấu"
-          ["kds_menu",    "Thực đơn & Kho (86)",   "/employee/menu"],
+          ["kds_menu",    "Thực đơn & Kho",        "/employee/menu"],
           ["kds_history", "Ca làm việc",           "/employee/shifts"],
           ["kds_alerts",  "Thông báo khẩn",        "/employee/chat"],
         ],
@@ -101,13 +100,13 @@ const MENU_CONFIG = {
       {
         label: null,
         items: [
-          ["dashboard",  "Trang chủ",     "/customer"],
-          ["menu",       "Thực đơn",      "/customer/menu"],
-          ["orders",     "Đơn hàng",      "/customer/orders"],
-          ["wallet",     "Ví Canteen",    "/customer/wallet"],
-          ["promotions", "Khuyến mãi",    "/customer/promotions"],
-          ["chat",       "Chat hỗ trợ",   "/customer/chat"],
-          ["profile",    "Hồ sơ",         "/customer/profile"],
+          ["dashboard",  "Trang chủ",             "/customer"],
+          ["menu",       "Thực đơn",              "/customer/menu"],
+          ["orders",     "Đơn hàng",              "/customer/orders"],
+          ["wallet",     "Ví",                    "/customer/wallet"],
+          ["promotions", "Khuyến mãi & Ưu đãi",   "/customer/promotions"],
+          ["chat",       "Chat hỗ trợ",           "/customer/chat"],
+          ["profile",    "Hồ sơ",                 "/customer/profile"],
         ],
       },
     ],
@@ -328,6 +327,8 @@ export default function Sidebar({ role, onLogout, user }) {
   const [voucherCount, setVoucherCount] = useState(0);
   const [kdsCount, setKdsCount] = useState(0);
   const [prepCount, setPrepCount] = useState(0);
+  // ✅ V9: badge số yêu cầu chuyển tiếp chat
+  const [chatTransferCount, setChatTransferCount] = useState(0);
 
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
@@ -430,12 +431,19 @@ export default function Sidebar({ role, onLogout, user }) {
         const kanbanCount = list.filter(
           (o) => o.status === "Chờ xác nhận"
         ).length;
-        const prepCount = list.filter(
+        const prepCountValue = list.filter(
           (o) => o.status === "Đang chuẩn bị"
         ).length;
 
         setKdsCount(kanbanCount);
-        setPrepCount(prepCount);
+        setPrepCount(prepCountValue);
+      } else if (role === "ADMIN") {
+        // ✅ V9: đếm yêu cầu chuyển tiếp chat đang chờ
+        const pending = await api.chat.admin
+          .transferRequests("pending")
+          .catch(() => []);
+        if (myReqId !== fetchReqIdRef.current) return;
+        setChatTransferCount(Array.isArray(pending) ? pending.length : 0);
       }
     } catch {
       if (myReqId === fetchReqIdRef.current) {
@@ -443,12 +451,18 @@ export default function Sidebar({ role, onLogout, user }) {
         setVoucherCount(0);
         setKdsCount(0);
         setPrepCount(0);
+        setChatTransferCount(0);
       }
     }
   }, [role]);
 
   useEffect(() => {
-    if (role !== "CUSTOMER" && role !== "EMPLOYEE") return;
+    if (
+      role !== "CUSTOMER" &&
+      role !== "EMPLOYEE" &&
+      role !== "ADMIN"
+    )
+      return;
 
     fetchCounts();
     if (!tabVisible) return;
@@ -461,6 +475,8 @@ export default function Sidebar({ role, onLogout, user }) {
     window.addEventListener("points-seen", onRefresh);
     window.addEventListener("order-reviewed", onRefresh);
     window.addEventListener("orders-seen", onRefresh);
+    // ✅ V9: refresh badge khi resolve transfer
+    window.addEventListener("chat-transfer-updated", onRefresh);
 
     return () => {
       clearInterval(interval);
@@ -469,6 +485,7 @@ export default function Sidebar({ role, onLogout, user }) {
       window.removeEventListener("points-seen", onRefresh);
       window.removeEventListener("order-reviewed", onRefresh);
       window.removeEventListener("orders-seen", onRefresh);
+      window.removeEventListener("chat-transfer-updated", onRefresh);
     };
   }, [role, fetchCounts, tabVisible]);
 
@@ -496,9 +513,14 @@ export default function Sidebar({ role, onLogout, user }) {
         return prepCount;
       }
 
+      // ✅ V9: badge chat transfer cho ADMIN
+      if (key === "chat" && chatTransferCount > 0) {
+        return chatTransferCount;
+      }
+
       return 0;
     },
-    [orderPending, voucherCount, kdsCount, prepCount]
+    [orderPending, voucherCount, kdsCount, prepCount, chatTransferCount]
   );
 
   const closeSidebar = () => setOpen(false);
@@ -517,7 +539,6 @@ export default function Sidebar({ role, onLogout, user }) {
         className={"sidebar " + (open ? "mobile-open" : "")}
         aria-label={t("Điều hướng chính")}
       >
-        {/* ✅ V6: dùng LogoVWACompact cho CẢ 2 role */}
         <div className="brand">
           <LogoVWACompact size={40} />
 

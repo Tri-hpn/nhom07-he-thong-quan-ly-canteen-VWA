@@ -1,12 +1,13 @@
 // ============================================================
-// CUSTOMERPROFILE.JSX — Tài khoản & Cài đặt (V5 - FINAL + i18n)
+// CUSTOMERPROFILE.JSX — Hồ sơ cá nhân (V6 - FINAL + School)
 // ============================================================
-// V5 (2026-10):
-//   - 🔧 FIX #31: font-size KHÔNG dùng `html { font-size: calc(...) }`
-//                 inline vì conflict với CSS toàn cục.
-//                 → Dùng CSS variable --app-font-scale trên :root
-//                 và để CSS toàn cục tự apply.
-//   - Giữ nguyên logic i18n, localStorage, theme, modals
+// V6 (2026-10):
+//   - ✅ Layout mới: card chính full-width, form ẩn mặc định
+//   - ✅ Xoá header + nav Hình 4 (giữ code modal ẩn)
+//   - ✅ Card "Liên kết MSSV" cho user mới chưa có MSSV
+//   - ✅ Nút "Đồng bộ SSO" thu gọn (link text dưới avatar)
+//   - ✅ Giữ nguyên toàn bộ logic: state, effect, save, validate,
+//        changePassword, changeTheme, changeLanguage, handleAvatar
 // ============================================================
 
 import {
@@ -20,11 +21,12 @@ import {
   User, Mail, Phone, Save, Shield, Camera, Pencil, X, Check, KeyRound,
   Lock, Eye, EyeOff, Loader2, ChevronRight, BadgeCheck, Wallet, Bell,
   Palette, Globe, Sun, Moon, Monitor, Type, RefreshCw,
-  Trash2, Upload, CreditCard, HelpCircle, CheckCircle2,
+  Trash2, Upload, CreditCard, HelpCircle, CheckCircle2, GraduationCap,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
+import StudentCodeInput from "../../components/StudentCodeInput";
 
 // ============================================================
 // CONSTANTS
@@ -134,7 +136,8 @@ function buildFormFromUser(u) {
     avatar: u?.avatar || "",
     faculty: u?.faculty || "",
     gender: u?.gender || "nam",
-    studentId: u?.studentId || "2151010088",
+    studentId: u?.student_code || "",
+    teacherCode: u?.teacher_code || "",
   };
 }
 
@@ -181,14 +184,7 @@ function writeLocalJson(key, value) {
 // SUB: ProfileModal
 // ============================================================
 
-function ProfileModal({
-  open,
-  onClose,
-  title,
-  icon,
-  children,
-  maxWidth = 720,
-}) {
+function ProfileModal({ open, onClose, title, icon, children, maxWidth = 720 }) {
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -251,10 +247,17 @@ export default function CustomerProfile({ user, setUser }) {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
+  // Modal states (giữ nguyên — mở qua Settings hoặc code khác)
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showLangModal, setShowLangModal] = useState(false);
   const [showPwdModal, setShowPwdModal] = useState(false);
   const [showNotiModal, setShowNotiModal] = useState(false);
+
+  // MSSV linking state (cho user mới)
+  const [linkMssv, setLinkMssv] = useState("");
+  const [linkParsed, setLinkParsed] = useState(null);
+  const [linkError, setLinkError] = useState("");
+  const [linkLoading, setLinkLoading] = useState(false);
 
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined") return "light";
@@ -277,10 +280,7 @@ export default function CustomerProfile({ user, setUser }) {
   const [fontSize, setFontSize] = useState(() => {
     if (typeof window === "undefined") return 1;
     try {
-      const saved = parseInt(
-        localStorage.getItem(LS_KEYS.FONT_SIZE) || "1",
-        10
-      );
+      const saved = parseInt(localStorage.getItem(LS_KEYS.FONT_SIZE) || "1", 10);
       return isNaN(saved) ? 1 : Math.max(1, Math.min(3, saved));
     } catch {
       return 1;
@@ -319,9 +319,9 @@ export default function CustomerProfile({ user, setUser }) {
 
   useEffect(() => {
     if (!editing) setForm(buildFormFromUser(user));
-  }, [user]);
+  }, [user, editing]);
 
-  // 🔧 FIX #31: Áp theme + listen prefers-color-scheme
+  // Theme
   useEffect(() => {
     if (typeof document === "undefined") return;
 
@@ -357,14 +357,11 @@ export default function CustomerProfile({ user, setUser }) {
     }
   }, [theme]);
 
-  // 🔧 FIX #31: Apply font-size CHỈ qua CSS variable --app-font-scale.
-  // CSS toàn cục (styles.css) sẽ dùng: html { font-size: calc(16px * var(--app-font-scale, 1)); }
-  // Nếu CSS không có rule đó → ta fallback nhẹ bằng cách set biến trên :root.
+  // Font size
   useEffect(() => {
     if (typeof document === "undefined") return;
     try {
       localStorage.setItem(LS_KEYS.FONT_SIZE, String(fontSize));
-      // Scale: 1 → 1.0, 2 → 1.12, 3 → 1.24
       const scale = 1 + (fontSize - 1) * 0.12;
       document.documentElement.style.setProperty(
         "--app-font-scale",
@@ -456,11 +453,6 @@ export default function CustomerProfile({ user, setUser }) {
   const validate = () => {
     const errs = {};
     if (!form.name.trim()) errs.name = t("Vui lòng nhập họ tên");
-    if (!form.email.trim()) {
-      errs.email = t("Vui lòng nhập email");
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      errs.email = t("Email không hợp lệ");
-    }
     if (form.phone && !/^[0-9]{10,11}$/.test(form.phone.trim())) {
       errs.phone = t("SĐT phải 10-11 số");
     }
@@ -477,15 +469,16 @@ export default function CustomerProfile({ user, setUser }) {
 
     setLoading(true);
     try {
-      const updated = await api.updateProfile({
+      const payload = {
         name: form.name.trim(),
-        email: form.email.trim().toLowerCase(),
         phone: form.phone.trim(),
         address: form.address.trim(),
         avatar: form.avatar,
         faculty: form.faculty,
         gender: form.gender,
-      });
+      };
+
+      const updated = await api.updateProfile(payload);
 
       if (!mountedRef.current) return;
 
@@ -493,7 +486,6 @@ export default function CustomerProfile({ user, setUser }) {
 
       try {
         window.dispatchEvent(new CustomEvent("refresh-user"));
-        localStorage.setItem("canteen_user", JSON.stringify(updated));
       } catch {}
 
       toast(t("Đã cập nhật thông tin"), "success");
@@ -504,6 +496,63 @@ export default function CustomerProfile({ user, setUser }) {
       }
     } finally {
       if (mountedRef.current) setLoading(false);
+    }
+  };
+
+  // ============================================================
+  // LIÊN KẾT MSSV (cho user mới)
+  // ============================================================
+  const handleLinkMssv = async () => {
+    if (linkLoading) return;
+
+    const code = linkMssv.trim();
+    if (!code) {
+      setLinkError(t("Vui lòng nhập MSSV"));
+      return;
+    }
+    if (!/^\d{10}$/.test(code)) {
+      setLinkError(t("MSSV phải là 10 chữ số"));
+      return;
+    }
+    if (linkError) setLinkError("");
+
+    setLinkLoading(true);
+    try {
+      const updated = await api.updateProfile({ student_code: code });
+      if (!mountedRef.current) return;
+
+      if (setUser) setUser((u) => ({ ...u, ...updated }));
+      try {
+        window.dispatchEvent(new CustomEvent("refresh-user"));
+      } catch {}
+
+      toast(
+        updated.major_name
+          ? t("Đã liên kết MSSV — {major}").replace(
+              "{major}",
+              updated.major_name
+            )
+          : t("Đã liên kết MSSV thành công"),
+        "success"
+      );
+
+      setLinkMssv("");
+      setLinkParsed(null);
+      setLinkError("");
+    } catch (err) {
+      const msg = err.message || t("Không liên kết được MSSV");
+      if (
+        err.body?.code === "MSSV_ALREADY_LINKED" ||
+        msg.includes("MSSV này đã được liên kết")
+      ) {
+        setLinkError(
+          t("MSSV này đã liên kết với tài khoản khác. Vui lòng liên hệ admin.")
+        );
+      } else {
+        setLinkError(msg);
+      }
+    } finally {
+      if (mountedRef.current) setLinkLoading(false);
     }
   };
 
@@ -584,493 +633,474 @@ export default function CustomerProfile({ user, setUser }) {
     }
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
+  const hasMssv = !!user?.student_code;
+  const isMssvLocked = hasMssv;
+
   return (
     <div className="customer-profile-v2">
-      <section className="profile-header">
-        <div className="profile-header__row">
-          <div className="profile-header__left">
-            <div className="profile-header__eyebrow">
-              <span className="profile-header__eyebrow-dot" />
-              {t("Cổng tự phục vụ học sinh - sinh viên")}
+      {/* ====================================================== */}
+      {/* CARD CHÍNH (full-width)                                */}
+      {/* ====================================================== */}
+      <section className="profile-main-card">
+        <div className="profile-main-card__top">
+          <div className="profile-main-card__avatar-wrap">
+            <div
+              className="profile-main-card__avatar"
+              style={avatarStyle}
+            >
+              {!avatarSrc && initials}
             </div>
-            <h1 className="profile-title">
-              {t("Tài khoản & Thiết lập hệ thống")}
-            </h1>
-            <p className="profile-subtitle">
-              {t("Quản lý thông tin định danh sinh viên SSO, tùy biến giao diện sáng/tối, ngôn ngữ hiển thị và bảo mật tài khoản Canteen VWA.")}
-            </p>
+            {avatarSrc && (
+              <span className="profile-main-card__avatar-check">
+                <Check size={13} />
+              </span>
+            )}
           </div>
 
-          <div className="profile-sync-card">
-            <div className="profile-sync-card__icon">
-              <RefreshCw size={20} />
+          <div className="profile-main-card__info">
+            <div className="profile-main-card__name">
+              <b>{user?.name || t("Người dùng")}</b>
+              <BadgeCheck size={18} className="profile-main-card__verified" />
             </div>
-            <div className="profile-sync-card__info">
-              <span>{t("ĐỒNG BỘ SSO VWA")}</span>
-              <b>{t("Cập nhật 10 phút trước")}</b>
+            <p className="profile-main-card__email">
+              {user?.email || ""}
+            </p>
+
+            {/* Badge khoa/ngành */}
+            <div className="profile-main-card__tags">
+              {hasMssv && user?.major_name ? (
+                <>
+                  <span className="profile-main-card__tag profile-main-card__tag--major">
+                    🎓 {user.major_name}
+                  </span>
+                  {user?.faculty && (
+                    <span className="profile-main-card__tag">
+                      🏫 {user.faculty}
+                    </span>
+                  )}
+                  {user?.year_in && (
+                    <span className="profile-main-card__tag profile-main-card__tag--year">
+                      📅 {user.year_in}
+                    </span>
+                  )}
+                </>
+              ) : user?.faculty ? (
+                <span className="profile-main-card__tag">
+                  🏫 {user.faculty}
+                </span>
+              ) : null}
+            </div>
+
+            {/* SSO sync line (nhỏ, dưới avatar) */}
+            <div className="profile-main-card__sync">
+              <RefreshCw size={11} />
+              <span>{t("Đồng bộ SSO VWA · Cập nhật 10 phút trước")}</span>
             </div>
           </div>
         </div>
-      </section>
 
-      <div className="profile-layout">
-        <aside className="profile-sidebar">
-          <div className="profile-user-card profile-user-card--compact">
-            <div className="profile-user-card__info">
-              <div className="profile-user-card__name-row">
-                <b>{user?.name || t("Người dùng")}</b>
-                <BadgeCheck
-                  size={16}
-                  className="profile-user-card__verified"
-                />
-              </div>
-              <p className="profile-user-card__email">
-                {user?.email || "sinhvien@vwa.vn"}
-              </p>
-              <span className="profile-user-card__faculty">
-                {t("Khoa CNTT")} • {t("Khóa K21")}
-              </span>
-            </div>
-
-            <div className="profile-user-card__wallet">
-              <span>
-                <Wallet size={14} />
-                {t("Số dư ví ăn:")}
-              </span>
-              <b>185.000 ₫</b>
-            </div>
+        {/* Wallet */}
+        <div className="profile-main-card__wallet">
+          <div className="profile-main-card__wallet-left">
+            <Wallet size={18} />
+            <span>{t("Số dư ví ăn:")}</span>
           </div>
+          <b>185.000 ₫</b>
+        </div>
 
-          <nav className="profile-nav">
+        {/* Actions */}
+        <div className="profile-main-card__actions">
+          {!editing ? (
             <button
               type="button"
-              className="profile-nav__item active"
-              onClick={() => {
-                const el = document.getElementById("section-profile");
-                if (el)
-                  el.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  });
-              }}
+              className="profile-btn profile-btn--primary profile-btn--lg"
+              onClick={startEdit}
             >
-              <div className="profile-nav__left">
-                <BadgeCheck size={18} />
-                <span>{t("Hồ sơ cá nhân")}</span>
-              </div>
-              <ChevronRight size={14} />
+              <Pencil size={16} />
+              {t("Chỉnh sửa hồ sơ")}
             </button>
-
-            <button
-              type="button"
-              className="profile-nav__item"
-              onClick={() => setShowThemeModal(true)}
-            >
-              <div className="profile-nav__left">
-                <Palette size={18} />
-                <span>{t("Giao diện & Trải nghiệm")}</span>
-              </div>
-              <span className="profile-nav__dot" />
-            </button>
-
-            <button
-              type="button"
-              className="profile-nav__item"
-              onClick={() => setShowLangModal(true)}
-            >
-              <div className="profile-nav__left">
-                <Globe size={18} />
-                <span>{t("Ngôn ngữ & Khu vực")}</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className="profile-nav__item"
-              onClick={() => (window.location.href = "/customer/wallet")}
-            >
-              <div className="profile-nav__left">
-                <CreditCard size={18} />
-                <span>{t("Ví VWA & Thẻ sinh viên")}</span>
-              </div>
-              <span className="profile-nav__badge">PIN</span>
-            </button>
-
-            <button
-              type="button"
-              className="profile-nav__item"
-              onClick={() => setShowNotiModal(true)}
-            >
-              <div className="profile-nav__left">
-                <Bell size={18} />
-                <span>{t("Thông báo & Giờ ca ăn")}</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className="profile-nav__item"
-              onClick={openPwdModal}
-            >
-              <div className="profile-nav__left">
-                <Shield size={18} />
-                <span>{t("Bảo mật 2 lớp & Mật khẩu")}</span>
-              </div>
-            </button>
-
-            <div className="profile-nav__sep" />
-
-            <button
-              type="button"
-              className="profile-nav__item profile-nav__item--muted"
-            >
-              <div className="profile-nav__left">
-                <HelpCircle size={16} />
-                <span>{t("Quy chế Căn tin VWA & Trợ giúp")}</span>
-              </div>
-            </button>
-          </nav>
-
-          <div className="profile-kitchen-status">
-            <div className="profile-kitchen-status__head">
-              <b>{t("Trạng thái bếp Trưa hôm nay")}</b>
-              <span className="profile-kitchen-status__live">
-                <span className="profile-kitchen-status__dot" />
-                {t("Đang mở")}
-              </span>
-            </div>
-            <p>
-              {t("Ca ăn trưa kết thúc lúc 14:00. Bạn nên đặt món trước 15 phút để lấy số nhanh.")}
-            </p>
-          </div>
-        </aside>
-
-        <main className="profile-content">
-          <section className="profile-section" id="section-profile">
-            <div className="profile-section__head">
-              <div>
-                <div className="profile-section__title-row">
-                  <User size={22} />
-                  <h2>{t("Hồ sơ cá nhân & Nhận diện học đường")}</h2>
-                </div>
-                <p className="profile-section__sub">
-                  {t("Dữ liệu định danh được kết nối bảo mật trực tiếp từ Cổng thông tin đào tạo Học viện Phụ nữ Việt Nam.")}
-                </p>
-              </div>
-              <div className="profile-section__head-actions">
-                <span className="profile-section__badge">
-                  {t("SSO Đồng bộ")}
-                </span>
-
-                {!editing ? (
-                  <button
-                    type="button"
-                    className="profile-btn profile-btn--primary"
-                    onClick={startEdit}
-                  >
-                    <Pencil size={14} />
-                    {t("Chỉnh sửa")}
-                  </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="profile-btn profile-btn--ghost profile-btn--lg"
+                onClick={cancelEdit}
+                disabled={loading}
+              >
+                <X size={16} />
+                {t("Huỷ")}
+              </button>
+              <button
+                type="button"
+                className="profile-btn profile-btn--primary profile-btn--lg"
+                onClick={save}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 size={16} className="profile-spin" />
+                    {t("Đang lưu...")}
+                  </>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className="profile-btn profile-btn--ghost"
-                      onClick={cancelEdit}
-                      disabled={loading}
-                    >
-                      <X size={14} />
-                      {t("Hủy")}
-                    </button>
-                    <button
-                      type="button"
-                      className="profile-btn profile-btn--primary"
-                      onClick={save}
-                      disabled={loading}
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 size={14} className="profile-spin" />
-                          {t("Đang lưu...")}
-                        </>
-                      ) : (
-                        <>
-                          <Save size={14} />
-                          {t("Lưu thay đổi")}
-                        </>
-                      )}
-                    </button>
+                    <Save size={16} />
+                    {t("Lưu thay đổi")}
                   </>
                 )}
-              </div>
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* ====================================================== */}
+      {/* CHẾ ĐỘ XEM — thông tin chi tiết                        */}
+      {/* ====================================================== */}
+      {!editing && (
+        <section className="profile-info-card">
+          <h3 className="profile-info-card__title">
+            <User size={18} /> {t("Thông tin chi tiết")}
+          </h3>
+
+          <div className="profile-info-grid">
+            <InfoRow
+              icon={<BadgeCheck size={16} />}
+              label={t("Mã số sinh viên")}
+              value={user?.student_code || t("Chưa liên kết")}
+              mono
+              locked={isMssvLocked}
+            />
+            <InfoRow
+              icon={<GraduationCap size={16} />}
+              label={t("Ngành học")}
+              value={user?.major_name || "—"}
+            />
+            <InfoRow
+              icon={<User size={16} />}
+              label={t("Khoa")}
+              value={user?.faculty || "—"}
+            />
+            <InfoRow
+              icon={<Phone size={16} />}
+              label={t("Số điện thoại")}
+              value={user?.phone || t("Chưa cập nhật")}
+            />
+            <InfoRow
+              icon={<Mail size={16} />}
+              label={t("Email")}
+              value={user?.email || "—"}
+            />
+            <InfoRow
+              icon={<Type size={16} />}
+              label={t("Năm nhập học")}
+              value={user?.year_in ? String(user.year_in) : "—"}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* ====================================================== */}
+      {/* CARD LIÊN KẾT MSSV (khi user mới chưa có)              */}
+      {/* ====================================================== */}
+      {!editing && !hasMssv && (
+        <section className="profile-link-card">
+          <div className="profile-link-card__head">
+            <GraduationCap size={22} />
+            <div>
+              <h3>{t("Liên kết MSSV để xác thực sinh viên")}</h3>
+              <p>
+                {t(
+                  "Nhập MSSV (10 số) để tự động lấy ngành học, khoa và nhận ưu đãi dành riêng cho sinh viên VWA."
+                )}
+              </p>
             </div>
+          </div>
 
-            <div className="profile-avatar-block">
-              <div className="profile-avatar-block__img-wrap">
-                <div
-                  className="profile-avatar-block__img"
-                  style={avatarStyle}
-                >
-                  {!avatarSrc && initials}
-                </div>
-                {avatarSrc && (
-                  <span className="profile-avatar-block__check">
-                    <Check size={13} />
-                  </span>
-                )}
+          <div className="profile-link-card__body">
+            <StudentCodeInput
+              value={linkMssv}
+              onChange={(code, info) => {
+                setLinkMssv(code);
+                setLinkParsed(info);
+                if (linkError) setLinkError("");
+              }}
+              disabled={linkLoading}
+              required={false}
+              showPreview={true}
+              label={t("Mã số sinh viên (MSSV)")}
+            />
+
+            {linkError && (
+              <div className="profile-link-card__error">
+                <Lock size={14} /> {linkError}
               </div>
+            )}
 
-              <div className="profile-avatar-block__body">
-                <h4>{t("Ảnh đại diện thẻ Canteen")}</h4>
-                <p>
-                  {t("Ảnh đại diện giúp nhân viên căng tin đối chiếu khi nhận suất ăn đặt trước tại quầy thông minh. Định dạng cho phép: JPG, PNG tối đa 5MB.")}
-                </p>
-                <div className="profile-avatar-block__actions">
-                  <label className="profile-btn profile-btn--primary">
-                    <Upload size={16} />
-                    {t("Tải ảnh mới")}
-                    <input
-                      type="file"
-                      accept={ALLOWED_AVATAR_TYPES.join(",")}
-                      onChange={handleAvatar}
-                      style={{ display: "none" }}
-                    />
-                  </label>
-                  {avatarSrc && (
-                    <button
-                      type="button"
-                      className="profile-btn profile-btn--ghost"
-                      onClick={removeAvatar}
-                    >
-                      <Trash2 size={16} />
-                      {t("Gỡ ảnh")}
-                    </button>
-                  )}
-                </div>
+            <button
+              type="button"
+              className="profile-btn profile-btn--primary profile-btn--lg profile-link-card__btn"
+              onClick={handleLinkMssv}
+              disabled={linkLoading || !linkMssv.trim()}
+            >
+              {linkLoading ? (
+                <>
+                  <Loader2 size={16} className="profile-spin" />
+                  {t("Đang liên kết...")}
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={16} />
+                  {t("Liên kết ngay")}
+                </>
+              )}
+            </button>
+          </div>
+
+          <ul className="profile-link-card__benefits">
+            <li>
+              <Check size={14} /> {t("Nhận ưu đãi dành riêng cho sinh viên VWA")}
+            </li>
+            <li>
+              <Check size={14} /> {t("Hiển thị ngành/khoa trên hồ sơ cá nhân")}
+            </li>
+            <li>
+              <Check size={14} /> {t("Đồng bộ điểm tích lũy và voucher sinh viên")}
+            </li>
+          </ul>
+        </section>
+      )}
+
+      {/* ====================================================== */}
+      {/* CHẾ ĐỘ EDIT — form đầy đủ                              */}
+      {/* ====================================================== */}
+      {editing && (
+        <section className="profile-edit-card">
+          {/* Avatar block */}
+          <div className="profile-avatar-block">
+            <div className="profile-avatar-block__img-wrap">
+              <div
+                className="profile-avatar-block__img"
+                style={avatarStyle}
+              >
+                {!avatarSrc && initials}
               </div>
-            </div>
-
-            <div className="profile-form-grid">
-              <div className="profile-form-field">
-                <label className="profile-form-label">
-                  <span>{t("Họ và tên đầy đủ")}</span>
-                  <small className="profile-form-label--required">
-                    {t("Bắt buộc")}
-                  </small>
-                </label>
-                <div className="profile-form-input-wrap">
-                  <User size={18} className="profile-form-input-icon" />
-                  <input
-                    value={form.name}
-                    onChange={update("name")}
-                    disabled={!editing}
-                    className="profile-form-input"
-                  />
-                </div>
-                {errors.name && (
-                  <span className="profile-form-error">{errors.name}</span>
-                )}
-              </div>
-
-              <div className="profile-form-field">
-                <label className="profile-form-label">
-                  <span>{t("Mã số sinh viên (MSSV)")}</span>
-                  <small className="profile-form-label--locked">
-                    <Lock size={10} />
-                    {t("Khóa theo SSO")}
-                  </small>
-                </label>
-                <div className="profile-form-input-wrap profile-form-input-wrap--locked">
-                  <BadgeCheck
-                    size={18}
-                    className="profile-form-input-icon"
-                  />
-                  <input
-                    value={form.studentId}
-                    readOnly
-                    className="profile-form-input profile-form-input--mono"
-                  />
-                </div>
-              </div>
-
-              <div className="profile-form-field">
-                <label className="profile-form-label">
-                  <span>{t("Khoa / Ngành học")}</span>
-                </label>
-                <div className="profile-form-input-wrap">
-                  <span className="profile-form-input-icon">🎓</span>
-                  <select
-                    value={form.faculty}
-                    onChange={update("faculty")}
-                    disabled={!editing}
-                    className="profile-form-input profile-form-input--select"
-                  >
-                    <option value="">
-                      {t("Công nghệ Thông tin & Truyền thông K21")}
-                    </option>
-                    <option value="business">
-                      {t("Quản trị Kinh doanh & TMĐT K21")}
-                    </option>
-                    <option value="social">
-                      {t("Công tác Xã hội & PT Cộng đồng K21")}
-                    </option>
-                    <option value="law">
-                      {t("Luật Kinh tế & Dân sự K21")}
-                    </option>
-                    <option value="psychology">
-                      {t("Tâm lý học & Giới tính K21")}
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="profile-form-field">
-                <label className="profile-form-label">
-                  <span>{t("Số điện thoại nhận thông báo món")}</span>
-                  <small className="profile-form-label--verified">
-                    ✓ {t("Đã xác thực OTP")}
-                  </small>
-                </label>
-                <div className="profile-form-input-wrap">
-                  <Phone size={18} className="profile-form-input-icon" />
-                  <input
-                    value={form.phone}
-                    onChange={update("phone")}
-                    disabled={!editing}
-                    placeholder="0988 123 456"
-                    className="profile-form-input"
-                  />
-                </div>
-                {errors.phone && (
-                  <span className="profile-form-error">{errors.phone}</span>
-                )}
-              </div>
-
-              <div className="profile-form-field">
-                <label className="profile-form-label">
-                  <span>{t("Email học viện (@vwa.edu.vn)")}</span>
-                  <small className="profile-form-label--verified">
-                    {t("Đã xác minh")}
-                  </small>
-                </label>
-                <div className="profile-form-input-wrap profile-form-input-wrap--locked">
-                  <Mail size={18} className="profile-form-input-icon" />
-                  <input
-                    value={form.email}
-                    readOnly
-                    className="profile-form-input"
-                  />
-                </div>
-                {errors.email && (
-                  <span className="profile-form-error">{errors.email}</span>
-                )}
-              </div>
-
-              <div className="profile-form-field">
-                <label className="profile-form-label">
-                  <span>{t("Giới tính")}</span>
-                </label>
-                <div className="profile-form-radio-group">
-                  {[
-                    { v: "nam", label: t("Nam") },
-                    { v: "nu", label: t("Nữ") },
-                    { v: "khac", label: t("Khác") },
-                  ].map((g) => (
-                    <label key={g.v} className="profile-form-radio">
-                      <input
-                        type="radio"
-                        name="gender"
-                        value={g.v}
-                        checked={form.gender === g.v}
-                        onChange={update("gender")}
-                        disabled={!editing}
-                      />
-                      <span>{g.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="profile-dietary">
-              <div className="profile-dietary__head">
-                <div className="profile-dietary__title">
-                  <span>🍽️</span>
-                  <h4>{t("Khẩu vị & Ghi chú dinh dưỡng cá nhân hóa")}</h4>
-                </div>
-                <span className="profile-dietary__auto">
-                  {t("Tự động gắn vào đơn hàng KDS bếp")}
+              {avatarSrc && (
+                <span className="profile-avatar-block__check">
+                  <Check size={13} />
                 </span>
+              )}
+            </div>
+
+            <div className="profile-avatar-block__body">
+              <h4>{t("Ảnh đại diện thẻ Canteen")}</h4>
+              <p>
+                {t(
+                  "Ảnh đại diện giúp nhân viên căng tin đối chiếu khi nhận suất ăn đặt trước tại quầy thông minh. Định dạng cho phép: JPG, PNG tối đa 5MB."
+                )}
+              </p>
+              <div className="profile-avatar-block__actions">
+                <label className="profile-btn profile-btn--primary">
+                  <Upload size={16} />
+                  {t("Tải ảnh mới")}
+                  <input
+                    type="file"
+                    accept={ALLOWED_AVATAR_TYPES.join(",")}
+                    onChange={handleAvatar}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                {avatarSrc && (
+                  <button
+                    type="button"
+                    className="profile-btn profile-btn--ghost"
+                    onClick={removeAvatar}
+                  >
+                    <Trash2 size={16} />
+                    {t("Gỡ ảnh")}
+                  </button>
+                )}
               </div>
-              <div className="profile-dietary__grid">
-                {DIETARY_OPTIONS.map((opt) => (
-                  <label key={opt.key} className="profile-dietary-card">
+            </div>
+          </div>
+
+          {/* Form fields */}
+          <div className="profile-form-grid">
+            <div className="profile-form-field">
+              <label className="profile-form-label" htmlFor="profile-name">
+                <span>{t("Họ và tên đầy đủ")}</span>
+                <small className="profile-form-label--required">
+                  {t("Bắt buộc")}
+                </small>
+              </label>
+              <div className="profile-form-input-wrap">
+                <User size={18} className="profile-form-input-icon" />
+                <input
+                  id="profile-name"
+                  name="name"
+                  value={form.name}
+                  onChange={update("name")}
+                  disabled={!editing}
+                  className="profile-form-input"
+                />
+              </div>
+              {errors.name && (
+                <span className="profile-form-error">{errors.name}</span>
+              )}
+            </div>
+
+            <div className="profile-form-field">
+              <label className="profile-form-label">
+                <span>{t("Mã số sinh viên (MSSV)")}</span>
+                <small className="profile-form-label--locked">
+                  <Lock size={10} />
+                  {t("Khóa theo SSO")}
+                </small>
+              </label>
+              <div className="profile-form-input-wrap profile-form-input-wrap--locked">
+                <BadgeCheck size={18} className="profile-form-input-icon" />
+                <input
+                  value={form.studentId || ""}
+                  readOnly
+                  placeholder={t("Chưa liên kết")}
+                  className="profile-form-input profile-form-input--mono"
+                />
+              </div>
+            </div>
+
+            <div className="profile-form-field">
+              <label className="profile-form-label">
+                <span>{t("Khoa / Ngành học")}</span>
+              </label>
+              <div className="profile-form-input-wrap">
+                <span className="profile-form-input-icon">🎓</span>
+                <input
+                  value={form.faculty || ""}
+                  onChange={update("faculty")}
+                  placeholder={t("Chưa xác định")}
+                  className="profile-form-input"
+                />
+              </div>
+            </div>
+
+            <div className="profile-form-field">
+              <label className="profile-form-label" htmlFor="profile-phone">
+                <span>{t("Số điện thoại nhận thông báo món")}</span>
+              </label>
+              <div className="profile-form-input-wrap">
+                <Phone size={18} className="profile-form-input-icon" />
+                <input
+                  id="profile-phone"
+                  name="phone"
+                  value={form.phone}
+                  onChange={update("phone")}
+                  placeholder="0988 123 456"
+                  className="profile-form-input"
+                />
+              </div>
+              {errors.phone && (
+                <span className="profile-form-error">{errors.phone}</span>
+              )}
+            </div>
+
+            <div className="profile-form-field">
+              <label className="profile-form-label">
+                <span>{t("Email")}</span>
+                <small className="profile-form-label--locked">
+                  <Lock size={10} />
+                  {t("Không thể sửa")}
+                </small>
+              </label>
+              <div className="profile-form-input-wrap profile-form-input-wrap--locked">
+                <Mail size={18} className="profile-form-input-icon" />
+                <input
+                  value={form.email}
+                  readOnly
+                  className="profile-form-input"
+                />
+              </div>
+            </div>
+
+            <div className="profile-form-field">
+              <label className="profile-form-label">
+                <span>{t("Địa chỉ")}</span>
+              </label>
+              <div className="profile-form-input-wrap">
+                <span className="profile-form-input-icon">📍</span>
+                <input
+                  value={form.address}
+                  onChange={update("address")}
+                  placeholder={t("Ký túc xá VWA")}
+                  className="profile-form-input"
+                />
+              </div>
+            </div>
+
+            <div className="profile-form-field profile-form-field--full">
+              <label className="profile-form-label">
+                <span>{t("Giới tính")}</span>
+              </label>
+              <div className="profile-form-radio-group">
+                {[
+                  { v: "nam", label: t("Nam") },
+                  { v: "nu", label: t("Nữ") },
+                  { v: "khac", label: t("Khác") },
+                ].map((g) => (
+                  <label key={g.v} className="profile-form-radio">
                     <input
-                      type="checkbox"
-                      checked={!!dietary[opt.key]}
-                      onChange={() =>
-                        setDietary((d) => ({
-                          ...d,
-                          [opt.key]: !d[opt.key],
-                        }))
-                      }
+                      type="radio"
+                      name="gender"
+                      value={g.v}
+                      checked={form.gender === g.v}
+                      onChange={update("gender")}
                     />
-                    <div>
-                      <b>{t(opt.title)}</b>
-                      <p>{t(opt.desc)}</p>
-                    </div>
+                    <span>{g.label}</span>
                   </label>
                 ))}
               </div>
             </div>
-          </section>
+          </div>
 
-          <div className="profile-save-bar">
-            <div className="profile-save-bar__left">
-              <div className="profile-save-bar__icon">
-                <CheckCircle2 size={20} />
+          {/* Dietary */}
+          <div className="profile-dietary">
+            <div className="profile-dietary__head">
+              <div className="profile-dietary__title">
+                <span>🍽️</span>
+                <h4>{t("Khẩu vị & Ghi chú dinh dưỡng cá nhân hóa")}</h4>
               </div>
-              <div>
-                <b>
-                  {t("Tất cả thay đổi giao diện và ngôn ngữ sẽ được lưu tự động")}
-                </b>
-                <p>
-                  {t("Tài khoản sinh viên")} {user?.name || t("bạn")} (
-                  {t("MSSV")} {form.studentId || "2151010088"}){" "}
-                  {t("đồng bộ ngay lập tức trên app di động và web.")}
-                </p>
-              </div>
+              <span className="profile-dietary__auto">
+                {t("Tự động gắn vào đơn hàng KDS bếp")}
+              </span>
             </div>
-            <div className="profile-save-bar__right">
-              <button
-                type="button"
-                className="profile-btn profile-btn--ghost"
-                onClick={() => {
-                  setTheme("light");
-                  setLanguage("vi");
-                  setFontSize(1);
-                  setDietary(DEFAULT_DIETARY);
-                  setNotiPrefs(DEFAULT_NOTI_PREFS);
-                  setMealSlots(DEFAULT_MEAL_SLOTS);
-                  toast(t("Đã khôi phục mặc định"), "success");
-                }}
-              >
-                {t("Khôi phục mặc định")}
-              </button>
-              <button
-                type="button"
-                className="profile-btn profile-btn--primary"
-                onClick={() =>
-                  toast(t("Đã áp dụng tất cả thay đổi"), "success")
-                }
-              >
-                <Check size={16} />
-                {t("Áp dụng tất cả thay đổi")}
-              </button>
+            <div className="profile-dietary__grid">
+              {DIETARY_OPTIONS.map((opt) => (
+                <label key={opt.key} className="profile-dietary-card">
+                  <input
+                    type="checkbox"
+                    checked={!!dietary[opt.key]}
+                    onChange={() =>
+                      setDietary((d) => ({
+                        ...d,
+                        [opt.key]: !d[opt.key],
+                      }))
+                    }
+                  />
+                  <div>
+                    <b>{t(opt.title)}</b>
+                    <p>{t(opt.desc)}</p>
+                  </div>
+                </label>
+              ))}
             </div>
           </div>
-        </main>
-      </div>
+        </section>
+      )}
+
+      {/* ====================================================== */}
+      {/* MODALS (giữ nguyên — mở qua Settings hoặc code khác)   */}
+      {/* ====================================================== */}
 
       <ProfileModal
         open={showThemeModal}
@@ -1084,7 +1114,9 @@ export default function CustomerProfile({ user, setUser }) {
             {t("Chế độ hiển thị (Theme Mode)")}
           </h4>
           <p className="profile-modal-section__desc">
-            {t("Tùy chọn tông màu giao diện phù hợp với môi trường sử dụng hoặc tự động theo thiết bị của bạn.")}
+            {t(
+              "Tùy chọn tông màu giao diện phù hợp với môi trường sử dụng hoặc tự động theo thiết bị của bạn."
+            )}
           </p>
 
           <div className="profile-theme-grid">
@@ -1095,9 +1127,7 @@ export default function CustomerProfile({ user, setUser }) {
                 <button
                   key={th.id}
                   type="button"
-                  className={`profile-theme-card ${
-                    active ? "active" : ""
-                  }`}
+                  className={`profile-theme-card ${active ? "active" : ""}`}
                   onClick={() => changeTheme(th.id)}
                 >
                   <div
@@ -1159,9 +1189,7 @@ export default function CustomerProfile({ user, setUser }) {
               min={1}
               max={3}
               value={fontSize}
-              onChange={(e) =>
-                setFontSize(parseInt(e.target.value, 10))
-              }
+              onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
               className="profile-font-size__slider"
             />
             <div className="profile-font-size__labels">
@@ -1175,9 +1203,6 @@ export default function CustomerProfile({ user, setUser }) {
                 {t("Lớn (Đọc nhanh)")}
               </span>
             </div>
-            <p className="profile-font-size__note">
-              {t("Tăng cỡ chữ giúp bạn dễ dàng đọc tên món, thành phần dị ứng và mức giá khi xếp hàng đặt món tại căng tin.")}
-            </p>
           </div>
         </div>
 
@@ -1215,7 +1240,9 @@ export default function CustomerProfile({ user, setUser }) {
             {t("Chọn ngôn ngữ hiển thị")}
           </h4>
           <p className="profile-modal-section__desc">
-            {t("Áp dụng cho toàn bộ cổng thông tin Canteen VWA, hóa đơn điện tử và thông báo đẩy.")}
+            {t(
+              "Áp dụng cho toàn bộ cổng thông tin Canteen VWA, hóa đơn điện tử và thông báo đẩy."
+            )}
           </p>
 
           <div className="profile-lang-grid">
@@ -1225,15 +1252,11 @@ export default function CustomerProfile({ user, setUser }) {
                 <button
                   key={l.code}
                   type="button"
-                  className={`profile-lang-card ${
-                    active ? "active" : ""
-                  }`}
+                  className={`profile-lang-card ${active ? "active" : ""}`}
                   onClick={() => changeLanguage(l.code)}
                 >
                   <div className="profile-lang-card__top">
-                    <span className="profile-lang-card__flag">
-                      {l.flag}
-                    </span>
+                    <span className="profile-lang-card__flag">{l.flag}</span>
                     {active && (
                       <span className="profile-lang-card__check">
                         <Check size={13} />
@@ -1254,53 +1277,6 @@ export default function CustomerProfile({ user, setUser }) {
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        <div className="profile-modal-section">
-          <div className="profile-region-grid">
-            <div className="profile-form-field">
-              <label className="profile-form-label">
-                <span>{t("Định dạng tiền tệ")}</span>
-              </label>
-              <div className="profile-form-input-wrap">
-                <span className="profile-form-input-icon">💰</span>
-                <select className="profile-form-input profile-form-input--select">
-                  <option>VNĐ (₫) - {t("Đồng Việt Nam")}</option>
-                  <option>USD ($) - {t("Đô la Mỹ")}</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="profile-form-field">
-              <label className="profile-form-label">
-                <span>{t("Định dạng ngày & giờ")}</span>
-              </label>
-              <div className="profile-form-input-wrap">
-                <span className="profile-form-input-icon">📅</span>
-                <select className="profile-form-input profile-form-input--select">
-                  <option>DD/MM/YYYY (24h) - {t("Chuẩn VN")}</option>
-                  <option>MM/DD/YYYY (12h AM/PM)</option>
-                  <option>YYYY-MM-DD (ISO 8601)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="profile-form-field">
-              <label className="profile-form-label">
-                <span>{t("Múi giờ hệ thống")}</span>
-              </label>
-              <div className="profile-form-input-wrap">
-                <span className="profile-form-input-icon">🕐</span>
-                <select className="profile-form-input profile-form-input--select">
-                  <option>
-                    (GMT+07:00) {t("Giờ Hà Nội / Băng Cốc")}
-                  </option>
-                  <option>(GMT+08:00) Singapore / Đài Bắc</option>
-                  <option>(GMT+09:00) Seoul / Tokyo</option>
-                </select>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1337,10 +1313,6 @@ export default function CustomerProfile({ user, setUser }) {
           <h4 className="profile-modal-section__title">
             {t("Loại thông báo bạn muốn nhận")}
           </h4>
-          <p className="profile-modal-section__desc">
-            {t("Chọn những loại thông báo bạn quan tâm — hệ thống sẽ không làm phiền bạn với các thông báo khác.")}
-          </p>
-
           <div className="profile-noti-list">
             {[
               {
@@ -1394,58 +1366,8 @@ export default function CustomerProfile({ user, setUser }) {
 
         <div className="profile-modal-section">
           <h4 className="profile-modal-section__title">
-            {t("Kiểu nhắc nhở")}
-          </h4>
-          <div className="profile-noti-inline">
-            <label className="profile-noti-item profile-noti-item--inline">
-              <input
-                type="checkbox"
-                checked={!!notiPrefs.sound}
-                onChange={() =>
-                  setNotiPrefs((p) => ({ ...p, sound: !p.sound }))
-                }
-              />
-              <div className="profile-noti-item__body">
-                <b>{t("Âm thanh thông báo")}</b>
-                <p>
-                  {t(
-                    "Phát tiếng 'ting' khi có tin nhắn hoặc đơn mới."
-                  )}
-                </p>
-              </div>
-            </label>
-
-            <label className="profile-noti-item profile-noti-item--inline">
-              <input
-                type="checkbox"
-                checked={!!notiPrefs.vibration}
-                onChange={() =>
-                  setNotiPrefs((p) => ({
-                    ...p,
-                    vibration: !p.vibration,
-                  }))
-                }
-              />
-              <div className="profile-noti-item__body">
-                <b>{t("Rung thiết bị")}</b>
-                <p>
-                  {t(
-                    "Rung nhẹ khi có thông báo (chỉ hoạt động trên app di động)."
-                  )}
-                </p>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div className="profile-modal-section">
-          <h4 className="profile-modal-section__title">
             {t("Giờ ca ăn ưa thích")}
           </h4>
-          <p className="profile-modal-section__desc">
-            {t("Chọn khung giờ bạn thường đặt món — hệ thống sẽ gợi ý thực đơn và nhắc bạn trước giờ ăn.")}
-          </p>
-
           <div className="profile-mealslot-grid">
             {[
               {
@@ -1472,9 +1394,7 @@ export default function CustomerProfile({ user, setUser }) {
                 <button
                   key={meal.key}
                   type="button"
-                  className={`profile-mealslot-card ${
-                    active ? "active" : ""
-                  }`}
+                  className={`profile-mealslot-card ${active ? "active" : ""}`}
                   onClick={() =>
                     setMealSlots((s) => ({
                       ...s,
@@ -1497,28 +1417,6 @@ export default function CustomerProfile({ user, setUser }) {
                 </button>
               );
             })}
-          </div>
-
-          <div className="profile-noti-time">
-            <label className="profile-noti-time__label">
-              {t("Nhắc tôi trước giờ ăn:")}
-            </label>
-            <select
-              value={mealSlots.notifyBefore}
-              onChange={(e) =>
-                setMealSlots((s) => ({
-                  ...s,
-                  notifyBefore: parseInt(e.target.value, 10),
-                }))
-              }
-              className="profile-noti-time__select"
-            >
-              <option value={5}>{t("5 phút trước")}</option>
-              <option value={10}>{t("10 phút trước")}</option>
-              <option value={15}>{t("15 phút trước")}</option>
-              <option value={30}>{t("30 phút trước")}</option>
-              <option value={60}>{t("1 giờ trước")}</option>
-            </select>
           </div>
         </div>
 
@@ -1551,9 +1449,7 @@ export default function CustomerProfile({ user, setUser }) {
         icon={<Lock size={20} />}
         maxWidth={440}
       >
-        {pwdError && (
-          <div className="profile-modal__error">{pwdError}</div>
-        )}
+        {pwdError && <div className="profile-modal__error">{pwdError}</div>}
 
         <label className="profile-modal__label">
           {t("Mật khẩu hiện tại")}
@@ -1574,9 +1470,7 @@ export default function CustomerProfile({ user, setUser }) {
           />
         </div>
 
-        <label className="profile-modal__label">
-          {t("Mật khẩu mới")}
-        </label>
+        <label className="profile-modal__label">{t("Mật khẩu mới")}</label>
         <div className="profile-modal__input-wrap">
           <KeyRound size={16} />
           <input
@@ -1655,11 +1549,36 @@ export default function CustomerProfile({ user, setUser }) {
           to { transform: rotate(360deg); }
         }
         .profile-spin { animation: profile-spin-anim 1s linear infinite; }
-
-        /* 🔧 FIX #31: KHÔNG set html { font-size } ở đây — CSS toàn cục
-           (styles.css hoặc styles-customer.css) chịu trách nhiệm apply
-           biến --app-font-scale. Chỉ set biến, KHÔNG override font-size. */
       `}</style>
+    </div>
+  );
+}
+
+// ============================================================
+// SUB: InfoRow
+// ============================================================
+
+function InfoRow({ icon, label, value, mono = false, locked = false }) {
+  return (
+    <div className="profile-info-row">
+      <div className="profile-info-row__icon">{icon}</div>
+      <div className="profile-info-row__body">
+        <span className="profile-info-row__label">
+          {label}
+          {locked && (
+            <span className="profile-info-row__locked">
+              <Lock size={9} />
+            </span>
+          )}
+        </span>
+        <span
+          className={`profile-info-row__value ${
+            mono ? "profile-info-row__value--mono" : ""
+          }`}
+        >
+          {value}
+        </span>
+      </div>
     </div>
   );
 }

@@ -1,9 +1,12 @@
 ﻿// ============================================================
-// REGISTER.JSX — Đăng ký tài khoản (V7 - FINAL)
+// REGISTER.JSX — Đăng ký tài khoản (V8 - FINAL)
 // ============================================================
-// V7 (2026-10):
-//   - ✅ FIX A11Y: thêm id + name + htmlFor cho tất cả input
-//   - Giữ V6: Microsoft OAuth redirectUri khớp Azure
+// V8 (2026-10):
+//   - ✅ Thêm ô MSSV (StudentCodeInput) với preview ngành/khoa
+//   - ✅ Validate MSSV trước submit
+//   - ✅ Gửi student_code lên API
+//   - ✅ Hiển thị lỗi MSSV trùng từ backend
+//   - Giữ V7: a11y id/name/htmlFor, Microsoft OAuth redirectUri
 // ============================================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -17,6 +20,7 @@ import { api, setToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
 import { toast } from "../components/Effects";
 import CuteCharacters from "../components/LoginIllustration";
+import StudentCodeInput from "../components/StudentCodeInput";
 
 function startGoogleOAuth(t) {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -92,6 +96,9 @@ export default function Register({ onRegister }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [studentCode, setStudentCode] = useState("");
+  const [parsedMssv, setParsedMssv] = useState(null);
+  const [mssvError, setMssvError] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [agree, setAgree] = useState(false);
@@ -106,10 +113,14 @@ export default function Register({ onRegister }) {
     if (error) setError("");
   };
 
+  // ============================================================
+  // VALIDATE
+  // ============================================================
   const validate = () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPhone = phone.trim();
+    const trimmedMssv = studentCode.trim();
 
     if (!trimmedName) return t("Vui lòng nhập họ tên");
     if (!trimmedEmail) return t("Vui lòng nhập email");
@@ -124,9 +135,26 @@ export default function Register({ onRegister }) {
     if (password !== confirm) return t("Xác nhận mật khẩu không khớp");
     if (!agree) return t("Vui lòng đồng ý điều khoản để tiếp tục");
 
+    // ✅ Validate MSSV nếu có nhập
+    if (trimmedMssv) {
+      if (!/^\d{10}$/.test(trimmedMssv)) {
+        return t("MSSV phải là 10 chữ số");
+      }
+      if (mssvError) {
+        return mssvError;
+      }
+      if (parsedMssv && !parsedMssv.mapped) {
+        // Có MSSV nhưng không map được ngành → cho phép đăng ký nhưng cảnh báo
+        // (backend sẽ tự xử lý)
+      }
+    }
+
     return null;
   };
 
+  // ============================================================
+  // SUBMIT
+  // ============================================================
   const submit = async (e) => {
     if (e) e.preventDefault();
     if (loading) return;
@@ -141,12 +169,19 @@ export default function Register({ onRegister }) {
     setLoading(true);
 
     try {
-      const res = await api.register({
+      const payload = {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
         password,
-      });
+      };
+
+      // ✅ Chỉ gửi student_code nếu có nhập
+      if (studentCode.trim()) {
+        payload.student_code = studentCode.trim();
+      }
+
+      const res = await api.register(payload);
 
       if (!res || !res.token) {
         throw new Error(t("Đăng ký thất bại"));
@@ -164,6 +199,17 @@ export default function Register({ onRegister }) {
         "success"
       );
 
+      // Thông báo nếu có MSSV được liên kết
+      if (newUser.student_code && newUser.major_name) {
+        toast(
+          t("Đã liên kết MSSV {code} — {major}").replace(
+            "{code}",
+            newUser.student_code
+          ).replace("{major}", newUser.major_name),
+          "info"
+        );
+      }
+
       if (typeof onRegister === "function") {
         onRegister(newUser);
         navigate("/customer", { replace: true });
@@ -171,8 +217,27 @@ export default function Register({ onRegister }) {
         window.location.href = "/";
       }
     } catch (err) {
+      // ✅ Xử lý riêng lỗi MSSV trùng
       const msg = err.message || t("Đăng ký thất bại");
-      setError(msg);
+
+      if (
+        err.body?.code === "MSSV_ALREADY_LINKED" ||
+        msg.includes("MSSV này đã được liên kết")
+      ) {
+        setMssvError(
+          t("MSSV này đã được liên kết với tài khoản khác. Vui lòng đăng nhập bằng tài khoản trường.")
+        );
+        setError(
+          err.body?.linked_email_masked
+            ? t("MSSV đã liên kết với {email}").replace(
+                "{email}",
+                err.body.linked_email_masked
+              )
+            : msg
+        );
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -299,6 +364,23 @@ export default function Register({ onRegister }) {
                 inputMode="numeric"
                 maxLength={11}
                 disabled={loading}
+              />
+            </div>
+
+            {/* ✅ MỚI: Ô nhập MSSV */}
+            <div style={{ marginTop: 14 }}>
+              <StudentCodeInput
+                value={studentCode}
+                onChange={(code, info) => {
+                  setStudentCode(code);
+                  setParsedMssv(info);
+                  if (mssvError) setMssvError("");
+                  clearError();
+                }}
+                disabled={loading}
+                required={false}
+                showPreview={true}
+                label={`${t("Mã số sinh viên (MSSV)")} (${t("không bắt buộc")})`}
               />
             </div>
 

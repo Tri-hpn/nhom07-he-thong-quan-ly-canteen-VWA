@@ -1,27 +1,6 @@
 // ============================================================
 // MENUIMAGESTORE.JS — Tách ảnh món ăn ra khỏi document chính
-// ============================================================
-// VÌ SAO CẦN FILE NÀY?
-// Trước đây ảnh món ăn được lưu THẲNG vào document chính:
-//   canteen_db.main.data.menu_items[].image = "data:image/jpeg;base64,..."
-// Đo thực tế: 36 ảnh ≈ 15.33 MB, tổng document ≈ 15.47 MB.
-// Hệ quả:
-//   • Mỗi lần khởi động server phải tải 15.5 MB từ Atlas. Đường
-//     truyền tới Atlas chỉ ~90 KB/s → hàng phút, thường là treo hẳn
-//     ở "Đang tải DB từ MongoDB..." (đúng lỗi localhost:3000 không lên).
-//   • Mỗi lần lưu DB (đặt món, đổi giá, điểm danh...) phải upload
-//     lại toàn bộ 15.5 MB.
-//
-// SAU KHI SỬA:
-//   • Mỗi ảnh là 1 document riêng trong collection `menu_images`.
-//   • Document chính chỉ giữ đường dẫn ngắn:
-//         /api/uploads/menu/<id>?v=<rev>
-//     → cả DB còn ≈ 200 KB: khởi động và lưu trong vài giây.
-//   • Ảnh được phục vụ lazy qua GET /api/uploads/menu/:id
-//     (có cache RAM + cache trình duyệt theo ?v=<rev>).
-//
-// Việc di trú chạy HOÀN TOÀN trên server bằng aggregation + $merge
-// nên KHÔNG phải tải 15 MB ảnh về máy bao giờ.
+// V2 (2026-10): ✅ FIX #9 — cache key có rev
 // ============================================================
 
 import path from "node:path";
@@ -41,33 +20,18 @@ export const IMAGE_BACKUP_COLLECTION = "canteen_db_backup_main";
 // HELPERS
 // ============================================================
 
-/** Ảnh base64 nhúng thẳng (data URL)? */
 export function isInlineImage(value) {
   return typeof value === "string" && value.startsWith("data:image");
 }
 
-/** Đường dẫn ảnh do server quản lý? (vd "/api/uploads/menu/12?v=1") */
 export function isMenuImagePath(value) {
   return typeof value === "string" && value.startsWith(MENU_IMAGE_PREFIX);
 }
 
-/**
- * URL ảnh của 1 món. `rev` đổi mỗi lần ảnh được cập nhật nên có thể
- * cache vĩnh viễn ở trình duyệt mà vẫn luôn thấy ảnh mới.
- */
 export function menuImageUrl(id, rev = 1) {
   return MENU_IMAGE_PREFIX + encodeURIComponent(String(id)) + "?v=" + rev;
 }
 
-/**
- * Phân loại giá trị ảnh do client gửi lên.
- * @returns {{kind:"empty"|"inline"|"path"|"external", value?:string}}
- *  - ""                                  → empty     (xoá ảnh)
- *  - "data:image/..."                    → inline    (ảnh mới upload)
- *  - "/api/uploads/menu/12?v=1"          → path      (đường dẫn của mình)
- *  - "http://host/api/uploads/menu/12"   → path      (URL tuyệt đối của mình, FE gửi lại)
- *  - "https://khac.com/a.jpg"            → external  (URL ngoài)
- */
 export function classifyImageValue(value) {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw) return { kind: "empty" };
@@ -80,7 +44,6 @@ export function classifyImageValue(value) {
   return { kind: "external", value: raw };
 }
 
-/** Tách data URL → { contentType, buffer } (null nếu không hợp lệ) */
 export function decodeDataUrl(dataUrl) {
   const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(String(dataUrl || ""));
   if (!m) return null;
@@ -95,7 +58,6 @@ export function decodeDataUrl(dataUrl) {
   }
 }
 
-/** Có ảnh base64 nào trong danh sách món không? */
 export function countInlineMenuImages(data) {
   return (data?.menu_items || []).reduce(
     (n, m) => n + (isInlineImage(m?.image) ? 1 : 0),
@@ -104,14 +66,14 @@ export function countInlineMenuImages(data) {
 }
 
 // ============================================================
-// MODEL — collection menu_images (1 document = 1 ảnh)
+// MODEL
 // ============================================================
 const menuImageSchema = new mongoose.Schema(
   {
-    _id: { type: String }, // String(id) của món ăn
-    image: { type: String, default: "" }, // data URL base64
-    contentType: { type: String, default: "" }, // image/jpeg, image/png...
-    rev: { type: Number, default: 1 }, // đổi mỗi lần cập nhật ảnh
+    _id: { type: String },
+    image: { type: String, default: "" },
+    contentType: { type: String, default: "" },
+    rev: { type: Number, default: 1 },
     updatedAt: { type: Date, default: Date.now },
   },
   { collection: MENU_IMAGES_COLLECTION, versionKey: false, minimize: false }
@@ -121,10 +83,11 @@ export const MenuImageModel =
   mongoose.models.MenuImage || mongoose.model("MenuImage", menuImageSchema);
 
 // ============================================================
-// CACHE RAM — ảnh giải mã sẵn (tránh đọc lại Atlas liên tục)
+// CACHE RAM
+// ✅ FIX #9: cache key = `${id}:${rev}` để tránh serve ảnh cũ
 // ============================================================
-const IMAGE_CACHE_LIMIT_BYTES = 64 * 1024 * 1024; // 64 MB
-const imageCache = new Map(); // id → { buffer, contentType, rev, bytes }
+const IMAGE_CACHE_LIMIT_BYTES = 64 * 1024 * 1024;
+const imageCache = new Map();
 let imageCacheBytes = 0;
 
 export function clearMenuImageCache() {
@@ -139,7 +102,7 @@ export function menuImageCacheStats() {
 function cacheGet(key) {
   const hit = imageCache.get(key);
   if (!hit) return null;
-  imageCache.delete(key); // LRU: vừa dùng → đẩy xuống cuối
+  imageCache.delete(key);
   imageCache.set(key, hit);
   return hit;
 }
@@ -162,26 +125,18 @@ function cacheSet(key, entry) {
 }
 
 // ============================================================
-// ĐỌC / GHI / XOÁ ẢNH
+// ĐỌC / GHI / XOÁ
 // ============================================================
 
-/**
- * Lấy ảnh của 1 món.
- * @returns {Promise<{buffer:Buffer,contentType:string,rev:number}|{redirectTo:string}|null>}
- */
 export async function getMenuImage(id) {
   const key = String(id ?? "");
   if (!key) return null;
-
-  const cached = cacheGet(key);
-  if (cached) return cached;
 
   if (!mongoose.connection?.db) return null;
 
   const doc = await MenuImageModel.findById(key).lean();
   if (!doc) return null;
 
-  // Ảnh ngoài (http/https) → để trình duyệt tự tải, không proxy qua server
   if (!isInlineImage(doc.image)) {
     const url = typeof doc.image === "string" ? doc.image.trim() : "";
     return url ? { redirectTo: url } : null;
@@ -190,20 +145,23 @@ export async function getMenuImage(id) {
   const decoded = decodeDataUrl(doc.image);
   if (!decoded) return null;
 
+  // ✅ FIX #9: cache key theo rev
+  const rev = doc.rev || 1;
+  const cacheKey = `${key}:${rev}`;
+
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
   const entry = {
     buffer: decoded.buffer,
     contentType: doc.contentType || decoded.contentType,
-    rev: doc.rev || 1,
+    rev,
     bytes: decoded.buffer.length,
   };
-  cacheSet(key, entry);
+  cacheSet(cacheKey, entry);
   return entry;
 }
 
-/**
- * Lưu ảnh mới cho 1 món.
- * @returns {Promise<string|null>} đường dẫn ảnh hoặc null nếu data URL lỗi
- */
 export async function putMenuImage(id, dataUrl) {
   const key = String(id ?? "");
   const decoded = decodeDataUrl(dataUrl);
@@ -223,7 +181,8 @@ export async function putMenuImage(id, dataUrl) {
     { upsert: true }
   );
 
-  cacheSet(key, {
+  // ✅ FIX #9: cache theo rev mới
+  cacheSet(`${key}:${rev}`, {
     buffer: decoded.buffer,
     contentType: decoded.contentType,
     rev,
@@ -233,11 +192,17 @@ export async function putMenuImage(id, dataUrl) {
   return menuImageUrl(key, rev);
 }
 
-/** Xoá ảnh của 1 món (không ném lỗi). */
 export async function deleteMenuImage(id) {
   const key = String(id ?? "");
   if (!key) return;
-  imageCache.delete(key);
+  // ✅ FIX #9: xóa mọi cache entry của key này
+  for (const k of [...imageCache.keys()]) {
+    if (k === key || k.startsWith(`${key}:`)) {
+      const entry = imageCache.get(k);
+      imageCache.delete(k);
+      imageCacheBytes -= entry?.bytes || 0;
+    }
+  }
   try {
     await MenuImageModel.deleteOne({ _id: key });
   } catch (e) {
@@ -245,14 +210,6 @@ export async function deleteMenuImage(id) {
   }
 }
 
-/**
- * Áp giá trị ảnh client gửi lên vào 1 món (sửa trực tiếp field `image`).
- * @param {object} item món ăn
- * @param {*} incomingImage giá trị `image` trong body request
- * @param {{persist?:boolean}} options persist=false → chế độ file JSON local:
- *        giữ nguyên base64 như hành vi cũ (file local không tốn băng thông).
- * @returns {Promise<string>} giá trị `image` sau khi xử lý
- */
 export async function applyMenuImageToItem(item, incomingImage, { persist = true } = {}) {
   if (!item) return "";
   const c = classifyImageValue(incomingImage);
@@ -272,16 +229,11 @@ export async function applyMenuImageToItem(item, incomingImage, { persist = true
     return item.image;
   }
 
-  item.image = ""; // xoá ảnh
+  item.image = "";
   if (persist) await deleteMenuImage(item.id);
   return "";
 }
 
-/**
- * Tách ảnh base64 ĐANG NẰM TRONG BỘ NHỚ sang collection menu_images.
- * Dùng cho /api/backup/import (dữ liệu đã nằm trong RAM).
- * @returns {Promise<number>} số ảnh đã tách
- */
 export async function extractInlineImagesFromData(data, { log = () => {} } = {}) {
   const items = Array.isArray(data?.menu_items) ? data.menu_items : [];
   let moved = 0;
@@ -298,13 +250,8 @@ export async function extractInlineImagesFromData(data, { log = () => {} } = {})
 }
 
 // ============================================================
-// DI TRÚ — đưa ảnh base64 từ document chính sang menu_images
+// DI TRÚ
 // ============================================================
-// Chạy HOÀN TOÀN trên server bằng aggregation + $merge, KHÔNG tải
-// document 15 MB về máy. Idempotent: chạy lại khi đã sạch = no-op.
-// ============================================================
-
-// Đếm số ảnh base64 + kích thước document (chạy trên server)
 const INLINE_STATS_PIPELINE = [
   { $match: { _id: MAIN_DOC_ID } },
   {
@@ -328,15 +275,6 @@ async function readInlineStats(coll) {
   return { inline: row.n || 0, bytes: row.size || 0 };
 }
 
-/**
- * Tách mọi ảnh base64 trong canteen_db.main.data.menu_items[].image
- * sang collection menu_images và thay bằng đường dẫn /api/uploads/menu/<id>?v=1
- *
- * @param {{log?:Function, backup?:boolean}} options
- * @returns {Promise<{ok:boolean, needed:boolean, inline:number, stored:number,
- *   moved:number, beforeBytes:number, afterBytes:number, remaining?:number,
- *   backupCollection?:string, error?:string}>}
- */
 export async function migrateInlineMenuImages({ log = () => {}, backup = true } = {}) {
   const db = mongoose.connection?.db;
   if (!db) throw new Error("Chưa kết nối MongoDB");
@@ -351,7 +289,6 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
   const mb = (b) => (b / 1048576).toFixed(2) + " MB";
   log(`🖼️ Phát hiện ${inline} ảnh base64 trong document chính (${mb(beforeBytes)})`);
 
-  // (0) Sao lưu document gốc — server-side, không tải dữ liệu về máy
   let backupCollection = "";
   if (backup) {
     try {
@@ -374,7 +311,6 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
     }
   }
 
-  // (1) Copy ảnh sang menu_images (chạy trên server)
   await coll.aggregate([
     { $match: { _id: MAIN_DOC_ID } },
     { $project: { items: { $ifNull: ["$data.menu_items", []] } } },
@@ -398,10 +334,6 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
     },
   ]).toArray();
 
-    // (2) Kiểm tra đã copy đủ chưa — thiếu thì DỪNG để không mất ảnh
-  // ✅ FIX (LỖI #20): countDocuments({}) đếm TOÀN BỘ collection, kể cả ảnh cũ
-  // → nếu collection đã có sẵn ảnh từ trước thì `stored` > `inline` → pass check
-  // dù copy mới thất bại. Sửa: so khớp chính xác _id các món cần copy.
   const expectedIds = await coll
     .aggregate([
       { $match: { _id: MAIN_DOC_ID } },
@@ -414,6 +346,7 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
 
   const expectedIdSet = new Set(expectedIds.map((r) => r._id));
 
+  let stored = 0;
   if (expectedIdSet.size > 0) {
     const storedDocs = await db
       .collection(MENU_IMAGES_COLLECTION)
@@ -422,6 +355,7 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
       .toArray();
 
     const storedIdSet = new Set(storedDocs.map((d) => d._id));
+    stored = storedIdSet.size;
     const missingIds = [...expectedIdSet].filter(
       (id) => !storedIdSet.has(id)
     );
@@ -445,7 +379,6 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
     );
   }
 
-  // (3) Thay ảnh base64 bằng đường dẫn (server-side, không tải dữ liệu về máy)
   await coll.aggregate([
     { $match: { _id: MAIN_DOC_ID } },
     {
@@ -480,7 +413,6 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
     },
   ]).toArray();
 
-  // (4) Xác nhận kết quả
   const after = await readInlineStats(coll);
   const ok = after.inline === 0;
   log(
@@ -503,7 +435,7 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
 }
 
 // ============================================================
-// CLI — npm run db:migrate-images
+// CLI
 // ============================================================
 const isDirectRun =
   process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

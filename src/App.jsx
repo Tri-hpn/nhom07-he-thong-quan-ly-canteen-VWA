@@ -1,13 +1,10 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V10 - FINAL)
+// APP.JSX — Root component + Routing (V12 - FINAL)
 // ============================================================
-// V10 (2026-10):
-//   - ✅ XOÁ import EmployeeOrdersPrep
-//   - ✅ Route /employee/prep → redirect sang
-//     /employee/orders?station=kitchen (giữ backward compat bookmark cũ)
-//   - Giữ nguyên: V9 (đã xoá effect OAuth ?token=),
-//     cart persistence, auth-expired handler, role-based redirect,
-//     routing cho 3 role
+// V12 (2026-10):
+//   - ✅ Thêm route /owner/chat → OwnerChat
+//   - Giữ V11: redirect /employee/prep → tab Bếp Nấu,
+//     cart persistence, auth-expired handler, role-based redirect
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -53,8 +50,6 @@ import CustomerChat from "./pages/customer/CustomerChat";
 // ---------- Employee pages ----------
 import EmployeeHome from "./pages/employee/EmployeeHome";
 import EmployeeOrders from "./pages/employee/EmployeeOrders";
-// ❌ V10: XOÁ — đã gộp vào EmployeeOrders tab "Bếp Nấu"
-// import EmployeeOrdersPrep from "./pages/employee/EmployeeOrdersPrep";
 import EmployeeMenu from "./pages/employee/EmployeeMenu";
 import EmployeeChat from "./pages/employee/EmployeeChat";
 import EmployeeShifts from "./pages/employee/EmployeeShifts";
@@ -76,6 +71,8 @@ import OwnerShifts from "./pages/owner/OwnerShifts";
 import OwnerOrders from "./pages/owner/OwnerOrders";
 import OwnerFinance from "./pages/owner/OwnerFinance";
 import OwnerSettings from "./pages/owner/OwnerSettings";
+// ✅ V12: trang quản lý chat admin
+import OwnerChat from "./pages/owner/OwnerChat";
 
 // ============================================================
 // HELPERS
@@ -114,18 +111,6 @@ export default function App() {
   const location = useLocation();
 
   const lastRedirectRef = useRef({ path: "", timestamp: 0 });
-  const pendingRedirectRef = useRef(null);
-
-  // ============================================================
-  // ✅ V9: ĐÃ XÓA EFFECT OAuth ?token= (đã chuyển sang Login.jsx)
-  // ============================================================
-  // Lý do xóa:
-  //   - OAuth Google/FB: redirect về /auth/google/callback
-  //     → OAuthCallback.jsx xử lý (dùng `code`)
-  //   - OAuth Microsoft: redirect về /login?token=xxx
-  //     → Login.jsx xử lý (dùng `token`)
-  //   - Giữ effect ở App → chạy song song AuthContext → RACE → 401 → văng
-  // ============================================================
 
   // Tự động lưu cart vào localStorage
   useEffect(() => {
@@ -190,7 +175,6 @@ export default function App() {
 
     const target = homePathForRole(user.role);
 
-    // Chống loop: nếu vừa redirect tới `target` trong 1s vừa qua → bỏ qua
     const now = Date.now();
     const last = lastRedirectRef.current;
     if (last.path === target && now - last.timestamp < 1000) {
@@ -198,8 +182,6 @@ export default function App() {
     }
 
     lastRedirectRef.current = { path: target, timestamp: now };
-    pendingRedirectRef.current = target;
-
     navigate(target, { replace: true });
   }, [user, mustChangePassword, location.pathname, navigate]);
 
@@ -446,7 +428,6 @@ export default function App() {
             }
           />
 
-          {/* ✅ V10: Redirect /employee/prep → tab "Bếp Nấu" của Bàn làm việc */}
           <Route
             path="/employee/prep"
             element={
@@ -652,6 +633,16 @@ export default function App() {
               "Backup dữ liệu",
               "Xuất / nhập / reset database",
               <OwnerBackup />
+            )}
+          />
+
+          {/* ✅ V12: Trang quản lý chat admin */}
+          <Route
+            path="/owner/chat"
+            element={wrap(
+              "Chat & Hỗ trợ",
+              "Giám sát & điều phối chat toàn hệ thống",
+              <OwnerChat />
             )}
           />
         </Route>

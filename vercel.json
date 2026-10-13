@@ -12,14 +12,6 @@
   },
   "rewrites": [
     {
-      "source": "/api/auth/callback/microsoft-entra-id",
-      "destination": "/api/index.js"
-    },
-    {
-      "source": "/api/auth/microsoft-entra-id/callback",
-      "destination": "/api/index.js"
-    },
-    {
       "source": "/api/:path*",
       "destination": "/api/index.js"
     },

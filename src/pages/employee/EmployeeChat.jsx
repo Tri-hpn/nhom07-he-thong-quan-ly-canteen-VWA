@@ -1,22 +1,13 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V6.2 - FINAL)
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V7 - FINAL)
 // ============================================================
-// V6.2 (2026-10):
-//   - ✅ FIX chấm đỏ "Chưa đọc" — chỉ hiện khi kpi.unread > 0
-//   - ✅ FIX race condition: reload convs SAU KHI loadMessages xong
-//     (đảm bảo backend đã set read=true trước khi reload)
-//   - ✅ Thêm số đếm "Chưa đọc (n)" giống các tab khác
-//
-// V6.1 (giữ):
-//   - Unread/Read rõ ràng: class --unread / --read
-//   - Backend filter 24h
-//   - KPI "Đang trực tuyến" fetch thật
-//   - "Đơn hàng đang xử lý" fetch đơn thật
-//   - Ẩn "Tự động báo món xong" + "Cấu hình Macros"
-//   - Loa Gọi Số: beep + toast
-//   - Nút Gọi điện: popup SĐT
-//   - Ghim: localStorage
-//   - In tem: popup print có ô ghi chú
+// V7 (2026-10):
+//   - ✅ MỚI: hiển thị banner khi Admin TẮT quyền chat
+//   - ✅ MỚI: hiển thị banner khi Admin đang giữ hội thoại
+//   - ✅ MỚI: nút "Chuyển Admin" gọi API thật (tạo transfer request)
+//   - ✅ MỚI: khóa input + nút gửi khi bị tắt / bị admin giữ
+//   - Giữ V6.2: FIX chấm đỏ "Chưa đọc", race condition,
+//     auto-scroll smart, in tem, ghim localStorage
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -25,7 +16,7 @@ import {
   Vibrate, Printer, Pin, ImagePlus, Smile, MessageSquareMore, Ticket,
   Send, Bolt, Headset, User as UserIcon, Clock, Smartphone, Utensils,
   CheckCircle2, Heart, Edit3, Megaphone, Bell, ArrowLeftRight, Gift,
-  Microwave, Sparkles, Check, PinOff,
+  Microwave, Sparkles, Check, PinOff, Lock,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -41,6 +32,7 @@ import {
 // ============================================================
 
 const POLL_INTERVAL_MS = 3000;
+const PERMISSION_POLL_MS = 5000;
 const SCROLL_THRESHOLD_PX = 120;
 const MAX_MESSAGE_LENGTH = 2000;
 const PINNED_STORAGE_KEY = "canteen.chat.pinned";
@@ -747,6 +739,13 @@ export default function EmployeeChat() {
 
   const [internalNote, setInternalNote] = useState("");
 
+  // ✅ MỚI V7: trạng thái quyền chat của nhân viên hiện tại
+  const [chatPermission, setChatPermission] = useState({
+    enabled: true,
+    assignedToAdminUsers: [],
+  });
+  const [loadingPermission, setLoadingPermission] = useState(true);
+
   const bottomRef = useRef(null);
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);
@@ -758,6 +757,37 @@ export default function EmployeeChat() {
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+
+  // ============================================================
+  // ✅ MỚI V7: LOAD QUYỀN CHAT + POLLING
+  // ============================================================
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await api.chat.admin.myChatStatus();
+        if (cancelled) return;
+        setChatPermission({
+          enabled: res?.enabled !== false,
+          assignedToAdminUsers: Array.isArray(res?.assigned_to_admin_users)
+            ? res.assigned_to_admin_users.map(String)
+            : [],
+        });
+      } catch {
+        // silent — backend chưa có endpoint thì coi như enabled
+      } finally {
+        if (!cancelled) setLoadingPermission(false);
+      }
+    };
+
+    load();
+    const timer = setInterval(load, PERMISSION_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   // ============================================================
   // LOAD CONVERSATIONS
@@ -855,18 +885,14 @@ export default function EmployeeChat() {
       lastMsgCountRef.current = 0;
       lastConvIdRef.current = null;
 
-      // Optimistic: set unread = 0 NGAY khi click
       setConversations((list) =>
         list.map((x) =>
           x.user_id === c.user_id ? { ...x, unread: 0 } : x
         )
       );
 
-      // ✅ V6.2: await loadMessages — đảm bảo backend đã set read=true
       await loadMessages(c.user_id, false);
 
-      // ✅ V6.2: reload convs SAU KHI loadMessages xong
-      // (backend chắc chắn đã set read=true rồi mới reload)
       loadConvs(true);
 
       // Context
@@ -956,6 +982,16 @@ export default function EmployeeChat() {
   }, [messages, selected?.user_id]);
 
   // ============================================================
+  // COMPUTED — check disabled
+  // ============================================================
+  const isSelectedHeldByAdmin =
+    selected &&
+    chatPermission.assignedToAdminUsers.includes(String(selected.user_id));
+
+  const isInputDisabled =
+    sending || !chatPermission.enabled || isSelectedHeldByAdmin;
+
+  // ============================================================
   // SEND
   // ============================================================
 
@@ -963,6 +999,23 @@ export default function EmployeeChat() {
     async (contentOverride) => {
       const val = (contentOverride ?? text).trim();
       if (!val || !selected || sending) return;
+
+      // ✅ V7: chặn khi bị tắt / bị admin giữ
+      if (!chatPermission.enabled) {
+        toast(
+          t("Admin đã tắt quyền chat của bạn. Vui lòng liên hệ quản trị viên."),
+          "error"
+        );
+        return;
+      }
+      if (isSelectedHeldByAdmin) {
+        toast(
+          t("Admin đang xử lý hội thoại này. Bạn không thể gửi tin lúc này."),
+          "error"
+        );
+        return;
+      }
+
       if (val.length > MAX_MESSAGE_LENGTH) {
         toast(
           t("Tin nhắn tối đa {n} ký tự", { n: MAX_MESSAGE_LENGTH }),
@@ -1008,7 +1061,7 @@ export default function EmployeeChat() {
         setSending(false);
       }
     },
-    [text, selected, sending, loadMessages, t]
+    [text, selected, sending, loadMessages, t, chatPermission.enabled, isSelectedHeldByAdmin]
   );
 
   const onKey = (e) => {
@@ -1103,8 +1156,18 @@ export default function EmployeeChat() {
     toast(t("Đã gửi thông báo 'Món đã sẵn sàng'"), "success");
   };
 
-  const handleTransferAdmin = () => {
-    toast(t("Đã chuyển hội thoại lên Admin"), "info");
+  // ✅ V7: gọi API thật để tạo transfer request
+  const handleTransferAdmin = async () => {
+    if (!selected) return;
+    try {
+      await api.chat.admin.requestTransfer({
+        customerId: selected.user_id,
+        reason: "",
+      });
+      toast(t("Đã gửi yêu cầu chuyển lên Admin"), "success");
+    } catch (e) {
+      toast(e.message || t("Không gửi được yêu cầu"), "error");
+    }
   };
 
   const handleGiftVoucher = () => {
@@ -1161,6 +1224,7 @@ export default function EmployeeChat() {
             type="button"
             className="chat-hero__action chat-hero__action--danger"
             onClick={handleTransferAdmin}
+            disabled={!selected || !chatPermission.enabled}
           >
             <Headset size={18} />
             <span>{t("Chuyển Admin")}</span>
@@ -1276,7 +1340,6 @@ export default function EmployeeChat() {
                 >
                   {f.label}
                   {f.id === "all" && ` (${conversations.length})`}
-                  {/* ✅ V6.2 FIX: chấm đỏ chỉ hiện khi CÓ tin chưa đọc */}
                   {f.dot && filter !== f.id && kpi.unread > 0 && (
                     <span className="chat-conv__filter-dot" />
                   )}
@@ -1353,6 +1416,9 @@ export default function EmployeeChat() {
                 const token = c.token || genToken(c.user_id);
                 const initials = getInitials(c.user_name);
                 const isPinned = pinnedIds.includes(Number(c.user_id));
+                const isHeldByAdmin = chatPermission.assignedToAdminUsers.includes(
+                  String(c.user_id)
+                );
 
                 return (
                   <div
@@ -1442,9 +1508,13 @@ export default function EmployeeChat() {
                       "{c.last_message || t("Chưa có tin nhắn")}"
                     </p>
 
-                    {(c.statusLabel || hasUnread) && (
+                    {(c.statusLabel || hasUnread || isHeldByAdmin) && (
                       <div className="chat-conv__tags">
-                        {c.statusLabel ? (
+                        {isHeldByAdmin ? (
+                          <span className="chat-conv__tag chat-conv__tag--success">
+                            <Headset size={11} /> {t("Admin giữ")}
+                          </span>
+                        ) : c.statusLabel ? (
                           <span
                             className={`chat-conv__tag ${
                               isUrgent
@@ -1591,6 +1661,25 @@ export default function EmployeeChat() {
                 </div>
               </div>
 
+              {/* ✅ MỚI V7: banner bị tắt chat / bị admin giữ */}
+              {!loadingPermission && (
+                !chatPermission.enabled ? (
+                  <div className="emp-chat-banner emp-chat-banner--danger">
+                    <Lock size={16} />
+                    <span>
+                      {t("Admin đã TẮT quyền chat của bạn. Vui lòng liên hệ quản trị viên.")}
+                    </span>
+                  </div>
+                ) : isSelectedHeldByAdmin ? (
+                  <div className="emp-chat-banner emp-chat-banner--info">
+                    <Headset size={16} />
+                    <span>
+                      {t("Admin đang xử lý hội thoại này. Bạn chỉ có thể xem, không gửi được tin.")}
+                    </span>
+                  </div>
+                ) : null
+              )}
+
               {/* FEED */}
               <div ref={messagesEndRef} className="chat-main__feed">
                 {loadingMsgs ? (
@@ -1675,7 +1764,7 @@ export default function EmployeeChat() {
                     type="button"
                     className="chat-quick-chip"
                     onClick={() => send(q)}
-                    disabled={sending}
+                    disabled={isInputDisabled}
                   >
                     {q}
                   </button>
@@ -1732,14 +1821,14 @@ export default function EmployeeChat() {
                     placeholder={`${t("Nhập tin nhắn phản hồi")} ${
                       selected.user_name || t("khách")
                     }...`}
-                    disabled={sending}
+                    disabled={isInputDisabled}
                     maxLength={MAX_MESSAGE_LENGTH}
                   />
                   <button
                     type="button"
                     className="chat-input-send"
                     onClick={() => send()}
-                    disabled={sending || !text.trim()}
+                    disabled={isInputDisabled || !text.trim()}
                   >
                     {sending ? (
                       <>
@@ -2017,6 +2106,30 @@ export default function EmployeeChat() {
         }
         .chat-main__icon-btn--pinned {
           background: rgba(245, 158, 11, 0.12) !important;
+        }
+
+        /* ✅ V7: banner tắt chat / admin giữ */
+        .emp-chat-banner {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          margin: 0 0 8px;
+          border-radius: 10px;
+          font-family: var(--st-font-body);
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1.5;
+        }
+        .emp-chat-banner--danger {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #dc2626;
+        }
+        .emp-chat-banner--info {
+          background: rgba(38, 52, 213, 0.08);
+          border: 1px solid rgba(38, 52, 213, 0.25);
+          color: #2634d5;
         }
       `}</style>
     </div>

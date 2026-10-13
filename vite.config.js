@@ -1,12 +1,11 @@
 ﻿// ============================================================
-// VITE.CONFIG.JS — Vite configuration (V3)
+// VITE.CONFIG.JS — Vite configuration (V4 - FINAL)
 // ============================================================
-// V3 (2026-10):
-//   - ✅ FIX Microsoft OAuth local: changeOrigin=false +
-//     thêm x-forwarded-host để backend reconstruct đúng
-//     redirect URI (5173 thay vì 3000)
-//   - Giữ V2: giữ console.error/warn production, bỏ manualChunks
-//     recharts, optimizeDeps đầy đủ
+// V4 (2026-10):
+//   - ✅ FIX #18: comment rõ lý do changeOrigin=false
+//     + cảnh báo nếu đổi port khác 5173
+//   - Giữ V3: Microsoft OAuth local fix, console.error/warn
+//     production, optimizeDeps đầy đủ
 // ============================================================
 
 import { defineConfig, loadEnv } from "vite";
@@ -38,8 +37,13 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": {
           target: env.VITE_BACKEND_URL || "http://localhost:3000",
-          // ✅ FIX Microsoft OAuth local: giữ nguyên Host header
-          // để backend thấy localhost:5173 thay vì localhost:3000
+          // ✅ FIX #18: changeOrigin=false để giữ nguyên Host header
+          // (localhost:5173) → backend reconstruct đúng redirect URI
+          // cho Microsoft OAuth.
+          //
+          // ⚠️ LƯU Ý: Nếu bạn đổi port FE khác 5173 (VD: 5174),
+          // PHẢI thêm origin đó vào CORS whitelist trong
+          // server-json.js → app.use(cors({ origin: [...] }))
           changeOrigin: false,
           secure: false,
           configure: (proxy) => {
@@ -72,8 +76,6 @@ export default defineConfig(({ mode }) => {
 
       rollupOptions: {
         output: {
-          // ✅ Tách vendor theo package thực tế đang dùng.
-          // KHÔNG tách recharts riêng — nên lazy import ở Reports.
           manualChunks: {
             "react-vendor": ["react", "react-dom", "react-router-dom"],
             "icon-vendor": ["lucide-react"],

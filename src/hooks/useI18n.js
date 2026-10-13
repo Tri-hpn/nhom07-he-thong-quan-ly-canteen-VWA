@@ -1,81 +1,104 @@
 // ============================================================
-// useI18n — React hook chính thức
+// useI18n.js — Hook đa ngôn ngữ (V6 - FINAL)
 // ============================================================
-// Usage:
-//   const { t, tData, lang, setLang, languages, ready } = useI18n();
-//   <h1>{t("Thực đơn")}</h1>
-//   <p>{t("Xin chào {name}", { name: user.name })}</p>
-//   <h3>{tData(item, "name")}</h3>       ← dịch dữ liệu động
+// V5 (2026-10):
+//   - ✅ FIX CRITICAL: thêm tData() — dịch field dữ liệu
+//
+// V6 (2026-10) - FINAL:
+//   - 🔧 FIX CRITICAL: dùng useSyncExternalStore → re-render ĐÚNG
+//     khi locale thay đổi (KHÔNG cần F5)
+//   - 🔧 Xoá biến setLocale bị trùng tên
 // ============================================================
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import {
-  t as translate,
-  getLang,
-  setLang as setLangGlobal,
-  getAvailableLangs,
-  onLangChange,
-  isReady,
+  getLocale,
+  subscribe,
+  setLocale as setLocaleGlobal,
+  t as tGlobal,
 } from "../lib/i18n";
 
-/**
- * Lấy text đã localize từ object dữ liệu động (danh mục, món ăn).
- * Backend tự sinh field name_en, name_ja, ... khi trả về.
- *
- * @param {object} obj   - Document (VD: menu item, category)
- * @param {string} field - Field gốc (name, description, ...)
- * @returns {string}
- */
-export function tData(obj, field = "name") {
-  if (!obj) return "";
-
-  const lang = getLang();
-
-  // Tiếng Việt → trả field gốc
-  if (lang === "vi") return obj[field] || "";
-
-  // Thử field_{lang} (name_en, description_ja, ...)
-  const localized = obj[`${field}_${lang}`];
-  if (typeof localized === "string" && localized.trim()) {
-    return localized;
-  }
-
-  // Fallback về tiếng Việt
-  return obj[field] || "";
-}
+const isDev = import.meta.env.DEV;
+const warnedKeys = new Set();
 
 export function useI18n() {
-  const [lang, setLangState] = useState(getLang);
-  const [ready, setReady] = useState(isReady);
+  // 🔧 V6: useSyncExternalStore — React 18+ official way
+  const locale = useSyncExternalStore(
+    subscribe,
+    getLocale,
+    getLocale // SSR fallback
+  );
 
-  useEffect(() => {
-    const unsub = onLangChange((newLang) => {
-      setLangState(newLang);
-      setReady(true);
-    });
-    return unsub;
-  }, []);
-
+  /**
+   * t(key, params) — dịch key UI
+   * Fallback: dict[key] → dict[trim] → dict[normalize] → key
+   */
   const t = useCallback(
-    (source, vars) => translate(source, vars),
-    [lang] // eslint-disable-line react-hooks/exhaustive-deps
+    (key, params) => {
+      if (key === undefined || key === null) return "";
+
+      const k = String(key);
+      let translated = tGlobal(k);
+
+      if (translated === k || !translated) {
+        const trimmed = k.trim();
+        if (trimmed !== k) {
+          const t2 = tGlobal(trimmed);
+          if (t2 && t2 !== trimmed) translated = t2;
+        }
+
+        const normalized = k.replace(/\s+/g, " ").trim();
+        if (translated === k && normalized !== k) {
+          const t3 = tGlobal(normalized);
+          if (t3 && t3 !== normalized) translated = t3;
+        }
+
+        if (isDev && translated === k && !warnedKeys.has(k)) {
+          warnedKeys.add(k);
+          if (k.length > 0 && k.length < 200 && !k.startsWith("/")) {
+            console.warn(`[i18n] Key chưa dịch: "${k}"`);
+          }
+        }
+      }
+
+      if (params && typeof translated === "string") {
+        translated = translated.replace(/\{(\w+)\}/g, (match, name) => {
+          return params[name] !== undefined ? String(params[name]) : match;
+        });
+      }
+
+      return translated || k;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locale]
   );
 
-  const tD = useCallback(
-    (obj, field) => tData(obj, field),
-    [lang] // eslint-disable-line react-hooks/exhaustive-deps
+  /**
+   * tData(obj, field) — dịch field dữ liệu (name, description...)
+   */
+  const tData = useCallback(
+    (obj, field) => {
+      if (!obj || !field) return "";
+
+      const lang = locale || "vi";
+
+      if (lang === "vi") return obj[field] || "";
+
+      const translated = obj[`${field}_${lang}`];
+      if (typeof translated === "string" && translated.trim()) {
+        return translated;
+      }
+
+      return obj[field] || "";
+    },
+    [locale]
   );
 
-  const setLang = useCallback((newLang) => {
-    setLangGlobal(newLang);
+  const setLocale = useCallback((newLang) => {
+    setLocaleGlobal(newLang);
   }, []);
 
-  return {
-    t,
-    tData: tD,
-    lang,
-    setLang,
-    languages: getAvailableLangs(),
-    ready,
-  };
+  return { t, tData, locale, setLocale };
 }
+
+export default useI18n;

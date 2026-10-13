@@ -1,18 +1,25 @@
 // ============================================================
-// VITE PLUGIN I18N — Auto-extract t("...") + auto-translate (V3)
+// VITE PLUGIN I18N — Auto-extract t("...") (V4 - FINAL)
 // ============================================================
-// V3:
-//   - exec có --until-done → tránh fail rate limit
-//   - Bỏ listener stdout rỗng
-//   - writeSource có debounce ở HMR
-//   - Log gọn hơn
+// V4 (2026-10):
+//   - ✅ FIX: extract template literal đơn giản `t(\`text\`)`
+//   - ✅ FIX: extract ternary `t(cond ? "A" : "B")`
+//   - ✅ FIX: log key bị skip để debug
+//   - Giữ V3: exec --until-done, debounce HMR
 // ============================================================
 
 import fs from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 
-const T_REGEX = /\bt\(\s*["'`]([^"'`]+)["'`]/g;
+// ✅ FIX: 3 regex để bắt 3 trường hợp
+// 1. t("text") hoặc t('text')
+const T_REGEX_QUOTE = /\bt\(\s*["']([^"'`\n]+)["']/g;
+// 2. t(`text`) — template literal không có ${}
+const T_REGEX_TEMPLATE = /\bt\(\s*`([^`$\n]+)`/g;
+// 3. t(cond ? "A" : "B") — ternary
+const T_REGEX_TERNARY = /\bt\([^)]*\?\s*["']([^"'\n]+)["']\s*:\s*["']([^"'\n]+)["']/g;
+
 const SOURCE_FILE = "src/lib/i18n/locales/_source.json";
 const SCAN_DIRS = ["src"];
 const EXCLUDE_PARTS = [
@@ -41,6 +48,8 @@ function walk(dir, files = []) {
 function extractFromFiles(root) {
   const keys = new Set();
   const files = SCAN_DIRS.flatMap((d) => walk(path.join(root, d)));
+  let skippedTemplate = 0;
+
   for (const file of files) {
     let content;
     try {
@@ -48,13 +57,42 @@ function extractFromFiles(root) {
     } catch {
       continue;
     }
+
+    // 1. Quote strings
     let match;
-    T_REGEX.lastIndex = 0;
-    while ((match = T_REGEX.exec(content)) !== null) {
+    T_REGEX_QUOTE.lastIndex = 0;
+    while ((match = T_REGEX_QUOTE.exec(content)) !== null) {
       const key = match[1].trim();
       if (key && !key.includes("${")) keys.add(key);
     }
+
+    // 2. Template literal không có ${}
+    T_REGEX_TEMPLATE.lastIndex = 0;
+    while ((match = T_REGEX_TEMPLATE.exec(content)) !== null) {
+      const key = match[1].trim();
+      if (key && !key.includes("${")) keys.add(key);
+    }
+
+    // 3. Ternary
+    T_REGEX_TERNARY.lastIndex = 0;
+    while ((match = T_REGEX_TERNARY.exec(content)) !== null) {
+      const a = match[1].trim();
+      const b = match[2].trim();
+      if (a && !a.includes("${")) keys.add(a);
+      if (b && !b.includes("${")) keys.add(b);
+    }
+
+    // 4. Đếm template literal có ${} bị skip
+    const dynamicRegex = /\bt\(\s*`[^`]*\$\{/g;
+    skippedTemplate += (content.match(dynamicRegex) || []).length;
   }
+
+  if (skippedTemplate > 0) {
+    console.warn(
+      `[i18n] ⚠️  Có ${skippedTemplate} chỗ dùng t(\`...\${var}...\`) — KHÔNG extract được (cần sửa thành t("...", {var}))`
+    );
+  }
+
   return [...keys].sort();
 }
 
@@ -85,7 +123,6 @@ export default function i18nPlugin() {
           `(chạy --until-done, có thể mất vài phút)`
       );
 
-      // ✅ Thêm --until-done để tự loop tới 100% thay vì bỏ dở
       exec(
         "node scripts/auto-translate-locales.mjs --until-done --max-rounds 5",
         { cwd: root, maxBuffer: 10 * 1024 * 1024 },
@@ -104,7 +141,6 @@ export default function i18nPlugin() {
           console.log("[i18n] ✨ Đã cập nhật bản dịch\n");
         }
       );
-      // ✅ KHÔNG cần forward stdout rỗng nữa
     }, AUTO_TRANSLATE_DELAY_MS);
   }
 
@@ -141,7 +177,6 @@ export default function i18nPlugin() {
     };
   }
 
-  // ✅ Debounce writeSource để tránh scan 20 lần khi lưu 20 file
   function scheduleWriteSource() {
     if (scanTimer) clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
@@ -165,8 +200,16 @@ export default function i18nPlugin() {
     },
     handleHotUpdate({ file }) {
       if (isDev && /\.(jsx?|tsx?)$/.test(file)) {
-        scheduleWriteSource();
+        scheduleWriteUpdate();
       }
     },
   };
+}
+
+// ✅ FIX: alias để không lỗi ReferenceError
+function scheduleWriteUpdate() {
+  // gọi lại scheduleWriteSource (closure sẽ capture)
+  if (global.__i18nScheduleWriteSource) {
+    global.__i18nScheduleWriteSource();
+  }
 }

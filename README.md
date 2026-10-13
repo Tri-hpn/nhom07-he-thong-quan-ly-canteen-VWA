@@ -1,398 +1,726 @@
-# Canteen VWA - Hệ thống quản lý Canteen
+<div align="center">
 
-Hệ thống đặt món và quản lý Canteen dành cho khách hàng, nhân viên và quản trị viên.
+# 🍽️ Canteen VWA
 
-**Trạng thái:** Production-ready - deploy tại [[https://canteen-goo.vercel.app](https://canteenvwa.vercel.app/)
+### Hệ thống đặt món và quản lý canteen — Học viện Phụ nữ Việt Nam
 
-## Mục lục
+Ứng dụng web hỗ trợ khách hàng đặt món, nhân viên xử lý đơn và quản trị viên quản lý hoạt động canteen trên cùng một nền tảng.
 
-1. [Tính năng](#1-tính-năng)
-2. [Stack công nghệ](#2-stack-công-nghệ)
-3. [Cấu trúc thư mục](#3-cấu-trúc-thư-mục)
-4. [Cài đặt Local](#4-cài-đặt-local)
-5. [Biến môi trường](#5-biến-môi-trường)
-6. [Scripts có sẵn](#6-scripts-có-sẵn)
-7. [Tài khoản demo](#7-tài-khoản-demo-seed-data)
-8. [Deploy Production](#8-deploy-production)
-9. [Testing & QA](#9-testing--qa)
-10. [Troubleshooting](#10-troubleshooting)
-11. [Changelog](#11-changelog)
-12. [Bảo mật - Cần đọc](#12-bảo-mật---cần-đọc)
-13. [License & Credits](#13-license--credits)
+<p>
+  <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white" alt="React 18" />
+  <img src="https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white" alt="Vite 5" />
+  <img src="https://img.shields.io/badge/Node.js-22+-339933?logo=nodedotjs&logoColor=white" alt="Node.js 22+" />
+  <img src="https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white" alt="Express 5" />
+  <img src="https://img.shields.io/badge/Database-MongoDB-47A248?logo=mongodb&logoColor=white" alt="MongoDB" />
+</p>
 
----
+<p>
+  <a href="https://github.com/Tri-hpn/nhom07-he-thong-quan-ly-canteen-VWA">
+    <img src="https://img.shields.io/badge/GitHub-Repository-181717?logo=github" alt="GitHub repository" />
+  </a>
+  <img src="https://img.shields.io/badge/Status-Development-orange" alt="Project status" />
+  <img src="https://img.shields.io/badge/Language-Vietnamese%20%7C%20i18n-blue" alt="Language support" />
+</p>
 
-## 1. Tính năng
-
-### Khách hàng (Customer)
-- Xem thực đơn, tìm kiếm, lọc theo danh mục
-- Đặt món, thêm topping, chọn size
-- Thanh toán: Tiền mặt / VietQR / Ví Canteen
-- Tích điểm, đổi voucher, nhận ưu đãi
-- Chat với nhân viên hoặc ChatBot AI (gợi ý món theo giá/chủ đề)
-- Quản lý ví Canteen (nạp / rút / liên kết ngân hàng)
-- Xem lịch sử đơn hàng, đánh giá món đã mua
-- Dark mode + responsive mobile
-- Đa ngôn ngữ (Tiếng Việt / English)
-
-### Nhân viên (Employee)
-- Chấm công check-in / check-out theo ca
-- Xử lý đơn hàng: xác nhận → chuẩn bị → sẵn sàng → hoàn thành
-- Xem thực đơn, bật / tắt món
-- Chat hỗ trợ khách hàng
-- Đăng ký ca làm việc tuần sau
-- Nhận nhắc nhở trước ca 30 phút
-
-### Quản trị viên (Admin)
-- Dashboard doanh thu realtime + KPI trend
-- Quản lý nhân viên, khách hàng, phân quyền chi tiết (9 nhóm permissions)
-- Quản lý thực đơn, danh mục (có icon + thứ tự), kho nguyên liệu
-- Quản lý ca làm việc, chấm công
-- Báo cáo chuyên sâu (date range, so sánh kỳ, hourly chart, export CSV)
-- Tài chính (tài khoản nhận tiền, chi phí, lợi nhuận, đối soát)
-- Quản lý voucher (template + personal), ví Canteen (duyệt nạp/rút)
-- Lịch sử thay đổi giá món
-- Backup / restore / reset database
+</div>
 
 ---
 
-## 2. Stack công nghệ
+## 👋 Giới thiệu
 
-- **Frontend:** React 18, Vite 5, React Router v6
-- **Backend:** Express 5, JWT auth, bcryptjs
-- **Database:** MongoDB Atlas (production), File JSON (dev fallback)
-- **Charts:** Recharts 2
-- **Icons:** Lucide React
-- **Styles:** CSS thuần (không Tailwind)
-- **Deploy:** Vercel (Frontend), Node.js runtime (Backend), MongoDB Atlas (Database)
+**Canteen VWA** là dự án xây dựng hệ thống web quản lý quy trình đặt món và vận hành canteen. Ứng dụng chia thành ba khu vực sử dụng chính:
+
+- 🛍️ **Khách hàng:** xem thực đơn, đặt món, thanh toán, theo dõi đơn hàng và sử dụng điểm thưởng/voucher.
+- 🧑‍🍳 **Nhân viên:** chấm công theo ca, tiếp nhận đơn và cập nhật tiến độ xử lý.
+- 🛡️ **Quản trị viên:** quản lý tài khoản, thực đơn, ca làm, kho, voucher và báo cáo.
+
+Mục tiêu của dự án là tập trung các nghiệp vụ canteen vào một hệ thống, giúp thao tác thuận tiện hơn và hỗ trợ quản lý dữ liệu rõ ràng.
+
+> **Lưu ý:** tính khả dụng của một số chức năng phụ thuộc vào cấu hình môi trường, dữ liệu và quyền tài khoản. Trước khi công khai repository, hãy kiểm tra và loại bỏ `.env`, `.env.local`, dữ liệu cơ sở dữ liệu thật và thông tin đăng nhập khỏi Git.
+
+## 🚀 Demo
+
+- **Repository:** [nhom07-he-thong-quan-ly-canteen-VWA](https://github.com/Tri-hpn/nhom07-he-thong-quan-ly-canteen-VWA)
+- **Chạy thử trên máy cá nhân:** xem phần [Cài đặt và chạy local](#-cài-đặt-và-chạy-local).
+
+> Chưa điền đường dẫn website demo vì chưa xác nhận URL triển khai công khai.
+
+## 🧐 Tính năng
+
+## 📌 Giới thiệu
+
+**Canteen VWA** là hệ thống web quản lý quy trình đặt món và vận hành canteen. Dự án tổ chức giao diện theo ba nhóm người dùng chính:
+
+- **Khách hàng (Customer):** xem thực đơn, đặt món, thanh toán và theo dõi đơn hàng.
+- **Nhân viên (Employee):** chấm công, tiếp nhận đơn và cập nhật tiến độ xử lý.
+- **Quản trị viên (Owner/Admin):** quản lý người dùng, thực đơn, ca làm, kho, voucher và báo cáo.
+
+README này mô tả cách cài đặt, chạy, kiểm thử và triển khai dự án. Các chức năng có thể phụ thuộc vào quyền tài khoản, dữ liệu và cấu hình môi trường.
+
+> **Lưu ý trước khi công khai repository:** hãy kiểm tra và loại bỏ khỏi Git các file `.env`, `.env.local`, bản sao cơ sở dữ liệu, dữ liệu người dùng và thông tin đăng nhập. Không đưa secret hoặc dữ liệu thật vào README.
+
+## 📚 Mục lục
+
+- [✨ Tính năng](#-tính-năng)
+- [🧰 Công nghệ sử dụng](#-công-nghệ-sử-dụng)
+- [🏗️ Kiến trúc và cấu trúc thư mục](#️-kiến-trúc-và-cấu-trúc-thư-mục)
+- [💻 Yêu cầu hệ thống](#-yêu-cầu-hệ-thống)
+- [🚀 Cài đặt và chạy local](#-cài-đặt-và-chạy-local)
+- [⚙️ Cấu hình biến môi trường](#️-cấu-hình-biến-môi-trường)
+- [📜 Các lệnh npm](#-các-lệnh-npm)
+- [🗃️ Dữ liệu và ảnh món ăn](#️-dữ-liệu-và-ảnh-món-ăn)
+- [🧪 Kiểm thử và nghiệm thu](#-kiểm-thử-và-nghiệm-thu)
+- [🌐 Triển khai production](#-triển-khai-production)
+- [🛠️ Xử lý lỗi thường gặp](#️-xử-lý-lỗi-thường-gặp)
+- [🔐 Bảo mật](#-bảo-mật)
+- [📖 Tài liệu dự án](#-tài-liệu-dự-án)
+- [🧭 Hướng phát triển](#-hướng-phát-triển)
+- [📄 Giấy phép và ghi nhận](#-giấy-phép-và-ghi-nhận)
 
 ---
 
-## 3. Cấu trúc thư mục
+## ✨ Tính năng
+
+### 🛍️ 1. Khu vực khách hàng
+
+- Xem thực đơn, tìm kiếm món ăn và lọc theo danh mục.
+- Xem chi tiết món ăn, lựa chọn size và topping khi được hỗ trợ.
+- Quản lý giỏ hàng và tạo đơn hàng.
+- Sử dụng các phương thức thanh toán được cấu hình trong ứng dụng, gồm tiền mặt, VietQR và ví Canteen.
+- Tích lũy điểm, đổi điểm lấy voucher và sử dụng ưu đãi.
+- Theo dõi trạng thái đơn hàng và xem lịch sử đặt món.
+- Đánh giá món ăn đã mua.
+- Sử dụng ví Canteen và gửi yêu cầu nạp/rút theo chức năng được triển khai.
+- Trao đổi với nhân viên hoặc sử dụng chatbot hỗ trợ.
+- Giao diện responsive, chế độ tối và hỗ trợ đa ngôn ngữ.
+
+### 🧑‍🍳 2. Khu vực nhân viên
+
+- Check-in/check-out theo ca làm việc.
+- Tiếp nhận và xử lý đơn hàng theo từng trạng thái.
+- Theo dõi đơn trong quá trình chuẩn bị và bàn giao.
+- Xem thực đơn, bật/tắt món theo quyền được cấp.
+- Trao đổi với khách hàng.
+- Đăng ký ca làm việc theo chức năng hiện có.
+
+### 🛡️ 3. Khu vực quản trị viên
+
+- Dashboard tổng quan hoạt động và doanh thu.
+- Quản lý tài khoản khách hàng, nhân viên và quyền truy cập.
+- Quản lý thực đơn, danh mục, giá bán và trạng thái món.
+- Quản lý kho nguyên liệu và tồn kho theo chức năng được triển khai.
+- Quản lý ca làm việc và dữ liệu chấm công.
+- Quản lý voucher, ưu đãi và các yêu cầu liên quan đến ví.
+- Theo dõi báo cáo, thống kê và thông tin tài chính.
+- Xem lịch sử thay đổi giá món.
+- Thực hiện các chức năng sao lưu/khôi phục dữ liệu khi được cấu hình.
+
+### 🌍 4. Trải nghiệm và hỗ trợ
+
+- Hỗ trợ giao diện desktop và thiết bị di động.
+- Chuyển đổi ngôn ngữ theo cơ chế đa ngôn ngữ của dự án.
+- Thành phần giao diện dùng chung để giữ trải nghiệm nhất quán.
+- Xử lý phiên đăng nhập hết hạn và thông báo thao tác.
+- Tối ưu cách lưu và phục vụ ảnh món ăn để giảm kích thước dữ liệu chính.
+
+---
+
+## 🧰 Công nghệ sử dụng
+
+Dự án sử dụng các công nghệ phổ biến trong hệ sinh thái JavaScript để phát triển giao diện, API và quy trình build.
+
+
+| Thành phần | Công nghệ |
+|---|---|
+| Frontend | React 18 |
+| Công cụ phát triển và build | Vite 5 |
+| Điều hướng | React Router DOM 6 |
+| Backend/API | Node.js, Express 5 |
+| Xác thực | JSON Web Token (JWT), bcryptjs |
+| Cơ sở dữ liệu | MongoDB, Mongoose |
+| Biểu đồ | Recharts 2 |
+| Biểu tượng | Lucide React |
+| Giao diện | CSS thuần |
+| Triển khai | Vercel theo cấu hình `vercel.json` |
+
+### Luồng hoạt động khái quát
 
 ```text
-canteengo/
+┌───────────────────────────────┐
+│         Người sử dụng         │
+│ Customer / Employee / Admin   │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│       Frontend React          │
+│  Giao diện, điều hướng, API    │
+└───────────────┬───────────────┘
+                │ HTTP / JSON
+                ▼
+┌───────────────────────────────┐
+│       Backend Express         │
+│ Xác thực, nghiệp vụ, phân quyền│
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ MongoDB / cơ chế lưu dữ liệu   │
+│ Dữ liệu nghiệp vụ, ảnh món ăn  │
+└───────────────────────────────┘
+```
+
+Sơ đồ trên mô tả kiến trúc logic ở mức khái quát. Cách kết nối thực tế phụ thuộc môi trường local hoặc production.
+
+---
+
+## 🏗️ Kiến trúc và cấu trúc thư mục
+
+Cấu trúc dưới đây tập trung vào các thư mục và tệp chính trong repository:
+
+```text
+Canteengo/
+├── api/
+│   └── index.js                 # Entry point API serverless trên Vercel
+├── public/
+│   ├── icon.svg                 # Biểu tượng ứng dụng
+│   ├── manifest.json            # Thông tin web app
+│   └── shrink-menu-images.html  # Công cụ nén ảnh món ăn
 ├── src/
-│   ├── api.js                    # HTTP client + 401 interceptor
-│   ├── App.jsx                   # Root + routing + auth-expired listener
-│   ├── main.jsx                  # Entry point
-│   ├── i18n.js                   # Đa ngôn ngữ (VI / EN)
-│   ├── bannerSlides.js           # Config banner
-│   ├── styles.css                # Global styles
-│   ├── styles-sky.css            # Theme xanh da trời
-│   ├── components/               # 30+ UI components dùng chung
-│   │   ├── ConfirmDialog.jsx
-│   │   ├── Effects.jsx
-│   │   ├── Skeleton.jsx
-│   │   ├── Layout.jsx
-│   │   ├── Sidebar.jsx
-│   │   ├── BottomNav.jsx
-│   │   ├── HeaderNav.jsx
-│   │   ├── FoodDetailModal.jsx
-│   │   ├── PaymentModal.jsx
-│   │   ├── ChatBotWidget.jsx
-│   │   ├── NotificationBell.jsx
-│   │   └── ... (còn nhiều component khác)
-│   └── pages/
-│       ├── Login.jsx
-│       ├── Register.jsx
-│       ├── ForgotPassword.jsx
-│       ├── StaffProfile.jsx
-│       ├── customer/             # 12 trang khách hàng
-│       ├── employee/             # 5 trang nhân viên
-│       └── owner/                # 16 trang quản trị
-├── server-json.js                # Backend Express (single file)
-├── test-fixes.ps1                # Regression test (PowerShell - Yêu cầu Windows)
-├── split.mjs                     # Utility tách/merge DB JSON
-├── vite.config.js
-├── vercel.json
-├── index.html
-├── package.json
-├── .env.example
+│   ├── components/              # Thành phần giao diện tái sử dụng
+│   ├── contexts/                # Context dùng chung
+│   ├── hooks/                   # Custom hooks
+│   ├── lib/                     # Tiện ích dùng chung
+│   ├── pages/
+│   │   ├── Login.jsx
+│   │   ├── Register.jsx
+│   │   ├── ForgotPassword.jsx
+│   │   └── ...                  # Các trang theo vai trò
+│   ├── api.js                   # HTTP client gọi backend
+│   ├── App.jsx                  # Thành phần gốc và điều hướng
+│   ├── main.jsx                 # Điểm khởi chạy frontend
+│   ├── bannerSlides.js          # Cấu hình banner
+│   └── styles*.css              # Style toàn cục và theo khu vực
+├── scripts/
+│   ├── free-dev-ports.mjs       # Hỗ trợ kiểm tra/giải phóng cổng dev
+│   ├── split.mjs                # Tiện ích tách/gộp dữ liệu
+│   ├── auto-translate-locales.mjs
+│   ├── backfill-from-mongo.mjs
+│   └── ...                      # Script hỗ trợ dịch, kiểm tra và dữ liệu
+├── docs/
+│   ├── README.md                # Hướng dẫn tài liệu nghiệp vụ
+│   ├── user-flows.md            # Luồng người dùng
+│   ├── acceptance-criteria.md   # Tiêu chí nghiệm thu
+│   └── test-cases.md            # Các trường hợp kiểm thử
+├── server-json.js               # Backend Express
+├── menuImageStore.js            # Xử lý lưu trữ/di trú ảnh món ăn
+├── autoTranslate.js             # Hỗ trợ dịch tự động
+├── vite.config.js               # Cấu hình Vite và proxy API
+├── vite-plugin-i18n.mjs         # Plugin hỗ trợ đa ngôn ngữ
+├── vercel.json                  # Cấu hình triển khai Vercel
+├── package.json                 # Dependencies và npm scripts
+├── package-lock.json            # Khóa phiên bản dependencies
+├── .env.example                 # Mẫu cấu hình môi trường
 └── README.md
 ```
 
-> **Lưu ý:** Các file `Dockerfile`, `Dockerfile.backend`, `.dockerignore`, `render.yaml`, `nginx.conf` đã được xoá vì dự án không sử dụng Docker.
+**Một số tệp quan trọng:**
+
+| Tệp | Vai trò |
+|---|---|
+| `src/App.jsx` | Thành phần gốc và điều hướng giao diện |
+| `src/api.js` | Tập trung xử lý request đến API |
+| `src/contexts/AuthContext.jsx` | Chia sẻ trạng thái xác thực trong frontend |
+| `server-json.js` | Khởi tạo và xử lý backend Express |
+| `api/index.js` | Chuyển tiếp ứng dụng Express cho Vercel Functions |
+| `menuImageStore.js` | Xử lý dữ liệu ảnh món ăn |
+| `vite.config.js` | Cấu hình dev server, proxy và build |
+| `vercel.json` | Cấu hình build, function và rewrite URL |
+| `package.json` | Khai báo scripts và thư viện |
 
 ---
 
-## 4. Cài đặt Local
+## 💻 Yêu cầu hệ thống
 
-### Yêu cầu
-- **Node.js >= 22** (tải tại [https://nodejs.org](https://nodejs.org)) — vì `concurrently@10` cần Node ≥ 22
-- **npm >= 10** (đi kèm Node)
-- (Tuỳ chọn) MongoDB Atlas account - nếu không có sẽ dùng file JSON local
+Trước khi cài đặt, hãy chuẩn bị:
 
-### Các bước
+- **Node.js 22 trở lên** — phiên bản yêu cầu được khai báo trong `package.json`.
+- **npm** — đi kèm với Node.js.
+- **Git** — nếu clone dự án từ GitHub.
+- **VS Code** — khuyến nghị để đọc và chỉnh sửa mã nguồn.
+- **MongoDB** — tùy chọn theo môi trường; có thể cấu hình MongoDB Atlas hoặc MongoDB local.
+
+Kiểm tra môi trường bằng Terminal:
 
 ```bash
-# 1. Clone repo
+node -v
+npm -v
+git --version
+```
+
+Nếu máy chưa nhận lệnh `node` hoặc `npm`, hãy cài Node.js và mở lại Terminal sau khi cài đặt.
+
+---
+
+## 🚀 Cài đặt và chạy local
+
+### Bước 1 — Lấy mã nguồn
+
+Nếu clone từ GitHub:
+
+```bash
 git clone https://github.com/Tri-hpn/nhom07-he-thong-quan-ly-canteen-VWA.git
 cd nhom07-he-thong-quan-ly-canteen-VWA
+```
 
-# 2. Cài dependencies
+Nếu đã tải ZIP, giải nén và mở đúng thư mục ứng dụng. **Terminal phải đang ở thư mục có `package.json`**.
+
+Kiểm tra nhanh:
+
+```bash
+dir
+```
+
+Bạn cần thấy `package.json`, `src/`, `server-json.js` và `vite.config.js` trong thư mục dự án.
+
+### Bước 2 — Cài thư viện
+
+```bash
 npm install
+```
 
-# 3. Tạo file .env từ template
+Nếu quá trình cài đặt báo lỗi, hãy đọc thông báo lỗi đầu tiên và kiểm tra phiên bản Node.js trước khi thử xóa cache hoặc cài lại thư viện.
+
+### Bước 3 — Tạo file `.env`
+
+**Windows PowerShell:**
+
+```powershell
+Copy-Item .env.example .env
+```
+
+**macOS/Linux/Git Bash:**
+
+```bash
 cp .env.example .env
-# Mở .env, sửa JWT_SECRET thành chuỗi random mạnh:
-#   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
 
-# 4. Chạy dev (FE + BE song song trong 1 terminal)
+Mở `.env` và chỉnh các biến cần thiết. Tối thiểu hãy thay `JWT_SECRET` bằng giá trị ngẫu nhiên mạnh.
+
+Tạo giá trị ngẫu nhiên bằng Node.js:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+
+Sao chép kết quả vào `JWT_SECRET` trong file `.env`. Không dùng secret minh họa trong production.
+
+### Bước 4 — Cấu hình cơ sở dữ liệu
+
+Nếu dùng MongoDB, điền connection string vào `MONGO_URI` trong `.env`.
+
+Ví dụ định dạng (thay bằng thông tin của cơ sở dữ liệu của bạn):
+
+```env
+MONGO_URI=mongodb+srv://<username>:<password>@<cluster>/<database>
+```
+
+Không đưa connection string thật vào README, ảnh chụp màn hình công khai hoặc repository.
+
+Nếu để `MONGO_URI` trống, hãy kiểm tra logic fallback của backend và cấu hình dữ liệu local trước khi sử dụng. Không giả định dữ liệu local sẽ tự động đồng bộ lên production.
+
+### Bước 5 — Khởi chạy ứng dụng
+
+Chạy cả frontend và backend:
+
+```bash
 npm start
 ```
 
-Sau khi chạy:
-- Frontend: [http://localhost:5173](http://localhost:5173)
-- Backend: [http://localhost:3000](http://localhost:3000)
+Theo cấu hình mặc định của dự án:
 
----
-
-## 5. Biến môi trường
-
-Tạo file `.env` ở thư mục gốc dự án (đã có template `.env.example`):
-
-- `JWT_SECRET` **(bắt buộc)**: Secret ký JWT, đổi thành chuỗi random dài
-- `PORT` (không bắt buộc): Port backend, default `3000`
-- `MONGO_URI` (không bắt buộc): Chuỗi kết nối MongoDB Atlas. Để trống sẽ dùng file JSON local
-- `NODE_ENV` (không bắt buộc): `development` hoặc `production`
-- `VITE_API_URL` (không bắt buộc): URL backend cho frontend, default `/api`
-
----
-
-## 6. Scripts có sẵn
-
-- `npm start`: Chạy FE (5173) + BE (3000) cùng lúc. Dùng hàng ngày.
-- `npm run dev`: Chỉ frontend. Khi backend đã chạy terminal khác.
-- `npm run server`: Chỉ backend. Khi frontend đã chạy terminal khác.
-- `npm run build`: Build production frontend. Trước khi deploy.
-- `npm run preview`: Preview bản build. Kiểm tra bản production.
-- `npm run db:migrate-images`: Tách ảnh món ăn đang nhúng base64 trong document chính sang collection `menu_images` (chạy trên server, có tự động sao lưu). Xem mục **8. Database → Ảnh món ăn**.
-
----
-
-## 7. Tài khoản demo (seed data)
-
-- Admin: `admin@vwa.vn` / `[Đã ẩn vì lý do bảo mật - Liên hệ Admin để lấy mật khẩu]`
-- Nhân viên: `nhanvien@vwa.vn` / `[Đã ẩn vì lý do bảo mật - Liên hệ Admin để lấy mật khẩu]`
-- Khách hàng: `sinhvien@vwa.vn` / `[Đã ẩn vì lý do bảo mật - Liên hệ Admin để lấy mật khẩu]`
-
-> **CẢNH BÁO:** Đây là password demo, BẮT BUỘC đổi trước khi deploy production hoặc chia sẻ URL public.
-
----
-
-## 8. Deploy Production
-
-### Frontend - Vercel
-1. Fork repo này lên GitHub
-2. Vào [https://vercel.com](https://vercel.com) → Add New Project → import repo
-3. Framework: Vite (auto-detect)
-4. Build command: `npm run build`, Output: `dist`
-5. File `vercel.json` đã có sẵn rewrite `/api/*` → backend
-
-### Backend - Render (hoặc nền tảng hỗ trợ Node.js)
-1. Vào [https://dashboard.render.com](https://dashboard.render.com) → New Web Service
-2. Connect repo GitHub, chọn root directory chứa `server-json.js`
-3. Runtime: Node
-4. Build: `npm install`, Start: `node server-json.js`
-5. Environment, thêm các biến:
-
-```env
-NODE_ENV        = production
-JWT_SECRET      = <chuỗi random mạnh>
-MONGO_URI       = <connection string MongoDB Atlas>
-PORT            = 10000
-```
-
-6. Bấm Create Web Service, chờ deploy (~2 phút)
-
-### Database - MongoDB Atlas
-1. Tạo account tại [https://cloud.mongodb.com](https://cloud.mongodb.com)
-2. Tạo Cluster M0 (free tier)
-3. Database Access, tạo user + password
-4. Network Access, Add IP `0.0.0.0/0` (cho phép mọi IP)
-5. Connect → chọn Drivers → copy connection string
-6. Dán vào biến `MONGO_URI` trên Render
-
-### Ảnh món ăn — collection `menu_images`
-
-Toàn bộ DB nằm trong **1 document** `canteen_db.main` (`data` là Mixed). Nếu ảnh món ăn
-được nhúng thẳng dạng base64 vào document này thì mỗi lần khởi động server phải tải
-**cả document** về → rất chậm (đã từng gặp: 15.47 MB, mỗi lần boot mất hàng phút và
-thường treo ở dòng `⏳ Đang tải DB từ MongoDB...`), mỗi lần lưu DB cũng phải upload lại
-từng đó dữ liệu.
-
-Vì vậy ảnh món ăn được tách riêng:
-
-| | |
+| Thành phần | Địa chỉ |
 |---|---|
-| `canteen_db.main.data.menu_items[].image` | chỉ lưu đường dẫn ngắn `/api/uploads/menu/<id>?v=<rev>` |
-| `menu_images` (collection) | mỗi ảnh 1 document `{ _id: "<id món>", image: "data:image/...", rev, contentType }` |
-| `GET /api/uploads/menu/:id` | phục vụ ảnh (cache RAM 64 MB + cache trình duyệt theo `?v=<rev>`) |
-| `canteen_db_backup_main` | bản sao document gốc, tạo tự động trước khi di trú (xoá được khi không cần) |
+| Frontend | http://localhost:5173 |
+| Backend | http://localhost:3000 |
 
-- Server **tự kiểm tra và tự di trú** mỗi lần khởi động (`migrateInlineMenuImages`), chạy
-  **hoàn toàn trên server** bằng aggregation + `$merge` nên không phải tải 15 MB về máy.
-  Document chính sau khi sạch ảnh chỉ còn ~0.15 MB → boot ~1-4 giây.
-- Lệnh thủ công (khi cần làm ngay, có `--no-backup` để bỏ qua sao lưu):
-  ```bash
-  npm run db:migrate-images
-  ```
-- **Nén ảnh cũ (chạy 1 lần):** ảnh upload trước đây còn rất nặng (500-800 KB/ảnh). Mở
-  `http://localhost:5173/shrink-menu-images.html` (khi app đang chạy), đăng nhập tài khoản
-  ADMIN/EMPLOYEE rồi bấm **Bắt đầu nén** — trình duyệt sẽ resize + nén JPEG rồi lưu lại
-  (nhẹ hơn ~6-10 lần). Chạy lại nhiều lần cũng an toàn.
-- Ảnh upload **mới** đã được nén sẵn ở frontend (`ImageUploader` → canvas, tối đa 1280px)
-  và server tự tách sang `menu_images` nên document chính không bao giờ phình lại.
+Giữ Terminal đang chạy để ứng dụng tiếp tục hoạt động. Mở frontend bằng trình duyệt tại `http://localhost:5173`.
 
----
+### Chạy frontend và backend riêng
 
-## 9. Testing & QA
+Mở **Terminal 1** để chạy backend:
 
-### Regression test tự động
-
-File `test-fixes.ps1` chứa **14 case test cho 4 bug critical**. **Yêu cầu hệ điều hành Windows (PowerShell).**
-
-```powershell
-# Chạy local
-.\test-fixes.ps1
-
-# Chạy production
-.\test-fixes.ps1 https://canteen-goo.onrender.com
+```bash
+npm run server
 ```
 
-Test bao gồm:
-- **H1**: Hủy đơn hoàn kho + hoàn điểm (5 case)
-- **H2**: Ví thiếu tiền không trừ kho (1 case)
-- **H3**: Món inactive không đặt được (1 case)
-- **H4**: qty ≤ 0 bị chặn (3 case)
-- **H1-extra**: Customer tự hủy đơn hoàn kho + điểm (3 case)
+Mở **Terminal 2** để chạy frontend:
 
-Yêu cầu: PowerShell + đã login được admin.
+```bash
+npm run dev
+```
 
-### QA Checklist thủ công (trước khi go-live)
+Cách chạy riêng hữu ích khi cần theo dõi log backend và lỗi frontend ở hai cửa sổ.
 
-**Customer:**
-- [ ] Đăng ký tài khoản mới, nhận 0 điểm
-- [ ] Đăng nhập, thấy banner, best sellers, món mới
-- [ ] Thêm món vào giỏ, tăng/giảm qty
-- [ ] Áp voucher, thấy giảm giá
-- [ ] Đặt hàng, payment modal, thanh toán
-- [ ] Xem danh sách đơn hàng, trạng thái cập nhật
-- [ ] Đánh giá món đã mua, +10 điểm
-- [ ] Đổi 100 điểm, voucher 10k
-- [ ] Nạp tiền vào ví (QR/CASH), admin duyệt, số dư tăng
-- [ ] Chat với chatbot AI, nhận gợi ý
-- [ ] Chat với nhân viên, nhận trả lời
+### Dừng ứng dụng
 
-**Employee:**
-- [ ] Check-in ca sáng, thấy trong lịch sử
-- [ ] Xử lý đơn: Chờ xác nhận → Đã xác nhận → Chuẩn bị → Sẵn sàng → Hoàn thành
-- [ ] Bật/tắt món, thấy thay đổi ngay
-- [ ] Đăng ký ca tuần sau, trạng thái "Chờ duyệt"
-- [ ] Chat trả lời khách, khách nhận được
+Trong từng Terminal đang chạy, nhấn:
 
-**Admin:**
-- [ ] Dashboard hiện doanh thu + KPI trend
-- [ ] Thêm/sửa/xóa món, kiểm tra lịch sử giá
-- [ ] Thêm nhân viên mới, validate trùng email
-- [ ] Duyệt đơn nạp ví, số dư cập nhật
-- [ ] Phân quyền cho employee, tick/bỏ tick
-- [ ] Backup, export file JSON, import lại, dữ liệu khôi phục
-- [ ] Báo cáo: chọn range, export CSV, mở Excel
-
-**Mobile:**
-- [ ] Bottom nav hiện đúng (Customer)
-- [ ] Sidebar hamburger (Employee/Admin)
-- [ ] Banner responsive
-- [ ] Bảng scroll ngang (không vỡ layout)
-- [ ] Modal full-screen trên mobile
-- [ ] Toast không bị che bởi bottom nav
+```text
+Ctrl + C
+```
 
 ---
 
-## 10. Troubleshooting
+## ⚙️ Cấu hình biến môi trường
 
-| Lỗi | Nguyên nhân | Cách fix |
-|-----|-------------|----------|
-| `npm error Missing script: "dev:all"` | Script không tồn tại | Dùng `npm start` |
-| `JWT_SECRET chưa được set` | File `.env` thiếu biến | Copy `.env.example` → `.env` → thêm `JWT_SECRET` |
-| `EADDRINUSE :::3000` | Port 3000 bị chiếm | `Get-Process node \| Stop-Process -Force` rồi chạy lại |
-| `EADDRINUSE :::5173` | Port 5173 bị chiếm | Tương tự |
-| `Cannot find module 'xxx'` | Chưa cài dependencies | Chạy `npm install` |
-| Render cold start (~30s) | Free tier spin down sau 15 phút idle | Chờ 30s cho lần request đầu |
-| Mongo connect timeout | Chưa whitelist IP trên Atlas | Vào Network Access → Add `0.0.0.0/0` |
-| Server treo ở `⏳ Đang tải DB từ MongoDB...` | Document chính chứa ảnh base64 (~15 MB) nên mỗi lần boot phải tải cả 15 MB | Server tự tách ảnh khi khởi động; nếu vẫn treo: `npm run db:migrate-images` |
-| Ảnh món ăn tải rất chậm / trang thực đơn lâu hiện ảnh | Ảnh cũ chưa nén (500-800 KB/ảnh) | Mở `http://localhost:5173/shrink-menu-images.html` → **Bắt đầu nén** |
-| Đổi ảnh món nhưng trình duyệt vẫn thấy ảnh cũ | Cache theo `?v=<rev>` | F5; ảnh mới đã có `?v` mới nên không cần xoá cache |
-| Data mất sau redeploy | Đang dùng file JSON trên Render | Set `MONGO_URI` để dùng MongoDB |
-| `chmod: command not found` (Windows) | Lệnh Linux trên PowerShell | Dùng `bash script.sh` qua Git Bash |
+Các biến được mô tả trong `.env.example` của dự án:
 
----
+| Biến | Mục đích | Lưu ý |
+|---|---|---|
+| `NODE_ENV` | Xác định môi trường chạy | Ví dụ `development` hoặc `production` |
+| `PORT` | Cổng backend | Local mặc định `3000` |
+| `JWT_SECRET` | Ký và xác minh JWT | Bắt buộc đặt secret mạnh |
+| `MONGO_URI` | Kết nối MongoDB | Để trống chỉ khi chủ động dùng cơ chế lưu local |
+| `VITE_API_URL` | URL gốc của API | Để trống nếu dùng proxy/định tuyến mặc định |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth phía frontend | Client ID không phải client secret |
+| `GOOGLE_CLIENT_ID` | Google OAuth phía backend | Phải khớp cấu hình OAuth |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth phía backend | Không đưa lên frontend |
+| `VITE_FACEBOOK_APP_ID` | Facebook OAuth phía frontend | App ID có thể công khai |
+| `FACEBOOK_APP_ID` | Facebook OAuth phía backend | Kiểm tra cấu hình ứng dụng |
+| `FACEBOOK_APP_SECRET` | Facebook OAuth phía backend | Giữ bí mật |
+| `VITE_HOLIDAY_API_URL` | Endpoint dịch vụ ngày lễ | Chỉ cấu hình khi chức năng được dùng |
+| `VITE_GRAVITEE_API_KEY` | Cấu hình API Gateway | Biến `VITE_` có thể xuất hiện trong bundle frontend |
+| `VITE_GRAVITEE_SECRET_KEY` | Cấu hình API Gateway | Không nên đặt secret thực sự ở frontend |
+| `CORS_ORIGIN` | Cấu hình origin được phép | Tùy logic backend |
+| `MAX_UPLOAD_SIZE` | Giới hạn kích thước upload | Tùy logic backend |
+| `DB_PATH` | Đường dẫn dữ liệu JSON local | Tùy cơ chế lưu trữ |
+| `RATE_LIMIT_MAX` | Tham số giới hạn request | Chỉ có tác dụng nếu backend sử dụng |
 
-## 11. Changelog
+> **Quan trọng:** Vite có thể nhúng biến có tiền tố `VITE_` vào mã frontend. Không lưu mật khẩu, private key, client secret hoặc thông tin nhạy cảm trong các biến này. Các biến môi trường chỉ có tác dụng nếu mã ứng dụng đọc và sử dụng chúng.
 
-### Session 2 - Critical backend fixes (commit 29abb7a)
-- **H1**: Hủy đơn không hoàn kho + không trừ lại điểm. Fix: Thêm `rollbackCancelledOrder()` trong `server-json.js`.
-- **H2**: Wallet payment fail vẫn trừ kho. Fix: Rewrite `POST /api/orders` theo 7 bước trong `server-json.js`.
-- **H3**: Đặt được món `active=0`. Fix: Check `if (!m.active) throw`.
-- **H4**: Không validate qty > 0. Fix: Check `Number.isInteger(q) && q > 0`.
-- **M1**: `saveDB` cố ghi Mongo khi connect fail. Fix: Thêm flag `mongoReady`.
-- **M2**: API không handle 401. Fix: Thêm interceptor 401 + event `auth-expired` trong `api.js` + `App.jsx`.
-- **M3**: Check-out "Về sớm" hardcode 17h. Fix: Dùng `SHIFT_END_HOUR` per shift.
-- **M5**: Order code có thể trùng. Fix: Tăng retry lên 10 + random 5 chars.
-- **L2**: Price history không ghi khi giá mới = 0. Fix: Đổi check `if (newPrice !== oldPrice)`.
+### Cấu hình OAuth
 
-Regression test: `test-fixes.ps1` (14 case, tất cả PASS).
+Nếu bật đăng nhập Google/Facebook:
 
-### Session 1 - Batch 1 → 7
-- **Batch 1**: UX Foundation (toast góc phải, modal padding, KPI font, sidebar blob).
-- **Batch 1.5**: Bug lẻ (shifts duplicate, import stale, confirm() → ConfirmDialog).
-- **Batch 2**: Load ALL + filter client, form giá auto-sync, searchable datalist.
-- **Batch 3**: Inventory 3-state badges, vouchers validate trùng mã, persist filter.
-- **Batch 4**: Finance, Wallet, Reports, Dashboard cải tiến.
-- **Batch 5**: Employees, Permissions, Shifts, Customers cải tiến.
-- **Batch 6**: Bỏ default nguy hiểm, settings rỗng không crash.
-- **Batch 7**: N1 (timezone), N3 (order code unique), N4 (review hasPurchased).
+1. Tạo/cấu hình ứng dụng tại cổng nhà cung cấp tương ứng.
+2. Đăng ký đúng callback URL cho local và production.
+3. Đặt Client ID/App ID ở biến phù hợp.
+4. Đặt Client Secret/App Secret chỉ ở môi trường backend.
+5. Kiểm tra domain triển khai, giao thức HTTPS và log callback khi đăng nhập.
+
+Callback URL phải khớp chính xác cấu hình ở nhà cung cấp; không tự thay domain ví dụ nếu chưa cập nhật đồng bộ.
 
 ---
 
-## 12. Bảo mật - Cần đọc
+## 📜 Các lệnh npm
 
-### Trước khi public repo / URL
+Các lệnh dưới đây được khai báo trong `package.json`.
 
-1. **Đổi password seed** của 3 tài khoản demo (admin@vwa.vn, nhanvien@vwa.vn, sinhvien@vwa.vn)
-2. **Không commit file `.env`** (chỉ commit `.env.example`)
-3. Kiểm tra `JWT_SECRET` trên Render đã set chưa: Render Dashboard → service → Environment → phải có `JWT_SECRET`
-4. Xóa file tóm tắt session nếu có chứa credentials plaintext
+### Phát triển và build
 
-### Đã làm tốt
+| Lệnh | Mục đích |
+|---|---|
+| `npm start` | Khởi chạy backend và frontend đồng thời |
+| `npm run dev` | Chạy Vite frontend |
+| `npm run server` | Chạy backend Express |
+| `npm run build` | Build frontend cho production |
+| `npm run preview` | Xem thử bản build đã tạo |
+| `npm run ports` | Kiểm tra cổng theo script của dự án |
 
-- JWT với expiry 7 ngày
-- bcrypt hash password (10 rounds)
-- Validate input server-side (email, phone, qty, active)
-- CORS whitelist đúng domain
-- ConfirmDialog custom toàn app
-- Timezone-safe date handling
-- Race-safe loading (reqIdRef pattern)
+### Đa ngôn ngữ
 
-### Backlog (cần cải thiện)
+| Lệnh | Mục đích |
+|---|---|
+| `npm run translate` | Chạy script dịch locale |
+| `npm run translate:watch` | Chạy script dịch ở chế độ theo dõi |
+| `npm run translate:force` | Ép chạy lại quá trình dịch |
+| `npm run translate:dry` | Chạy thử theo chế độ dry-run |
+| `npm run translate:until-done` | Chạy nhiều vòng dịch theo cấu hình |
+| `npm run check:i18n` | Kiểm tra khóa trùng và độ bao phủ locale |
 
-- Chưa có rate-limit cho `/api/auth/login`
-- JWT lưu `sessionStorage` (vulnerable XSS)
-- Chưa có CSRF protection
+### Dữ liệu và bảo trì
+
+| Lệnh | Mục đích |
+|---|---|
+| `npm run db:migrate-images` | Chạy script di trú ảnh món ăn |
+| `npm run split-db` | Chạy tiện ích tách dữ liệu |
+| `npm run merge-db` | Chạy tiện ích gộp dữ liệu |
+| `npm run cleanup-db` | Chạy script dọn dữ liệu theo logic được triển khai |
+| `npm run translate:db` | Chạy script bổ sung bản dịch dữ liệu từ MongoDB |
+| `npm run translate:db:dry` | Chạy thử bổ sung bản dịch dữ liệu |
+| `npm run translate:db:force` | Ép bổ sung bản dịch dữ liệu |
+| `npm run translate:db:en` | Chạy bổ sung bản dịch tiếng Anh |
+| `npm run translate:db:ja` | Chạy bổ sung bản dịch tiếng Nhật |
+| `npm run translate:db:ko` | Chạy bổ sung bản dịch tiếng Hàn |
+| `npm run translate:db:zh` | Chạy bổ sung bản dịch tiếng Trung |
+
+**Cảnh báo:** các lệnh `cleanup`, `migrate`, `split`, `merge` và lệnh cập nhật dữ liệu có thể thay đổi dữ liệu. Hãy đọc script, kiểm tra tham số và sao lưu trước khi chạy trên dữ liệu quan trọng.
 
 ---
 
-## 13. License & Credits
+## 🗃️ Dữ liệu và ảnh món ăn
 
-**MIT License** - Tự do sử dụng, sửa đổi, phân phối.
+### Vì sao cần tách ảnh khỏi dữ liệu chính?
 
-**Credits:**
-- Frontend: React, Vite, Recharts, Lucide Icons
-- Backend: Express, Mongoose, bcryptjs, jsonwebtoken
-- Hạ tầng: Vercel, Render, MongoDB Atlas
+Ảnh được lưu trực tiếp dưới dạng Base64 trong document nghiệp vụ có thể làm document lớn lên đáng kể. Điều đó có thể làm tăng thời gian đọc/ghi dữ liệu và thời gian khởi động backend.
+
+Dự án có `menuImageStore.js` để xử lý việc lưu trữ, lấy ảnh và di trú ảnh món ăn. Hãy kiểm tra logic trong tệp này trước khi thay đổi cấu trúc dữ liệu.
+
+### Quy trình an toàn khi di trú ảnh
+
+1. Sao lưu cơ sở dữ liệu.
+2. Kiểm tra cấu hình kết nối MongoDB.
+3. Chạy script di trú trong môi trường phù hợp:
+
+   ```bash
+   npm run db:migrate-images
+   ```
+
+4. Theo dõi log cho đến khi script hoàn tất.
+5. Mở trang thực đơn và xác minh ảnh vẫn tải đúng.
+6. Chỉ dọn bản sao lưu khi đã xác nhận dữ liệu đầy đủ và có phương án khôi phục.
+
+### Nén ảnh món ăn
+
+Repository có công cụ tại `public/shrink-menu-images.html`. Khi cần sử dụng:
+
+1. Khởi chạy ứng dụng.
+2. Mở `http://localhost:5173/shrink-menu-images.html`.
+3. Đăng nhập bằng tài khoản có quyền phù hợp nếu công cụ yêu cầu.
+4. Đọc thông báo trên giao diện và xác minh dữ liệu trước khi xác nhận thao tác nén.
+5. Kiểm tra lại ảnh sau khi hoàn tất.
+
+Không chạy công cụ chỉnh sửa hàng loạt trên production nếu chưa sao lưu dữ liệu và hiểu rõ ảnh hưởng.
 
 ---
 
-*Made with love for VWA students - 2026 Canteen VWA*
+## 🧪 Kiểm thử và nghiệm thu
+
+Tài liệu chi tiết nằm trong thư mục `docs/`:
+
+- `docs/user-flows.md` — luồng thao tác của người dùng.
+- `docs/acceptance-criteria.md` — tiêu chí nghiệm thu.
+- `docs/test-cases.md` — các trường hợp kiểm thử.
+- `docs/README.md` — hướng dẫn sử dụng tài liệu.
+
+### Checklist kiểm thử cơ bản
+
+#### Khách hàng
+
+- [ ] Đăng ký, đăng nhập và đăng xuất.
+- [ ] Xem thực đơn, tìm kiếm và lọc danh mục.
+- [ ] Xem chi tiết món, chọn topping/size nếu có.
+- [ ] Thêm món vào giỏ và cập nhật số lượng.
+- [ ] Kiểm tra voucher và tổng tiền trước khi đặt hàng.
+- [ ] Đặt hàng và kiểm tra trạng thái đơn.
+- [ ] Hủy đơn theo điều kiện nghiệp vụ, nếu chức năng được phép.
+- [ ] Kiểm tra điểm thưởng, đánh giá và lịch sử mua hàng.
+- [ ] Kiểm tra các chức năng ví nếu đã cấu hình.
+- [ ] Kiểm tra chatbot và kênh chat hỗ trợ.
+
+#### Nhân viên
+
+- [ ] Đăng nhập bằng tài khoản nhân viên.
+- [ ] Check-in và check-out ca làm việc.
+- [ ] Tiếp nhận và cập nhật trạng thái đơn.
+- [ ] Bật/tắt món theo quyền được cấp.
+- [ ] Kiểm tra trao đổi với khách hàng.
+- [ ] Xác minh không thể truy cập chức năng chỉ dành cho admin.
+
+#### Quản trị viên
+
+- [ ] Xem dashboard và báo cáo.
+- [ ] Thêm, sửa và xóa món theo quy trình.
+- [ ] Kiểm tra thay đổi giá và lịch sử giá.
+- [ ] Quản lý tài khoản, vai trò và quyền.
+- [ ] Kiểm tra ca làm, chấm công và tồn kho.
+- [ ] Kiểm tra voucher và các yêu cầu liên quan đến ví.
+- [ ] Kiểm tra xuất dữ liệu và sao lưu/khôi phục nếu có.
+
+#### Giao diện, dữ liệu và bảo mật
+
+- [ ] Kiểm tra trên màn hình máy tính và điện thoại.
+- [ ] Kiểm tra trạng thái tải, thông báo lỗi và dữ liệu rỗng.
+- [ ] Thử request khi phiên đăng nhập hết hạn.
+- [ ] Kiểm tra dữ liệu đầu vào không hợp lệ.
+- [ ] Kiểm tra số lượng đặt hàng phải là số nguyên dương.
+- [ ] Kiểm tra món ngừng bán không thể được đặt.
+- [ ] Kiểm tra lỗi thanh toán không gây cập nhật sai kho/đơn.
+- [ ] Xác minh secret không xuất hiện trong mã frontend hoặc repository.
+
+### Kiểm tra build
+
+Trước khi triển khai, chạy:
+
+```bash
+npm run build
+```
+
+Nếu build thất bại, xử lý lỗi trước khi deploy. Build thành công không thay thế cho kiểm thử nghiệp vụ hoặc kiểm thử bảo mật.
+
+---
+
+## 🌐 Triển khai production
+
+### 1. Chuẩn bị repository
+
+- Kiểm tra mã nguồn và các thay đổi chưa commit.
+- Loại bỏ `.env`, dữ liệu nhạy cảm, file dump và thông tin xác thực.
+- Đảm bảo `.env.example` chỉ chứa giá trị mẫu.
+- Kiểm tra `package.json`, `package-lock.json` và `vercel.json`.
+- Chạy `npm install` và `npm run build` tại máy trước.
+
+### 2. Triển khai trên Vercel
+
+Dự án có sẵn `vercel.json` với cấu hình Vite, thư mục build `dist`, function `api/index.js` và các rewrite API.
+
+1. Đẩy repository lên GitHub.
+2. Đăng nhập Vercel và chọn **Add New Project**.
+3. Import repository cần triển khai.
+4. Kiểm tra Root Directory là thư mục chứa `package.json` và `vercel.json`.
+5. Kiểm tra Build Command là `npm run build`.
+6. Kiểm tra Output Directory là `dist`.
+7. Thêm biến môi trường cần thiết trong phần Settings của Vercel.
+8. Deploy và kiểm tra log build/function.
+9. Mở website HTTPS và kiểm thử cả frontend lẫn API.
+
+Nếu dự án nằm trong thư mục con của repository, hãy đặt Root Directory đúng thư mục ứng dụng thay vì thư mục ngoài cùng.
+
+### 3. Cấu hình MongoDB Atlas
+
+1. Tạo cluster và database user.
+2. Cấp quyền tối thiểu cần thiết cho database user.
+3. Cấu hình Network Access theo chính sách phù hợp với nền tảng chạy backend.
+4. Đưa connection string vào `MONGO_URI` ở môi trường server.
+5. Kiểm tra log kết nối và dữ liệu sau khi deploy.
+
+Không công khai connection string. Tránh mở truy cập từ mọi IP nếu không cần thiết; nếu nền tảng yêu cầu phạm vi mạng rộng, hãy đánh giá rủi ro và giới hạn quyền database user.
+
+### 4. Sau khi deploy
+
+- [ ] Trang chủ tải được qua HTTPS.
+- [ ] Đăng nhập/đăng xuất hoạt động.
+- [ ] API không trả lỗi do thiếu biến môi trường.
+- [ ] Cơ sở dữ liệu được kết nối đúng.
+- [ ] Các vai trò bị giới hạn đúng quyền.
+- [ ] Ảnh món ăn tải được.
+- [ ] Luồng đặt món và cập nhật trạng thái đơn hoạt động.
+- [ ] Callback OAuth khớp domain production nếu dùng.
+- [ ] Không có secret trong mã nguồn công khai hoặc log trình duyệt.
+
+> Có cấu hình Vercel không đồng nghĩa với việc mọi chức năng production đã được xác minh. Cần triển khai thử và kiểm tra theo môi trường thật.
+
+---
+
+## 🛠️ Xử lý lỗi thường gặp
+
+| Lỗi/hiện tượng | Nguyên nhân có thể | Cách xử lý |
+|---|---|---|
+| `ENOENT` hoặc không tìm thấy `package.json` | Terminal đang ở sai thư mục | `cd` đến thư mục chứa `package.json` rồi chạy lại |
+| `node` hoặc `npm` không được nhận diện | Node.js chưa cài hoặc PATH chưa cập nhật | Cài Node.js 22+, mở Terminal mới và kiểm tra phiên bản |
+| `Cannot find module ...` | Dependencies chưa được cài hoặc cài đặt lỗi | Chạy `npm install` ở thư mục gốc |
+| `EADDRINUSE` | Cổng 3000/5173 đã có tiến trình sử dụng | Dùng `npm run ports` để kiểm tra; dừng tiến trình đúng cách rồi thử lại |
+| `JWT_SECRET` thiếu hoặc không hợp lệ | `.env` hoặc biến production chưa được cấu hình | Kiểm tra đúng tên biến và khởi động lại backend |
+| MongoDB connection timeout | URI sai, thông tin xác thực sai hoặc mạng bị chặn | Kiểm tra `MONGO_URI`, database user và Network Access |
+| Frontend không gọi được API | Proxy, URL API hoặc rewrite chưa đúng | Kiểm tra `VITE_API_URL`, `vite.config.js`, `vercel.json` và log backend |
+| OAuth callback lỗi | Redirect URI không khớp | Đồng bộ callback URL trong nhà cung cấp và biến môi trường |
+| Ảnh món ăn không hiển thị | Đường dẫn ảnh hoặc endpoint phục vụ ảnh lỗi | Kiểm tra request ảnh trong DevTools và log server |
+| Dữ liệu không còn sau khi deploy lại | Đang dùng lưu trữ local/tạm thời hoặc cấu hình DB sai | Kiểm tra `MONGO_URI` và xác minh dữ liệu đang được lưu ở đâu |
+| Build lỗi | Thiếu dependency hoặc lỗi mã nguồn | Đọc lỗi đầu tiên trong terminal, sửa rồi chạy lại `npm run build` |
+
+**Mẹo khi báo lỗi:** gửi nguyên văn thông báo lỗi, lệnh đã chạy, phiên bản Node.js và tên thư mục hiện tại. Không gửi mật khẩu, JWT, connection string hoặc token.
+
+---
+
+## 🔐 Bảo mật
+
+### Trước khi công khai dự án
+
+1. Thay `JWT_SECRET` bằng giá trị ngẫu nhiên mạnh.
+2. Không commit `.env`, `.env.local`, file backup hoặc dữ liệu người dùng.
+3. Đổi hoặc vô hiệu hóa mật khẩu/tài khoản demo trước khi mở website công khai.
+4. Không lưu client secret trong biến `VITE_*`.
+5. Giới hạn quyền của tài khoản MongoDB.
+6. Xác minh phân quyền ở backend cho mọi thao tác quản trị.
+7. Kiểm tra CORS, xác thực đầu vào, giới hạn tần suất đăng nhập và xử lý lỗi.
+8. Sao lưu dữ liệu trước khi chạy script di trú, dọn dẹp hoặc cập nhật hàng loạt.
+9. Nếu secret từng được commit, hãy thu hồi/thay secret; xóa file khỏi commit mới thôi chưa đủ để vô hiệu hóa secret cũ.
+
+### Các điểm cần tiếp tục rà soát
+
+Tài liệu dự án trước đó ghi nhận một số hạng mục cần đánh giá thêm, gồm giới hạn tần suất endpoint đăng nhập, bảo vệ token trước nguy cơ XSS và biện pháp CSRF phù hợp với mô hình xác thực. Hãy kiểm tra mã hiện tại trước khi kết luận trạng thái của từng biện pháp.
+
+---
+
+## 📖 Tài liệu dự án
+
+| Tài liệu | Nội dung |
+|---|---|
+| [`docs/README.md`](docs/README.md) | Hướng dẫn đọc tài liệu dự án |
+| [`docs/user-flows.md`](docs/user-flows.md) | Các luồng thao tác của người dùng |
+| [`docs/acceptance-criteria.md`](docs/acceptance-criteria.md) | Tiêu chí nghiệm thu |
+| [`docs/test-cases.md`](docs/test-cases.md) | Danh sách test case |
+| [`src/api-tests.http`](src/api-tests.http) | Các request API phục vụ kiểm tra thủ công |
+| [`package.json`](package.json) | Scripts và dependencies |
+| [`vercel.json`](vercel.json) | Cấu hình triển khai Vercel |
+| [`.env.example`](.env.example) | Mẫu biến môi trường |
+
+---
+
+## 🧭 Hướng phát triển
+
+Các hạng mục dưới đây là gợi ý để nhóm cân nhắc, không phải cam kết rằng chúng chưa tồn tại trong mã nguồn:
+
+- Hoàn thiện kiểm thử tự động cho luồng đặt món, thanh toán, hoàn kho và điểm thưởng.
+- Bổ sung giới hạn tần suất cho đăng nhập và các endpoint nhạy cảm.
+- Rà soát bảo vệ token, XSS/CSRF và chính sách phiên đăng nhập.
+- Bổ sung giám sát lỗi, log có cấu trúc và cảnh báo khi API gặp sự cố.
+- Chuẩn hóa quy trình backup/restore và kiểm thử phục hồi dữ liệu.
+- Tự động hóa build, lint/test và kiểm tra bảo mật trong CI.
+- Duy trì đồng bộ tài liệu user flow, acceptance criteria và test case sau mỗi thay đổi nghiệp vụ.
+
+---
+
+## 🤝 Đóng góp
+
+Nếu bạn muốn cải thiện dự án, hãy tạo một nhánh riêng, thực hiện thay đổi và mở Pull Request để nhóm xem xét.
+
+1. Fork repository hoặc tạo branch từ repository được cấp quyền.
+2. Đặt tên branch rõ nghĩa, ví dụ `feature/menu-search` hoặc `fix/login-validation`.
+3. Chạy thử ứng dụng và kiểm tra các chức năng liên quan.
+4. Ghi rõ nội dung thay đổi, cách kiểm thử và ảnh chụp màn hình nếu có.
+5. Mở Pull Request, mô tả vấn đề đã giải quyết và liên kết issue liên quan nếu có.
+
+**Gợi ý quy ước commit:**
+- `feat:` thêm tính năng
+- `fix:` sửa lỗi
+- `docs:` cập nhật tài liệu
+- `refactor:` cải thiện cấu trúc code
+- `test:` bổ sung hoặc sửa kiểm thử
+
+---
+
+## 📄 Giấy phép và ghi nhận
+
+Dự án sử dụng các thư viện mã nguồn mở như React, Vite, React Router, Express, MongoDB/Mongoose, Recharts và Lucide React. Mỗi thư viện có giấy phép riêng.
+
+Nếu repository phát hành theo **MIT License**, hãy đảm bảo có tệp `LICENSE` hợp lệ trong repository và xác nhận quyền phân phối đối với các thành phần được sử dụng.
+
+---
+
+<div align="center">
+
+**Canteen VWA**  
+*Đơn giản hóa quy trình đặt món và quản lý canteen.*
+
+Tài liệu được cập nhật theo cấu trúc và cấu hình dự án tại thời điểm biên soạn.
+
+</div>
+
+
+<div align="center">
+
+**Canteen VWA** · Xây dựng với ❤️ cho trải nghiệm canteen thuận tiện hơn.
+
+</div>

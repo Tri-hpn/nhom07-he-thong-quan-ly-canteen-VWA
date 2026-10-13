@@ -5,21 +5,26 @@
   "type": "module",
   "description": "Hệ thống quản lý Canteen VWA",
   "scripts": {
-    "predev": "node scripts/free-dev-ports.mjs 5173",
+    "predev": "node scripts/free-dev-ports.mjs 5173 && node scripts/backfill-from-mongo.mjs --quiet",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "preserver": "node scripts/free-dev-ports.mjs 3000",
+    "preserver": "node scripts/free-dev-ports.mjs 3000 && node scripts/backfill-from-mongo.mjs --quiet",
     "server": "node server-json.js",
-    "prestart": "node scripts/free-dev-ports.mjs 5173 3000",
+    "prestart": "node scripts/free-dev-ports.mjs 5173 3000 && node scripts/backfill-from-mongo.mjs --quiet",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "ports": "node scripts/free-dev-ports.mjs --dry",
 
+    "postinstall": "node scripts/backfill-from-mongo.mjs --quiet || true",
+
+    "check": "node --check server-json.js && node --check menuImageStore.js && node --check autoTranslate.js",
+
     "translate": "node scripts/auto-translate-locales.mjs",
-    "translate:watch": "node scripts/auto-translate-locales.mjs --watch",
     "translate:force": "node scripts/auto-translate-locales.mjs --force",
     "translate:dry": "node scripts/auto-translate-locales.mjs --dry-run",
-    "translate:until-done": "node scripts/auto-translate-locales.mjs --until-done --max-rounds 10",
+
+    "i18n:report": "node scripts/i18n-report.mjs",
+    "i18n:check": "node scripts/check-i18n-duplicate.mjs && node scripts/check-locale-coverage.mjs",
 
     "translate:db": "node scripts/backfill-from-mongo.mjs",
     "translate:db:dry": "node scripts/backfill-from-mongo.mjs --dry-run",
@@ -28,8 +33,11 @@
     "translate:db:ja": "node scripts/backfill-from-mongo.mjs --lang=ja",
     "translate:db:ko": "node scripts/backfill-from-mongo.mjs --lang=ko",
     "translate:db:zh": "node scripts/backfill-from-mongo.mjs --lang=zh",
+    "translate:db:purge": "node scripts/backfill-from-mongo.mjs --purge",
+    "translate:db:clean": "node scripts/backfill-from-mongo.mjs --dry-run --purge",
 
-    "prebuild": "echo \"Skip prebuild translate on Vercel\"",
+    "cleanup": "node scripts/backfill-from-mongo.mjs --quiet --dry-run",
+    "cleanup:purge": "node scripts/backfill-from-mongo.mjs --purge",
 
     "check:i18n": "node scripts/check-i18n-duplicate.mjs && node scripts/check-locale-coverage.mjs",
     "cleanup-db": "node scripts/cleanup-db.mjs",
@@ -58,6 +66,6 @@
     "vite": "^5.4.10"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=20.0.0"
   }
 }

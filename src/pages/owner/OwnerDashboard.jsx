@@ -1,18 +1,19 @@
 // ============================================================
-// OWNERDASHBOARD.JSX — Tổng quan hoạt động Canteen (Admin)
+// OWNERDASHBOARD.JSX — Tổng quan hoạt động Canteen (Admin) — V2
 // ============================================================
-// Tách nhiệm vụ với OwnerReports:
-//   - LayoutDashboard: OPERATIONAL (cần xử lý gì hôm nay, trend nhanh)
-//   - Reports: ANALYTICAL (báo cáo chuyên sâu, so sánh kỳ)
-//
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-// 🔧 FIX #86: fmtTime + lastUpdated dùng Intl.DateTimeFormat cố định (VN, 24h)
+// V2 (2026-10):
+//   - ✅ Thêm widget "Sinh viên theo ngành" (SV có liên kết MSSV)
+//   - ✅ Đặt sau block "Cần xử lý hôm nay"
+//   - Giữ V1: KPI, chart, recent orders, quick actions
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  DollarSign, ShoppingBag, Users, AlertTriangle, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Check, ChevronRight, Package, Ticket, Utensils, BarChart3, ClipboardList, Warehouse, Wallet, ArrowRight,
+  DollarSign, ShoppingBag, Users, AlertTriangle, Loader2, AlertCircle,
+  RefreshCw, TrendingUp, TrendingDown, Check, ChevronRight, Package,
+  Ticket, Utensils, BarChart3, ClipboardList, Warehouse, Wallet,
+  ArrowRight, GraduationCap,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -26,11 +27,9 @@ import { useI18n } from "../../hooks/useI18n";
 // ============================================================
 // CONSTANTS
 // ============================================================
-
 const REFRESH_MS = 30000;
 const RECENT_ORDERS_LIMIT = 5;
 
-// 🔧 FIX #86: formatter cố định VN timezone, 24h
 const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
   hour: "2-digit",
@@ -38,7 +37,6 @@ const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
-// Next status flow
 const NEXT_STATUS = {
   "Chờ xác nhận": "Đã xác nhận",
   "Đã xác nhận": "Đang chuẩn bị",
@@ -53,21 +51,15 @@ const STATUS_COLORS = {
   "Đã hủy": { bg: "#fee2e2", fg: "#991b1b" },
 };
 
+// Bảng màu cho bar chart ngành
+const MAJOR_COLORS = [
+  "#2634d5", "#0EA5E9", "#18a967", "#f59e0b", "#ec4899",
+  "#8b5cf6", "#06b6d4", "#ef4444", "#84cc16", "#f97316",
+];
+
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getLocalDateStr(input) {
-  if (!input) return "";
-  const d = input instanceof Date ? input : new Date(input);
-  if (isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dt = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dt}`;
-}
-
-// 🔧 FIX #86: dùng formatter cố định VN, 24h
 function fmtTime(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -84,11 +76,9 @@ function calcDelta(current, previous) {
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
-
 export default function OwnerDashboard() {
   const { t } = useI18n();
 
-  // ---------- Quick actions (source-text) ----------
   const QUICK_ACTIONS = [
     { key: "orders",    label: t("Đơn hàng"),   icon: ClipboardList, to: "/owner/orders",   color: "#2634d5" },
     { key: "menu",      label: t("Thực đơn"),   icon: Utensils,      to: "/owner/menu",     color: "#0EA5E9" },
@@ -102,6 +92,7 @@ export default function OwnerDashboard() {
   const [stats, setStats] = useState(null);
   const [reports, setReports] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [customers, setCustomers] = useState([]); // ✅ MỚI: danh sách KH để tính SV theo ngành
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -112,7 +103,6 @@ export default function OwnerDashboard() {
   const navigate = useNavigate();
 
   // ---------- Load ----------
-
   const loadAll = useCallback(async (silent = false) => {
     const myReqId = ++reqIdRef.current;
     if (!silent) setLoading(true);
@@ -120,10 +110,11 @@ export default function OwnerDashboard() {
     setError("");
 
     try {
-      const [statsRes, reportsRes, ordersRes] = await Promise.all([
+      const [statsRes, reportsRes, ordersRes, customersRes] = await Promise.all([
         api.stats(),
         api.reports.revenue("day"),
         api.orders.all("Tất cả"),
+        api.users.list("CUSTOMER"), // ✅ MỚI
       ]);
 
       if (myReqId !== reqIdRef.current) return;
@@ -132,10 +123,10 @@ export default function OwnerDashboard() {
       setReports(reportsRes);
 
       const sortedOrders = [...(ordersRes || [])].sort(
-        (a, b) =>
-          new Date(b.created_at || 0) - new Date(a.created_at || 0)
+        (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
       );
       setOrders(sortedOrders);
+      setCustomers(Array.isArray(customersRes) ? customersRes : []);
       setLastUpdated(new Date());
     } catch (e) {
       if (myReqId === reqIdRef.current) {
@@ -160,8 +151,6 @@ export default function OwnerDashboard() {
   }, [loadAll]);
 
   // ---------- Computed ----------
-
-  // Bar chart data 7 ngày
   const revenueData = useMemo(() => {
     if (!reports?.data) return [];
     return reports.data.map((d) => ({
@@ -171,7 +160,6 @@ export default function OwnerDashboard() {
     }));
   }, [reports]);
 
-  // Trend doanh thu hôm nay vs hôm qua
   const revenueTrend = useMemo(() => {
     if (revenueData.length < 2) return null;
     const today = revenueData[revenueData.length - 1].value;
@@ -179,7 +167,6 @@ export default function OwnerDashboard() {
     return calcDelta(today, yesterday);
   }, [revenueData]);
 
-  // Trend đơn hàng
   const orderTrend = useMemo(() => {
     if (revenueData.length < 2) return null;
     const today = revenueData[revenueData.length - 1].orders;
@@ -187,30 +174,73 @@ export default function OwnerDashboard() {
     return calcDelta(today, yesterday);
   }, [revenueData]);
 
-  // Đơn cần xử lý
   const needAction = useMemo(() => {
     return orders.filter(
       (o) => o.status === "Chờ xác nhận" || o.status === "Đã xác nhận"
     );
   }, [orders]);
 
-  // Đếm đơn chờ xác nhận (chỉ pending)
   const pendingCount = useMemo(
     () => orders.filter((o) => o.status === "Chờ xác nhận").length,
     [orders]
   );
 
-  // Low stock
   const lowStockCount = stats?.lowStock ?? 0;
 
-  // Recent orders (5 mới nhất)
   const recentOrders = useMemo(
     () => orders.slice(0, RECENT_ORDERS_LIMIT),
     [orders]
   );
 
-  // ---------- Actions ----------
+  // ✅ MỚI: Thống kê sinh viên theo ngành
+  const studentsByMajor = useMemo(() => {
+    const map = new Map(); // major_code → { code, name, count }
+    let total = 0;
+    let linked = 0;
 
+    customers.forEach((c) => {
+      total++;
+      if (!c.student_code) return;
+      linked++;
+      const code = c.major_code || "unknown";
+      const name = c.major_name || t("Chưa xác định");
+      if (!map.has(code)) {
+        map.set(code, { code, name, count: 0 });
+      }
+      map.get(code).count++;
+    });
+
+    const list = Array.from(map.values()).sort((a, b) => b.count - a.count);
+
+    // Top 8 ngành
+    const top = list.slice(0, 8);
+    const others = list.slice(8);
+    const othersCount = others.reduce((s, x) => s + x.count, 0);
+
+    const chartData = top.map((x, i) => ({
+      ...x,
+      fill: MAJOR_COLORS[i % MAJOR_COLORS.length],
+    }));
+
+    if (othersCount > 0) {
+      chartData.push({
+        code: "others",
+        name: t("Ngành khác"),
+        count: othersCount,
+        fill: "#94a3b8",
+      });
+    }
+
+    return {
+      total,
+      linked,
+      unlinked: total - linked,
+      list: chartData,
+      totalMajors: list.length,
+    };
+  }, [customers, t]);
+
+  // ---------- Actions ----------
   const advanceOrder = async (o) => {
     const id = o._id || o.id;
     if (advancingId !== null) return;
@@ -234,12 +264,10 @@ export default function OwnerDashboard() {
   // RENDER
   // ============================================================
 
-  // Loading lần đầu
   if (loading && !stats) {
     return <DashboardSkeleton />;
   }
 
-  // Error toàn trang
   if (error && !stats) {
     return (
       <div
@@ -256,9 +284,7 @@ export default function OwnerDashboard() {
         <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 15 }}>
           {t("Không tải được dashboard")}
         </div>
-        <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 16 }}>
-          {error}
-        </div>
+        <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 16 }}>{error}</div>
         <button
           onClick={() => loadAll()}
           style={{
@@ -283,9 +309,7 @@ export default function OwnerDashboard() {
 
   return (
     <div>
-      {/* ============================================================
-          HEADER — Realtime indicator + refresh
-          ============================================================ */}
+      {/* HEADER */}
       <div
         style={{
           display: "flex",
@@ -318,7 +342,6 @@ export default function OwnerDashboard() {
             {t("Realtime")} · {t("Cập nhật mỗi")} {REFRESH_MS / 1000}s
             {lastUpdated && (
               <span style={{ marginLeft: 8, opacity: 0.7 }}>
-                {/* 🔧 FIX #86: dùng formatter cố định VN, 24h */}
                 ({TIME_FORMATTER.format(lastUpdated)})
               </span>
             )}
@@ -344,17 +367,13 @@ export default function OwnerDashboard() {
         >
           <RefreshCw
             size={13}
-            style={{
-              animation: refreshing ? "spin 1s linear infinite" : "none",
-            }}
+            style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }}
           />
           {t("Làm mới")}
         </button>
       </div>
 
-      {/* ============================================================
-          KPI CARDS
-          ============================================================ */}
+      {/* KPI CARDS */}
       <div
         style={{
           display: "grid",
@@ -388,17 +407,11 @@ export default function OwnerDashboard() {
           label={t("Sắp hết hàng")}
           value={lowStockCount + " " + t("món")}
           color="#ef4444"
-          badge={
-            lowStockCount > 0
-              ? { text: t("Cần nhập"), color: "#ef4444" }
-              : null
-          }
+          badge={lowStockCount > 0 ? { text: t("Cần nhập"), color: "#ef4444" } : null}
         />
       </div>
 
-      {/* ============================================================
-          CẦN XỬ LÝ HÔM NAY
-          ============================================================ */}
+      {/* CẦN XỬ LÝ HÔM NAY */}
       {(pendingCount > 0 || lowStockCount > 0 || needAction.length > 0) && (
         <div
           style={{
@@ -410,21 +423,9 @@ export default function OwnerDashboard() {
             marginBottom: 20,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 14,
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <AlertTriangle size={18} style={{ color: "#f59e0b" }} />
-            <b
-              style={{
-                fontSize: 14,
-                color: "var(--text-primary, #172033)",
-              }}
-            >
+            <b style={{ fontSize: 14, color: "var(--text-primary, #172033)" }}>
               {t("Cần xử lý hôm nay")}
             </b>
           </div>
@@ -467,9 +468,183 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {/* ============================================================
-          QUICK ACTIONS
-          ============================================================ */}
+      {/* ✅ MỚI: WIDGET SINH VIÊN THEO NGÀNH */}
+      {studentsByMajor.total > 0 && (
+        <div style={{ ...cardStyle, marginBottom: 20 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: 16,
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: "#eef2ff",
+                  color: "#2634d5",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <GraduationCap size={18} />
+              </div>
+              <div>
+                <h3 style={{ ...cardTitleStyle, marginBottom: 2 }}>
+                  {t("Sinh viên theo ngành")}
+                </h3>
+                <span style={cardSubtitleStyle}>
+                  {studentsByMajor.linked}/{studentsByMajor.total}{" "}
+                  {t("khách hàng đã liên kết MSSV")}
+                  {studentsByMajor.unlinked > 0 && (
+                    <span style={{ color: "#f59e0b", marginLeft: 6 }}>
+                      · {studentsByMajor.unlinked} {t("chưa liên kết")}
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+            <Link
+              to="/owner/customers"
+              style={{
+                fontSize: 12.5,
+                color: "#2634d5",
+                fontWeight: 600,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              {t("Quản lý khách hàng")} <ArrowRight size={12} />
+            </Link>
+          </div>
+
+          {/* Horizontal bar chart (tự render, không cần recharts) */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {studentsByMajor.list.map((m, idx) => {
+              const pct = studentsByMajor.linked > 0
+                ? (m.count / studentsByMajor.linked) * 100
+                : 0;
+              return (
+                <div key={m.code}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 5,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                          background: m.fill + "18",
+                          color: m.fill,
+                          fontFamily: "ui-monospace, monospace",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: 0.5,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {m.code === "others" ? "—" : m.code}
+                      </span>
+                      <span
+                        style={{
+                          color: "var(--text-primary, #172033)",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          maxWidth: 280,
+                        }}
+                        title={m.name}
+                      >
+                        {m.name}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-light, #94a3b8)",
+                          minWidth: 34,
+                          textAlign: "right",
+                        }}
+                      >
+                        {pct.toFixed(0)}%
+                      </span>
+                      <b
+                        style={{
+                          fontSize: 13,
+                          color: m.fill,
+                          minWidth: 24,
+                          textAlign: "right",
+                        }}
+                      >
+                        {m.count}
+                      </b>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      height: 8,
+                      borderRadius: 4,
+                      background: "var(--bg-tertiary, #f1f5f9)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${pct}%`,
+                        background: m.fill,
+                        borderRadius: 4,
+                        transition: "width 0.4s ease",
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {studentsByMajor.linked === 0 && (
+            <div
+              style={{
+                textAlign: "center",
+                padding: 24,
+                color: "var(--text-light, #8993a3)",
+                fontSize: 13,
+              }}
+            >
+              {t("Chưa có khách hàng nào liên kết MSSV để thống kê")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* QUICK ACTIONS */}
       <div style={cardStyle}>
         <h3 style={{ ...cardTitleStyle, marginBottom: 14 }}>
           {t("Truy cập nhanh")}
@@ -485,7 +660,6 @@ export default function OwnerDashboard() {
         >
           {QUICK_ACTIONS.map((a) => {
             const Icon = a.icon;
-            // BadgeCheck cho orders nếu có pending
             const badge =
               a.key === "orders" && pendingCount > 0
                 ? pendingCount
@@ -516,10 +690,8 @@ export default function OwnerDashboard() {
                   e.currentTarget.style.transform = "translateY(-2px)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background =
-                    "var(--bg-tertiary, #f8fafc)";
-                  e.currentTarget.style.borderColor =
-                    "var(--border-color, #e5e9ef)";
+                  e.currentTarget.style.background = "var(--bg-tertiary, #f8fafc)";
+                  e.currentTarget.style.borderColor = "var(--border-color, #e5e9ef)";
                   e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
@@ -575,9 +747,7 @@ export default function OwnerDashboard() {
         </div>
       </div>
 
-      {/* ============================================================
-          BAR CHART — Doanh thu 7 ngày
-          ============================================================ */}
+      {/* BAR CHART — Doanh thu 7 ngày */}
       <div style={{ ...cardStyle, marginTop: 18, marginBottom: 18 }}>
         <div
           style={{
@@ -624,18 +794,12 @@ export default function OwnerDashboard() {
                   dataKey="day"
                   axisLine={false}
                   tickLine={false}
-                  tick={{
-                    fontSize: 12,
-                    fill: "var(--text-muted, #64748b)",
-                  }}
+                  tick={{ fontSize: 12, fill: "var(--text-muted, #64748b)" }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{
-                    fontSize: 12,
-                    fill: "var(--text-muted, #64748b)",
-                  }}
+                  tick={{ fontSize: 12, fill: "var(--text-muted, #64748b)" }}
                   tickFormatter={(v) =>
                     v >= 1000000
                       ? (v / 1000000).toFixed(1) + "M"
@@ -658,9 +822,7 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* ============================================================
-          RECENT ORDERS TABLE — với quick action
-          ============================================================ */}
+      {/* RECENT ORDERS */}
       <div style={cardStyle}>
         <div
           style={{
@@ -695,10 +857,7 @@ export default function OwnerDashboard() {
               fontSize: 13,
             }}
           >
-            <ShoppingBag
-              size={36}
-              style={{ opacity: 0.35, marginBottom: 10 }}
-            />
+            <ShoppingBag size={36} style={{ opacity: 0.35, marginBottom: 10 }} />
             <div>{t("Chưa có đơn hàng nào")}</div>
           </div>
         ) : (
@@ -727,8 +886,7 @@ export default function OwnerDashboard() {
                     <tr
                       key={id}
                       style={{
-                        borderBottom:
-                          "1px solid var(--border-color, #eef2f7)",
+                        borderBottom: "1px solid var(--border-color, #eef2f7)",
                         opacity: isAdvancing ? 0.6 : 1,
                         transition: "opacity 0.15s",
                       }}
@@ -772,15 +930,11 @@ export default function OwnerDashboard() {
                             disabled={advancingId !== null}
                             style={{
                               padding: "6px 12px",
-                              background:
-                                advancingId !== null ? "#94a3b8" : "#18a967",
+                              background: advancingId !== null ? "#94a3b8" : "#18a967",
                               color: "#fff",
                               border: 0,
                               borderRadius: 6,
-                              cursor:
-                                advancingId !== null
-                                  ? "not-allowed"
-                                  : "pointer",
+                              cursor: advancingId !== null ? "not-allowed" : "pointer",
                               fontSize: 12,
                               fontWeight: 600,
                               display: "inline-flex",
@@ -791,12 +945,7 @@ export default function OwnerDashboard() {
                           >
                             {isAdvancing ? (
                               <>
-                                <Loader2
-                                  size={12}
-                                  style={{
-                                    animation: "spin 1s linear infinite",
-                                  }}
-                                />
+                                <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
                                 {t("Đang xử lý")}
                               </>
                             ) : (
@@ -830,7 +979,6 @@ export default function OwnerDashboard() {
         )}
       </div>
 
-      {/* Inline animations */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -846,9 +994,8 @@ export default function OwnerDashboard() {
 }
 
 // ============================================================
-// SUB-COMPONENT: KPI Card
+// SUB-COMPONENTS (giữ nguyên)
 // ============================================================
-
 function KPI({ icon, label, value, trend, color, badge }) {
   const { t } = useI18n();
   return (
@@ -864,8 +1011,7 @@ function KPI({ icon, label, value, trend, color, badge }) {
         transition: "box-shadow 0.2s ease",
       }}
     >
-      <div
-        style={{
+      <div        style={{
           width: 46,
           height: 46,
           borderRadius: 12,
@@ -879,13 +1025,7 @@ function KPI({ icon, label, value, trend, color, badge }) {
         {icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span
-          style={{
-            fontSize: 12,
-            color: "var(--text-light, #8993a3)",
-            display: "block",
-          }}
-        >
+        <span style={{ fontSize: 12, color: "var(--text-light, #8993a3)", display: "block" }}>
           {label}
         </span>
         <div
@@ -922,13 +1062,7 @@ function KPI({ icon, label, value, trend, color, badge }) {
         )}
 
         {!trend && badge && (
-          <small
-            style={{
-              color: badge.color,
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
+          <small style={{ color: badge.color, fontSize: 11, fontWeight: 600 }}>
             {badge.text}
           </small>
         )}
@@ -936,10 +1070,6 @@ function KPI({ icon, label, value, trend, color, badge }) {
     </div>
   );
 }
-
-// ============================================================
-// SUB-COMPONENT: ActionCard (Cần xử lý)
-// ============================================================
 
 function ActionCard({ icon, label, value, color, to }) {
   return (
@@ -980,24 +1110,10 @@ function ActionCard({ icon, label, value, color, to }) {
         {icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span
-          style={{
-            fontSize: 11.5,
-            color: "var(--text-muted, #64748b)",
-            display: "block",
-          }}
-        >
+        <span style={{ fontSize: 11.5, color: "var(--text-muted, #64748b)", display: "block" }}>
           {label}
         </span>
-        <b
-          style={{
-            fontSize: 18,
-            color,
-            fontWeight: 800,
-            display: "block",
-            lineHeight: 1.2,
-          }}
-        >
+        <b style={{ fontSize: 18, color, fontWeight: 800, display: "block", lineHeight: 1.2 }}>
           {value}
         </b>
       </div>
@@ -1006,13 +1122,8 @@ function ActionCard({ icon, label, value, color, to }) {
   );
 }
 
-// ============================================================
-// SUB-COMPONENT: Order Status Badge
-// ============================================================
-
 function OrderStatusBadge({ status }) {
   const c = STATUS_COLORS[status] || { bg: "#e2e8f0", fg: "#475569" };
-
   return (
     <span
       style={{
@@ -1031,10 +1142,6 @@ function OrderStatusBadge({ status }) {
     </span>
   );
 }
-
-// ============================================================
-// SUB-COMPONENT: Empty Chart
-// ============================================================
 
 function EmptyChart({ message }) {
   return (
@@ -1057,14 +1164,9 @@ function EmptyChart({ message }) {
   );
 }
 
-// ============================================================
-// SUB-COMPONENT: Dashboard Skeleton
-// ============================================================
-
 function DashboardSkeleton() {
   return (
     <div>
-      {/* KPI skeleton */}
       <div
         style={{
           display: "grid",
@@ -1120,7 +1222,6 @@ function DashboardSkeleton() {
         ))}
       </div>
 
-      {/* Chart skeleton */}
       <div
         style={{
           background: "var(--card-bg, #fff)",
@@ -1163,7 +1264,6 @@ function DashboardSkeleton() {
 // ============================================================
 // STYLE CONSTANTS
 // ============================================================
-
 const cardStyle = {
   background: "var(--card-bg, #fff)",
   border: "1px solid var(--border-color, #e7ebf0)",
