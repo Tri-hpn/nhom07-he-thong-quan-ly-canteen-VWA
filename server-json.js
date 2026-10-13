@@ -18,6 +18,7 @@ import {
   getMenuImage,
   deleteMenuImage,
 } from "./menuImageStore.js";
+import { deductStock, refundStock } from "./recipes.mjs";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2145,6 +2146,21 @@ app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
     const newStatus = req.body.status;
     if (!VALID_ORDER_STATUSES.includes(newStatus)) return res.status(400).json({ message: "Trạng thái không hợp lệ: " + newStatus });
     if (newStatus === "Đã hủy" && o.status !== "Đã hủy") rollbackCancelledOrder(db, o);
+    const oldStatus = o.status;
+    if (newStatus === "Đã xác nhận" && oldStatus !== "Đã xác nhận" && !o._stock_deducted) {
+      const stockResult = deductStock(db.inventory || [], o.items || []);
+      if (!stockResult.ok) {
+        const names = stockResult.missing.map(m => m.name || m.code).join(", ");
+        return res.status(400).json({ message: "Không đủ nguyên liệu để xác nhận đơn: " + names, missing: stockResult.missing });
+      }
+      o._stock_deducted = true;
+      o._stock_deducted_at = new Date().toISOString();
+    }
+    if (newStatus === "Đã hủy" && oldStatus !== "Đã hủy" && o._stock_deducted) {
+      refundStock(db.inventory || [], o.items || []);
+      o._stock_deducted = false;
+      o._stock_refunded_at = new Date().toISOString();
+    }
     o.status = newStatus;
     o.updated_at = new Date().toISOString();
     notifyOrderStatus(db, o, newStatus);
@@ -2177,6 +2193,11 @@ app.post("/api/orders/:id/cancel", auth(), (req, res) => {
   if (o.customer_id !== req.user.id) return res.status(403).json({ message: "Không có quyền" });
   if (o.status !== "Chờ xác nhận") return res.status(400).json({ message: "Chỉ hủy được đơn chờ xác nhận" });
   rollbackCancelledOrder(db, o);
+  if (o._stock_deducted) {
+    refundStock(db.inventory || [], o.items || []);
+    o._stock_deducted = false;
+    o._stock_refunded_at = new Date().toISOString();
+  }
   o.status = "Đã hủy";
   o.updated_at = new Date().toISOString();
   notifyOrderStatus(db, o, "Đã hủy");
