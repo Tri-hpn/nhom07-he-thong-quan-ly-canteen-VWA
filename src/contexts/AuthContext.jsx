@@ -1,12 +1,15 @@
 // ============================================================
-// AUTHCONTEXT.JSX — Context xác thực toàn cục (V4 - FINAL)
+// AUTHCONTEXT.JSX — Context xác thực toàn cục (V5 - FINAL)
 // ============================================================
 // V4 (2026-10):
-//   - ✅ FIX: useAuth() không còn warn spam khi Provider chưa kịp mount
-//     (dedupe warning bằng biến module)
-//   - ✅ FIX: fallback an toàn khi Provider chưa mount — KHÔNG throw
-//     ngay lập tức mà trả về null + warning
-//   - Giữ V3: sessionStorage, meReqIdRef, refresh-user event
+//   - ✅ FIX: useAuth() không còn warn spam khi Provider chưa mount
+//   - ✅ FIX: fallback an toàn — KHÔNG throw ngay, trả null + warn
+//
+// V5 (2026-10) - FINAL:
+//   - 🔧 FIX L16: refreshUser() chỉ logout khi e.status === 401.
+//     Lỗi khác (500, network) → giữ nguyên user hiện tại, chỉ log.
+//     Trước đây logout cả khi server lỗi tạm thời → user bị đá ra
+//     oan, phải F5 lại. Sau fix, user tiếp tục dùng bình thường.
 // ============================================================
 
 import {
@@ -21,7 +24,7 @@ import { api, setToken, getToken } from "../api";
 
 const AuthContext = createContext(null);
 
-// ✅ FIX V4: chỉ warn 1 lần duy nhất
+// ✅ chỉ warn 1 lần duy nhất
 let warnedMissingProvider = false;
 
 export function AuthProvider({ children }) {
@@ -66,14 +69,21 @@ export function AuthProvider({ children }) {
       if (!mountedRef.current) return null;
       if (myReqId !== meReqIdRef.current) return null;
 
-      if (e.status !== 401) {
-        console.error("[AuthContext] refreshUser failed:", e.message);
+      // 🔧 FIX L16: chỉ logout khi 401 Unauthorized.
+      // 401 đã được api.js xử lý trước đó (clearToken + dispatch
+      // "auth-expired"), nhưng ta vẫn setUser(null) để UI khớp.
+      // Lỗi khác (500, network, timeout...) → giữ nguyên user,
+      // chỉ log để không đá user ra oan.
+      if (e.status === 401) {
+        setUser(null);
+        setMustChangePassword(false);
+        return null;
       }
-      setUser(null);
-      setMustChangePassword(false);
-      return null;
+
+      console.error("[AuthContext] refreshUser failed:", e.message);
+      return user; // trả về user hiện tại (không đổi state)
     }
-  }, [setUser]);
+  }, [setUser, user]);
 
   const login = useCallback(
     async (email, password) => {
@@ -139,8 +149,11 @@ export function AuthProvider({ children }) {
         if (e.status !== 401) {
           console.error("[AuthContext] initial me() failed:", e.message);
         }
-        setUser(null);
-        setToken(null);
+        // 🔧 FIX L16: chỉ clear user + token khi 401.
+        if (e.status === 401) {
+          setUser(null);
+          setToken(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -191,14 +204,16 @@ export function AuthProvider({ children }) {
     refreshUser,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
 
   if (!ctx) {
-    // ✅ FIX V4: chỉ warn 1 lần duy nhất, không spam
+    // ✅ chỉ warn 1 lần duy nhất, không spam
     if (!warnedMissingProvider) {
       warnedMissingProvider = true;
       console.warn(
@@ -207,8 +222,7 @@ export function useAuth() {
       );
     }
 
-    // ✅ FIX V4: KHÔNG throw ngay — trả fallback an toàn
-    // để component render được (không crash), chỉ warn
+    // Fallback an toàn — không crash component
     return {
       user: null,
       loading: false,

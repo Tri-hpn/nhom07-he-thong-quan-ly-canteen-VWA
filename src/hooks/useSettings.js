@@ -1,21 +1,15 @@
 // ============================================================
-// USESETTINGS.JS — Hook quản lý cài đặt người dùng (V1)
+// USESETTINGS.JS — Hook quản lý cài đặt người dùng (V2 - FINAL)
 // ============================================================
-// Quản lý tập trung:
-//   - theme: "light" | "dark" | "auto"
-//   - language: "vi" | "en" | "ja" | "ko" | "zh"
-//   - fontScale: 1 | 2 | 3
-//   - dietary: { vegetarian, lessSpicy, seafoodAllergy, brownRice }
-//   - notiPrefs: { orderReady, orderStatus, promotion, wallet, sound, vibration }
-//   - mealSlots: { breakfast, lunch, dinner, notifyBefore }
+// V1: Quản lý tập trung theme / language / fontSize / dietary /
+//     notiPrefs / mealSlots + apply vào DOM + persist localStorage.
 //
-// Tự động:
-//   - Apply theme vào <html class="dark-mode">
-//   - Listen prefers-color-scheme khi theme = "auto"
-//   - Apply fontScale vào CSS var --app-font-scale
-//   - Persist tất cả vào localStorage
-//   - Dispatch event "theme-change" / "language-change" để các
-//     component khác (Topbar, i18n engine) đồng bộ
+// V2 (2026-10):
+//   - 🔧 FIX L13: bỏ `Object.values(LS_KEYS).forEach(safeRemoveItem)`
+//     trong resetAll. Lý do: các useEffect persist theo dõi state
+//     sẽ chạy lại ngay sau khi setState và ghi lại localStorage,
+//     nên removeItem là thừa và gây race condition.
+//     resetAll chỉ cần setState về DEFAULT — các effect sẽ tự ghi.
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -75,12 +69,6 @@ function safeGetItem(key) {
 function safeSetItem(key, value) {
   try {
     localStorage.setItem(key, value);
-  } catch {}
-}
-
-function safeRemoveItem(key) {
-  try {
-    localStorage.removeItem(key);
   } catch {}
 }
 
@@ -178,14 +166,12 @@ export function useSettings() {
 
     applyTheme();
 
-    // Dispatch event để Topbar/UI đồng bộ
     try {
       window.dispatchEvent(
         new CustomEvent("theme-change", { detail: { theme } })
       );
     } catch {}
 
-    // Listener cho "auto"
     if (theme === "auto") {
       try {
         const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -312,16 +298,18 @@ export function useSettings() {
     setMealSlotsState((s) => ({ ...s, notifyBefore: n }));
   }, []);
 
+  /**
+   * 🔧 FIX L13: reset state về DEFAULT.
+   * KHÔNG gọi safeRemoveItem nữa — các useEffect persist theo dõi
+   * state sẽ tự ghi lại giá trị DEFAULT ngay sau render kế tiếp.
+   */
   const resetAll = useCallback(() => {
     setThemeState("light");
     setLanguageState("vi");
     setFontSizeState(1);
-    setDietaryState(DEFAULT_DIETARY);
-    setNotiPrefsState(DEFAULT_NOTI_PREFS);
-    setMealSlotsState(DEFAULT_MEAL_SLOTS);
-
-    // Clear cache keys
-    Object.values(LS_KEYS).forEach(safeRemoveItem);
+    setDietaryState({ ...DEFAULT_DIETARY });
+    setNotiPrefsState({ ...DEFAULT_NOTI_PREFS });
+    setMealSlotsState({ ...DEFAULT_MEAL_SLOTS });
   }, []);
 
   // ============================================================
@@ -329,7 +317,6 @@ export function useSettings() {
   // ============================================================
   return useMemo(
     () => ({
-      // State
       theme,
       language,
       fontSize,
@@ -337,7 +324,6 @@ export function useSettings() {
       notiPrefs,
       mealSlots,
 
-      // Setters
       setTheme,
       setLanguage,
       setFontSize,

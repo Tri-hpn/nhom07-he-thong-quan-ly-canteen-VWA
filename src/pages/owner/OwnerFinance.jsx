@@ -9,7 +9,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Wallet, CreditCard, TrendingUp, Receipt, DollarSign, BarChart3, CheckCircle2, Download, Save, Plus, Pencil, X, Loader2, AlertCircle, Trash2, ArrowUpDown, Filter, CalendarDays, CalendarRange, Calendar,
 } from "lucide-react";
-import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ComposedChart, Line, Legend, Cell } from "recharts";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
@@ -54,37 +53,6 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
 });
 
 // Status → màu badge giao dịch
-// ============================================================
-// CHART HELPERS
-// ============================================================
-function ChartCard({ title, subtitle, children, height = 280 }) {
-  return (
-    <div style={{ ...cardStyle, marginBottom: 16 }}>
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ ...h3Style, margin: 0 }}>{title}</h3>
-        {subtitle && (
-          <span style={{ fontSize: 12, color: "var(--text-light, #8993a3)" }}>{subtitle}</span>
-        )}
-      </div>
-      <div style={{ height, width: "100%" }}>{children}</div>
-    </div>
-  );
-}
-
-function MoneyTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ background: "#fff", border: "1px solid #e5e9ef", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
-      <div style={{ marginBottom: 4, fontWeight: 600 }}>{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color }}>
-          {p.name}: <b>{typeof p.value === "number" && p.value > 1000 ? money(p.value) : p.value}</b>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 const ORDER_STATUS_COLORS = {
   "Hoàn thành":  { bg: "#e8f9f1", fg: "#18a967" },
   "Đã hủy":      { bg: "#fee2e2", fg: "#ef4444" },
@@ -574,45 +542,47 @@ function RevenueTab() {
         <KPI label={t("Giá trị TB/đơn")} value={fmtMoney(data?.avgOrder || 0)}    color="#f59e0b" />
       </div>
 
-      {/* 📊 BIỂU ĐỒ PHÂN TÍCH DOANH THU */}
-      {loading ? (
-        <LoadingBox t={t} />
-      ) : error ? (
-        <ErrorBox message={error} t={t} />
-      ) : (
-        <>
-          <ChartCard title={t("Xu hướng doanh thu")} subtitle={t("Đơn vị: VNĐ")} height={320}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={(data?.data || []).map((d) => ({ label: d.label, revenue: d.revenue || 0 }))}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#18a967" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#18a967" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : (v / 1000).toFixed(0) + "k"} />
-                <Tooltip content={<MoneyTooltip />} />
-                <Area type="monotone" dataKey="revenue" name={t("Doanh thu")} stroke="#18a967" strokeWidth={2.5} fill="url(#revGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </ChartCard>
+      <div style={cardStyle}>
+        <h3 style={h3Style}>
+          <TrendingUp size={18} /> {t("Chi tiết doanh thu")}
+        </h3>
 
-          <ChartCard title={t("Số đơn theo kỳ")} subtitle={t("Đơn vị: đơn")} height={240}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={(data?.data || []).map((d) => ({ label: d.label, orders: d.orders || 0 }))}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                <Tooltip content={<MoneyTooltip />} />
-                <Bar dataKey="orders" name={t("Số đơn")} fill="#2634d5" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </>
-      )}
+        {loading ? (
+          <LoadingBox t={t} />
+        ) : error ? (
+          <ErrorBox message={error} t={t} />
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={theadStyle}>
+                  <th style={thStyle}>{t("Kỳ")}</th>
+                  <th style={thStyle}>{t("Thời gian")}</th>
+                  <th style={thStyle}>{t("Số đơn")}</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>{t("Doanh thu")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.data || []).map((d, i) => (
+                  <tr key={i} style={trStyle}>
+                    <td style={tdStyle}><b>{d.label}</b></td>
+                    <td style={tdStyle}>{d.date}</td>
+                    <td style={tdStyle}>{d.orders}</td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <b style={{ color: "#18a967" }}>{fmtMoney(d.revenue)}</b>
+                    </td>
+                  </tr>
+                ))}
+                {!data?.data?.length && (
+                  <tr>
+                    <td colSpan="4" style={emptyTdStyle}>{t("Chưa có dữ liệu")}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1246,57 +1216,6 @@ function StatsTab() {
           color={profit >= 0 ? "#2634d5" : "#ef4444"}
         />
       </div>
-
-      {/* 📊 BIỂU ĐỒ PHÂN TÍCH THỐNG KÊ */}
-      {!loading && revenue?.data?.length > 0 && (
-        <>
-          <ChartCard title={t("Doanh thu vs Lợi nhuận")} subtitle={t("Đơn vị: VNĐ")} height={320}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={revenue.data.map((d) => ({
-                  label: d.label,
-                  revenue: d.revenue || 0,
-                  profit: (d.revenue || 0) - (totalExpense / Math.max(1, revenue.data.length)),
-                }))}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : (v / 1000).toFixed(0) + "k"} />
-                <Tooltip content={<MoneyTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="revenue" name={t("Doanh thu")} fill="#18a967" radius={[6, 6, 0, 0]} barSize={28} />
-                <Line type="monotone" dataKey="profit" name={t("Lợi nhuận")} stroke="#2634d5" strokeWidth={2.5} dot={{ r: 4 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          <ChartCard title={t("Cơ cấu tài chính")} subtitle={t("Đơn vị: VNĐ")} height={280}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                layout="vertical"
-                data={[
-                  { name: t("Doanh thu"), value: totalRevenue },
-                  { name: t("Chi phí"), value: totalExpense },
-                  { name: t("Lợi nhuận"), value: Math.max(0, profit) },
-                ]}
-                margin={{ left: 80, right: 30 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" horizontal={false} />
-                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : (v / 1000).toFixed(0) + "k"} />
-                <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={80} tick={{ fontSize: 12 }} />
-                <Tooltip content={<MoneyTooltip />} />
-                <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={32}>
-                  <Cell fill="#18a967" />
-                  <Cell fill="#ef4444" />
-                  <Cell fill="#2634d5" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </>
-      )}
     </div>
   );
 }

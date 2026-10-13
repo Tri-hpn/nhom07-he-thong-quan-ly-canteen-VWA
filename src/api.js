@@ -1,13 +1,11 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V8 - FINAL)
+// API.JS — HTTP client cho Backend Express (V9 - FINAL)
 // ============================================================
-// V8 (2026-10):
-//   - ✅ FIX #21: Safari private mode — memoryToken fallback rõ ràng
-//     + sessionStorage try/catch
-//   - ✅ Thêm api.orders.call — log voice call (backend đã có route)
-//   - ✅ Thêm api.health — test nhanh server
-//   - ✅ Thêm api.users.listByRole — helper filter
-//   - Giữ V7: setPoints, unlinkMssv, schoolInfo, school.*
+// V9 (2026-10):
+//   - 🔧 FIX H6: bỏ api.admin.translationStats và api.admin.backfillSync
+//     (backend không có endpoint tương ứng)
+//   - 🔧 FIX H7: bỏ param `all` thừa trong api.menu.list
+//   - Giữ V8: memoryToken fallback, api.orders.call, api.health
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -20,7 +18,6 @@ const UPLOAD_TIMEOUT_MS = 60000;
 // ============================================================
 let memoryToken = null;
 
-/** Kiểm tra sessionStorage có dùng được không (Safari private mode chặn) */
 let sessionStorageAvailable = (() => {
   try {
     const k = "__test__";
@@ -109,7 +106,6 @@ async function req(path, options = {}) {
     clearTimeout(timeoutId);
   }
 
-  // ✅ FIX #21: 401 → xóa token + dispatch event (chỉ khi CÓ token)
   if (res.status === 401 && token) {
     clearToken();
     try {
@@ -150,7 +146,6 @@ async function req(path, options = {}) {
 export const api = {
   _base: BASE,
 
-  // ✅ MỚI: Health check — test nhanh server
   health: () => req(""),
 
   // AUTH
@@ -178,12 +173,12 @@ export const api = {
   stats: () => req("/stats"),
 
   menu: {
-    list: (q = "", category = "Tất cả", sort = "popular", all = false) => {
+    // ✅ FIX H7: bỏ param `all` (backend không đọc)
+    list: (q = "", category = "Tất cả", sort = "popular") => {
       const p = new URLSearchParams();
       if (q) p.set("q", q);
       if (category && category !== "Tất cả") p.set("category", category);
       if (sort) p.set("sort", sort);
-      if (all) p.set("all", "1");
       const qs = p.toString();
       return req("/menu" + (qs ? "?" + qs : ""));
     },
@@ -217,13 +212,11 @@ export const api = {
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received:  (id)         => req(`/orders/${id}/received`, { method: "POST" }),
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
-    // ✅ MỚI: log voice call
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
 
   users: {
     list:   (role)     => req(`/users${role ? `?role=${role}` : ""}`),
-    // ✅ MỚI: helper
     listByRole: (role) => req(`/users?role=${encodeURIComponent(role)}`),
     create: (data)     => req("/users",       { method: "POST",   body: JSON.stringify(data) }),
     update: (id, data) => req(`/users/${id}`, { method: "PUT",    body: JSON.stringify(data) }),
@@ -359,25 +352,20 @@ export const api = {
     readAll: ()   => req("/notifications/read-all",   { method: "POST" }),
   },
 
-    chat: {
+  chat: {
     myMessages:    ()       => req("/chat/me"),
     conversations: ()       => req("/chat/conversations"),
     messagesWith:  (userId) => req(`/chat/with/${userId}`),
     send:          (data)   => req("/chat/send", { method: "POST", body: JSON.stringify(data) }),
     getContext:    (userId) => req(`/chat/context/${userId}`),
 
-    // ============================================================
-    // ADMIN — Quản lý & giám sát chat
-    // ============================================================
     admin: {
-      // Giám sát
       conversations:  (params = {}) => {
         const q = new URLSearchParams(params).toString();
         return req("/chat/admin/conversations" + (q ? `?${q}` : ""));
       },
       messagesWith:   (userId) => req(`/chat/admin/messages/${userId}`),
 
-      // Kiểm soát nhân viên
       staffStatus:    ()       => req("/chat/admin/staff-status"),
       toggleStaff:    (id, enabled) =>
         req(`/chat/admin/staff/${id}/chat`, {
@@ -390,7 +378,6 @@ export const api = {
           body: JSON.stringify({ enabled: !!enabled }),
         }),
 
-      // Chuyển tiếp
       transferRequests: (status = "pending") =>
         req(`/chat/admin/transfer-requests?status=${encodeURIComponent(status)}`),
       resolveTransfer: (id, status, note = "") =>
@@ -398,18 +385,15 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ status, note }),
         }),
-      // NV bấm nút "Chuyển Admin"
       requestTransfer: (data) =>
         req("/chat/transfer-request", {
           method: "POST",
           body: JSON.stringify(data || {}),
         }),
 
-      // Tiếp quản / trả về
       takeover: (userId) => req(`/chat/admin/takeover/${userId}`, { method: "POST" }),
       release:  (userId) => req(`/chat/admin/release/${userId}`,  { method: "POST" }),
 
-      // Trạng thái chat của chính NV (để hiện banner)
       myChatStatus: () => req("/chat/my-status"),
     },
   },
@@ -461,15 +445,10 @@ export const api = {
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
 
+  // ✅ FIX H6: chỉ giữ endpoint `backfill` (backend có)
+  // Đã bỏ: translationStats, backfillSync (backend không có)
   admin: {
-    translationStats: () => req("/admin/translation-stats"),
-    backfill:          () => req("/admin/backfill-translations", { method: "POST" }),
-    backfillSync: (limit = 30) =>
-      req("/admin/backfill-translations-sync", {
-        method: "POST",
-        body: JSON.stringify({ limit }),
-        timeoutMs: 50000,
-      }),
+    backfill: () => req("/admin/backfill-translations", { method: "POST" }),
   },
 };
 
