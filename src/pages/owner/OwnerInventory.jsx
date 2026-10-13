@@ -120,6 +120,8 @@ export default function OwnerInventory() {
 
   const [modal, setModal] = useState(null);
   const [importModal, setImportModal] = useState(null);
+  const [importQtyPreview, setImportQtyPreview] = useState("");
+  const [importUnitCostPreview, setImportUnitCostPreview] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [confirm, setConfirm] = useState(null);
@@ -180,20 +182,23 @@ export default function OwnerInventory() {
 
   const stats = useMemo(() => {
     const out = list.filter((x) => x.qty === 0);
-    const low = list.filter((x) => x.qty > 0 && x.qty < x.min);
+    const critical = list.filter((x) => x.qty > 0 && x.qty <= 5);
+    const low = list.filter((x) => x.qty > 5 && x.qty < x.min);
     const ok = list.filter((x) => x.qty >= x.min);
 
     return {
       total: list.length,
+      criticalCount: critical.length,
       lowCount: low.length,
       outCount: out.length,
       okCount: ok.length,
+      criticalItems: critical,
       lowItems: low,
       outItems: out,
     };
   }, [list]);
 
-  const alertCount = stats.lowCount + stats.outCount;
+  const alertCount = stats.criticalCount + stats.lowCount + stats.outCount;
 
   /**
    * ✅ FIX: Generate mã từ MAX của số đứng sau prefix NL.
@@ -233,7 +238,7 @@ export default function OwnerInventory() {
 
     const f = new FormData(e.currentTarget);
     const data = {
-      code: f.get("code")?.trim().toUpperCase(),
+      code: (modal.code || f.get("code") || "").trim().toUpperCase(),
       name: f.get("name")?.trim(),
       qty: Number(f.get("qty")),
       unit: f.get("unit"),
@@ -302,14 +307,18 @@ export default function OwnerInventory() {
     setSaving(true);
     try {
       const res = await api.inventory.import(importItem.code, {
+        unitCost: Number(f.get("unitCost")) || 0,
         qty,
         supplier: f.get("supplier")?.trim(),
         note: f.get("note")?.trim(),
       });
+      const costMsg = res?.record?.cost ? " (" + res.record.cost.toLocaleString("vi-VN") + "đ)" : "";
       toast(
-        `${t("Đã nhập")} ${res?.record?.qty ?? qty} ${importItem.unit}`,
+        `${t("Đã nhập")} ${res?.record?.qty ?? qty} ${importItem.unit}${costMsg}`,
         "success"
       );
+      setImportQtyPreview("");
+      setImportUnitCostPreview("");
       setImportModal(null);
       load();
       loadImports();
@@ -322,12 +331,14 @@ export default function OwnerInventory() {
 
   const getStatusKey = (x) => {
     if (x.qty === 0) return "out";
+    if (x.qty <= 5) return "critical";
     if (x.qty < x.min) return "low";
     return "ok";
   };
 
   const getStatusLabel = (key) => {
     if (key === "out") return t("Hết hàng");
+    if (key === "critical") return t("Nguy cấp");
     if (key === "low") return t("Sắp hết");
     return t("Còn hàng");
   };
@@ -363,6 +374,13 @@ export default function OwnerInventory() {
                 ⚠️ {t("Cảnh báo tồn kho")}
               </b>
               <div style={{ fontSize: 12.5, opacity: 0.9 }}>
+                {stats.criticalCount > 0 && (
+                <span style={{ color: "#dc2626", fontWeight: 700 }}>
+                  🚨 <b>{stats.criticalCount}</b> {t("nguyên liệu NGUY CẤP")}
+                </span>
+              )}
+              {stats.criticalCount > 0 && (stats.outCount > 0 || stats.lowCount > 0) && " · "}
+
                 {stats.outCount > 0 && (
                   <span>
                     <b>{stats.outCount}</b> {t("nguyên liệu đã hết hàng")}
@@ -435,22 +453,22 @@ export default function OwnerInventory() {
           </div>
 
           <button
-            onClick={() => setShowHistory(!showHistory)}
+            onClick={() => setShowHistory(true)}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              background: showHistory ? "#18a967" : "var(--card-bg, #fff)",
-              color: showHistory ? "#fff" : "var(--text-primary, #172033)",
+              background: "var(--card-bg, #fff)",
+              color: "var(--text-primary, #172033)",
               padding: "10px 16px",
-              border: "1px solid " + (showHistory ? "#18a967" : "var(--border-color, #e5e9ef)"),
+              border: "1px solid var(--border-color, #e5e9ef)",
               borderRadius: 10,
               fontWeight: 600,
               cursor: "pointer",
               fontSize: 13,
             }}
           >
-            <History size={16} /> {showHistory ? t("Ẩn lịch sử") : t("Lịch sử nhập")}
+            <History size={16} /> {t("Lịch sử nhập")}
           </button>
 
           <button
@@ -482,6 +500,7 @@ export default function OwnerInventory() {
           }}
         >
           <StatBox label={t("Tổng nguyên liệu")} value={stats.total} color="#2634d5" icon={<Boxes size={18} />} />
+          <StatBox label={t("Nguy cấp")}         value={stats.criticalCount} color="#dc2626" icon={<AlertTriangle size={18} />} />
           <StatBox label={t("Sắp hết")}          value={stats.lowCount} color="#f59e0b" icon={<AlertTriangle size={18} />} />
           <StatBox label={t("Hết hàng")}          value={stats.outCount} color="#ef4444" icon={<PackageX size={18} />} />
           <StatBox label={t("Đủ hàng")}           value={stats.okCount}  color="#18a967" icon={<Package size={18} />} />
@@ -598,7 +617,7 @@ export default function OwnerInventory() {
                             }}
                           >
                             <IconButton
-                              onClick={() => setImportModal(x)}
+                              onClick={() => { setImportQtyPreview(""); setImportUnitCostPreview(""); setImportModal(x); }}
                               title={t("Nhập kho")}
                               color="#ffffff"
                               bg="#18a967"
@@ -650,28 +669,46 @@ export default function OwnerInventory() {
         </div>
 
         {showHistory && (
-          <div
-            style={{
-              background: "var(--card-bg, #fff)",
-              border: "1px solid var(--border-color, #e7ebf0)",
-              borderRadius: 12,
-              padding: 20,
-              marginTop: 20,
-            }}
-          >
-            <h3
+          <Modal onClose={() => setShowHistory(false)} maxWidth={900}>
+            <div
               style={{
-                marginTop: 0,
-                color: "var(--text-primary, #172033)",
                 display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                gap: 8,
-                fontSize: 15,
+                marginBottom: 16,
+                paddingBottom: 12,
+                borderBottom: "1px solid var(--border-color, #eef2f7)",
               }}
             >
-              <History size={18} />
-              {t("Lịch sử nhập kho")} ({imports.length})
-            </h3>
+              <h3
+                style={{
+                  margin: 0,
+                  color: "var(--text-primary, #172033)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 16,
+                }}
+              >
+                <History size={20} />
+                {t("Lịch sử nhập kho")} ({imports.length})
+              </h3>
+              <button
+                onClick={() => setShowHistory(false)}
+                style={{
+                  background: "transparent",
+                  border: 0,
+                  cursor: "pointer",
+                  color: "var(--text-light, #8993a3)",
+                  padding: 4,
+                  display: "grid",
+                  placeItems: "center",
+                }}
+                aria-label="Đóng"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
             {imports.length === 0 ? (
               <div
@@ -692,6 +729,8 @@ export default function OwnerInventory() {
                       <th style={thStyle}>{t("Thời gian")}</th>
                       <th style={thStyle}>{t("Nguyên liệu")}</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>{t("SL nhập")}</th>
+                      <th style={{ ...thStyle, textAlign: "right" }}>{t("Chi phí")}</th>
+                      <th style={{ ...thStyle, textAlign: "right" }}>Chi phí</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>{t("Tồn sau")}</th>
                       <th style={thStyle}>{t("Người nhập")}</th>
                       <th style={thStyle}>{t("Nhà cung cấp")}</th>
@@ -723,6 +762,11 @@ export default function OwnerInventory() {
                         >
                           +{r.qty} {r.unit}
                         </td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: "#dc2626", fontWeight: 700 }}>
+                          {r.cost ? r.cost.toLocaleString("vi-VN") + "đ" : "—"}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: "#dc2626", fontWeight: 700 }}>
+                        </td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           {r.after} {r.unit}
                         </td>
@@ -749,7 +793,7 @@ export default function OwnerInventory() {
                 )}
               </div>
             )}
-          </div>
+          </Modal>
         )}
 
         {modal && (
@@ -912,12 +956,41 @@ export default function OwnerInventory() {
                 type="number"
                 min="0.1"
                 step="0.1"
-                defaultValue=""
+                value={importQtyPreview}
+                onChange={(e) => setImportQtyPreview(e.target.value)}
                 placeholder={t("VD: 10")}
                 required
                 autoFocus
                 style={{ ...inputStyle, fontSize: 14 }}
               />
+
+              <label style={labelStyle}>Đơn giá (VNĐ/{importItem.unit})</label>
+              <input
+                name="unitCost"
+                type="number"
+                min="0"
+                step="1000"
+                value={importUnitCostPreview}
+                onChange={(e) => setImportUnitCostPreview(e.target.value)}
+                placeholder="VD: 50000"
+                style={inputStyle}
+              />
+
+              {(Number(importQtyPreview) > 0 && Number(importUnitCostPreview) > 0) && (
+                <div style={{
+                  marginTop: 4,
+                  marginBottom: 14,
+                  padding: "10px 14px",
+                  background: "rgba(24, 169, 103, 0.1)",
+                  border: "1px solid rgba(24, 169, 103, 0.3)",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  color: "#18a967",
+                  fontWeight: 700,
+                }}>
+                  💰 {t("Chi phí nhập")}: {(Number(importQtyPreview) * Number(importUnitCostPreview)).toLocaleString("vi-VN")}đ
+                </div>
+              )}
 
               <label style={labelStyle}>{t("Nhà cung cấp")}</label>
               <input
@@ -1186,6 +1259,8 @@ function Modal({ children, onClose, maxWidth = 480 }) {
         position: "fixed",
         inset: 0,
         background: "rgba(0,0,0,0.5)",
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
         display: "grid",
         placeItems: "center",
         zIndex: MODAL_Z,
