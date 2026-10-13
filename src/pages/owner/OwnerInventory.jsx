@@ -21,6 +21,71 @@ import ConfirmDialog from "../../components/ConfirmDialog";
 
 const UNITS = ["kg", "g", "lít", "ml", "chai", "hộp", "cái", "phần"];
 
+// ✅ Định mức: 1 kg → bao nhiêu phần ăn
+const YIELD_PER_KG = {
+  "gao": 10, "thit ga": 4, "thit bo": 3, "thit heo": 4,
+  "ca": 4, "tom": 6, "bun": 8, "pho": 8, "mi": 8,
+  "trung": 10, "rau": 5, "cai": 4, "ca chua": 6,
+  "hanh": 20, "toi": 30, "ot": 40, "dau an": 20,
+  "nuoc mam": 25, "muoi": 40, "duong": 30, "tieu": 50,
+  "sua": 8, "ca phe": 20, "tra": 30, "chanh": 15,
+  "khoai": 4, "khoai tay": 4, "banh mi": 4, "xoi": 6,
+  "chao": 8, "dau": 6, "nam": 5, "bap": 4, "suon": 3,
+};
+
+// ✅ Món dùng nguyên liệu
+const DISHES_USING = {
+  "gao":      ["Cơm gà", "Cơm tấm sườn", "Cơm chiên dương châu", "Cơm rang thập cẩm"],
+  "thit ga":  ["Cơm gà", "Phở gà", "Cháo gà", "Gà rán"],
+  "thit bo":  ["Bún bò Huế", "Phở bò", "Cơm bò xào"],
+  "thit heo": ["Cơm tấm sườn", "Bún chả", "Thịt kho"],
+  "ca":       ["Cơm cá", "Bún cá", "Cháo cá"],
+  "tom":      ["Cơm tôm", "Bún tôm", "Cháo tôm"],
+  "bun":      ["Bún bò Huế", "Bún chả", "Bún riêu", "Bún cá"],
+  "pho":      ["Phở bò", "Phở gà"],
+  "mi":       ["Mì xào", "Mì nước", "Hủ tiếu"],
+  "trung":    ["Cơm chiên dương châu", "Bánh mì trứng", "Trứng chiên"],
+  "rau":      ["Cơm chiên", "Phở", "Bún", "Canh rau"],
+  "ca chua":  ["Cơm chiên", "Canh cà chua", "Sốt cà"],
+  "hanh":     ["Phở", "Bún", "Cơm tấm"],
+  "dau an":   ["Các món xào, chiên"],
+  "nuoc mam": ["Nêm, chấm các món"],
+  "banh mi":  ["Bánh mì thịt", "Bánh mì trứng", "Bánh mì chả"],
+  "xoi":      ["Xôi gà", "Xôi đậu", "Xôi xéo"],
+  "chao":     ["Cháo gà", "Cháo cá", "Cháo tôm"],
+  "ca phe":   ["Cà phê đen", "Cà phê sữa"],
+  "tra":      ["Trà đào", "Trà chanh", "Trà sữa"],
+  "chanh":    ["Nước chanh", "Trà chanh"],
+  "khoai tay": ["Khoai tây chiên", "Khoai tây nghiền"],
+  "cai":      ["Canh cải", "Dưa cải"],
+  "toi":      ["Nêm tất cả món"],
+  "ot":       ["Nêm món cay"],
+  "muoi":     ["Nêm tất cả món"],
+  "duong":    ["Nêm, pha chế"],
+  "tieu":     ["Nêm tất cả món"],
+  "sua":      ["Cà phê sữa", "Trà sữa", "Sinh tố"],
+  "nam":      ["Canh nấm", "Nấm xào"],
+  "bap":      ["Canh bắp", "Bắp luộc"],
+  "suon":     ["Cơm tấm sườn", "Sườn nướng"],
+};
+
+function normalizeIngName(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .trim();
+}
+
+function getYield(name) {
+  return YIELD_PER_KG[normalizeIngName(name)] || null;
+}
+
+function getDishesUsing(name) {
+  return DISHES_USING[normalizeIngName(name)] || [];
+}
+
 const MODAL_Z = 2147483600;
 const IMPORT_HISTORY_LIMIT = 30;
 
@@ -51,6 +116,7 @@ export default function OwnerInventory() {
   const [showHistory, setShowHistory] = useState(false);
 
   const [q, setQ] = useState("");
+  const [dishModal, setDishModal] = useState(null);
 
   const [modal, setModal] = useState(null);
   const [importModal, setImportModal] = useState(null);
@@ -457,6 +523,7 @@ export default function OwnerInventory() {
                     <th style={thStyle}>{t("Nguyên liệu")}</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>{t("Số lượng")}</th>
                     <th style={thStyle}>{t("Đơn vị")}</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>{t("Định lượng")}</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>{t("Tối thiểu")}</th>
                     <th style={thStyle}>{t("Trạng thái")}</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tác")}</th>
@@ -473,7 +540,15 @@ export default function OwnerInventory() {
                         <td style={tdStyle}>
                           <b style={{ fontFamily: "monospace", fontSize: 12 }}>{x.code}</b>
                         </td>
-                        <td style={tdStyle}>{x.name}</td>
+                        <td style={tdStyle}>
+                          <button
+                            onClick={() => setDishModal(x)}
+                            title="Xem các món dùng nguyên liệu này"
+                            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", color: "#2634d5", fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, fontFamily: "inherit", fontSize: "inherit" }}
+                          >
+                            {x.name}
+                          </button>
+                        </td>
                         <td
                           style={{
                             ...tdStyle,
@@ -487,6 +562,18 @@ export default function OwnerInventory() {
                         </td>
                         <td style={{ ...tdStyle, color: "var(--text-muted, #64748b)" }}>
                           {x.unit}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>
+                          {(() => {
+                            const yld = getYield(x.name);
+                            if (!yld) return <span style={{ color: "var(--text-light, #94a3b8)" }}>—</span>;
+                            const portions = Math.round(x.qty * yld);
+                            return (
+                              <span title={`1 ${x.unit} ${x.name} ≈ ${yld} phần`} style={{ color: "#2634d5", fontWeight: 700 }}>
+                                ~{portions} phần
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td
                           style={{
@@ -540,7 +627,7 @@ export default function OwnerInventory() {
                   {!filtered.length && (
                     <tr>
                       <td
-                        colSpan="7"
+                        colSpan="8"
                         style={{
                           textAlign: "center",
                           padding: 40,
@@ -889,7 +976,11 @@ export default function OwnerInventory() {
         `}</style>
       </div>
 
-      {confirm && (
+            {dishModal && (
+        <DishModal item={dishModal} onClose={() => setDishModal(null)} />
+      )}
+
+{confirm && (
         <ConfirmDialog
           open
           title={confirm.title}
@@ -910,6 +1001,73 @@ export default function OwnerInventory() {
 // SUB-COMPONENTS
 // ============================================================
 
+function DishModal({ item, onClose }) {
+  if (!item) return null;
+  const dishes = getDishesUsing(item.name);
+  const yieldPerKg = getYield(item.name);
+  const portions = yieldPerKg ? Math.round(item.qty * yieldPerKg) : null;
+
+  return (
+    <div
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: MODAL_Z, padding: 20, overflowY: "auto" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "var(--card-bg, #fff)", borderRadius: 14, padding: 24, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto" }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <Package size={20} style={{ color: "#2634d5" }} />
+            Các món dùng "{item.name}"
+          </h3>
+          <button onClick={onClose} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 4, display: "grid", placeItems: "center" }} aria-label="Đóng">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div style={{ background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, padding: 14, marginBottom: 16, fontSize: 13 }}>
+          <div style={{ marginBottom: 6 }}>
+            <b>{item.name}</b>{" "}
+            <span style={{ color: "var(--text-light, #94a3b8)", fontFamily: "monospace", fontSize: 11 }}>({item.code})</span>
+          </div>
+          <div style={{ color: "var(--text-muted, #64748b)" }}>
+            Tồn kho: <b style={{ color: "var(--text-primary, #172033)" }}>{item.qty} {item.unit}</b>
+            {portions !== null && (
+              <span style={{ marginLeft: 8 }}>
+                · Ước tính <b style={{ color: "#2634d5" }}>~{portions} phần</b>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {dishes.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 30, color: "var(--text-light, #8993a3)", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, fontSize: 13 }}>
+            Chưa có thông tin món dùng nguyên liệu này
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {dishes.map((dish, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, fontSize: 13 }}>
+                <span style={{ fontSize: 18 }}>🍽️</span>
+                <b style={{ color: "var(--text-primary, #172033)" }}>{dish}</b>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={onClose}
+          style={{ width: "100%", padding: 12, marginTop: 16, background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13 }}
+        >
+          Đóng
+        </button>
+      </div>
+    </div>
+  );
+}
 function StatBox({ label, value, color, icon }) {
   return (
     <div
