@@ -7,7 +7,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit,
+  Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -135,6 +135,11 @@ export default function OwnerVouchers() {
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(false);
 
+
+  // ---------- Points config ----------
+  const [pointsConfig, setPointsConfig] = useState(null);
+  const [configModal, setConfigModal] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   // ---------- Confirm dialog ----------
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -159,15 +164,17 @@ export default function OwnerVouchers() {
     setError("");
 
     try {
-      const [vRes, uRes] = await Promise.all([
+      const [vRes, uRes, cfgRes] = await Promise.all([
         api.vouchers.all().catch(() => []),
         api.users.list("CUSTOMER").catch(() => []),
+        api.points.config().catch(() => null),
       ]);
 
       if (myReqId !== reqIdRef.current) return;
 
       setList(Array.isArray(vRes) ? vRes : []);
       setCustomers(Array.isArray(uRes) ? uRes : []);
+      if (cfgRes) setPointsConfig(cfgRes);
     } catch (e) {
       if (myReqId === reqIdRef.current) {
         setError(e.message || t("Không tải được danh sách voucher"));
@@ -696,6 +703,16 @@ export default function OwnerVouchers() {
               <X size={13} /> {t("Xoá lọc")}
             </button>
           )}
+
+          {/* Points config */}
+          <button
+            onClick={() => setConfigModal(true)}
+            style={toolBtnStyle}
+            disabled={loading || !pointsConfig}
+            title={t("Sửa quy tắc tích điểm và đổi điểm")}
+          >
+            <Settings size={14} /> {t("Quy tắc điểm")}
+          </button>
 
           {/* Export */}
           <button onClick={exportCSV} style={toolBtnStyle} disabled={loading}>
@@ -1354,6 +1371,31 @@ export default function OwnerVouchers() {
         </Modal>
       )}
 
+      {/* ============================================================
+          POINTS CONFIG MODAL
+          ============================================================ */}
+      {configModal && pointsConfig && (
+        <PointsConfigModal
+          initial={pointsConfig}
+          saving={savingConfig}
+          onClose={() => !savingConfig && setConfigModal(false)}
+          onSave={async (next) => {
+            setSavingConfig(true);
+            try {
+              const res = await api.points.updateConfig(next);
+              toast(t("Đã lưu quy tắc điểm"), "success");
+              setPointsConfig(res.config || next);
+              setConfigModal(false);
+            } catch (e) {
+              toast(e.message || t("Không lưu được quy tắc"), "error");
+            } finally {
+              setSavingConfig(false);
+            }
+          }}
+          t={t}
+        />
+      )}
+
       {/* Confirm dialog */}
       {confirm && (
         <ConfirmDialog
@@ -1538,6 +1580,273 @@ function ErrorBox({ message, onRetry, t }) {
         </button>
       )}
     </div>
+  );
+}
+
+// ============================================================
+// POINTS CONFIG MODAL — Sửa quy tắc tích/đổi điểm
+// ============================================================
+function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
+  const [earn, setEarn] = useState(() => ({ ...initial.earn }));
+  const [redeem, setRedeem] = useState(() => ({
+    ...initial.redeem,
+    tiers: [...(initial.redeem.tiers || [])],
+  }));
+
+  const setEarnField = (k, v) => setEarn((p) => ({ ...p, [k]: v }));
+  const setRedeemField = (k, v) => setRedeem((p) => ({ ...p, [k]: v }));
+
+  const setTier = (idx, k, v) =>
+    setRedeem((p) => {
+      const tiers = [...p.tiers];
+      tiers[idx] = { ...tiers[idx], [k]: v };
+      return { ...p, tiers };
+    });
+
+  const addTier = () =>
+    setRedeem((p) => ({
+      ...p,
+      tiers: [...p.tiers, { points: 100, value: 10000 }],
+    }));
+
+  const removeTier = (idx) =>
+    setRedeem((p) => ({
+      ...p,
+      tiers: p.tiers.filter((_, i) => i !== idx),
+    }));
+
+  const submit = (e) => {
+    e.preventDefault();
+    const payload = {
+      earn: {
+        rate_amount: Number(earn.rate_amount),
+        rate_points: Number(earn.rate_points),
+        green_enabled: !!earn.green_enabled,
+        green_points: Number(earn.green_points),
+        green_require_approval: !!earn.green_require_approval,
+        review_enabled: !!earn.review_enabled,
+        review_points: Number(earn.review_points),
+      },
+      redeem: {
+        rate_points: Number(redeem.rate_points),
+        rate_value: Number(redeem.rate_value),
+        min_points: Number(redeem.min_points),
+        max_unused_vouchers: Number(redeem.max_unused_vouchers),
+        tiers: redeem.tiers
+          .map((t) => ({ points: Number(t.points), value: Number(t.value) }))
+          .filter((t) => t.points > 0 && t.value > 0),
+      },
+    };
+    onSave(payload);
+  };
+
+  return (
+    <Modal onClose={onClose} maxWidth={620}>
+      <div style={modalHeaderStyle}>
+        <h3 style={modalTitleStyle}>
+          <Settings size={20} /> {t("Quy tắc tích điểm & đổi điểm")}
+        </h3>
+        <button
+          onClick={onClose}
+          style={modalCloseStyle}
+          disabled={saving}
+          aria-label={t("Đóng")}
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <form onSubmit={submit} autoComplete="off">
+        <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#18a967", marginBottom: 10 }}>
+            📥 {t("TÍCH ĐIỂM")}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={labelStyle}>{t("Mỗi (VNĐ)")}</label>
+              <input
+                type="number" min="0" step="1000"
+                value={earn.rate_amount}
+                onChange={(e) => setEarnField("rate_amount", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>{t("= Số điểm")}</label>
+              <input
+                type="number" min="0"
+                value={earn.rate_points}
+                onChange={(e) => setEarnField("rate_points", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+            <input
+              type="checkbox"
+              checked={!!earn.green_enabled}
+              onChange={(e) => setEarnField("green_enabled", e.target.checked)}
+              disabled={saving} id="green-enabled"
+            />
+            <label htmlFor="green-enabled" style={{ fontSize: 13, fontWeight: 600 }}>
+              🌱 {t("Bật Sống Xanh Học Đường")}
+            </label>
+          </div>
+          {earn.green_enabled && (
+            <div style={{ marginTop: 8 }}>
+              <label style={labelStyle}>{t("Số điểm Sống Xanh / lần")}</label>
+              <input
+                type="number" min="0"
+                value={earn.green_points}
+                onChange={(e) => setEarnField("green_points", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+          )}
+
+          {earn.green_enabled && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+              <input
+                type="checkbox"
+                checked={!!earn.green_require_approval}
+                onChange={(e) => setEarnField("green_require_approval", e.target.checked)}
+                disabled={saving}
+                id="green-approval"
+              />
+              <label htmlFor="green-approval" style={{ fontSize: 13, fontWeight: 600 }}>
+                🛡️ {t("Yêu cầu nhân viên duyệt Sống Xanh")}
+              </label>
+            </div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+            <input
+              type="checkbox"
+              checked={!!earn.review_enabled}
+              onChange={(e) => setEarnField("review_enabled", e.target.checked)}
+              disabled={saving} id="review-enabled"
+            />
+            <label htmlFor="review-enabled" style={{ fontSize: 13, fontWeight: 600 }}>
+              ⭐ {t("Bật thưởng Đánh giá món")}
+            </label>
+          </div>
+          {earn.review_enabled && (
+            <div style={{ marginTop: 8 }}>
+              <label style={labelStyle}>{t("Số điểm Đánh giá / lần")}</label>
+              <input
+                type="number" min="0"
+                value={earn.review_points}
+                onChange={(e) => setEarnField("review_points", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#2634d5", marginBottom: 10 }}>
+            📤 {t("ĐỔI ĐIỂM")}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={labelStyle}>{t("Số điểm")}</label>
+              <input type="number" min="1" value={redeem.rate_points}
+                onChange={(e) => setRedeemField("rate_points", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>{t("= Voucher (VNĐ)")}</label>
+              <input type="number" min="0" step="1000" value={redeem.rate_value}
+                onChange={(e) => setRedeemField("rate_value", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>{t("Tối thiểu đổi")}</label>
+              <input type="number" min="1" value={redeem.min_points}
+                onChange={(e) => setRedeemField("min_points", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>{t("Max voucher chưa dùng")}</label>
+              <input type="number" min="1" value={redeem.max_unused_vouchers}
+                onChange={(e) => setRedeemField("max_unused_vouchers", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", marginBottom: 10 }}>
+            🎟️ {t("MỐC VOUCHER")}
+          </div>
+
+          {redeem.tiers.map((tier, idx) => (
+            <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 40px", gap: 8, marginBottom: 8, alignItems: "center" }}>
+              <input type="number" min="1" placeholder={t("Điểm")} value={tier.points}
+                onChange={(e) => setTier(idx, "points", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+              <input type="number" min="0" step="1000" placeholder={t("VNĐ")} value={tier.value}
+                onChange={(e) => setTier(idx, "value", e.target.value)}
+                style={inputStyle} disabled={saving}
+              />
+              <button type="button" onClick={() => removeTier(idx)}
+                disabled={saving || redeem.tiers.length <= 1}
+                style={{
+                  width: 32, height: 32, border: 0, borderRadius: 6,
+                  background: "#fee2e2", color: "#ef4444",
+                  cursor: redeem.tiers.length <= 1 ? "not-allowed" : "pointer",
+                  display: "grid", placeItems: "center",
+                  opacity: redeem.tiers.length <= 1 ? 0.4 : 1,
+                }}
+                title={t("Xoá mốc")}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+
+          <button type="button" onClick={addTier} disabled={saving}
+            style={{
+              padding: "8px 12px", background: "transparent", color: "#2634d5",
+              border: "1px dashed #2634d5", borderRadius: 8, fontSize: 12,
+              fontWeight: 600, cursor: "pointer", display: "inline-flex",
+              alignItems: "center", gap: 4, marginTop: 4,
+            }}
+          >
+            <Plus size={13} /> {t("Thêm mốc mới")}
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={onClose} disabled={saving}
+            style={{ ...btnCancelStyle, flex: 1 }}
+          >
+            {t("Hủy")}
+          </button>
+          <button type="submit" disabled={saving}
+            style={{ ...btnPrimaryStyle, flex: 1, width: "auto" }}
+          >
+            {saving ? (
+              <>
+                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                {t("Đang lưu...")}
+              </>
+            ) : (
+              <>
+                <Save size={14} /> {t("Lưu quy tắc")}
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

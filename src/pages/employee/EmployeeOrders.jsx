@@ -190,6 +190,7 @@ export default function EmployeeOrders() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [advancingId, setAdvancingId] = useState(null);
+  const [greenBusyId, setGreenBusyId] = useState(null);
   const [confirmReject, setConfirmReject] = useState(null);
   const [showStationMenu, setShowStationMenu] = useState(false);
 
@@ -520,6 +521,44 @@ export default function EmployeeOrders() {
   const shiftLabel = useMemo(() => getCurrentShiftLabel(new Date()), []);
   const staffName = user?.name || t("Nhân viên");
   const staffCode = user?.employeeCode || user?.code || "";
+
+  const approveGreen = useCallback(
+    async (order) => {
+      const id = order._id || order.id;
+      if (greenBusyId !== null) return;
+      setGreenBusyId(id);
+      try {
+        const res = await api.orders.approveGreen(id);
+        toast(`${t("Đã duyệt Sống Xanh")} + ${res.bonus} ${t("điểm")}`, "success");
+        emitOrderUpdated();
+        await load(true);
+      } catch (e) {
+        toast(e.message || t("Không duyệt được"), "error");
+      } finally {
+        setGreenBusyId(null);
+      }
+    },
+    [load, t, greenBusyId]
+  );
+
+  const rejectGreen = useCallback(
+    async (order) => {
+      const id = order._id || order.id;
+      if (greenBusyId !== null) return;
+      setGreenBusyId(id);
+      try {
+        await api.orders.rejectGreen(id);
+        toast(t("Đã từ chối Sống Xanh"), "warning");
+        emitOrderUpdated();
+        await load(true);
+      } catch (e) {
+        toast(e.message || t("Không từ chối được"), "error");
+      } finally {
+        setGreenBusyId(null);
+      }
+    },
+    [load, t, greenBusyId]
+  );
 
   const advance = useCallback(
     async (order) => {
@@ -967,6 +1006,9 @@ export default function EmployeeOrders() {
                       elapsed={calcElapsedSec(o.created_at)}
                       onAdvance={() => advance(o)}
                       onReject={() => rejectOrder(o)}
+                      onApproveGreen={approveGreen}
+                      onRejectGreen={rejectGreen}
+                      greenBusy={greenBusyId === (o._id || o.id)}
                       t={t}
                     />
                   ))}

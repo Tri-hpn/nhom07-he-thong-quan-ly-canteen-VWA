@@ -217,6 +217,8 @@ export const api = {
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received:  (id)         => req(`/orders/${id}/received`, { method: "POST" }),
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
+    approveGreen: (id)         => req(`/orders/${id}/green/approve`, { method: "POST" }),
+    rejectGreen:  (id, reason) => req(`/orders/${id}/green/reject`,  { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
     // ✅ MỚI: log voice call
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
@@ -334,8 +336,11 @@ export const api = {
   },
 
   points: {
-    me:     ()     => req("/points/me"),
-    redeem: (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
+    me:           ()     => req("/points/me"),
+    redeem:       (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
+    config:       ()     => req("/points/config"),
+    updateConfig: (data) => req("/points/config", { method: "PUT", body: JSON.stringify(data) }),
+    preview:      (data) => req("/points/preview", { method: "POST", body: JSON.stringify(data) }),
   },
 
   vouchers: {

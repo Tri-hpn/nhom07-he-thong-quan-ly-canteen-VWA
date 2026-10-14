@@ -24,6 +24,7 @@ import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
+import { usePointsConfig } from "../../hooks/usePointsConfig";
 
 // ============================================================
 // CONSTANTS
@@ -34,7 +35,17 @@ const MIN_REDEEM = 100;
 const POINT_TO_VND = 100;
 const REDEEM_OPTIONS = [100, 200, 500, 1000];
 
-const EARN_METHODS = [
+function buildEarnMethods(ptsCfg) {
+  const cfg = ptsCfg || {};
+  const earn = cfg.earn || {};
+  const rateAmount = Number(earn.rate_amount) || 10000;
+  const ratePoints = Number(earn.rate_points) || 1;
+  const greenPts = Number(earn.green_points) || 10;
+  const reviewPts = Number(earn.review_points) || 5;
+  const greenOn = earn.green_enabled !== false;
+  const reviewOn = earn.review_enabled !== false;
+
+  return [
   {
     key: "eat",
     icon: Utensils,
@@ -62,7 +73,25 @@ const EARN_METHODS = [
     desc: "Để lại nhận xét sao & góp ý khẩu vị trong mục Lịch sử đơn hàng để cải thiện chất lượng phục vụ bữa ăn.",
     cta: "Đánh giá đơn gần nhất",
   },
-];
+
+  ].filter((m) => {
+    if (m.key === "eco" && !greenOn) return false;
+    if (m.key === "review" && !reviewOn) return false;
+    return true;
+  }).map((m) => {
+    if (m.key === "eat") {
+      const pct = rateAmount > 0 ? (ratePoints / (rateAmount / 100)).toFixed(ratePoints >= 1 ? 0 : 1) : "0";
+      return { ...m, badge: m.badge.replace(/\d+([.,]\d+)?%/, pct + "%") };
+    }
+    if (m.key === "eco") {
+      return { ...m, badge: m.badge.replace(/\+?\d+\s*pts/, "+" + greenPts + " pts") };
+    }
+    if (m.key === "review") {
+      return { ...m, badge: m.badge.replace(/\+?\d+\s*pts/, "+" + reviewPts + " pts") };
+    }
+    return m;
+  });
+};
 
 // ============================================================
 // 🔧 F1 + F5: REWARD_TABS với filter rõ ràng
@@ -199,6 +228,12 @@ export default function CustomerPromotions() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+
+  const ptsCfg = usePointsConfig();
+  const earnMethods = useMemo(() => buildEarnMethods(ptsCfg), [ptsCfg]);
+  const redeemTiers = (ptsCfg?.redeem?.tiers || []).map((t) => Number(t.points)).filter((n) => n > 0);
+  const minRedeem = Number(ptsCfg?.redeem?.min_points) || 100;
+  const pointToVnd = (Number(ptsCfg?.redeem?.rate_value) || 10000) / (Number(ptsCfg?.redeem?.rate_points) || 100);
 
   const [tab, setTab] = useState("active");
   const [rewardTab, setRewardTab] = useState("all");
@@ -563,7 +598,7 @@ export default function CustomerPromotions() {
         </div>
 
         <div className="promo-earn-grid">
-          {EARN_METHODS.map((m) => {
+          {earnMethods.map((m) => {
             const Icon = m.icon;
             return (
               <div key={m.key} className="promo-earn-card">
@@ -645,7 +680,7 @@ export default function CustomerPromotions() {
             <span className="promo-redeem-options__label">
               {t("Đổi điểm lấy voucher:")}
             </span>
-            {REDEEM_OPTIONS.map((p) => {
+            {(redeemTiers.length ? redeemTiers : REDEEM_OPTIONS).map((p) => {
               const disabled = points < p;
               const isActive = redeemPoints === p;
               return (

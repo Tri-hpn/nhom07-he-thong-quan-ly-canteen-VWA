@@ -15,11 +15,12 @@ import {
   Download, ExternalLink, Store, Soup, Utensils, Shield, PhoneCall,
   Microwave, Info, Lightbulb, Sparkles, Plus, Minus, RefreshCw, Wifi,
   BadgeCheck, AlertCircle, ShoppingBag, Receipt, Timer,
-} from "lucide-react";
+  Leaf } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
+import { usePointsConfig } from "../../hooks/usePointsConfig";
 import { useCrossTabSync } from "../../hooks/useCrossTabSync";
 import PaymentModal from "../../components/PaymentModal";
 
@@ -124,6 +125,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [phone, setPhone] = useState(() => user?.phone || "");
   const [pickupTime, setPickupTime] = useState("");
   const [note, setNote] = useState("");
+  const [isGreen, setIsGreen] = useState(false);
+  const ptsCfg = usePointsConfig();
   const [errors, setErrors] = useState({});
 
   const [voucherCode, setVoucherCode] = useState("");
@@ -425,6 +428,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           pickupTime: pickupTime || "",
           discount: discount + pointsDiscount,
           voucherCode: appliedVoucher?.code || "",
+          isGreen,
         });
 
         const selectedKeysArr = lines.map((m) => m._key);
@@ -479,6 +483,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         note,
         discount: discount + pointsDiscount,
         voucherCode: appliedVoucher?.code || "",
+          isGreen,
         method,
       });
     },
@@ -510,6 +515,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           pickupTime: pickupTime || "",
           discount: discount + pointsDiscount,
           voucherCode: appliedVoucher?.code || "",
+          isGreen,
         });
 
         const selectedKeysArr = lines.map((m) => m._key);
@@ -694,7 +700,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   </div>
                 </div>
                 <span className="checkout-panel__tag checkout-panel__tag--blue">
-                  {t("Hoàn 5% Green Points")}
+                  {t("Hoàn")} {(ptsCfg?.earn?.rate_points || 1) / ((ptsCfg?.earn?.rate_amount || 10000) / 100)}% Green Points
                 </span>
               </div>
 
@@ -1217,6 +1223,54 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     "VD: ít cay, không hành, gọi trước khi tới quầy..."
                   )}
                 />
+              </label>
+
+              {/* SỐNG XANH HỌC ĐƯỜNG */}
+              <label
+                className="checkout-field checkout-field--full"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "12px 14px",
+                  background: isGreen ? "rgba(24, 169, 103, 0.08)" : "transparent",
+                  border: isGreen ? "1px solid #18a967" : "1px dashed #cbd5e1",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  id="isGreen-tick"
+                  checked={isGreen}
+                  onChange={(e) => setIsGreen(e.target.checked)}
+                  style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#18a967" }}
+                />
+                <span
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: isGreen ? "#18a967" : "var(--text-primary, #172033)",
+                  }}
+                >
+                  <span>
+                    <Leaf size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
+                    {t("Tôi mang bình nước / hộp cơm riêng")}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: "var(--text-muted, #64748b)",
+                    }}
+                  >
+                    {t("Sống Xanh Học Đường — cộng")} {ptsCfg?.earn?.green_points || 10} {t("điểm sau khi nhân viên duyệt")}
+                  </span>
+                </span>
               </label>
             </div>
 
