@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿import express from "express";
+﻿﻿﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -18,6 +18,14 @@ import {
   getMenuImage,
   deleteMenuImage,
 } from "./menuImageStore.js";
+import {
+  mergeConfig,
+  calcEarnPoints,
+  calcGreenBonus,
+  calcReviewBonus,
+  canRedeem,
+  DEFAULT_POINTS_CONFIG,
+} from "./src/lib/pointsEngine.js";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -326,6 +334,19 @@ function maskEmail(email) {
 }
 
 // ============================================================
+// ✅ POINTS CONFIG HELPER
+// ============================================================
+function getPointsConfig(db) {
+  if (!db.points_config) {
+    db.points_config = {
+      ...JSON.parse(JSON.stringify(DEFAULT_POINTS_CONFIG)),
+      updated_at: new Date().toISOString(),
+    };
+  }
+  return mergeConfig(db.points_config);
+}
+
+// ============================================================
 // MONGODB
 // ============================================================
 const MONGO_URI = process.env.MONGO_URI;
@@ -514,6 +535,10 @@ function buildSeedData() {
     wallets: [],
     wallet_transactions: [],
     tasks: [],
+    points_config: {
+      ...JSON.parse(JSON.stringify(DEFAULT_POINTS_CONFIG)),
+      updated_at: new Date().toISOString(),
+    },
     points_history: [],
     // ✅ MỚI: chat admin
     chat_transfer_requests: [],
@@ -804,6 +829,15 @@ function rollbackCancelledOrder(db, order) {
       customer.points = Math.max(0, (customer.points || 0) - earned);
     }
     order.points_earned = 0;
+  }
+
+  // ✅ Hoàn điểm Sống Xanh nếu đã duyệt
+  const __greenBonus = Number(order.green_points) || 0;
+  if (order.green_status === "approved" && __greenBonus > 0) {
+    const __cust = (db.users || []).find((u) => u.id === order.customer_id);
+    if (__cust) __cust.points = Math.max(0, (__cust.points || 0) - __greenBonus);
+    order.green_status = "cancelled";
+    order.green_points = 0;
   }
 
   const isWalletPay = order.payment === "Ví Canteen" || order.payment === "WALLET";
@@ -1942,7 +1976,7 @@ app.post("/api/orders", auth(), async (req, res) => {
   let usedVoucher = null;
 
   try {
-    const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode } = req.body;
+    const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode, isGreen = false } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
 
     const qtyByItem = new Map();
@@ -2036,7 +2070,13 @@ app.post("/api/orders", auth(), async (req, res) => {
       wallet.updated_at = new Date().toISOString();
     }
 
-    pointsEarned = Math.floor(total * 0.01);
+    const __cfg = getPointsConfig(db);
+    pointsEarned = calcEarnPoints(total, __cfg);
+    const __greenBonus = isGreen ? calcGreenBonus(__cfg) : 0;
+    const __greenRequireApproval = isGreen && __cfg.earn.green_require_approval !== false;
+    if (isGreen && !__greenRequireApproval) {
+      pointsEarned += __greenBonus;
+    }
     customer = db.users.find(u => u.id === req.user.id);
     if (customer) customer.points = (customer.points || 0) + pointsEarned;
 
@@ -2061,6 +2101,9 @@ app.post("/api/orders", auth(), async (req, res) => {
       customer_id: req.user.id, customer_name: req.user.name,
       subtotal, discount: computedDiscount, total,
       points_earned: pointsEarned, status: "Chờ xác nhận",
+      green_requested: !!isGreen,
+      green_status: isGreen ? (__greenRequireApproval ? "pending" : "approved") : null,
+      green_points: isGreen ? __greenBonus : 0,
       payment, note, items: detailed, created_at: new Date().toISOString()
     };
 
@@ -2221,6 +2264,87 @@ app.post("/api/orders/:id/call", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   }
 });
 
+// ============================================================
+// ✅ DUYỆT SỐNG XANH
+// ============================================================
+function checkGreenPermission(db, req, res) {
+  if (req.user.role === "ADMIN") return true;
+  const emp = db.users.find((u) => u.id === req.user.id);
+  const rolePerms = ROLE_PERMISSIONS.EMPLOYEE || [];
+  const customPerms = emp?.permissions || [];
+  const allPerms = new Set([...rolePerms, ...customPerms]);
+  if (!allPerms.has("orders.approve_green")) {
+    res.status(403).json({ message: "Bạn không có quyền duyệt Sống Xanh" });
+    return false;
+  }
+  return true;
+}
+
+app.post("/api/orders/:id/green/approve", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+  try {
+    const db = loadDB();
+    if (!checkGreenPermission(db, req, res)) return;
+
+    const o = db.orders.find(x => x.id == req.params.id);
+    if (!o) return res.status(404).json({ message: "Không tìm thấy đơn" });
+    if (!o.green_requested) return res.status(400).json({ message: "Đơn không có yêu cầu Sống Xanh" });
+    if (o.green_status === "approved") return res.status(400).json({ message: "Đã duyệt rồi" });
+    if (o.green_status === "rejected") return res.status(400).json({ message: "Đã từ chối rồi" });
+    if (o.status === "Đã hủy") return res.status(400).json({ message: "Đơn đã hủy" });
+
+    const cfg = getPointsConfig(db);
+    const bonus = Number(o.green_points) || calcGreenBonus(cfg);
+    const customer = db.users.find(u => u.id === o.customer_id);
+    if (customer) customer.points = (customer.points || 0) + bonus;
+
+    o.green_status = "approved";
+    o.green_approved_by = req.user.id;
+    o.green_approved_by_name = req.user.name;
+    o.green_approved_at = new Date().toISOString();
+    o.points_earned = (o.points_earned || 0) + bonus;
+
+    // Notify khách
+    if (!db.notifications) db.notifications = [];
+    const nid = Math.max(0, ...db.notifications.map(n => n.id)) + 1;
+    db.notifications.push({
+      id: nid, user_id: o.customer_id,
+      title: "Sống Xanh đã được duyệt",
+      content: "Bạn được cộng " + bonus + " điểm từ đơn " + o.code,
+      type: "points", link: "/customer/profile", read: false,
+      created_at: new Date().toISOString()
+    });
+
+    saveDB(db);
+    res.json({ ok: true, bonus, customer_points: customer?.points || 0 });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.post("/api/orders/:id/green/reject", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+  try {
+    const db = loadDB();
+    if (!checkGreenPermission(db, req, res)) return;
+
+    const o = db.orders.find(x => x.id == req.params.id);
+    if (!o) return res.status(404).json({ message: "Không tìm thấy đơn" });
+    if (!o.green_requested) return res.status(400).json({ message: "Đơn không có yêu cầu Sống Xanh" });
+    if (o.green_status === "approved") return res.status(400).json({ message: "Đã duyệt rồi" });
+    if (o.green_status === "rejected") return res.status(400).json({ message: "Đã từ chối rồi" });
+
+    o.green_status = "rejected";
+    o.green_rejected_by = req.user.id;
+    o.green_rejected_by_name = req.user.name;
+    o.green_rejected_at = new Date().toISOString();
+    if (req.body?.reason) o.green_reject_reason = String(req.body.reason).slice(0, 200);
+
+    saveDB(db);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 // ============ REVIEWS ============
 app.get("/api/reviews/can-review/:menuItemId", auth(), (req, res) => {
   const db = loadDB();
@@ -2260,10 +2384,84 @@ app.post("/api/reviews", auth(), (req, res) => {
     const avgRating = itemReviews.reduce((s, r) => s + r.rating, 0) / itemReviews.length;
     const mi = db.menu_items.find(m => m.id == menuItemId);
     if (mi) { mi.rating = Math.round(avgRating * 10) / 10; mi.review_count = itemReviews.length; }
+    const __cfgReview = getPointsConfig(db);
+    const __reviewBonus = calcReviewBonus(__cfgReview);
     const authorUser = db.users.find(u => u.id === req.user.id);
-    if (authorUser) authorUser.points = (authorUser.points || 0) + 10;
+    if (authorUser) authorUser.points = (authorUser.points || 0) + __reviewBonus;
     saveDB(db);
-    res.status(201).json({ ...review, pointsEarned: 10 });
+    res.status(201).json({ ...review, pointsEarned: __reviewBonus });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// ✅ POINTS CONFIG — Đọc & sửa quy tắc
+// ============================================================
+app.get("/api/points/config", auth(), (req, res) => {
+  try {
+    const db = loadDB();
+    res.json(getPointsConfig(db));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const { earn, redeem } = req.body || {};
+    const current = getPointsConfig(db);
+    const next = mergeConfig({
+      earn: { ...current.earn, ...(earn || {}) },
+      redeem: { ...current.redeem, ...(redeem || {}) },
+    });
+
+    if (Number(next.earn.rate_amount) <= 0)
+      return res.status(400).json({ message: "rate_amount phải > 0" });
+    if (Number(next.earn.rate_points) < 0)
+      return res.status(400).json({ message: "rate_points không được âm" });
+    if (Number(next.earn.green_points) < 0)
+      return res.status(400).json({ message: "green_points không được âm" });
+    if (Number(next.earn.review_points) < 0)
+      return res.status(400).json({ message: "review_points không được âm" });
+    if (Number(next.redeem.rate_points) <= 0)
+      return res.status(400).json({ message: "redeem rate_points phải > 0" });
+    if (Number(next.redeem.rate_value) <= 0)
+      return res.status(400).json({ message: "redeem rate_value phải > 0" });
+    if (Number(next.redeem.min_points) < 1)
+      return res.status(400).json({ message: "min_points phải >= 1" });
+    if (Number(next.redeem.max_unused_vouchers) < 1)
+      return res.status(400).json({ message: "max_unused_vouchers phải >= 1" });
+    if (!Array.isArray(next.redeem.tiers) || next.redeem.tiers.length === 0)
+      return res.status(400).json({ message: "Cần ít nhất 1 mốc voucher" });
+
+    for (const tr of next.redeem.tiers) {
+      if (!Number.isFinite(Number(tr.points)) || Number(tr.points) <= 0)
+        return res.status(400).json({ message: "Mốc điểm không hợp lệ" });
+      if (!Number.isFinite(Number(tr.value)) || Number(tr.value) <= 0)
+        return res.status(400).json({ message: "Giá trị mốc không hợp lệ" });
+    }
+
+    next.redeem.tiers.sort((a, b) => Number(a.points) - Number(b.points));
+    next.updated_at = new Date().toISOString();
+    db.points_config = next;
+    saveDB(db);
+    res.json({ ok: true, config: next });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.post("/api/points/preview", auth(), (req, res) => {
+  try {
+    const db = loadDB();
+    const cfg = getPointsConfig(db);
+    const total = Number(req.body?.total) || 0;
+    const isGreen = !!req.body?.isGreen;
+    const base = calcEarnPoints(total, cfg);
+    const green = isGreen ? calcGreenBonus(cfg) : 0;
+    res.json({ base, green, total: base + green });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -2290,26 +2488,33 @@ app.post("/api/points/redeem", auth(), (req, res) => {
   try {
     const db = loadDB();
     const { points } = req.body;
-    if (!points || points < 100) return res.status(400).json({ message: "Cần ít nhất 100 điểm" });
     if (!db.vouchers) db.vouchers = [];
-
-    const activeCount = db.vouchers.filter(
-      (v) => v.user_id === req.user.id && !v.used
-    ).length;
-    if (activeCount >= MAX_ACTIVE_VOUCHERS) {
-      return res.status(400).json({
-        message: `Bạn đang có ${activeCount} voucher chưa dùng. Vui lòng sử dụng bớt trước khi đổi thêm (tối đa ${MAX_ACTIVE_VOUCHERS}).`,
-      });
-    }
 
     const u = db.users.find(x => x.id === req.user.id);
     if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
-    if ((u.points || 0) < points) return res.status(400).json({ message: "Không đủ điểm" });
-    u.points -= points;
-    const value = points * 100;
+
+    const cfg = getPointsConfig(db);
+    const activeCount = db.vouchers.filter(
+      (v) => v.user_id === req.user.id && !v.used
+    ).length;
+
+    const check = canRedeem(u.points || 0, points, activeCount, cfg);
+    if (!check.ok) return res.status(400).json({ message: check.reason });
+
+    u.points -= Number(points);
+    const value = check.value;
+
     const voucherId = nextId(db.vouchers);
     const code = "VOUCHER" + String(voucherId).padStart(4, "0");
-    const voucher = { id: voucherId, code, user_id: req.user.id, value, points_used: points, used: false, created_at: new Date().toISOString() };
+    const voucher = {
+      id: voucherId,
+      code,
+      user_id: req.user.id,
+      value,
+      points_used: Number(points),
+      used: false,
+      created_at: new Date().toISOString(),
+    };
     db.vouchers.push(voucher);
     saveDB(db);
     res.status(201).json(voucher);
@@ -3739,6 +3944,7 @@ const ALL_PERMISSIONS = [
   { key: "orders.view", label: "Xem đơn hàng" },
   { key: "orders.process", label: "Xử lý đơn hàng" },
   { key: "orders.cancel", label: "Hủy đơn hàng" },
+  { key: "orders.approve_green", label: "Duyệt Sống Xanh" },
   { key: "inventory.view", label: "Xem kho" },
   { key: "inventory.import", label: "Nhập kho" },
   { key: "inventory.manage", label: "Quản lý kho" },
@@ -3758,7 +3964,7 @@ const ALL_PERMISSIONS = [
 
 const ROLE_PERMISSIONS = {
   ADMIN: ALL_PERMISSIONS.map(p => p.key),
-  EMPLOYEE: ["menu.view", "menu.update", "orders.view", "orders.process", "inventory.view", "inventory.import", "customers.view", "attendance.view"],
+  EMPLOYEE: ["menu.view", "menu.update", "orders.view", "orders.process", "orders.approve_green", "inventory.view", "inventory.import", "customers.view", "attendance.view"],
   CUSTOMER: []
 };
 
