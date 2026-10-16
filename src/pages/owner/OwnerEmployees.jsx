@@ -32,6 +32,7 @@ import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useI18n } from "../../hooks/useI18n";
+import OwnerShifts from "./OwnerShifts";
 
 // ============================================================
 // CONSTANTS
@@ -116,7 +117,7 @@ function isOverdue(task) {
 // MAIN COMPONENT
 // ============================================================
 
-export default function OwnerEmployees() {
+function OwnerEmployeesInner() {
   const { t } = useI18n();
 
   // ---------- Data ----------
@@ -2011,6 +2012,65 @@ function Modal({ children, onClose, maxWidth = 480 }) {
       >
         {children}
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+// WRAPPER: OwnerEmployees — gộp Nhân viên + Ca làm & chấm công
+// ============================================================
+
+export default function OwnerEmployees() {
+  const { t } = useI18n();
+  const [tab, setTab] = useState("employees");
+
+  return (
+    <div>
+      <div
+        style={{
+          marginBottom: 20,
+          background: "var(--card-bg, #fff)",
+          border: "1px solid var(--border-color, #e7ebf0)",
+          borderRadius: 12,
+          padding: 12,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <label
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text-muted, #475569)",
+          }}
+        >
+          {t("Mục:")}
+        </label>
+        <select
+          value={tab}
+          onChange={(e) => setTab(e.target.value)}
+          style={{
+            flex: 1,
+            maxWidth: 400,
+            padding: "10px 14px",
+            border: "1px solid var(--border-color, #e5e9ef)",
+            borderRadius: 8,
+            background: "var(--bg-secondary, #fff)",
+            color: "var(--text-primary, #172033)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            outline: "none",
+          }}
+        >
+          <option value="employees">{t("Nhân viên")}</option>
+          <option value="shifts">{t("Ca làm & chấm công")}</option>
+        </select>
+      </div>
+
+      {tab === "employees" && <OwnerEmployeesInner />}
+      {tab === "shifts" && <OwnerShifts />}
     </div>
   );
 }

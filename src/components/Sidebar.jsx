@@ -67,11 +67,9 @@ const MENU_CONFIG = {
           ["price",        "Lịch sử giá",         "/owner/price-history"],
           ["inventory",    "Kho hàng",            "/owner/inventory"],
           ["vouchers",     "Voucher",             "/owner/vouchers"],
-          ["finance",      "Tài chính",           "/owner/finance"],
+          ["finance",      "Báo cáo tài chính", "/owner/finance"],
           ["wallet_admin", "Ví",                  "/owner/wallet"],
-          ["reports",      "Báo cáo",             "/owner/reports"],
-          ["employees",    "Nhân viên",           "/owner/employees"],
-          ["attendance",   "Ca làm & chấm công",  "/owner/shifts"],
+          ["employees",    "Quản lý nhân viên",   "/owner/employees"],
           ["customers",    "Khách hàng",          "/owner/customers"],
           // ✅ V9: Chat & Hỗ trợ
           ["chat",         "Chat & Hỗ trợ",       "/owner/chat", { badge: "chat" }],

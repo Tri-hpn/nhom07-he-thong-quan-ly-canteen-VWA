@@ -507,11 +507,7 @@ export default function App() {
 
           <Route
             path="/owner/shifts"
-            element={wrap(
-              "Quản lý ca",
-              "Phân ca + theo dõi chấm công",
-              <OwnerShifts />
-            )}
+            element={<Navigate to="/owner/employees" replace />}
           />
 
           <Route
@@ -551,12 +547,10 @@ export default function App() {
             element={wrap("Kho hàng", "Nguyên liệu", <OwnerInventory />)}
           />
 
-          <Route
+                    <Route
             path="/owner/reports"
-            element={wrap(
-              "Báo cáo",
-              "Doanh thu & thống kê",
-              <OwnerReports />
+            element={<Navigate to="/owner/finance" replace />}
+          />
             )}
           />
 
@@ -591,7 +585,7 @@ export default function App() {
             path="/owner/finance"
             element={wrap(
               "Quản lý tài chính",
-              "Tài khoản nhận tiền, doanh thu, chi phí",
+              "Báo cáo tài chính tổng hợp",
               <OwnerFinance />
             )}
           />

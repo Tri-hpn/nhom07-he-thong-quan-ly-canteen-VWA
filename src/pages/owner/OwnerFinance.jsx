@@ -130,6 +130,7 @@ function fmtDate(iso) {
 
 export default function OwnerFinance() {
   const { t } = useI18n();
+  const [mainTab, setMainTab] = useState("report");
   const [tab, setTab] = useState("account");
 
   // Tabs config — useMemo vì phụ thuộc t
@@ -148,62 +149,406 @@ export default function OwnerFinance() {
 
   return (
     <div>
-      {/* TAB BAR */}
+      {/* PAGE HEAD */}
+      <div className="admin-page-head" style={{ marginBottom: 20 }}>
+        <div className="admin-page-head__left">
+          <span className="admin-page-head__eyebrow">
+            <span className="admin-page-head__eyebrow-dot" />
+            {t("BÁO CÁO TÀI CHÍNH & PHÂN TÍCH • QUYẾT TOÁN THÁNG")}
+          </span>
+        </div>
+      </div>
+
+      {/* SECTION DROPDOWN */}
       <div
         style={{
-          display: "flex",
-          gap: 6,
           marginBottom: 20,
-          overflowX: "auto",
           background: "var(--card-bg, #fff)",
           border: "1px solid var(--border-color, #e7ebf0)",
           borderRadius: 12,
-          padding: 8,
-          scrollbarWidth: "none",
-          WebkitOverflowScrolling: "touch",
+          padding: 12,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
         }}
       >
-        {TABS.map((tabItem) => {
-          const Icon = tabItem.icon;
-          const active = tab === tabItem.id;
-          return (
-            <button
-              key={tabItem.id}
-              onClick={() => setTab(tabItem.id)}
-              style={{
-                padding: "10px 14px",
-                background: active ? "#2634d5" : "transparent",
-                color: active ? "#fff" : "var(--text-muted, #475569)",
-                border: 0,
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: active ? 700 : 500,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-                transition: "all 0.2s",
-              }}
-            >
-              <Icon size={14} /> {tabItem.label}
-            </button>
-          );
-        })}
-        <style>{`
-          div[style*="overflow-x: auto"]::-webkit-scrollbar { display: none; }
-        `}</style>
+        <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted, #475569)" }}>
+          {t("Mục:")}
+        </label>
+        <select
+          value={mainTab}
+          onChange={(e) => setMainTab(e.target.value)}
+          style={{
+            flex: 1,
+            maxWidth: 400,
+            padding: "10px 14px",
+            border: "1px solid var(--border-color, #e5e9ef)",
+            borderRadius: 8,
+            background: "var(--bg-secondary, #fff)",
+            color: "var(--text-primary, #172033)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            outline: "none",
+          }}
+        >
+          <option value="report">{t("Báo cáo")}</option>
+          <option value="finance">{t("Tài chính")}</option>
+        </select>
       </div>
 
       {/* TAB CONTENT */}
-      {tab === "account" && <AccountTab />}
+      {mainTab === "report" && <OverviewTab />}
+
+      {mainTab === "finance" && (
+        <>
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              marginBottom: 20,
+              overflowX: "auto",
+              background: "var(--card-bg, #fff)",
+              border: "1px solid var(--border-color, #e7ebf0)",
+              borderRadius: 12,
+              padding: 8,
+              scrollbarWidth: "none",
+            }}
+          >
+            {TABS.map((tabItem) => {
+              const Icon = tabItem.icon;
+              const active = tab === tabItem.id;
+              return (
+                <button
+                  key={tabItem.id}
+                  type="button"
+                  onClick={() => setTab(tabItem.id)}
+                  style={{
+                    padding: "10px 14px",
+                    background: active ? "#2634d5" : "transparent",
+                    color: active ? "#fff" : "var(--text-muted, #475569)",
+                    border: 0,
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: active ? 700 : 500,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Icon size={14} /> {tabItem.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {tab === "account" && <AccountTab />}
       {tab === "revenue" && <RevenueTab />}
       {tab === "transactions" && <TransactionsTab />}
       {tab === "expenses" && <ExpensesTab />}
       {tab === "stats" && <StatsTab />}
-      {tab === "reconcile" && <ReconcileTab />}
-      {tab === "export" && <ExportTab />}
+          {tab === "reconcile" && <ReconcileTab />}
+          {tab === "export" && <ExportTab />}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// TAB 0: OVERVIEW — Báo cáo tài chính tổng quan
+// ============================================================
+
+const OVERVIEW_RANGES = [
+  { id: "today",  label: "Hôm nay" },
+  { id: "1w",     label: "1 tuần",   days: 7 },
+  { id: "1m",     label: "1 tháng",  days: 30 },
+  { id: "1y",     label: "1 năm",    years: 1 },
+  { id: "custom", label: "Tùy chọn", custom: true },
+];
+
+function ovAddDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function ovStartOfDay(d) {
+  const c = new Date(d);
+  c.setHours(0, 0, 0, 0);
+  return c;
+}
+
+function ovEndOfDay(d) {
+  const c = new Date(d);
+  c.setHours(23, 59, 59, 999);
+  return c;
+}
+
+function ovParseDateOnly(s) {
+  if (!s) return null;
+  const d = new Date(s + "T00:00:00");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function resolveOverviewRange(rangeId, customFrom, customTo) {
+  const today = ovStartOfDay(new Date());
+  const r = OVERVIEW_RANGES.find((x) => x.id === rangeId);
+
+  if (rangeId === "custom") {
+    const f = ovParseDateOnly(customFrom);
+    const t = ovParseDateOnly(customTo);
+    if (f && t && f <= t) {
+      const todayEnd = ovEndOfDay(today);
+      const clampedTo = t > todayEnd ? todayEnd : ovEndOfDay(t);
+      return { from: ovStartOfDay(f), to: clampedTo };
+    }
+    return { from: ovAddDays(today, -29), to: ovEndOfDay(today) };
+  }
+  if (r && r.days) {
+    return { from: ovAddDays(today, -(r.days - 1)), to: ovEndOfDay(today) };
+  }
+  if (r && r.years) {
+    const f = new Date(today.getFullYear(), 0, 1);
+    return { from: ovStartOfDay(f), to: ovEndOfDay(today) };
+  }
+  return { from: ovAddDays(today, -29), to: ovEndOfDay(today) };
+}
+
+function OverviewTab() {
+  const { t } = useI18n();
+
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const [rangeId, setRangeId] = useState("1m");
+  const [customFrom, setCustomFrom] = useState(
+    getLocalDateStr(ovAddDays(new Date(), -29))
+  );
+  const [customTo, setCustomTo] = useState(getLocalDateStr());
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    setError("");
+    try {
+      const data = await api.orders.all("Tất cả");
+      const list = Array.isArray(data) ? data : [];
+      const sorted = [...list].sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
+      );
+      setOrders(sorted);
+    } catch (e) {
+      setError(e.message || t("Không tải được báo cáo"));
+    } finally {
+      setLoading(false);
+      if (!silent) setRefreshing(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    load(false);
+  }, [load]);
+
+  const currentRange = useMemo(
+    () => resolveOverviewRange(rangeId, customFrom, customTo),
+    [rangeId, customFrom, customTo]
+  );
+
+  const currentOrders = useMemo(() => {
+    const fromTs = currentRange.from.getTime();
+    const toTs = currentRange.to.getTime();
+    return orders.filter((o) => {
+      if (!o.created_at) return false;
+      const ts = new Date(o.created_at).getTime();
+      return ts >= fromTs && ts <= toTs;
+    });
+  }, [orders, currentRange]);
+
+  const stats = useMemo(() => {
+    const completed = currentOrders.filter((o) => o.status === "Hoàn thành");
+    const cancelled = currentOrders.filter((o) => o.status === "Đã hủy");
+    const revenue = completed.reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const avgOrder =
+      completed.length > 0 ? Math.round(revenue / completed.length) : 0;
+    const onTimePct =
+      currentOrders.length > 0
+        ? ((completed.length / currentOrders.length) * 100).toFixed(1)
+        : "0";
+    return {
+      revenue,
+      totalOrders: currentOrders.length,
+      completedCount: completed.length,
+      cancelledCount: cancelled.length,
+      avgOrder,
+      onTimePct,
+    };
+  }, [currentOrders]);
+
+  const chartData = useMemo(() => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const startTs = ovStartOfDay(currentRange.from).getTime();
+    const endTs = ovStartOfDay(currentRange.to).getTime();
+    const days = Math.round((endTs - startTs) / dayMs) + 1;
+    const buckets = {};
+    for (let i = 0; i < days; i++) {
+      const ts = startTs + i * dayMs;
+      buckets[ts] = { ts, revenue: 0, orders: 0 };
+    }
+    currentOrders
+      .filter((o) => o.status === "Hoàn thành")
+      .forEach((o) => {
+        const ts = ovStartOfDay(new Date(o.created_at)).getTime();
+        if (buckets[ts]) {
+          buckets[ts].revenue += o.total || 0;
+          buckets[ts].orders += 1;
+        }
+      });
+    return Object.values(buckets)
+      .sort((a, b) => a.ts - b.ts)
+      .map((b) => {
+        const d = new Date(b.ts);
+        return {
+          label: d.getDate() + "/" + (d.getMonth() + 1),
+          value: b.revenue,
+          orders: b.orders,
+          date: b.ts,
+        };
+      });
+  }, [currentOrders, currentRange]);
+
+  const handleExportCSV = () => {
+    if (!currentOrders.length) {
+      return toast(t("Không có đơn nào trong khoảng thời gian này"), "error");
+    }
+    let url = null;
+    let a = null;
+    try {
+      const rows = [
+        ["CANTEEN VWA - BÁO CÁO DOANH THU"],
+        ["Từ ngày", getLocalDateStr(currentRange.from), "Đến ngày", getLocalDateStr(currentRange.to)],
+        [],
+        ["MÃ ĐƠN", "KHÁCH", "NGÀY", "PTTT", "TRẠNG THÁI", "TỔNG TIỀN"],
+        ...currentOrders.map((o) => [
+          o.code,
+          o.customer_name || "",
+          o.created_at ? new Date(o.created_at).toLocaleString("vi-VN") : "",
+          o.payment || t("Tiền mặt"),
+          o.status,
+          o.total || 0,
+        ]),
+        [],
+        ["TỔNG DOANH THU (Hoàn thành)", stats.revenue],
+        ["TỔNG ĐƠN", stats.totalOrders],
+      ];
+      const csv = rows
+        .map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(","))
+        .join("\n");
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+      url = URL.createObjectURL(blob);
+      a = document.createElement("a");
+      a.href = url;
+      a.download = "canteen-report-" + getLocalDateStr(currentRange.from) + "-to-" + getLocalDateStr(currentRange.to) + ".csv";
+      document.body.appendChild(a);
+      a.click();
+      toast(t("Đã xuất CSV"), "success");
+    } catch (e) {
+      toast(e.message || t("Không xuất được"), "error");
+    } finally {
+      if (a && a.parentNode) a.parentNode.removeChild(a);
+      if (url) URL.revokeObjectURL(url);
+    }
+  };
+
+  return (
+    <div>
+      {error && (
+        <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 8, padding: "12px 16px", marginBottom: 16, color: "#ef4444", fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
+          <AlertCircle size={18} />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button type="button" onClick={() => load(false)} style={{ padding: "6px 12px", background: "#ef4444", color: "#fff", border: 0, borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+            {t("Thử lại")}
+          </button>
+        </div>
+      )}
+
+      <div style={{ ...cardStyle, marginBottom: 16, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted, #475569)" }}>
+          {t("Thời gian:")}
+        </label>
+        <select
+          value={rangeId}
+          onChange={(e) => setRangeId(e.target.value)}
+          style={{ padding: "9px 14px", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, background: "var(--bg-secondary, #fff)", color: "var(--text-primary, #172033)", fontSize: 13, fontWeight: 600, cursor: "pointer", outline: "none", minWidth: 150 }}
+        >
+          {OVERVIEW_RANGES.map((r) => (
+            <option key={r.id} value={r.id}>{t(r.label)}</option>
+          ))}
+        </select>
+
+        {rangeId === "custom" && (
+          <>
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              style={{ padding: "9px 12px", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, fontSize: 13 }}
+            />
+            <span style={{ color: "var(--text-muted, #64748b)" }}>→</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom}
+              max={getLocalDateStr()}
+              onChange={(e) => setCustomTo(e.target.value)}
+              style={{ padding: "9px 12px", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, fontSize: 13 }}
+            />
+          </>
+        )}
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button type="button" onClick={handleExportCSV} style={btnGhostStyle}>
+            <Download size={14} /> {t("Xuất CSV")}
+          </button>
+          <button type="button" onClick={() => load(false)} disabled={refreshing} style={btnGhostStyle}>
+            <Loader2 size={14} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} /> {t("Làm mới")}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 16 }}>
+        <KPI label={t("Doanh thu")} value={fmtMoney(stats.revenue)} color="#18a967" />
+        <KPI label={t("Tổng đơn trong kỳ")} value={stats.totalOrders} color="#2634d5" />
+        <KPI label={t("Giá trị TB / đơn")} value={fmtMoney(stats.avgOrder)} color="#f59e0b" />
+        <KPI label={t("Tỷ lệ hoàn thành")} value={stats.onTimePct + "%"} color="#8b5cf6" />
+      </div>
+
+      <ChartCard title={t("Doanh thu theo ngày")} subtitle={t("Đơn vị: VNĐ")} height={320}>
+        {loading ? (
+          <LoadingBox t={t} />
+        ) : chartData.length === 0 ? (
+          <div style={{ height: 260, display: "grid", placeItems: "center", color: "var(--text-muted, #64748b)", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 12 }}>
+            <div>{t("Chưa có dữ liệu doanh thu")}</div>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : (v / 1000).toFixed(0) + "k"} />
+              <Tooltip content={<MoneyTooltip />} />
+              <Bar dataKey="value" name={t("Doanh thu")} fill="#2563eb" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
     </div>
   );
 }
