@@ -103,9 +103,28 @@ function getInitials(name) {
 // MAIN COMPONENT
 // ============================================================
 
-export default function ChatBotWidget({ cart, setCart, user }) {
+export default function ChatBotWidget({ cart, setCart, user, hideLauncher = false, supportRequest = null, onSupportRequestHandled }) {
   const { t, tData } = useI18n();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const openFromOrderHelp = (event) => {
+      const detail = event?.detail;
+      setMode("staff");
+      setOpen(true);
+
+      if (detail?.message) {
+        setOrderSupportRequest({
+          requestId: detail.requestId || `${Date.now()}`,
+          message: detail.message
+        });
+      }
+    };
+
+    window.addEventListener("canteen-open-chatbot", openFromOrderHelp);
+    return () => {
+      window.removeEventListener("canteen-open-chatbot", openFromOrderHelp);
+    };
+  }, []);
   const [mode, setMode] = useState("ai");
 
   // AI messages
@@ -119,6 +138,17 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   const [staffSending, setStaffSending] = useState(false);
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffError, setStaffError] = useState("");
+  const [orderSupportRequest, setOrderSupportRequest] = useState(null);
+  // DIRECT ORDER SUPPORT PROP
+  useEffect(() => {
+    if (!supportRequest?.message) return;
+    setMode("staff");
+    setOrderSupportRequest(supportRequest);
+    setOpen(true);
+    if (typeof onSupportRequestHandled === "function") {
+      onSupportRequestHandled();
+    }
+  }, [supportRequest]);
 
   // Data
   const [menuItems, setMenuItems] = useState([]);
@@ -132,6 +162,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
 
   // Refs
   const staffReqIdRef = useRef(0);
+  const orderSupportSentRef = useRef(null);
   const aiTimerRef = useRef(null);
   const lastAiCountRef = useRef(0);
   const lastStaffCountRef = useRef(0);
@@ -455,6 +486,46 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   }, [staffText, staffSending, t]);
 
   // ============================================================
+  // Chi gui thong tin don khi khach bam nut xac nhan
+  const sendOrderSupport = useCallback(async () => {
+    const request = orderSupportRequest;
+    if (!request?.message || staffSending) return;
+    if (orderSupportSentRef.current === request.requestId) return;
+
+    orderSupportSentRef.current = request.requestId;
+    setStaffSending(true);
+
+    try {
+      const msg = await api.chat.send({ content: request.message });
+
+      setStaffMessages((current) => {
+        const newId = msg?.id ?? msg?._id;
+        if (
+          newId != null &&
+          current.some((existing) => (existing?.id ?? existing?._id) === newId)
+        ) {
+          return current;
+        }
+        return [...current, msg];
+      });
+
+      setStaffText("");
+      setOrderSupportRequest((current) =>
+        current?.requestId === request.requestId ? null : current
+      );
+      await loadStaff(true);
+      toast(t("Đã gửi yêu cầu kiểm tra đơn tới quầy bếp."), "success");
+    } catch (e) {
+      orderSupportSentRef.current = null;
+      setStaffText(request.message);
+      toast(
+        e.message || t("Không gửi được yêu cầu tới quầy bếp. Vui lòng thử lại."),
+        "error"
+      );
+    } finally {
+      setStaffSending(false);
+    }
+  }, [orderSupportRequest, staffSending, loadStaff, t]);
   // QUICK ADD
   // ============================================================
   const quickAdd = useCallback(
@@ -515,7 +586,7 @@ export default function ChatBotWidget({ cart, setCart, user }) {
   // ============================================================
   return (
     <>
-      {!open && (
+      {!hideLauncher && !open && (
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -605,17 +676,19 @@ export default function ChatBotWidget({ cart, setCart, user }) {
             </div>
           </header>
 
-          <div className="chatbot-body">
-            <aside className="chatbot-side chatbot-side--left">
-              <LeftSidebar
-                user={user}
-                t={t}
-                onPromptClick={(text) => {
-                  setMode("ai");
-                  sendAI(text);
-                }}
-              />
-            </aside>
+          <div className="chatbot-body" style={mode === "staff" ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}>
+            {mode === "ai" && (
+              <aside className="chatbot-side chatbot-side--left">
+                <LeftSidebar
+                  user={user}
+                  t={t}
+                  onPromptClick={(text) => {
+                    setMode("ai");
+                    sendAI(text);
+                  }}
+                />
+              </aside>
+            )}
 
             <section className="chatbot-center">
               {mode === "ai" ? (
@@ -633,30 +706,90 @@ export default function ChatBotWidget({ cart, setCart, user }) {
                   tData={tData}
                 />
               ) : (
-                <StaffContent
-                  messages={staffMessages}
-                  loading={staffLoading}
-                  error={staffError}
-                  onRetry={() => loadStaff(false)}
-                  sending={staffSending}
-                  onSend={sendStaff}
-                  text={staffText}
-                  setText={setStaffText}
-                  scrollRef={staffScrollRef}
-                  bottomRef={staffBottomRef}
-                  t={t}
-                />
+                <>
+                  {orderSupportRequest?.message && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        padding: "12px 14px",
+                        margin: "12px 14px 0",
+                        border: "1px solid #dbeafe",
+                        borderRadius: 14,
+                        background: "#f3f6ff",
+                        flex: "0 0 auto"
+                      }}
+                    >
+                      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                        <strong
+                          style={{
+                            display: "block",
+                            color: "#172554",
+                            marginBottom: 4
+                          }}
+                        >
+                          {t("Cần quầy bếp kiểm tra đơn này?")}
+                        </strong>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "#475569",
+                            lineHeight: 1.5
+                          }}
+                        >
+                          {t("Gửi mã đơn, món ăn, số lượng, trạng thái và tổng tiền trực tiếp cho nhân viên.")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={staffSending}
+                        onClick={sendOrderSupport}
+                        style={{
+                          border: 0,
+                          borderRadius: 10,
+                          padding: "10px 14px",
+                          background: staffSending ? "#94a3b8" : "#2634d5",
+                          color: "#fff",
+                          fontWeight: 700,
+                          cursor: staffSending ? "wait" : "pointer"
+                        }}
+                      >
+                        {staffSending
+                          ? t("Đang gửi yêu cầu...")
+                          : t("Gửi yêu cầu đến quầy bếp")}
+                      </button>
+                    </div>
+                  )}
+                  <StaffContent
+                    messages={staffMessages}
+                    loading={staffLoading}
+                    error={staffError}
+                    onRetry={() => loadStaff(false)}
+                    sending={staffSending}
+                    onSend={sendStaff}
+                    text={staffText}
+                    setText={setStaffText}
+                    scrollRef={staffScrollRef}
+                    bottomRef={staffBottomRef}
+                    t={t}
+                  />
+                </>
               )}
             </section>
 
-            <aside className="chatbot-side chatbot-side--right">
-              <RightSidebar
-                user={user}
-                t={t}
-                currentStaff={currentStaff}
-                shiftLoading={shiftLoading}
-              />
-            </aside>
+            {mode === "ai" && (
+              <aside className="chatbot-side chatbot-side--right">
+                <RightSidebar
+                  user={user}
+                  t={t}
+                  currentStaff={currentStaff}
+                  shiftLoading={shiftLoading}
+                />
+              </aside>
+            )}
           </div>
         </div>
       )}

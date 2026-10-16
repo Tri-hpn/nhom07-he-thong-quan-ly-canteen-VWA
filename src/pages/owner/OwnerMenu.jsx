@@ -780,7 +780,7 @@ export default function OwnerMenu() {
               </div>
             </div>
 
-            
+
 
             <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 8, flexShrink: 0 }}>
               <button

@@ -24,7 +24,7 @@ import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
-import { usePointsConfig } from "../../hooks/usePointsConfig";
+import { QRCodeCanvas } from "qrcode.react";
 
 // ============================================================
 // CONSTANTS
@@ -35,17 +35,7 @@ const MIN_REDEEM = 100;
 const POINT_TO_VND = 100;
 const REDEEM_OPTIONS = [100, 200, 500, 1000];
 
-function buildEarnMethods(ptsCfg) {
-  const cfg = ptsCfg || {};
-  const earn = cfg.earn || {};
-  const rateAmount = Number(earn.rate_amount) || 10000;
-  const ratePoints = Number(earn.rate_points) || 1;
-  const greenPts = Number(earn.green_points) || 10;
-  const reviewPts = Number(earn.review_points) || 5;
-  const greenOn = earn.green_enabled !== false;
-  const reviewOn = earn.review_enabled !== false;
-
-  return [
+const EARN_METHODS = [
   {
     key: "eat",
     icon: Utensils,
@@ -73,25 +63,7 @@ function buildEarnMethods(ptsCfg) {
     desc: "Để lại nhận xét sao & góp ý khẩu vị trong mục Lịch sử đơn hàng để cải thiện chất lượng phục vụ bữa ăn.",
     cta: "Đánh giá đơn gần nhất",
   },
-
-  ].filter((m) => {
-    if (m.key === "eco" && !greenOn) return false;
-    if (m.key === "review" && !reviewOn) return false;
-    return true;
-  }).map((m) => {
-    if (m.key === "eat") {
-      const pct = rateAmount > 0 ? (ratePoints / (rateAmount / 100)).toFixed(ratePoints >= 1 ? 0 : 1) : "0";
-      return { ...m, badge: m.badge.replace(/\d+([.,]\d+)?%/, pct + "%") };
-    }
-    if (m.key === "eco") {
-      return { ...m, badge: m.badge.replace(/\+?\d+\s*pts/, "+" + greenPts + " pts") };
-    }
-    if (m.key === "review") {
-      return { ...m, badge: m.badge.replace(/\+?\d+\s*pts/, "+" + reviewPts + " pts") };
-    }
-    return m;
-  });
-};
+];
 
 // ============================================================
 // 🔧 F1 + F5: REWARD_TABS với filter rõ ràng
@@ -223,17 +195,24 @@ export default function CustomerPromotions() {
   const [publicVouchers, setPublicVouchers] = useState([]);
   const [points, setPoints] = useState(0);
   const [pointHistory, setPointHistory] = useState([]);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [orderStatsLoaded, setOrderStatsLoaded] = useState(false);
   const [showPointHistory, setShowPointHistory] = useState(false);
+  const [showPointRules, setShowPointRules] = useState(false);
+  const [showPickupQrModal, setShowPickupQrModal] = useState(false);
+  const [selectedPickupOrderCode, setSelectedPickupOrderCode] = useState("");
+const [showEcoModal, setShowEcoModal] = useState(false);
+  const [ecoOrderId, setEcoOrderId] = useState("");
+  const [ecoMethod, setEcoMethod] = useState("bottle");
+  const [ecoSubmitting, setEcoSubmitting] = useState(false);
+  const [selectedReviewTarget, setSelectedReviewTarget] = useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-
-  const ptsCfg = usePointsConfig();
-  const earnMethods = useMemo(() => buildEarnMethods(ptsCfg), [ptsCfg]);
-  const redeemTiers = (ptsCfg?.redeem?.tiers || []).map((t) => Number(t.points)).filter((n) => n > 0);
-  const minRedeem = Number(ptsCfg?.redeem?.min_points) || 100;
-  const pointToVnd = (Number(ptsCfg?.redeem?.rate_value) || 10000) / (Number(ptsCfg?.redeem?.rate_points) || 100);
 
   const [tab, setTab] = useState("active");
   const [rewardTab, setRewardTab] = useState("all");
@@ -243,6 +222,7 @@ export default function CustomerPromotions() {
   const [openedGroup, setOpenedGroup] = useState(null);
 
   const [redeemPoints, setRedeemPoints] = useState(MIN_REDEEM);
+  const [customRedeemPoints, setCustomRedeemPoints] = useState("250");
   const [redeemLoading, setRedeemLoading] = useState(false);
 
   const copyTimerRef = useRef(null);
@@ -273,10 +253,11 @@ export default function CustomerPromotions() {
       setError("");
 
       try {
-        const [myRes, pubRes, pointsRes] = await Promise.all([
+        const [myRes, pubRes, pointsRes, ordersRes] = await Promise.all([
           api.vouchers.me().catch(() => []),
           api.vouchers.public().catch(() => []),
           api.points.me().catch(() => ({ points: 0 })),
+          api.orders.myOrders().catch(() => null),
         ]);
 
         if (!mountedRef.current) return;
@@ -285,6 +266,8 @@ export default function CustomerPromotions() {
         setPublicVouchers(Array.isArray(pubRes) ? pubRes : []);
         setPoints(Number(pointsRes?.points) || 0);
         setPointHistory(Array.isArray(pointsRes?.history) ? pointsRes.history : []);
+        setCustomerOrders(Array.isArray(ordersRes) ? ordersRes : []);
+        setOrderStatsLoaded(Array.isArray(ordersRes));
       } catch (e) {
         if (mountedRef.current && !silent) {
           setError(
@@ -306,6 +289,32 @@ export default function CustomerPromotions() {
     loadAll(false);
   }, [loadAll]);
 
+  // Lam moi trang thai don trong luc modal QR dang mo.
+  useEffect(() => {
+    if (!showPickupQrModal) return undefined;
+
+    let cancelled = false;
+
+    const refreshPickupOrders = async () => {
+      try {
+        const data = await api.orders.myOrders();
+        if (!cancelled && Array.isArray(data)) {
+          setCustomerOrders(data);
+        }
+      } catch (_) {
+        // Giu du lieu hien tai neu mang tam thoi loi.
+      }
+    };
+
+    refreshPickupOrders();
+    const timer = window.setInterval(refreshPickupOrders, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [showPickupQrModal]);
+
   // ============================================================
   // DERIVED
   // ============================================================
@@ -315,6 +324,52 @@ export default function CustomerPromotions() {
       used: vouchers.filter((v) => v.used),
     };
   }, [vouchers]);
+  // Thong ke tu lich su don hang va voucher da su dung
+  const promoStats = useMemo(() => {
+    const validOrders = customerOrders.filter((order) => {
+      const status = String(order.status || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+      return !/(huy|cancel|tu choi|reject|refund|hoan tien)/.test(status);
+    });
+
+    const voucherSavings = validOrders.reduce((sum, order) => {
+      const code = String(order.voucher_code || order.voucherCode || "").trim();
+      const discount = Number(order.discount) || 0;
+      return code && discount > 0 ? sum + discount : sum;
+    }, 0);
+
+    // Chi dem voucher ECO/GREEN da duoc su dung, khong dem voucher chua dung
+    const ecoUses = used.filter((voucher) =>
+      voucher.used && isEcoCode(getCodeUpper(voucher))
+    ).length;
+
+    return {
+      mealCount: validOrders.length,
+      ecoUses,
+      plasticSavedGrams: ecoUses * 20,
+      voucherSavings,
+    };
+  }, [customerOrders, used]);
+
+  const pickupOrders = useMemo(
+    () => customerOrders
+      .filter((order) =>
+        order.code &&
+        ["Chờ xác nhận", "Đã xác nhận", "Đang chuẩn bị", "Sẵn sàng nhận"].includes(order.status)
+      )
+      .sort((a, b) =>
+        new Date(b.created_at || 0).getTime() -
+        new Date(a.created_at || 0).getTime()
+      ),
+    [customerOrders]
+  );
+
+  const selectedPickupOrder = useMemo(
+    () => pickupOrders.find((order) => order.code === selectedPickupOrderCode) || null,
+    [pickupOrders, selectedPickupOrderCode]
+  );
 
   /**
    * 🔧 M16 + F3: Lọc theo tab reward + tab active/used.
@@ -339,6 +394,11 @@ export default function CustomerPromotions() {
   }, [tab, active, used, rewardTab, affordableOnly, points]);
 
   const grouped = useMemo(() => groupByValue(list), [list]);
+  const filteredPublicVouchers = useMemo(() => {
+    const config = REWARD_TABS.find((rt) => rt.id === rewardTab);
+    const filterFn = config?.filter || (() => true);
+    return (Array.isArray(publicVouchers) ? publicVouchers : []).filter(filterFn);
+  }, [publicVouchers, rewardTab]);
   const canRedeem = points >= redeemPoints && redeemPoints >= MIN_REDEEM;
 
   // Tier
@@ -365,26 +425,31 @@ export default function CustomerPromotions() {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const doRedeem = async () => {
+  const doRedeem = async (pointsToRedeem = redeemPoints, flexible = false) => {
     if (redeemLoading) return;
-    if (redeemPoints < MIN_REDEEM) {
+
+    const amount = Number(pointsToRedeem);
+    const minRequired = flexible ? 10 : MIN_REDEEM;
+
+    if (!Number.isSafeInteger(amount) || amount < minRequired) {
       toast(
         t("Cần ít nhất {value} điểm để đổi").replace(
           "{value}",
-          MIN_REDEEM
+          minRequired
         ),
         "error"
       );
       return;
     }
-    if (redeemPoints > points) {
+
+    if (amount > Number(points || 0)) {
       toast(t("Không đủ điểm"), "error");
       return;
     }
 
     setRedeemLoading(true);
     try {
-      const voucher = await api.points.redeem({ points: redeemPoints });
+      const voucher = await api.points.redeem({ points: amount });
       toast(
         `${t("Đổi thành công!")} ${voucher.code} — ${money(voucher.value)}`,
         "success"
@@ -398,7 +463,6 @@ export default function CustomerPromotions() {
       setRedeemLoading(false);
     }
   };
-
   const copyCode = (v) => {
     try {
       navigator.clipboard.writeText(v.code);
@@ -464,7 +528,7 @@ export default function CustomerPromotions() {
       {/* HEADER */}
       <section className="promo-header">
         <div className="promo-header__row">
-          
+
         </div>
       </section>
 
@@ -533,15 +597,14 @@ export default function CustomerPromotions() {
             <div className="promo-hero__actions">
               <button
                 type="button"
-                className="promo-hero__action promo-hero__action--solid" onClick={() => setShowPointHistory(true)}
-              >
+                className="promo-hero__action promo-hero__action--solid" onClick={() => scrollToSection("points-activity")}>
                 <History size={16} />
                 {t("Lịch sử tích/đổi điểm")}
               </button>
               <button
                 type="button"
                 className="promo-hero__action promo-hero__action--ghost"
-              >
+               onClick={() => setShowPointRules(true)}>
                 <HelpCircle size={16} />
                 {t("Quy tắc tích điểm")}
               </button>
@@ -557,7 +620,7 @@ export default function CustomerPromotions() {
                 <Utensils size={22} />
               </div>
               <div className="promo-achievement__body">
-                <b>18</b> {t("bữa")}
+                <b>{orderStatsLoaded ? promoStats.mealCount : "—"}</b> {t("bữa")}
                 <span>{t("Ăn uống tích điểm căng tin")}</span>
               </div>
             </div>
@@ -566,8 +629,8 @@ export default function CustomerPromotions() {
                 <Recycle size={22} />
               </div>
               <div className="promo-achievement__body">
-                <b>12</b> {t("lần Eco")}
-                <span>{t("Giảm ~240g rác thải nhựa")}</span>
+                <b>{orderStatsLoaded ? promoStats.ecoUses : "—"}</b> {t("lần Eco")}
+                <span>{t("Giảm ~240g rác thải nhựa").replace("240", String(promoStats.plasticSavedGrams))}</span>
               </div>
             </div>
             <div className="promo-achievement">
@@ -575,8 +638,8 @@ export default function CustomerPromotions() {
                 <PiggyBank size={22} />
               </div>
               <div className="promo-achievement__body">
-                <b>{money(580000)}</b>
-                <span>{t("Tiết kiệm từ voucher & trợ giá")}</span>
+                <b>{orderStatsLoaded ? money(promoStats.voucherSavings) : "—"}</b>
+                <span>{t("Tổng giảm giá từ voucher đã dùng")}</span>
               </div>
             </div>
           </div>
@@ -590,15 +653,13 @@ export default function CustomerPromotions() {
             <h2 className="promo-section__title">
               {t("Cách Nhận Thêm VWA Green Points")}
             </h2>
-            <p className="promo-section__sub">
-              {t("Tích điểm chủ động mỗi ngày qua thói quen ăn uống văn minh")}
-            </p>
+
           </div>
           <Sparkles size={28} color="#2563EB" />
         </div>
 
         <div className="promo-earn-grid">
-          {earnMethods.map((m) => {
+          {EARN_METHODS.map((m) => {
             const Icon = m.icon;
             return (
               <div key={m.key} className="promo-earn-card">
@@ -619,12 +680,105 @@ export default function CustomerPromotions() {
                     </span>
                   </div>
                   <p className="promo-earn-card__desc">{t(m.desc)}</p>
-                  <span
+                  <button
+                    type="button"
                     className="promo-earn-card__cta"
-                    style={{ color: m.color }}
+                    style={{
+                      color: m.color,
+                      border: 0,
+                      background: "transparent",
+                      padding: 0,
+                      margin: 0,
+                      font: "inherit",
+                      textAlign: "left",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      cursor: "pointer",
+                    }}
+                    onClick={async () => {
+                      if (m.key === "eat") {
+                        const ready = customerOrders.find(
+                          (o) => o.status === "Sẵn sàng nhận" && o.code
+                        );
+                        setSelectedPickupOrderCode(ready?.code || "");
+                        setShowPickupQrModal(true);
+                        return;
+                      }
+
+                      if (m.key === "eco") {
+                        const readyOrders = customerOrders.filter(
+                          (o) => o.status === "Sẵn sàng nhận"
+                        );
+                        const first = readyOrders[0];
+                        setEcoOrderId(
+                          first ? String(first.id || first._id || "") : ""
+                        );
+                        setEcoMethod("bottle");
+                        setShowEcoModal(true);
+                        return;
+                      }
+
+                      if (m.key === "review") {
+                        try {
+                          const completedOrders = customerOrders
+                            .filter((o) => o.status === "Hoàn thành")
+                            .sort(
+                              (a, b) =>
+                                new Date(b.created_at || 0).getTime() -
+                                new Date(a.created_at || 0).getTime()
+                            );
+
+                          if (completedOrders.length === 0) {
+                            toast(
+                              t("Bạn chưa có đơn hoàn thành để đánh giá."),
+                              "error"
+                            );
+                            return;
+                          }
+
+                          const reviews = await api.reviews.me();
+                          const reviewed = new Set(
+                            (Array.isArray(reviews) ? reviews : []).map(
+                              (r) => String(r.menu_item_id)
+                            )
+                          );
+
+                          let target = null;
+                          for (const order of completedOrders) {
+                            const item = (order.items || []).find(
+                              (it) =>
+                                it.menu_item_id &&
+                                !reviewed.has(String(it.menu_item_id))
+                            );
+                            if (item) {
+                              target = { order, item };
+                              break;
+                            }
+                          }
+
+                          if (!target) {
+                            toast(
+                              t("Bạn đã đánh giá các món trong đơn hoàn thành gần đây."),
+                              "error"
+                            );
+                            return;
+                          }
+
+                          setSelectedReviewTarget(target);
+                          setReviewRating(5);
+                          setReviewComment("");
+                        } catch (e) {
+                          toast(
+                            e.message || t("Không tải được danh sách đánh giá."),
+                            "error"
+                          );
+                        }
+                      }
+                    }}
                   >
                     {t(m.cta)} <ArrowRight size={14} />
-                  </span>
+                  </button>
                 </div>
               </div>
             );
@@ -639,102 +793,152 @@ export default function CustomerPromotions() {
             <h2 className="promo-section__title">
               {t("Kho Quà & Voucher Đổi Điểm")}
             </h2>
-            <p className="promo-section__sub">
-              {t("Sử dụng điểm tích lũy của bạn để áp dụng trực tiếp cho bữa ăn kế tiếp")}
-            </p>
+
           </div>
           <div className="promo-redeem-controls">
-            <label className="promo-redeem-check">
-              <input
-                type="checkbox"
-                checked={affordableOnly}
-                onChange={(e) => setAffordableOnly(e.target.checked)}
-                disabled={points === 0}
-              />
-              <span>
-                {t("Chỉ hiện quà đủ điểm đổi")} (≤ {points} pts)
-              </span>
-            </label>
+
           </div>
         </div>
 
         {/* 🔧 M16: Tab filter giờ hoạt động thật */}
-        <div className="promo-reward-tabs">
-          {REWARD_TABS.map((tItem) => (
-            <button
-              key={tItem.id}
-              type="button"
-              className={`promo-reward-tab ${
-                rewardTab === tItem.id ? "active" : ""
-              }`}
-              onClick={() => setRewardTab(tItem.id)}
-            >
-              {t(tItem.label)}
-            </button>
-          ))}
-        </div>
+
 
         {/* Đổi điểm */}
-        <div className="promo-redeem-options">
-          <div className="promo-redeem-options__left">
-            <span className="promo-redeem-options__label">
-              {t("Đổi điểm lấy voucher:")}
-            </span>
-            {(redeemTiers.length ? redeemTiers : REDEEM_OPTIONS).map((p) => {
+                <div className="promo-redeem-area">
+
+
+          <div className="promo-redeem-lower">
+          <div className="promo-redeem-cards">
+            {REDEEM_OPTIONS.map((p) => {
               const disabled = points < p;
-              const isActive = redeemPoints === p;
+              const value = p * POINT_TO_VND;
+
               return (
-                <button
+                <article
                   key={p}
-                  type="button"
-                  className={`promo-redeem-opt ${
-                    isActive ? "active" : ""
-                  }`}
-                  disabled={disabled}
-                  onClick={() => setRedeemPoints(p)}
+                  className={`promo-redeem-card ${disabled ? "is-locked" : ""}`}
                 >
-                  {p}
-                </button>
+                  <div className="promo-redeem-card__top">
+                    <span>💰 {p} pts</span>
+                  </div>
+
+                  <div className="promo-redeem-card__ticket">
+                    <span>VOUCHER</span>
+                    <b>{Math.round(value / 1000)}K</b>
+                  </div>
+
+                  <div className="promo-redeem-card__description">
+                    <b>{t("Voucher giảm")} {money(value)}</b>
+                    <span>{t("Trừ ngay hóa đơn")}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="promo-redeem-card__button"
+                    disabled={redeemLoading || disabled}
+                    onClick={() => {
+                      setRedeemPoints(p);
+                      doRedeem(p);
+                    }}
+                  >
+                    {redeemLoading ? (
+                      <>
+                        <Loader2 size={14} className="promo-spin" />
+                        {t("Đang đổi...")}
+                      </>
+                    ) : disabled ? (
+                      <>🔒 {t("Chưa đủ điểm")}</>
+                    ) : (
+                      <>
+                        <Gift size={14} />
+                        {t("Đổi ngay")}
+                      </>
+                    )}
+                  </button>
+                </article>
               );
             })}
           </div>
-          <div className="promo-redeem-options__right">
-            <span className="promo-redeem-options__value">
-              {t("Nhận voucher")}:{" "}
-              <b>{money(redeemPoints * POINT_TO_VND)}</b>
-            </span>
-            <button
-              type="button"
-              className="promo-redeem-btn"
-              disabled={redeemLoading || !canRedeem}
-              onClick={doRedeem}
-            >
-              {redeemLoading ? (
-                <>
-                  <Loader2 size={14} className="promo-spin" />
-                  {t("Đang đổi...")}
-                </>
-              ) : (
-                <>
-                  <Gift size={15} />
-                  {t("Đổi ngay")}
-                </>
-              )}
-            </button>
-          </div>
+
+          <div className="promo-redeem-custom">
+  <div className="promo-redeem-custom__title">
+    <Gift size={17} color="#2563EB" />
+    <strong>{t("ĐỔI ĐIỂM LINH HOẠT THEO Ý MUỐN")}</strong>
+  </div>
+
+  <p className="promo-redeem-custom__balance">
+    {t("Bạn đang có:")}{" "}
+    <b>{Number(points || 0).toLocaleString("vi-VN")} {t("điểm")}</b>
+    {" "}({t("Tương đương:")}{" "}
+    <b>{money(Number(points || 0) * POINT_TO_VND)}</b>)
+  </p>
+
+  <label className="promo-redeem-custom__label" htmlFor="custom-redeem-points">
+    {t("Nhập số điểm muốn đổi:")}
+  </label>
+
+  <input
+    id="custom-redeem-points"
+    className="promo-redeem-custom__input"
+    type="number"
+    min="10"
+    max={Number(points || 0)}
+    step="1"
+    inputMode="numeric"
+    value={customRedeemPoints}
+    onChange={(e) => setCustomRedeemPoints(e.target.value)}
+  />
+
+  <div className="promo-redeem-custom__value">
+    <span>{t("Số tiền nhận được:")}</span>
+    <b>{money(Math.max(0, Number(customRedeemPoints) || 0) * POINT_TO_VND)}</b>
+  </div>
+
+  <small className="promo-redeem-custom__hint">
+    {t("Tối thiểu 10 điểm")} · {t("100 điểm = 10.000đ")}
+  </small>
+
+  {Number(customRedeemPoints) > Number(points || 0) && (
+    <small className="promo-redeem-custom__error">
+      {t("Không đủ điểm")}
+    </small>
+  )}
+
+  <button
+    type="button"
+    className="promo-redeem-custom__button"
+    disabled={
+      redeemLoading ||
+      !Number.isSafeInteger(Number(customRedeemPoints)) ||
+      Number(customRedeemPoints) < 10 ||
+      Number(customRedeemPoints) > Number(points || 0)
+    }
+    onClick={() => doRedeem(Number(customRedeemPoints), true)}
+  >
+    {redeemLoading ? (
+      <>
+        <Loader2 size={14} className="promo-spin" />
+        {t("Đang đổi...")}
+      </>
+    ) : (
+      t("ĐỔI SỐ ĐIỂM ĐÃ NHẬP")
+    )}
+  </button>
+</div>
         </div>
 
+        </div>
         {/* Public vouchers */}
         {publicVouchers.length > 0 && (
           <div className="promo-public-section">
             <div className="promo-public-section__head">
               <Ticket size={18} />
               <b>
-                {t("Ưu đãi toàn hệ thống")} ({publicVouchers.length})
+                {t("Ưu đãi toàn hệ thống")} ({filteredPublicVouchers.length})
               </b>
             </div>
             <div className="promo-public-grid">
-              {publicVouchers.map((v) => {
+              {filteredPublicVouchers.map((v) => {
                 const isClaiming = claimingIds.has(v.id);
                 const anyClaiming = claimingIds.size > 0;
                 return (
@@ -779,11 +983,9 @@ export default function CustomerPromotions() {
                 <h2 className="promo-section__title">
                   {t("Ví Voucher Đã Đổi")} ({grouped.length})
                 </h2>
-                <p className="promo-section__sub">
-                  {t("Sẵn sàng xuất trình mã barcode/QR tại quầy thanh toán")}
-                </p>
+
               </div>
-              <Wallet size={24} color="#2563EB" />
+
             </div>
 
             {loading && (
@@ -904,22 +1106,13 @@ export default function CustomerPromotions() {
 
           {/* Activity */}
           {/* 🔧 F2: Data mẫu — sẽ thay bằng api.points.me().history khi BE sẵn sàng */}
-          <div className="promo-split__right">
+          <div id="points-activity" className="promo-split__right" style={{ scrollMarginTop: "24px" }}>
             <div className="promo-split__head">
-              <div>
-                <h2 className="promo-section__title">
+              <div className="promo-activity-heading"><Wallet size={24} color="#2563EB" /><div><h2 className="promo-section__title">
                   {t("Biến Động Điểm Thưởng")}
                 </h2>
-                <p className="promo-section__sub">
-                  {t("Lịch sử tích lũy và sử dụng VWA Green Points gần đây")}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="promo-activity-see-all"
-              >
-                {t("Xem toàn bộ")} <ExternalLink size={13} />
-              </button>
+</div></div>
+
             </div>
 
             <div className="promo-activity-table">
@@ -929,80 +1122,224 @@ export default function CustomerPromotions() {
                 <div className="right">{t("Điểm số")}</div>
               </div>
               <div className="promo-activity-table__body">
-                <ActivityRow
-                  date={t("Hôm nay")}
-                  time="11:30"
-                  icon={<Receipt size={18} />}
-                  title={t("Tích điểm đơn hàng")}
-                  sub={`${t("Mã đơn")}: #ORD-20250228-092`}
-                  delta="+5"
-                  deltaType="up"
-                />
-                <ActivityRow
-                  date={t("Hôm nay")}
-                  time="11:30"
-                  icon={<Leaf size={18} />}
-                  iconColor="#1D4ED8"
-                  title={t("Thưởng mang bình cá nhân Eco Bonus")}
-                  sub={t("Quét xác nhận tại máy pha chế quầy đồ uống")}
-                  delta="+10"
-                  deltaType="up"
-                  highlight
-                />
-                <ActivityRow
-                  date="27/02/2025"
-                  time="12:15"
-                  icon={<Receipt size={18} />}
-                  title={t("Tích điểm đơn hàng")}
-                  sub={`${t("Mã đơn")}: #ORD-20250227-081`}
-                  delta="+4"
-                  deltaType="up"
-                />
-                <ActivityRow
-                  date="25/02/2025"
-                  time="18:40"
-                  icon={<Gift size={18} />}
-                  iconColor="#EF4444"
-                  title={t("Đổi Voucher Giảm 10k Cơm Trưa")}
-                  sub={`${t("Mã voucher tạo mới")}: #VWA-2025-LUNCH10`}
-                  delta="-100"
-                  deltaType="down"
-                  highlight
-                />
-                <ActivityRow
-                  date="24/02/2025"
-                  time="13:05"
-                  icon={<ThumbsUp size={18} />}
-                  title={t("Thưởng đánh giá chất lượng món ăn")}
-                  sub={t("Phản hồi món Bò kho bánh mì kèm ảnh chụp")}
-                  delta="+5"
-                  deltaType="up"
-                />
-              </div>
-            </div>
+  {Array.isArray(pointHistory) && pointHistory.length > 0 ? (
+    pointHistory.slice(0, 5).map((item, index) => {
+      const points = Number(item.points) || 0;
+      const dateValue = item.date ? new Date(item.date) : null;
+      const validDate = dateValue && !Number.isNaN(dateValue.getTime());
+      const dateLabel = validDate
+        ? dateValue.toLocaleDateString("vi-VN")
+        : "—";
+      const timeLabel = validDate
+        ? dateValue.toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit"
+          })
+        : "";
 
-            <div className="promo-activity-tip">
-              <Lightbulb size={20} color="#2563EB" />
-              <span>
-                {t("Bạn chỉ cần thêm")} <b>15 {t("lần sống xanh")}</b>{" "}
-                {t("nữa để đạt Hạng Vàng danh dự.")}
-              </span>
-              <button type="button">{t("Tìm hiểu thêm")}</button>
-            </div>
+      return (
+        <ActivityRow
+          key={`${item.type || "point"}-${item.code || index}-${item.date || index}`}
+          date={dateLabel}
+          time={timeLabel}
+          icon={
+            item.type === "review"
+              ? <ThumbsUp size={18} />
+              : <Lightbulb size={18} />
+          }
+          iconColor={points < 0 ? "#DC2626" : "#2563EB"}
+          title={
+            item.title ||
+            (item.type === "redeem"
+              ? t("Đổi điểm lấy voucher")
+              : item.type === "review"
+                ? t("Thưởng đánh giá món ăn")
+                : item.type === "pickup"
+                  ? t("Thưởng nhận món")
+                  : t("Tích điểm đơn hàng"))
+          }
+          sub={item.detail || (item.code ? `#${item.code}` : t("Giao dịch điểm thưởng"))}
+          delta={`${points > 0 ? "+" : ""}${points}`}
+          deltaType={points < 0 ? "down" : "up"}
+          highlight={points < 0}
+        />
+      );
+    })
+  ) : (
+    <p style={{ padding: "16px", textAlign: "center", color: "#64748b" }}>
+      Chưa có biến động điểm thưởng.
+    </p>
+  )}
+</div>
+            <button
+  type="button"
+  className="promo-activity-see-all--below"
+  onClick={() => {
+    setShowPointHistory(true);
+    loadAll();
+  }}
+>
+  {t("Xem tất cả")} ({pointHistory.length}) <ArrowRight size={14} />
+</button>
+</div>
+
+
+<div className="promo-activity-tip">
+  <Lightbulb size={20} color="#2563EB" />
+  <span>Điểm thưởng được tổng hợp từ các giao dịch thực tế đã ghi nhận.</span>
+  <button type="button" onClick={() => loadAll()}>Làm mới</button>
+</div>
           </div>
         </div>
       </section>
 
+      {/* POINT RULES MODAL */}
+      {showPointRules && (
+        <div
+          className="promo-modal-overlay"
+          onClick={() => setShowPointRules(false)}
+        >
+          <div
+            className="promo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Quy tắc tích điểm")}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(620px, calc(100vw - 28px))",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              position: "relative",
+              boxSizing: "border-box",
+            }}
+          >
+            <div className="promo-modal__head">
+              <div>
+                <h3>{t("Quy tắc tích điểm và đổi điểm")}</h3>
+                <p>{t("Tích lũy VWA Points và đổi thành voucher ưu đãi")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPointRules(false)}
+                aria-label={t("Đóng")}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: "8px 20px 22px", display: "grid", gap: 18 }}>
+              <section>
+                <h4 style={{ margin: "0 0 12px", color: "#1d4ed8" }}>
+                  {t("CÁCH TÍCH ĐIỂM")}
+                </h4>
+
+                <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                  <Utensils size={22} color="#2563eb" />
+                  <div>
+                    <strong>{t("Mua hàng tại Căng tin")}</strong>
+                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
+                      {t("Mỗi 10.000đ thực trả được cộng 1 VWA Point. Điểm được làm tròn xuống số nguyên.")}
+                    </p>
+                    <small style={{ color: "#2563eb" }}>
+                      {t("Ví dụ: đơn 27.500đ được 2 điểm.")}
+                    </small>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                  <Leaf size={22} color="#16a34a" />
+                  <div>
+                    <strong>{t("Sống Xanh Học Đường — +10 điểm/lần")}</strong>
+                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
+                      {t("Mang bình nước cá nhân hoặc hộp cơm riêng khi mua mang về. Nhân viên quầy xác nhận hợp lệ để cộng 10 Points; tối đa một lần thưởng xanh cho mỗi đơn.")}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 12 }}>
+                  <Star size={22} color="#d97706" />
+                  <div>
+                    <strong>{t("Đánh giá món ăn — +5 điểm/lần")}</strong>
+                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
+                      {t("Gửi đánh giá sao và góp ý cho món đã mua sau khi đơn hoàn thành. Mỗi tài khoản chỉ được đánh giá một lần cho mỗi món.")}
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <div style={{ height: 1, background: "#e2e8f0" }} />
+
+              <section>
+                <h4 style={{ margin: "0 0 12px", color: "#1d4ed8" }}>
+                  {t("QUY TẮC ĐỔI ĐIỂM")}
+                </h4>
+
+                <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                  <Wallet size={22} color="#7c3aed" />
+                  <div>
+                    <strong>{t("Tỷ lệ quy đổi")}</strong>
+                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
+                      {t("100 điểm đổi được voucher trị giá 10.000đ. Tương đương 1 điểm = 100đ giá trị voucher.")}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{
+                  border: "1px solid #dbeafe",
+                  borderRadius: 12,
+                  padding: 12,
+                  background: "#eff6ff",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                }}>
+                  {[
+                    ["100 điểm", "10.000đ"],
+                    ["200 điểm", "20.000đ"],
+                    ["500 điểm", "50.000đ"],
+                    ["1.000 điểm", "100.000đ"],
+                  ].map(([pts, value]) => (
+                    <div key={pts}>
+                      <strong style={{ color: "#1d4ed8" }}>{pts}</strong>
+                      <div style={{ color: "#475569", fontSize: 13 }}>
+                        {t("Voucher")} {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <ul style={{ paddingLeft: 20, color: "#475569", lineHeight: 1.7 }}>
+                  <li>{t("Mỗi lần đổi tối thiểu 100 điểm; phải có đủ điểm trong tài khoản.")}</li>
+                  <li>{t("Điểm bị trừ khi đổi thành công và voucher được thêm vào Ví Voucher của tôi.")}</li>
+                  <li>{t("Voucher không quy đổi thành tiền mặt; tối đa một voucher cho mỗi đơn và không cộng dồn với voucher khác.")}</li>
+                  <li>{t("Mỗi tài khoản có tối đa 50 voucher chưa sử dụng.")}</li>
+                  <li>{t("Đơn bị hủy hoặc hoàn tiền sẽ được xử lý điểm theo trạng thái đơn; không giữ điểm thưởng của giao dịch bị hủy.")}</li>
+                </ul>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
       {/* POINT HISTORY MODAL */}
       {showPointHistory && (
-        <div className="promo-modal-overlay" onClick={() => setShowPointHistory(false)}>
-          <div className="promo-modal promo-point-history-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="promo-modal-overlay"
+          onClick={() => setShowPointHistory(false)}
+        >
+          <div
+            className="promo-modal promo-point-history-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="promo-modal__head">
               <div>
                 <h3>{t("Lịch sử tích/đổi điểm")}</h3>
                 <p>{t("Theo dõi các lần cộng và sử dụng điểm của bạn")}</p>
               </div>
-              <button type="button" onClick={() => setShowPointHistory(false)}>
+              <button
+                type="button"
+                onClick={() => setShowPointHistory(false)}
+                aria-label={t("Đóng")}
+              >
                 <X size={20} />
               </button>
             </div>
@@ -1015,7 +1352,8 @@ export default function CustomerPromotions() {
                 </div>
               ) : (
                 pointHistory.map((item, index) => {
-                  const isRedeem = item.type === "redeem" || Number(item.points) < 0;
+                  const isRedeem =
+                    item.type === "redeem" || Number(item.points) < 0;
                   const date = item.date
                     ? new Date(item.date).toLocaleDateString("vi-VN")
                     : "-";
@@ -1027,11 +1365,15 @@ export default function CustomerPromotions() {
                     : "";
 
                   return (
-                    <div className="promo-point-history-item" key={`${item.code || "history"}-${item.date || index}-${index}`}>
-                      <div className={`promo-point-history-icon ${isRedeem ? "down" : "up"}`}>
+                    <div
+                      className="promo-point-history-item"
+                      key={`${item.code || "history"}-${item.date || index}-${index}`}
+                    >
+                      <div
+                        className={`promo-point-history-icon ${isRedeem ? "down" : "up"}`}
+                      >
                         {isRedeem ? <Gift size={18} /> : <Receipt size={18} />}
                       </div>
-
                       <div className="promo-point-history-info">
                         <b>
                           {isRedeem
@@ -1043,7 +1385,6 @@ export default function CustomerPromotions() {
                         </span>
                         <small>{date} {time}</small>
                       </div>
-
                       <strong className={isRedeem ? "down" : "up"}>
                         {Number(item.points) > 0 ? "+" : ""}
                         {Number(item.points) || 0} pts
@@ -1052,6 +1393,549 @@ export default function CustomerPromotions() {
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PICKUP QR MODAL — độc lập với lịch sử điểm */}
+      {showPickupQrModal && (
+        <div
+          className="promo-modal-overlay"
+          onClick={() => setShowPickupQrModal(false)}
+          role="presentation"
+        >
+          <div
+            className="promo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("QR nhận món theo đơn hàng")}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(760px, calc(100vw - 28px))",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              position: "relative",
+              padding: 18,
+              boxSizing: "border-box",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowPickupQrModal(false)}
+              aria-label={t("Đóng")}
+              style={{
+                position: "absolute",
+                top: 18,
+                right: 18,
+                zIndex: 5,
+                width: 32,
+                height: 32,
+                padding: 0,
+                border: 0,
+                background: "transparent",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <X size={20} />
+            </button>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(245px, 1fr))",
+                gap: 14,
+                paddingTop: 2,
+              }}
+            >
+              <section>
+                <h4
+                  style={{
+                    margin: "4px 44px 14px 0",
+                    color: "#172033",
+                    minHeight: 32,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  {t("Đơn hàng của bạn")}
+                </h4>
+
+                {pickupOrders.length > 0 ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {pickupOrders.map((order) => {
+                      const isSelected =
+                        selectedPickupOrderCode === order.code;
+                      const isReady = order.status === "Sẵn sàng nhận";
+
+                      return (
+                        <button
+                          key={order.id || order._id || order.code}
+                          type="button"
+                          onClick={() =>
+                            setSelectedPickupOrderCode(order.code)
+                          }
+                          aria-pressed={isSelected}
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            border: isSelected
+                              ? "2px solid #2563eb"
+                              : "1px solid #dbe3ef",
+                            borderRadius: 12,
+                            padding: 12,
+                            background: isSelected ? "#eff6ff" : "#fff",
+                            display: "grid",
+                            gridTemplateColumns: "minmax(0, 1fr) auto",
+                            alignItems: "center",
+                            gap: "6px 10px",
+                            textAlign: "left",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <strong
+                            style={{
+                              color: "#1d4ed8",
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            #{order.code}
+                          </strong>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: isReady ? "#15803d" : "#64748b",
+                              textAlign: "right",
+                            }}
+                          >
+                            {t(order.status)}
+                          </span>
+                          <small
+                            style={{
+                              gridColumn: "1 / -1",
+                              color: isReady ? "#15803d" : "#64748b",
+                            }}
+                          >
+                            {t(
+                              isReady
+                                ? "Bấm để hiển thị QR nhận món"
+                                : "QR sẽ hiện khi đơn sẵn sàng nhận"
+                            )}
+                          </small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ color: "#64748b", lineHeight: 1.6 }}>
+                    {t("Bạn chưa có đơn hàng đang xử lý.")}
+                  </p>
+                )}
+              </section>
+
+              <section
+                style={{
+                  minHeight: 260,
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 16,
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  gap: 10,
+                }}
+              >
+                {selectedPickupOrder?.status === "Sẵn sàng nhận" ? (
+                  <>
+                    <strong style={{ color: "#1d4ed8", overflowWrap: "anywhere" }}>
+                      #{selectedPickupOrder.code}
+                    </strong>
+                    <div
+                      style={{
+                        background: "#fff",
+                        padding: 10,
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 12,
+                      }}
+                    >
+                      <QRCodeCanvas
+                        value={`${window.location.origin}/order-qr/${encodeURIComponent(selectedPickupOrder.code)}`}
+                        size={190}
+                        level="H"
+                        includeMargin
+                      />
+                    </div>
+                    <span style={{ color: "#15803d", fontSize: 12, fontWeight: 700 }}>
+                      {t("Sẵn sàng nhận")}
+                    </span>
+                    <strong style={{ color: "#0f172a" }}>
+                      {(selectedPickupOrder.items || [])
+                        .map((item) => item.name)
+                        .filter(Boolean)
+                        .slice(0, 3)
+                        .join(", ") || t("Đơn hàng")}
+                    </strong>
+                    <span style={{ color: "#64748b" }}>
+                      {money(Number(selectedPickupOrder.total) || 0)}
+                    </span>
+                  </>
+                ) : selectedPickupOrder ? (
+                  <>
+                    <QrCode size={38} color="#2563eb" />
+                    <strong style={{ color: "#172033" }}>
+                      {t("Đơn chưa sẵn sàng nhận")}
+                    </strong>
+                    <span style={{ color: "#1d4ed8", overflowWrap: "anywhere" }}>
+                      #{selectedPickupOrder.code}
+                    </span>
+                    <span style={{ color: "#64748b", fontSize: 13 }}>
+                      {t(selectedPickupOrder.status)}
+                    </span>
+                    <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
+                      {t("QR sẽ xuất hiện tại đây khi nhân viên chuyển đơn sang Sẵn sàng nhận.")}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <QrCode size={38} color="#2563eb" />
+                    <strong style={{ color: "#172033" }}>
+                      {t("Chọn đơn hàng để xem QR")}
+                    </strong>
+                    <p style={{ margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
+                      {t("Bấm vào một đơn bên trái. QR riêng của đơn sẽ xuất hiện tại đây khi đơn Sẵn sàng nhận.")}
+                    </p>
+                  </>
+                )}
+              </section>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowPickupQrModal(false);
+                navigate("/customer/orders");
+              }}
+              className="promo-modal__close"
+              style={{ marginTop: 16, width: "100%" }}
+            >
+              {t("Xem tất cả đơn hàng")}
+            </button>
+          </div>
+        </div>
+      )}
+      {/* ECO REWARD REQUEST MODAL */}
+      {showEcoModal && (
+        <div
+          className="promo-modal-overlay"
+          onClick={() => setShowEcoModal(false)}
+          role="presentation"
+        >
+          <div
+            className="promo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Chung tay giảm đồ nhựa")}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(540px, calc(100vw - 28px))",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              boxSizing: "border-box",
+            }}
+          >
+            <div className="promo-modal__head">
+              <div>
+                <h3>{t("Chung tay giảm đồ nhựa")}</h3>
+                <p>{t("Gửi yêu cầu tham gia chương trình Sống Xanh Học Đường.")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEcoModal(false)}
+                aria-label={t("Đóng")}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: "8px 20px 20px" }}>
+              <div style={{
+                background: "#f0fdf4",
+                color: "#166534",
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 14,
+                lineHeight: 1.6,
+              }}>
+                <strong style={{ fontSize: 18 }}>+10 VWA Points</strong>
+                <div style={{ fontSize: 13 }}>
+                  {t("Nhân viên sẽ kiểm tra và duyệt trước khi cộng điểm. Mỗi đơn chỉ nhận thưởng Sống Xanh một lần.")}
+                </div>
+              </div>
+
+              {customerOrders.some((o) => o.status === "Sẵn sàng nhận") ? (
+                <>
+                  <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+                    {t("Chọn đơn hàng")}
+                  </label>
+                  <select
+                    value={ecoOrderId}
+                    onChange={(e) => setEcoOrderId(e.target.value)}
+                    disabled={ecoSubmitting}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 10,
+                      marginBottom: 14,
+                      background: "#fff",
+                    }}
+                  >
+                    {customerOrders
+                      .filter((o) => o.status === "Sẵn sàng nhận")
+                      .map((o) => (
+                        <option
+                          key={o.id || o._id || o.code}
+                          value={String(o.id || o._id)}
+                        >
+                          #{o.code} — {money(Number(o.total) || 0)}
+                        </option>
+                      ))}
+                  </select>
+
+                  <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+                    {t("Bạn mang theo")}
+                  </label>
+                  <select
+                    value={ecoMethod}
+                    onChange={(e) => setEcoMethod(e.target.value)}
+                    disabled={ecoSubmitting}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 10,
+                      marginBottom: 18,
+                      background: "#fff",
+                    }}
+                  >
+                    <option value="bottle">{t("Bình nước cá nhân")}</option>
+                    <option value="container">{t("Hộp cơm cá nhân")}</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={ecoSubmitting || !ecoOrderId}
+                    onClick={async () => {
+                      if (ecoSubmitting || !ecoOrderId) return;
+                      setEcoSubmitting(true);
+                      try {
+                        await api.ecoRewards.create({
+                          orderId: ecoOrderId,
+                          method: ecoMethod,
+                        });
+                        toast(
+                          t("Đã gửi yêu cầu Sống Xanh. Chờ nhân viên xác nhận để nhận 10 điểm."),
+                          "success"
+                        );
+                        setShowEcoModal(false);
+                        await loadAll(true);
+                      } catch (e) {
+                        toast(
+                          e.message || t("Không gửi được yêu cầu Sống Xanh"),
+                          "error"
+                        );
+                      } finally {
+                        setEcoSubmitting(false);
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      border: 0,
+                      borderRadius: 10,
+                      padding: 13,
+                      background: ecoSubmitting ? "#94a3b8" : "#15803d",
+                      color: "#fff",
+                      fontWeight: 800,
+                      cursor: ecoSubmitting ? "wait" : "pointer",
+                    }}
+                  >
+                    {ecoSubmitting ? t("Đang gửi...") : t("Gửi yêu cầu nhận 10 điểm")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: "#64748b", lineHeight: 1.6 }}>
+                    {t("Bạn chưa có đơn ở trạng thái Sẵn sàng nhận. Khi đơn sẵn sàng, bạn có thể gửi yêu cầu Sống Xanh cho đơn đó.")}
+                  </p>
+                  <button
+                    type="button"
+                    className="promo-modal__close"
+                    onClick={() => {
+                      setShowEcoModal(false);
+                      navigate("/customer/orders");
+                    }}
+                    style={{ width: "100%" }}
+                  >
+                    {t("Xem đơn hàng của tôi")}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REVIEW SUBMISSION MODAL */}
+      {selectedReviewTarget && (
+        <div
+          className="promo-modal-overlay"
+          onClick={() => !reviewSubmitting && setSelectedReviewTarget(null)}
+          role="presentation"
+        >
+          <div
+            className="promo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Đánh giá món ăn")}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(540px, calc(100vw - 28px))",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              boxSizing: "border-box",
+            }}
+          >
+            <div className="promo-modal__head">
+              <div>
+                <h3>{t("Đánh giá món ăn")}</h3>
+                <p>
+                  {t("Đơn")} #{selectedReviewTarget.order.code}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReviewTarget(null)}
+                disabled={reviewSubmitting}
+                aria-label={t("Đóng")}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: "8px 20px 20px" }}>
+              <strong style={{ fontSize: 16 }}>
+                {selectedReviewTarget.item.name || t("Món ăn")}
+              </strong>
+
+              <p style={{ color: "#64748b", lineHeight: 1.6, fontSize: 13 }}>
+                {t("Đánh giá món bạn đã mua. Mỗi món chỉ được đánh giá một lần.")}
+              </p>
+
+              <div style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: 8,
+                margin: "18px 0",
+              }}>
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <button
+                    key={rating}
+                    type="button"
+                    disabled={reviewSubmitting}
+                    onClick={() => setReviewRating(rating)}
+                    aria-label={`${rating} ${t("sao")}`}
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: rating <= reviewRating ? "#f59e0b" : "#cbd5e1",
+                      padding: 3,
+                    }}
+                  >
+                    <Star
+                      size={30}
+                      fill={rating <= reviewRating ? "#f59e0b" : "none"}
+                    />
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ textAlign: "center", fontWeight: 700, marginBottom: 16 }}>
+                {reviewRating}/5 {t("sao")}
+              </div>
+
+              <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
+                {t("Nhận xét của bạn")}
+              </label>
+              <textarea
+                rows={4}
+                maxLength={1000}
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                disabled={reviewSubmitting}
+                placeholder={t("Chia sẻ chất lượng món ăn, hương vị và trải nghiệm của bạn...")}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: 12,
+                  border: "1px solid #cbd5e1",
+                  borderRadius: 10,
+                  resize: "vertical",
+                  marginBottom: 14,
+                  font: "inherit",
+                }}
+              />
+
+              <button
+                type="button"
+                disabled={reviewSubmitting}
+                onClick={async () => {
+                  if (reviewSubmitting || !selectedReviewTarget) return;
+                  setReviewSubmitting(true);
+                  try {
+                    const result = await api.reviews.create({
+                      menuItemId: selectedReviewTarget.item.menu_item_id,
+                      rating: reviewRating,
+                      comment: reviewComment.trim(),
+                    });
+
+                    toast(
+                      `${t("Gửi đánh giá thành công")} • +${Number(result?.pointsEarned) || 5} ${t("điểm")}`,
+                      "success"
+                    );
+
+                    setSelectedReviewTarget(null);
+                    setReviewComment("");
+                    await loadAll(true);
+                  } catch (e) {
+                    toast(
+                      e.message || t("Không gửi được đánh giá"),
+                      "error"
+                    );
+                  } finally {
+                    setReviewSubmitting(false);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  border: 0,
+                  borderRadius: 10,
+                  padding: 13,
+                  background: reviewSubmitting ? "#94a3b8" : "#2563eb",
+                  color: "#fff",
+                  fontWeight: 800,
+                  cursor: reviewSubmitting ? "wait" : "pointer",
+                }}
+              >
+                {reviewSubmitting
+                  ? t("Đang gửi...")
+                  : t("Gửi đánh giá và nhận 5 điểm")}
+              </button>
             </div>
           </div>
         </div>
