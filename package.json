@@ -3,19 +3,19 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Hệ thống quản lý Canteen VWA",
+  "description": "Há»‡ thá»‘ng quáº£n lĂ½ Canteen VWA",
   "scripts": {
-    "predev": "node scripts/free-dev-ports.mjs 5173 && node scripts/backfill-from-mongo.mjs --quiet",
+    "predev": "node scripts/free-dev-ports.mjs 5173",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "preserver": "node scripts/free-dev-ports.mjs 3000 && node scripts/backfill-from-mongo.mjs --quiet",
+    "preserver": "node scripts/free-dev-ports.mjs 3000",
     "server": "node server-json.js",
-    "prestart": "node scripts/free-dev-ports.mjs 5173 3000 && node scripts/backfill-from-mongo.mjs --quiet",
+    "prestart": "node scripts/free-dev-ports.mjs 5173 3000",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "ports": "node scripts/free-dev-ports.mjs --dry",
 
-    "postinstall": "node scripts/backfill-from-mongo.mjs --quiet || true",
+    "postinstall": "echo skip-backfill",
 
     "check": "node --check server-json.js && node --check menuImageStore.js && node --check autoTranslate.js",
 
@@ -54,7 +54,6 @@
     "lucide-react": "^0.468.0",
     "mongodb": "^7.7.0",
     "mongoose": "^8.24.4",
-    "node-fetch": "^2.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",

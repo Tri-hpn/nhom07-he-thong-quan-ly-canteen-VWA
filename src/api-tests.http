@@ -876,3 +876,76 @@ curl --location --request GET '{{baseUrl}}/api/price-history?menu_item_id=1' \
 ### 21.1. Kiểm tra server còn sống
 curl --location --request GET '{{baseUrl}}/' \
 --header 'accept: application/json'
+# ============================================================
+# 1️⃣4️⃣B  CHAT ADMIN — Quản lý & giám sát
+# ============================================================
+
+### 14.6. Admin: List hội thoại (có phân công + transfer)
+curl --location --request GET '{{baseUrl}}/api/chat/admin/conversations' \
+--header 'accept: application/json' \
+--header 'Authorization: Bearer {{token}}'
+
+### 14.7. Admin: Tin nhắn với 1 user
+curl --location --request GET '{{baseUrl}}/api/chat/admin/messages/3' \
+--header 'accept: application/json' \
+--header 'Authorization: Bearer {{token}}'
+
+### 14.8. Admin: Trạng thái chat nhân viên
+curl --location --request GET '{{baseUrl}}/api/chat/admin/staff-status' \
+--header 'accept: application/json' \
+--header 'Authorization: Bearer {{token}}'
+
+### 14.9. Admin: Bật/tắt chat nhân viên #2
+curl --location --request PATCH '{{baseUrl}}/api/chat/admin/staff/2/chat' \
+--header 'accept: application/json' \
+--header 'content-type: application/json' \
+--header 'Authorization: Bearer {{token}}' \
+--data-raw '{ "enabled": true }'
+
+### 14.10. Admin: Bật/tắt chat toàn hệ thống
+curl --location --request PATCH '{{baseUrl}}/api/chat/admin/global-chat' \
+--header 'accept: application/json' \
+--header 'content-type: application/json' \
+--header 'Authorization: Bearer {{token}}' \
+--data-raw '{ "enabled": true }'
+
+### 14.11. Admin: List yêu cầu chuyển tiếp
+curl --location --request GET '{{baseUrl}}/api/chat/admin/transfer-requests?status=pending' \
+--header 'accept: application/json' \
+--header 'Authorization: Bearer {{token}}'
+
+### 14.12. Admin: Duyệt yêu cầu chuyển tiếp
+curl --location --request PATCH '{{baseUrl}}/api/chat/admin/transfer-requests/1' \
+--header 'accept: application/json' \
+--header 'content-type: application/json' \
+--header 'Authorization: Bearer {{token}}' \
+--data-raw '{ "status": "accepted", "note": "OK" }'
+
+### 14.13. Employee: Tạo yêu cầu chuyển tiếp
+curl --location --request POST '{{baseUrl}}/api/chat/transfer-request' \
+--header 'accept: application/json' \
+--header 'content-type: application/json' \
+--header 'Authorization: Bearer {{token}}' \
+--data-raw '{ "customerId": 3, "reason": "Cần admin hỗ trợ" }'
+
+### 14.14. Admin: Takeover hội thoại của khách #3
+curl --location --request POST '{{baseUrl}}/api/chat/admin/takeover/3' \
+--header 'accept: application/json' \
+--header 'Authorization: Bearer {{token}}'
+
+### 14.15. Admin: Release hội thoại
+curl --location --request POST '{{baseUrl}}/api/chat/admin/release/3' \
+--header 'accept: application/json' \
+--header 'Authorization: Bearer {{token}}'
+
+### 14.16. Employee: Trạng thái chat của mình
+curl --location --request GET '{{baseUrl}}/api/chat/my-status' \
+--header 'accept: application/json' \
+--header 'Authorization: Bearer {{token}}'
+
+### 14.17. Order: Log voice call
+curl --location --request POST '{{baseUrl}}/api/orders/1/call' \
+--header 'accept: application/json' \
+--header 'content-type: application/json' \
+--header 'Authorization: Bearer {{token}}' \
+--data-raw '{ "mode": "name", "message": "Mời bạn đến quầy" }'

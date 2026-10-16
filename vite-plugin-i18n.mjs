@@ -1,23 +1,18 @@
 // ============================================================
-// VITE PLUGIN I18N — Auto-extract t("...") (V4 - FINAL)
+// VITE PLUGIN I18N — Auto-extract t("...") (V5 - FINAL)
 // ============================================================
-// V4 (2026-10):
-//   - ✅ FIX: extract template literal đơn giản `t(\`text\`)`
-//   - ✅ FIX: extract ternary `t(cond ? "A" : "B")`
-//   - ✅ FIX: log key bị skip để debug
-//   - Giữ V3: exec --until-done, debounce HMR
+// V5 (2026-10):
+//   - 🔧 FIX B4: bỏ hàm scheduleWriteUpdate() ở cuối file
+//     (gọi global.__i18nScheduleWriteSource không tồn tại).
+//     handleHotUpdate giờ gọi scheduleWriteSource() qua closure.
 // ============================================================
 
 import fs from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 
-// ✅ FIX: 3 regex để bắt 3 trường hợp
-// 1. t("text") hoặc t('text')
 const T_REGEX_QUOTE = /\bt\(\s*["']([^"'`\n]+)["']/g;
-// 2. t(`text`) — template literal không có ${}
 const T_REGEX_TEMPLATE = /\bt\(\s*`([^`$\n]+)`/g;
-// 3. t(cond ? "A" : "B") — ternary
 const T_REGEX_TERNARY = /\bt\([^)]*\?\s*["']([^"'\n]+)["']\s*:\s*["']([^"'\n]+)["']/g;
 
 const SOURCE_FILE = "src/lib/i18n/locales/_source.json";
@@ -58,7 +53,6 @@ function extractFromFiles(root) {
       continue;
     }
 
-    // 1. Quote strings
     let match;
     T_REGEX_QUOTE.lastIndex = 0;
     while ((match = T_REGEX_QUOTE.exec(content)) !== null) {
@@ -66,14 +60,12 @@ function extractFromFiles(root) {
       if (key && !key.includes("${")) keys.add(key);
     }
 
-    // 2. Template literal không có ${}
     T_REGEX_TEMPLATE.lastIndex = 0;
     while ((match = T_REGEX_TEMPLATE.exec(content)) !== null) {
       const key = match[1].trim();
       if (key && !key.includes("${")) keys.add(key);
     }
 
-    // 3. Ternary
     T_REGEX_TERNARY.lastIndex = 0;
     while ((match = T_REGEX_TERNARY.exec(content)) !== null) {
       const a = match[1].trim();
@@ -82,7 +74,6 @@ function extractFromFiles(root) {
       if (b && !b.includes("${")) keys.add(b);
     }
 
-    // 4. Đếm template literal có ${} bị skip
     const dynamicRegex = /\bt\(\s*`[^`]*\$\{/g;
     skippedTemplate += (content.match(dynamicRegex) || []).length;
   }
@@ -199,17 +190,10 @@ export default function i18nPlugin() {
       console.log(`[i18n] ✓ Scan xong: ${stats.total} câu\n`);
     },
     handleHotUpdate({ file }) {
+      // ✅ FIX B4: gọi trực tiếp qua closure, không dùng global
       if (isDev && /\.(jsx?|tsx?)$/.test(file)) {
-        scheduleWriteUpdate();
+        scheduleWriteSource();
       }
     },
   };
-}
-
-// ✅ FIX: alias để không lỗi ReferenceError
-function scheduleWriteUpdate() {
-  // gọi lại scheduleWriteSource (closure sẽ capture)
-  if (global.__i18nScheduleWriteSource) {
-    global.__i18nScheduleWriteSource();
-  }
 }

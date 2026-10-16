@@ -1,9 +1,18 @@
 // ============================================================
-// LANGUAGEPANEL.JSX — Ngôn ngữ & Khu vực (V2 - FINAL)
+// LANGUAGEPANEL.JSX — Ngôn ngữ & Khu vực (V3 - FINAL)
 // ============================================================
 // V2 (2026-10):
-//   - 🔧 FIX: tự dispatch event + ghi localStorage + gọi setLocale
+//   - 🔧 tự dispatch event + ghi localStorage + gọi setLocale
 //     → đổi ngôn ngữ có hiệu lực NGAY, không cần F5
+//
+// V3 (2026-10) - FINAL:
+//   - 🔧 FIX L12: BỎ bước dispatch "language-change" thủ công.
+//     Lý do: useSettings.setLanguage() đã dispatch event này
+//     (xem effect trong useSettings). Dispatch lại ở đây gây
+//     trùng event → i18n.setLocale bị gọi 2 lần / 1 click.
+//   - Vẫn giữ: gọi setI18nLocale (để i18n engine cập nhật ngay)
+//     + ghi localStorage (để cross-tab sync) + gọi setLanguage
+//     của useSettings (để state đồng bộ).
 // ============================================================
 
 import { Check } from "lucide-react";
@@ -25,14 +34,16 @@ export default function LanguagePanel({ settings }) {
   const currentLang = language || locale;
 
   const handleSelect = (code) => {
-    // 1. Đồng bộ i18n engine (đây là cái quyết định render)
+    // 1. Đồng bộ i18n engine ngay lập tức (để UI tự cập nhật)
     try {
       setI18nLocale(code);
     } catch (e) {
       console.warn("[LanguagePanel] setLocale failed:", e);
     }
 
-    // 2. Đồng bộ useSettings state (nếu có)
+    // 2. Đồng bộ useSettings state (nếu có).
+    //    useSettings sẽ tự dispatch "language-change" qua useEffect
+    //    → i18n.js sync; do đó KHÔNG cần dispatch thủ công ở đây.
     if (typeof setLanguage === "function") {
       try {
         setLanguage(code);
@@ -41,17 +52,11 @@ export default function LanguagePanel({ settings }) {
       }
     }
 
-    // 3. Ghi localStorage cả 2 key
+    // 3. Ghi localStorage cả 2 key — phòng trường hợp component
+    //    này được dùng mà không có useSettings (defensive).
     try {
       localStorage.setItem("vwa_lang", code);
       localStorage.setItem("canteen_locale", code);
-    } catch {}
-
-    // 4. Dispatch event cho chắc
-    try {
-      window.dispatchEvent(
-        new CustomEvent("language-change", { detail: { lang: code } })
-      );
     } catch {}
   };
 

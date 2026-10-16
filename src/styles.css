@@ -1041,11 +1041,32 @@ html.dark-mode .inv-badge--low {
 html.dark-mode .inv-badge--out {
   background: #991b1b; color: #fee2e2; border-color: #ef4444;
 }
+.inv-badge--critical {
+  background: #dc2626; color: #fff; border: 1px solid #991b1b;
+  animation: pulse-critical 1.5s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+}
+html.dark-mode .inv-badge--critical {
+  background: #dc2626; color: #fff; border-color: #fca5a5;
+}
+@keyframes pulse-critical {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+  50%      { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
 
 .inv-qty { font-weight: 700; transition: color 0.2s; }
 .inv-qty--ok  { color: #18a967; }
 .inv-qty--low { color: #f59e0b; }
 .inv-qty--out { color: #ef4444; }
+.inv-qty--critical {
+  color: #dc2626;
+  animation: pulse-text 1s ease-in-out infinite;
+  font-weight: 800;
+}
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
 
 /* ============================================================
    PHẦN 13: LOGIN / REGISTER / FORGOT PASSWORD
