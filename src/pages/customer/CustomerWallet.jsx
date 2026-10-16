@@ -14,6 +14,7 @@ import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
+import { usePointsConfig } from "../../hooks/usePointsConfig";
 
 // ============================================================
 // CONSTANTS
@@ -75,6 +76,7 @@ function fmtDate(iso) {
 // ============================================================
 
 export default function CustomerWallet() {
+  const ptsCfg = usePointsConfig();
   const { t } = useI18n();
 
   const [wallet, setWallet] = useState(EMPTY_WALLET);
@@ -470,7 +472,7 @@ export default function CustomerWallet() {
             </div>
             <div>
               <b>{t("Voucher Giảm 20.000đ Đồ Uống")}</b>
-              <small>{t("Quy đổi ngay với 300 Green Points")}</small>
+              <small>{t("Quy đổi ngay với")} {ptsCfg?.redeem?.min_points || 100} {t("Green Points")}</small>
             </div>
           </div>
 

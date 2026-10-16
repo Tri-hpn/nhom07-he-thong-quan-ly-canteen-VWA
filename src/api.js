@@ -327,8 +327,11 @@ export const api = {
   },
 
   points: {
-    me:     ()     => req("/points/me"),
-    redeem: (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
+    me:           ()     => req("/points/me"),
+    redeem:       (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
+    config:       ()     => req("/points/config"),
+    updateConfig: (data) => req("/points/config", { method: "PUT", body: JSON.stringify(data) }),
+    preview:      (data) => req("/points/preview", { method: "POST", body: JSON.stringify(data) }),
   },
 
   vouchers: {
