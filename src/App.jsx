@@ -1,9 +1,9 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V11 - FINAL)
+// APP.JSX — Root component + Routing (V12 - FINAL)
 // ============================================================
-// V11 (2026-10):
-//   - ✅ FIX #20: Xoá pendingRedirectRef (dead code, không dùng)
-//   - Giữ V10: redirect /employee/prep → tab Bếp Nấu,
+// V12 (2026-10):
+//   - ✅ Thêm route /owner/chat → OwnerChat
+//   - Giữ V11: redirect /employee/prep → tab Bếp Nấu,
 //     cart persistence, auth-expired handler, role-based redirect
 // ============================================================
 
@@ -73,6 +73,8 @@ import OwnerShifts from "./pages/owner/OwnerShifts";
 import OwnerOrders from "./pages/owner/OwnerOrders";
 import OwnerFinance from "./pages/owner/OwnerFinance";
 import OwnerSettings from "./pages/owner/OwnerSettings";
+// ✅ V12: trang quản lý chat admin
+import OwnerChat from "./pages/owner/OwnerChat";
 
 // ============================================================
 // HELPERS
@@ -111,7 +113,6 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ✅ FIX #20: chỉ giữ lastRedirectRef (pendingRedirectRef đã xoá)
   const lastRedirectRef = useRef({ path: "", timestamp: 0 });
 
   // Tự động lưu cart vào localStorage
@@ -177,7 +178,6 @@ export default function App() {
 
     const target = homePathForRole(user.role);
 
-    // Chống loop: nếu vừa redirect tới `target` trong 1s vừa qua → bỏ qua
     const now = Date.now();
     const last = lastRedirectRef.current;
     if (last.path === target && now - last.timestamp < 1000) {
@@ -638,6 +638,16 @@ export default function App() {
               "Backup dữ liệu",
               "Xuất / nhập / reset database",
               <OwnerBackup />
+            )}
+          />
+
+          {/* ✅ V12: Trang quản lý chat admin */}
+          <Route
+            path="/owner/chat"
+            element={wrap(
+              "Chat & Hỗ trợ",
+              "Giám sát & điều phối chat toàn hệ thống",
+              <OwnerChat />
             )}
           />
         </Route>

@@ -1,13 +1,11 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V8 - FINAL)
+// API.JS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â HTTP client cho Backend Express (V9 - FINAL)
 // ============================================================
-// V8 (2026-10):
-//   - ✅ FIX #21: Safari private mode — memoryToken fallback rõ ràng
-//     + sessionStorage try/catch
-//   - ✅ Thêm api.orders.call — log voice call (backend đã có route)
-//   - ✅ Thêm api.health — test nhanh server
-//   - ✅ Thêm api.users.listByRole — helper filter
-//   - Giữ V7: setPoints, unlinkMssv, schoolInfo, school.*
+// V9 (2026-10):
+//   - ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â§ FIX H6: bÃƒÂ¡Ã‚Â»Ã‚Â api.admin.translationStats vÃƒÆ’Ã‚Â  api.admin.backfillSync
+//     (backend khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â³ endpoint tÃƒâ€ Ã‚Â°Ãƒâ€ Ã‚Â¡ng ÃƒÂ¡Ã‚Â»Ã‚Â©ng)
+//   - ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â§ FIX H7: bÃƒÂ¡Ã‚Â»Ã‚Â param `all` thÃƒÂ¡Ã‚Â»Ã‚Â«a trong api.menu.list
+//   - GiÃƒÂ¡Ã‚Â»Ã‚Â¯ V8: memoryToken fallback, api.orders.call, api.health
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -16,11 +14,10 @@ const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
 // ============================================================
-// TOKEN — sessionStorage + memoryToken fallback (Safari private mode)
+// TOKEN ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â sessionStorage + memoryToken fallback (Safari private mode)
 // ============================================================
 let memoryToken = null;
 
-/** Kiểm tra sessionStorage có dùng được không (Safari private mode chặn) */
 let sessionStorageAvailable = (() => {
   try {
     const k = "__test__";
@@ -54,7 +51,7 @@ export function setToken(t) {
         sessionStorage.removeItem("token");
       }
     } catch (e) {
-      console.warn("[api] sessionStorage không dùng được, chuyển sang memoryToken:", e.message);
+      console.warn("[api] sessionStorage khÃƒÆ’Ã‚Â´ng dÃƒÆ’Ã‚Â¹ng Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c, chuyÃƒÂ¡Ã‚Â»Ã†â€™n sang memoryToken:", e.message);
       sessionStorageAvailable = false;
     }
   }
@@ -93,14 +90,14 @@ async function req(path, options = {}) {
     clearTimeout(timeoutId);
     if (e.name === "AbortError") {
       const err = new Error(
-        "Yêu cầu quá thời gian. Vui lòng kiểm tra kết nối và thử lại."
+        "YÃƒÆ’Ã‚Âªu cÃƒÂ¡Ã‚ÂºÃ‚Â§u quÃƒÆ’Ã‚Â¡ thÃƒÂ¡Ã‚Â»Ã‚Âi gian. Vui lÃƒÆ’Ã‚Â²ng kiÃƒÂ¡Ã‚Â»Ã†â€™m tra kÃƒÂ¡Ã‚ÂºÃ‚Â¿t nÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi vÃƒÆ’Ã‚Â  thÃƒÂ¡Ã‚Â»Ã‚Â­ lÃƒÂ¡Ã‚ÂºÃ‚Â¡i."
       );
       err.status = 0;
       err.isTimeout = true;
       throw err;
     }
     const err = new Error(
-      "Không kết nối được máy chủ: " + (e.message || "unknown error")
+      "KhÃƒÆ’Ã‚Â´ng kÃƒÂ¡Ã‚ÂºÃ‚Â¿t nÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœi Ãƒâ€žÃ¢â‚¬ËœÃƒâ€ Ã‚Â°ÃƒÂ¡Ã‚Â»Ã‚Â£c mÃƒÆ’Ã‚Â¡y chÃƒÂ¡Ã‚Â»Ã‚Â§: " + (e.message || "unknown error")
     );
     err.status = 0;
     err.isNetworkError = true;
@@ -109,7 +106,6 @@ async function req(path, options = {}) {
     clearTimeout(timeoutId);
   }
 
-  // ✅ FIX #21: 401 → xóa token + dispatch event (chỉ khi CÓ token)
   if (res.status === 401 && token) {
     clearToken();
     try {
@@ -150,7 +146,6 @@ async function req(path, options = {}) {
 export const api = {
   _base: BASE,
 
-  // ✅ MỚI: Health check — test nhanh server
   health: () => req(""),
 
   // AUTH
@@ -178,20 +173,20 @@ export const api = {
   stats: () => req("/stats"),
 
   menu: {
-    list: (q = "", category = "Tất cả", sort = "popular", all = false) => {
+    // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ FIX H7: bÃƒÂ¡Ã‚Â»Ã‚Â param `all` (backend khÃƒÆ’Ã‚Â´ng Ãƒâ€žÃ¢â‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Âc)
+    list: (q = "", category = "TÃƒÂ¡Ã‚ÂºÃ‚Â¥t cÃƒÂ¡Ã‚ÂºÃ‚Â£", sort = "popular") => {
       const p = new URLSearchParams();
       if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
+      if (category && category !== "TÃƒÂ¡Ã‚ÂºÃ‚Â¥t cÃƒÂ¡Ã‚ÂºÃ‚Â£") p.set("category", category);
       if (sort) p.set("sort", sort);
-      if (all) p.set("all", "1");
       const qs = p.toString();
       return req("/menu" + (qs ? "?" + qs : ""));
     },
-    listActive: (q = "", category = "Tất cả", sort = "popular") => {
+    listActive: (q = "", category = "TÃƒÂ¡Ã‚ÂºÃ‚Â¥t cÃƒÂ¡Ã‚ÂºÃ‚Â£", sort = "popular") => {
       const p = new URLSearchParams();
       p.set("active_only", "1");
       if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
+      if (category && category !== "TÃƒÂ¡Ã‚ÂºÃ‚Â¥t cÃƒÂ¡Ã‚ÂºÃ‚Â£") p.set("category", category);
       if (sort) p.set("sort", sort);
       return req("/menu?" + p.toString());
     },
@@ -209,8 +204,8 @@ export const api = {
   orders: {
     create:   (data)       => req("/orders",               { method: "POST",  body: JSON.stringify(data) }),
     myOrders: ()           => req("/orders/me"),
-    all: (status = "Tất cả") => {
-      const qs = status && status !== "Tất cả"
+    all: (status = "TÃƒÂ¡Ã‚ÂºÃ‚Â¥t cÃƒÂ¡Ã‚ÂºÃ‚Â£") => {
+      const qs = status && status !== "TÃƒÂ¡Ã‚ÂºÃ‚Â¥t cÃƒÂ¡Ã‚ÂºÃ‚Â£"
         ? `?status=${encodeURIComponent(status)}` : "";
       return req("/orders" + qs);
     },
@@ -222,13 +217,12 @@ export const api = {
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
 
     remind: (id, data) => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
-    // ✅ MỚI: log voice call
+    // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ MÃƒÂ¡Ã‚Â»Ã…Â¡I: log voice call
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
 
   users: {
     list:   (role)     => req(`/users${role ? `?role=${role}` : ""}`),
-    // ✅ MỚI: helper
     listByRole: (role) => req(`/users?role=${encodeURIComponent(role)}`),
     create: (data)     => req("/users",       { method: "POST",   body: JSON.stringify(data) }),
     update: (id, data) => req(`/users/${id}`, { method: "PUT",    body: JSON.stringify(data) }),
@@ -351,8 +345,11 @@ export const api = {
   },
 
   points: {
-    me:     ()     => req("/points/me"),
-    redeem: (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
+    me:           ()     => req("/points/me"),
+    redeem:       (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
+    config:       ()     => req("/points/config"),
+    updateConfig: (data) => req("/points/config", { method: "PUT", body: JSON.stringify(data) }),
+    preview:      (data) => req("/points/preview", { method: "POST", body: JSON.stringify(data) }),
   },
 
   vouchers: {
@@ -382,6 +379,44 @@ export const api = {
     messagesWith:  (userId) => req(`/chat/with/${userId}`),
     send:          (data)   => req("/chat/send", { method: "POST", body: JSON.stringify(data) }),
     getContext:    (userId) => req(`/chat/context/${userId}`),
+
+    admin: {
+      conversations:  (params = {}) => {
+        const q = new URLSearchParams(params).toString();
+        return req("/chat/admin/conversations" + (q ? `?${q}` : ""));
+      },
+      messagesWith:   (userId) => req(`/chat/admin/messages/${userId}`),
+
+      staffStatus:    ()       => req("/chat/admin/staff-status"),
+      toggleStaff:    (id, enabled) =>
+        req(`/chat/admin/staff/${id}/chat`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !!enabled }),
+        }),
+      toggleGlobal:   (enabled) =>
+        req("/chat/admin/global-chat", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled: !!enabled }),
+        }),
+
+      transferRequests: (status = "pending") =>
+        req(`/chat/admin/transfer-requests?status=${encodeURIComponent(status)}`),
+      resolveTransfer: (id, status, note = "") =>
+        req(`/chat/admin/transfer-requests/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status, note }),
+        }),
+      requestTransfer: (data) =>
+        req("/chat/transfer-request", {
+          method: "POST",
+          body: JSON.stringify(data || {}),
+        }),
+
+      takeover: (userId) => req(`/chat/admin/takeover/${userId}`, { method: "POST" }),
+      release:  (userId) => req(`/chat/admin/release/${userId}`,  { method: "POST" }),
+
+      myChatStatus: () => req("/chat/my-status"),
+    },
   },
 
   toppings: {
@@ -431,15 +466,10 @@ export const api = {
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
 
+  // ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ FIX H6: chÃƒÂ¡Ã‚Â»Ã¢â‚¬Â° giÃƒÂ¡Ã‚Â»Ã‚Â¯ endpoint `backfill` (backend cÃƒÆ’Ã‚Â³)
+  // Ãƒâ€žÃ‚ÂÃƒÆ’Ã‚Â£ bÃƒÂ¡Ã‚Â»Ã‚Â: translationStats, backfillSync (backend khÃƒÆ’Ã‚Â´ng cÃƒÆ’Ã‚Â³)
   admin: {
-    translationStats: () => req("/admin/translation-stats"),
-    backfill:          () => req("/admin/backfill-translations", { method: "POST" }),
-    backfillSync: (limit = 30) =>
-      req("/admin/backfill-translations-sync", {
-        method: "POST",
-        body: JSON.stringify({ limit }),
-        timeoutMs: 50000,
-      }),
+    backfill: () => req("/admin/backfill-translations", { method: "POST" }),
   },
 };
 

@@ -23,7 +23,7 @@ import {
   Loader2, AlertCircle, UtensilsCrossed, EyeOff, Eye, Star, Clock,
   Sunrise, Sun, Sunset, RotateCcw, Edit, CheckCircle2, Package, Ban,
   Power, ChevronLeft, ChevronRight, Flame,
-} from "lucide-react";
+  ChevronDown } from "lucide-react";
 import { SkeletonTable } from "../../components/Skeleton";
 import { api } from "../../api";
 import { money } from "../../components/UI";
@@ -95,6 +95,7 @@ export default function OwnerMenu() {
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [slotsError, setSlotsError] = useState("");
+  const [openSlots, setOpenSlots] = useState(false);
   const [togglingSlotId, setTogglingSlotId] = useState(null);
   const [confirmSlotReset, setConfirmSlotReset] = useState(false);
   const [resettingSlots, setResettingSlots] = useState(false);
@@ -712,13 +713,16 @@ export default function OwnerMenu() {
         >
           {/* Header */}
           <div
+            onClick={() => setOpenSlots((v) => !v)}
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 14,
+              marginBottom: openSlots ? 14 : 0,
               flexWrap: "wrap",
               gap: 10,
+              cursor: "pointer",
+              userSelect: "none",
             }}
           >
             <div
@@ -776,7 +780,9 @@ export default function OwnerMenu() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+
+
+            <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: 8, flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={loadSlots}
@@ -829,9 +835,22 @@ export default function OwnerMenu() {
               >
                 <RotateCcw size={13} /> Reset
               </button>
+
+            <ChevronDown
+              size={18}
+              style={{
+                color: "var(--text-light, #8993a3)",
+                transition: "transform 0.2s",
+                transform: openSlots ? "rotate(180deg)" : "rotate(0deg)",
+                flexShrink: 0,
+              }}
+            />
             </div>
+
           </div>
 
+          {openSlots && (
+            <>
           {/* Error */}
           {slotsError && !slotsLoading && (
             <div
@@ -1046,6 +1065,8 @@ export default function OwnerMenu() {
                 </div>
               );
             })}
+            </>
+          )}
         </div>
 
         {/* ============ DEBUG BANNER ============ */}

@@ -1,11 +1,9 @@
 ﻿// ============================================================
-// VITE.CONFIG.JS — Vite configuration (V4 - FINAL)
+// VITE.CONFIG.JS — Vite configuration (V5 - FINAL)
 // ============================================================
-// V4 (2026-10):
-//   - ✅ FIX #18: comment rõ lý do changeOrigin=false
-//     + cảnh báo nếu đổi port khác 5173
-//   - Giữ V3: Microsoft OAuth local fix, console.error/warn
-//     production, optimizeDeps đầy đủ
+// V5 (2026-10):
+//   - 🔧 FIX M7: changeOrigin mặc định true; opt-in giữ Host gốc
+//     qua env VITE_KEEP_ORIGIN_HOST=1 (dành cho OAuth callback).
 // ============================================================
 
 import { defineConfig, loadEnv } from "vite";
@@ -37,17 +35,14 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": {
           target: env.VITE_BACKEND_URL || "http://localhost:3000",
-          // ✅ FIX #18: changeOrigin=false để giữ nguyên Host header
-          // (localhost:5173) → backend reconstruct đúng redirect URI
-          // cho Microsoft OAuth.
-          //
-          // ⚠️ LƯU Ý: Nếu bạn đổi port FE khác 5173 (VD: 5174),
-          // PHẢI thêm origin đó vào CORS whitelist trong
-          // server-json.js → app.use(cors({ origin: [...] }))
-          changeOrigin: false,
+          // ✅ FIX M7: mặc định changeOrigin=true (an toàn với Vite).
+          // Nếu cần giữ Host gốc cho Microsoft OAuth callback local,
+          // set VITE_KEEP_ORIGIN_HOST=1 trong .env.
+          changeOrigin: env.VITE_KEEP_ORIGIN_HOST !== "1",
           secure: false,
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq, req) => {
+              if (env.VITE_KEEP_ORIGIN_HOST !== "1") return;
               const host = req.headers.host;
               if (host) {
                 proxyReq.setHeader("x-forwarded-host", host);
@@ -86,7 +81,6 @@ export default defineConfig(({ mode }) => {
         },
       },
 
-      // ✅ Chỉ drop console.log + debugger, giữ console.error/warn.
       esbuild: isProd
         ? {
             drop: ["debugger"],

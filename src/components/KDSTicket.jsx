@@ -12,7 +12,7 @@
 
 import {
   Check, Clock, Volume2, CheckCircle2, Soup, AlertTriangle,
-  XCircle, PackageCheck, Loader2, Timer, Ban,
+  XCircle, PackageCheck, Loader2, Timer, Ban, Leaf,
 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 import { money } from "./UI";
@@ -126,6 +126,9 @@ export default function KDSTicket({
   onAdvance,
   onReject,
   onRecall,
+  onApproveGreen,
+  onRejectGreen,
+  greenBusy = false,
   loading = false,
   urgent = false,
   t: tProp,
@@ -341,6 +344,59 @@ export default function KDSTicket({
         </span>
         <span className="kds-card__total">{money(total)}</span>
       </div>
+
+      {/* GREEN APPROVAL */}
+      {order.green_status === "pending" && (
+        <div className="kds-card__green-block" style={{
+          marginTop: 6, padding: "8px 10px",
+          background: "rgba(24, 169, 103, 0.08)",
+          border: "1px solid rgba(24, 169, 103, 0.35)",
+          borderRadius: 8,
+          display: "flex", flexDirection: "column", gap: 6,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#18a967" }}>
+            <Leaf size={14} />
+            <span>{t("Chờ duyệt Sống Xanh")} +{order.green_points || 0} {t("điểm")}</span>
+          </div>
+          {(onApproveGreen || onRejectGreen) && (
+            <div style={{ display: "flex", gap: 6 }}>
+              {onApproveGreen && (
+                <button
+                  type="button"
+                  onClick={() => onApproveGreen(order)}
+                  disabled={greenBusy || processing}
+                  style={{
+                    flex: 1, padding: "6px 10px", border: 0, borderRadius: 6,
+                    background: "#18a967", color: "#fff", fontWeight: 700,
+                    fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
+                    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+                    opacity: greenBusy ? 0.6 : 1,
+                  }}
+                >
+                  <Check size={13} /> {t("Duyệt")}
+                </button>
+              )}
+              {onRejectGreen && (
+                <button
+                  type="button"
+                  onClick={() => onRejectGreen(order)}
+                  disabled={greenBusy || processing}
+                  style={{
+                    flex: 1, padding: "6px 10px", borderRadius: 6,
+                    background: "transparent", color: "#ef4444",
+                    border: "1px solid #ef4444", fontWeight: 700,
+                    fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
+                    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+                    opacity: greenBusy ? 0.6 : 1,
+                  }}
+                >
+                  <XCircle size={13} /> {t("Từ chối")}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ACTIONS */}
       <div

@@ -1,12 +1,9 @@
 // ============================================================
-// MAIN.JSX — Entry point (V5 - FINAL)
+// MAIN.JSX — Entry point (V6 - FINAL)
 // ============================================================
-// V5 (2026-10):
-//   - ✅ FIX CRITICAL: AuthProvider PHẢI bọc NGOÀI BrowserRouter
-//     → Không còn lỗi "AuthProvider chưa được mount"
-//     → Không còn redirect loop khi share link
-//   - ✅ FIX: Dùng createRoot 1 lần (guard bằng data-attribute)
-//   - Giữ V4: i18n init, StrictMode, ErrorBoundary, global handlers
+// V6 (2026-10):
+//   - 🔧 FIX M6: HMR dispose unmount root — tránh stale component
+//     sau khi sửa code trong dev
 // ============================================================
 
 import React from "react";
@@ -61,11 +58,6 @@ if (rootEl.dataset.reactMounted === "1") {
       <React.StrictMode>
         {/*
           ✅ FIX CRITICAL: AuthProvider PHẢI bọc NGOÀI BrowserRouter
-          ─────────────────────────────────────────────────────────
-          Lý do: App.jsx gọi useAuth() ngay đầu component. Nếu
-          AuthProvider nằm trong BrowserRouter → khi StrictMode
-          double-render, context chưa kịp mount → useAuth() trả
-          fallback lỗi → redirect loop + lỗi "AuthProvider chưa mount".
         */}
         <AuthProvider>
           <BrowserRouter
@@ -98,4 +90,16 @@ if (rootEl.dataset.reactMounted === "1") {
       renderApp();
     }
   })();
+
+  // ✅ FIX M6: HMR cleanup — unmount root để lần sau mount lại từ đầu
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      try {
+        delete rootEl.dataset.reactMounted;
+        root.unmount();
+      } catch (e) {
+        console.warn("[main] HMR dispose error:", e);
+      }
+    });
+  }
 }

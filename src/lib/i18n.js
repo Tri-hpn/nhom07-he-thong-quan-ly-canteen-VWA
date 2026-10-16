@@ -1,20 +1,12 @@
 // ============================================================
-// i18n.js — Hệ thống đa ngôn ngữ (V4 - FINAL)
+// i18n.js — Hệ thống đa ngôn ngữ (V6 - FINAL)
 // ============================================================
-// V2 (2026-10):
-//   - ✅ Load tất cả locale files
-//   - ✅ Persist ngôn ngữ vào localStorage
-//   - ✅ Subscribe pattern để React re-render khi đổi lang
-//   - ✅ Fallback: nếu key không có → trả key (tiếng Việt)
-//
-// V3 (2026-10):
-//   - 🔧 Đồng bộ với useSettings.js (key "vwa_lang")
-//   - 🔧 Lắng nghe sự kiện "language-change" và "storage"
-//
-// V4 (2026-10) - FINAL:
-//   - 🔧 FIX CRITICAL: thêm `snapshot` cache cho useSyncExternalStore
-//     → useI18n re-render ĐÚNG, không cần F5
-//   - 🔧 getLocale() trả snapshot thay vì currentLocale
+// V5 (2026-10) - FINAL:
+//   - 🔧 FIX L11: getCoverage() — chỉ cần v !== "" là "đã dịch"
+//   - 🔧 FIX L17: import.meta.hot.dispose() cleanup listener
+// V6 (2026-10):
+//   - 🔧 FIX H5: getCoverage bỏ điều kiện `v !== k` (trùng với
+//     comment L11 nói fix nhưng code cũ vẫn chưa fix)
 // ============================================================
 
 import vi from "./i18n/locales/vi.json";
@@ -28,7 +20,6 @@ const STORAGE_KEY = "canteen_locale";
 const SETTINGS_STORAGE_KEY = "vwa_lang";
 
 let currentLocale = "vi";
-// 🔧 V4: snapshot cho useSyncExternalStore
 let snapshot = currentLocale;
 
 const listeners = new Set();
@@ -50,7 +41,6 @@ try {
 // ---------- Public API ----------
 
 export function getLocale() {
-  // 🔧 V4: phải trả snapshot (stable reference) cho useSyncExternalStore
   return snapshot;
 }
 
@@ -62,7 +52,7 @@ export function setLocale(locale) {
   if (currentLocale === locale) return;
 
   currentLocale = locale;
-  snapshot = locale; // 🔧 V4: update snapshot TRƯỚC khi notify
+  snapshot = locale;
 
   try {
     localStorage.setItem(STORAGE_KEY, locale);
@@ -87,12 +77,6 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-/**
- * t(key) — dịch key
- * - Ưu tiên locale hiện tại
- * - Fallback VI
- * - Fallback key
- */
 export function t(key) {
   if (!key) return "";
 
@@ -121,7 +105,9 @@ export function getCoverage(locale = currentLocale) {
 
   for (const k of viKeys) {
     const v = dict[k];
-    if (v && v !== k && v !== LOCALES.vi[k]) {
+    // ✅ FIX H5: bản dịch trùng VI (tên riêng, thương hiệu) vẫn là "đã dịch".
+    // Chỉ coi là "missing" khi value rỗng/null/undefined.
+    if (v !== undefined && v !== null && v !== "") {
       translated++;
     } else {
       missing.push(k);
@@ -150,22 +136,32 @@ export function initI18n() {
 
 // ---------- SYNC với settings + đa tab ----------
 if (typeof window !== "undefined") {
-  window.addEventListener("language-change", (e) => {
+  const onLanguageChange = (e) => {
     const newLang = e?.detail?.lang;
     if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
     console.log("[i18n] Sync từ settings:", newLang);
     setLocale(newLang);
-  });
+  };
 
-  window.addEventListener("storage", (e) => {
+  const onStorage = (e) => {
     if (e.key !== SETTINGS_STORAGE_KEY && e.key !== STORAGE_KEY) return;
     const newLang = e.newValue;
     if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
     console.log("[i18n] Sync từ tab khác:", newLang);
     setLocale(newLang);
-  });
+  };
+
+  window.addEventListener("language-change", onLanguageChange);
+  window.addEventListener("storage", onStorage);
+
+  if (import.meta && import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      window.removeEventListener("language-change", onLanguageChange);
+      window.removeEventListener("storage", onStorage);
+    });
+  }
 }
 
 export default { t, getLocale, setLocale, initI18n, subscribe };
