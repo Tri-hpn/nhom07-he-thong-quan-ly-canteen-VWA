@@ -67,10 +67,11 @@ const CALORIE_RANGES = [
 ];
 
 const SORT_OPTIONS = [
-  { value: "popular", label: "Phổ biến nhất" },
+  { value: "all", label: "Tất cả" },
+  { value: "popular", label: "Bán chạy nhất" },
+  { value: "discount", label: "Đang giảm giá" },
   { value: "price-asc", label: "Giá thấp → cao" },
   { value: "price-desc", label: "Giá cao → thấp" },
-  { value: "rating", label: "Đánh giá cao" },
   { value: "fastest", label: "Nhanh nhất" },
 ];
 
@@ -99,7 +100,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
   const [priceQuickFilter, setPriceQuickFilter] = useState("all");
   const [priorities, setPriorities] = useState({});
   const [calorieFilter, setCalorieFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("popular");
+  const [sortBy, setSortBy] = useState("all");
   const [viewMode, setViewMode] = useState("grid");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
@@ -233,11 +234,21 @@ export default function CustomerMenu({ cart, setCart, user }) {
     else if (calorieFilter === "400-650") list = list.filter((m) => (m.calories || 0) >= 400 && (m.calories || 0) <= 650);
     else if (calorieFilter === "over-650") list = list.filter((m) => (m.calories || 0) > 650);
 
-    if (sortBy === "price-asc") list = [...list].sort((a, b) => (a.price || 0) - (b.price || 0));
-    else if (sortBy === "price-desc") list = [...list].sort((a, b) => (b.price || 0) - (a.price || 0));
-    else if (sortBy === "rating") list = [...list].sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    else if (sortBy === "fastest") list = [...list].sort((a, b) => (a.prep_time || 999) - (b.prep_time || 999));
-    else list = [...list].sort((a, b) => (b.sold || 0) - (a.sold || 0));
+    if (sortBy === "discount") {
+      list = list.filter((m) => Number(m.original_price) > Number(m.price));
+    } else if (sortBy === "price-asc") {
+      list = [...list].sort((a, b) => (a.price || 0) - (b.price || 0));
+    } else if (sortBy === "price-desc") {
+      list = [...list].sort((a, b) => (b.price || 0) - (a.price || 0));
+    } else if (sortBy === "fastest") {
+      list = [...list].sort((a, b) => (a.prep_time || 999) - (b.prep_time || 999));
+    } else if (sortBy === "popular") {
+      list = list
+        .filter((m) => Number(m.sold || 0) >= 50)
+        .sort((a, b) => (Number(b.sold) || 0) - (Number(a.sold) || 0));
+    } else {
+      list = [...list];
+    }
 
     return list;
   }, [
@@ -294,7 +305,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
     setPriceQuickFilter("all");
     setPriorities({});
     setCalorieFilter("all");
-    setSortBy("popular");
+    setSortBy("all");
     setSearchParams({});
     setPage(1);
   };
@@ -374,7 +385,6 @@ export default function CustomerMenu({ cart, setCart, user }) {
     const isOutOfStock = m.stock === 0;
     const isHot = (m.sold || 0) >= 50;
     const hasDiscount = m.original_price > m.price;
-    const kcal = m.calories || 0;
     const rating = (m.rating || 4.5 + ((m.sold || 0) % 5) * 0.1).toFixed(1);
     const prepTime = m.prep_time || 6;
     const qty = quantities[id] || 1;
@@ -403,14 +413,14 @@ export default function CustomerMenu({ cart, setCart, user }) {
             )}
           </div>
           <div className="menu-food-card__info-sq">
-            <span className="menu-food-card__cat">{m.category}</span>
+
             <h4 className="menu-food-card__name-sq">{tData(m, "name")}</h4>
             <p className="menu-food-card__desc-sq">
               {m.description || t("Món ăn ngon tại Canteen VWA")}
             </p>
             <div className="menu-food-card__meta-row">
               <span>⭐ {rating}</span>
-              <span>🔥 {kcal} kcal</span>
+
               <span>⏱ {prepTime} {t("phút")}</span>
             </div>
             <div className="menu-food-card__price-row-sq">
@@ -421,6 +431,23 @@ export default function CustomerMenu({ cart, setCart, user }) {
                 </s>
               )}
             </div>
+
+            <div
+            className="menu-qty-stepper"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setQty(id, -1)}
+              aria-label={t("Giảm")}
+              disabled={qty <= 1}
+            >
+              −
+            </button>
+            <span>{qty}</span>
+            <button onClick={() => setQty(id, 1)} aria-label={t("Tăng")}>
+              +
+            </button>
+          </div>
           </div>
           <div className="menu-food-card__actions-col">
             <div
@@ -506,7 +533,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
           </div>
 
           <div className="menu-food-card__info-sq">
-            <span className="menu-food-card__cat">{m.category}</span>
+
             <h4 className="menu-food-card__name-sq">{tData(m, "name")}</h4>
             <div className="menu-food-card__price-row-sq">
               <span className="menu-food-card__price-sq">
@@ -518,6 +545,27 @@ export default function CustomerMenu({ cart, setCart, user }) {
                 </s>
               )}
             </div>
+            <div
+              className="menu-qty-stepper"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setQty(id, -1)}
+                aria-label={t("Giảm")}
+                disabled={qty <= 1}
+              >
+                −
+              </button>
+              <span>{qty}</span>
+              <button
+                type="button"
+                onClick={() => setQty(id, 1)}
+                aria-label={t("Tăng")}
+              >
+                +
+              </button>
+            </div>
           </div>
         </div>
 
@@ -525,27 +573,9 @@ export default function CustomerMenu({ cart, setCart, user }) {
           <span>
             <Star size={11} fill="#F59E0B" color="#F59E0B" /> {rating}
           </span>
-          <span>🔥 {kcal} kcal</span>
-          <span>⏱ {prepTime} {t("phút")}</span>
-        </div>
 
-        <div className="menu-food-card__actions-row">
-          <div
-            className="menu-qty-stepper"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setQty(id, -1)}
-              aria-label={t("Giảm")}
-              disabled={qty <= 1}
-            >
-              −
-            </button>
-            <span>{qty}</span>
-            <button onClick={() => setQty(id, 1)} aria-label={t("Tăng")}>
-              +
-            </button>
-          </div>
+          <span>⏱ {prepTime} {t("phút")}</span>
+
           <div className="menu-food-card__button-group">
 <button
             className="menu-food-card__add-sq"
@@ -572,6 +602,8 @@ export default function CustomerMenu({ cart, setCart, user }) {
 </button>
 </div>
         </div>
+
+
       </div>
     );
   };
@@ -591,23 +623,6 @@ export default function CustomerMenu({ cart, setCart, user }) {
           </button>
         </div>
       )}
-
-      {/* HEADER */}
-      <section className="menu-v3-header"><div className="menu-v3-header__badges">
-          <div className="menu-v3-badge">
-            <Zap size={16} />
-            <span>
-              {t("Tốc độ ra món TB:")} <b>6.8 {t("phút")}</b>
-            </span>
-          </div>
-          <div className="menu-v3-badge">
-            <Shield size={16} />
-            <span>
-              {t("Đảm bảo VSATTP:")} <b>{t("Chuẩn A+")}</b>
-            </span>
-          </div>
-        </div>
-      </section>
 
       {/* 2-COLUMN LAYOUT */}
       <div className="menu-v3-layout">
@@ -757,25 +772,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
               </div>
             </div>
 
-            <div className="menu-v3-group">
-              <div className="menu-v3-group__head">
-                <h2>{t("Mức năng lượng")}</h2>
-                <span className="menu-v3-group__range">
-                  {t(CALORIE_RANGES.find((c) => c.value === calorieFilter)?.label || "Tất cả")}
-                </span>
-              </div>
-              <div className="menu-v3-price-quick">
-                {CALORIE_RANGES.map((c) => (
-                  <button
-                    key={c.value}
-                    className={`menu-v3-price-pill ${calorieFilter === c.value ? "active" : ""}`}
-                    onClick={() => setCalorieFilter(c.value)}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+
 
             <button className="menu-v3-reset" onClick={resetAllFilters}>
               <RotateCcw size={14} />
@@ -783,17 +780,22 @@ export default function CustomerMenu({ cart, setCart, user }) {
             </button>
           </div>
 
-          <div className="menu-v3-tip">
-            <div className="menu-v3-tip__icon">
-              <Lightbulb size={16} />
-            </div>
-            <div>
-              <b>{t("Gợi ý từ Chuyên viên VWA:")}</b>
-              <p>
-                {t("Nhiều phần cơm trưa hôm nay bổ sung thêm canxi và vitamin D3 tự nhiên giúp duy trì sự tập trung suốt buổi học online/offline.")}
-              </p>
-            </div>
+
+
+          <div className="menu-v3-sidebar__badges">
+          <div className="menu-v3-badge">
+            <Zap size={16} />
+            <span>
+              {t("Tốc độ ra món TB:")} <b>6.8 {t("phút")}</b>
+            </span>
           </div>
+          <div className="menu-v3-badge">
+            <Shield size={16} />
+            <span>
+              {t("Đảm bảo VSATTP:")} <b>{t("Chuẩn A+")}</b>
+            </span>
+          </div>
+        </div>
         </aside>
 
         <main className="menu-v3-main">

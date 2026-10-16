@@ -216,7 +216,12 @@ export const api = {
     },
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received:  (id)         => req(`/orders/${id}/received`, { method: "POST" }),
+    lookupQr:  (orderCode)  => req("/orders/scan-pickup/lookup", { method: "POST", body: JSON.stringify({ orderCode }) }),
+    publicQrLookup: (code) => req(`/orders/public-qr/${encodeURIComponent(code)}`),
+    scanReceived: (id)      => req(`/orders/${id}/scan-received`, { method: "POST" }),
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
+
+    remind: (id, data) => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
     // ✅ MỚI: log voice call
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
@@ -326,6 +331,18 @@ export const api = {
     reject:       (id, note) => req(`/wallet/requests/${id}/reject`,  { method: "PATCH", body: JSON.stringify({ admin_note: note || "" }) }),
   },
 
+  ecoRewards: {
+    me: () => req("/eco-rewards/me"),
+    create: (data) => req("/eco-rewards", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+    pending: () => req("/eco-rewards/pending"),
+    decide: (id, status) => req(`/eco-rewards/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+  },
   reviews: {
     me:        ()           => req("/reviews/me"),
     list:      (menuItemId) => req(`/reviews/${menuItemId}`),

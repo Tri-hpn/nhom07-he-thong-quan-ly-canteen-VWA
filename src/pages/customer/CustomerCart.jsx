@@ -452,13 +452,13 @@ export default function CustomerCart({ cart, setCart }) {
           </div>
 
           <div className="cart-stepper">
-            <div className="cart-stepper__item cart-stepper__item--done">
-              <div className="cart-stepper__icon">
-                <Check size={16} />
+            <div className="cart-stepper__item cart-stepper__item--active">
+              <div className="cart-stepper__icon cart-stepper__icon--active">
+                <Utensils size={16} />
               </div>
               <div>
-                <span className="cart-stepper__label">{t("BƯỚC 1")}</span>
-                <b>{t("Chọn món")}</b>
+                <span className="cart-stepper__label cart-stepper__label--active">{t("BƯỚC 1")}</span>
+                <b className="cart-stepper__label--active">{t("Chọn món")}</b>
               </div>
             </div>
             <div className="cart-stepper__item cart-stepper__item--active">
@@ -535,15 +535,19 @@ export default function CustomerCart({ cart, setCart }) {
         </div>
 
         <div className="cart-stepper">
-          <div className="cart-stepper__item cart-stepper__item--done">
-            <div className="cart-stepper__icon">
-              <Check size={16} />
+          <div className={`cart-stepper__item ${selectedLines.length > 0 ? "cart-stepper__item--done" : "cart-stepper__item--active"}`}>
+              <div className={`cart-stepper__icon ${selectedLines.length === 0 ? "cart-stepper__icon--active" : ""}`}>
+                {selectedLines.length > 0 ? <Check size={16} /> : <Utensils size={16} />}
+              </div>
+              <div>
+                <span className={`cart-stepper__label ${selectedLines.length === 0 ? "cart-stepper__label--active" : ""}`}>
+                  {t("BƯỚC 1")}
+                </span>
+                <b className={selectedLines.length === 0 ? "cart-stepper__label--active" : ""}>
+                  {t("Chọn món")}
+                </b>
+              </div>
             </div>
-            <div>
-              <span className="cart-stepper__label">{t("BƯỚC 1")}</span>
-              <b>{t("Chọn món")}</b>
-            </div>
-          </div>
 
           <div className="cart-stepper__item cart-stepper__item--active">
             <div className="cart-stepper__icon cart-stepper__icon--active">

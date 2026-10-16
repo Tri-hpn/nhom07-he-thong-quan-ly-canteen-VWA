@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // FOOTER.JSX — Footer toàn cục
 // ============================================================
 
@@ -129,120 +129,109 @@ export default function Footer() {
 
   return (
     <footer className="app-footer">
-      <div className="footer-grid">
-        {/* CỘT 1: BRAND */}
-        <div className="footer-col">
-          <div className="footer-brand">
-            <LogoVWACompact size={40} className="footer-logo" />
-            <div>
-              <b>CANTEEN VWA</b>
-              <small>SMART MANAGEMENT</small>
-            </div>
-          </div>
-          <p className="footer-desc">
-            {t(
-              "Hệ thống quản lý căng tin thông minh dành cho Học viện Phụ nữ Việt Nam: đặt món trước, nhận đúng ca, không phải xếp hàng."
-            )}
-          </p>
-        </div>
-
-        {/* CỘT 2: LIÊN HỆ */}
-        <div className="footer-col">
-          <h4 className="footer-heading">{t("Liên hệ Canteen VWA")}</h4>
-
-          {renderContact({
-            has: hasHotline,
-            href: telHref,
-            icon: <Phone size={14} />,
-            labelKey: "Hotline",
-            value: contact.hotline,
-          })}
-
-          {renderContact({
-            has: hasEmail,
-            href: `mailto:${contact.email}`,
-            icon: <Mail size={14} />,
-            labelKey: "Email",
-            value: contact.email,
-          })}
-
-          {renderContact({
-            has: hasAddress,
-            href: mapsUrl,
-            icon: <MapPin size={14} />,
-            labelKey: "Địa chỉ",
-            value: contact.address,
-            external: true,
-          })}
-        </div>
-
-        {/* CỘT 3: SOCIAL + MAP */}
-        <div className="footer-col footer-col-social-map">
-          <div className="footer-socials">
-            {SOCIALS.map(({ Icon, href, label, color }) => (
-              <a
-                key={label}
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={label}
-                aria-label={label}
-                className="footer-social"
-                style={{ "--social-color": color }}
-              >
-                <Icon size={15} />
-              </a>
-            ))}
-          </div>
-
-          {hasAddress ? (
-            <div className="footer-map" style={{ position: "relative" }}>
-              <iframe
-                title={t("Bản đồ tới Canteen VWA — {address}", {
-                  address: contact.address,
-                })}
-                src={mapsEmbedUrl}
-                width="100%"
-                height="100%"
-                style={{
-                  border: 0,
-                  display: "block",
-                  pointerEvents: "none",
-                }}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                tabIndex={-1}
-              />
-
-              <a
-                href={mapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={t("Mở trong Google Maps")}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  cursor: "pointer",
-                  textDecoration: "none",
-                }}
-              />
-            </div>
-          ) : (
-            <div
-              className="footer-map"
-              style={{
-                display: "grid",
-                placeItems: "center",
-                color: "var(--text-light, #8993a3)",
-                fontSize: 12,
-                fontStyle: "italic",
-              }}
-            >
-              {t("Đang cập nhật địa chỉ")}
-            </div>
-          )}
-        </div>
+      <div className="footer-grid footer-grid--four-col">
+  {/* COT 1: VE CHUNG TOI */}
+  <div className="footer-col footer-about-col">
+    <div className="footer-brand">
+      <LogoVWACompact size={40} className="footer-logo" />
+      <div>
+        <b>CANTEEN VWA</b>
+        <small className="footer-brand__subtitle">HỌC VIỆN PHỤ NỮ VIỆT NAM</small>
       </div>
+    </div>
+
+    <p className="footer-desc">
+      {t("Hệ thống quản lý căng tin thông minh dành cho Học viện Phụ nữ Việt Nam: đặt món trước, nhận đúng ca, không phải xếp hàng.")}
+    </p>
+
+    {renderContact({
+      has: hasAddress,
+      href: mapsUrl,
+      icon: <MapPin size={14} />,
+      labelKey: "Địa chỉ cửa hàng",
+      value: contact.address,
+      external: true,
+    })}
+
+    <div className="footer-hours">
+  <div className="footer-hours__label">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+    <span>{t("Giờ mở cửa")}</span>
+  </div>
+  <b>06:00 - 18:30</b>
+</div>
+  </div>
+
+  {/* COT 2: DANH MUC MON */}
+  <div className="footer-col">
+    <h4 className="footer-heading">{t("Danh mục món")}</h4>
+    <nav className="footer-menu-links" aria-label={t("Danh mục món")}>
+      <a href="/customer/menu">{t("Món bán chạy")}</a>
+      <a href="/customer/menu">{t("Khai vị & Salad")}</a>
+      <a href="/customer/menu">{t("Món chính")}</a>
+      <a href="/customer/menu">{t("Đồ uống & Tráng miệng")}</a>
+      <a href="/customer/menu">{t("Combo ưu đãi")}</a>
+    </nav>
+  </div>
+
+  {/* COT 3: CHINH SACH */}
+  <div className="footer-col">
+    <h4 className="footer-heading">{t("Chính sách")}</h4>
+    <div className="footer-menu-links">
+      <span>{t("Chính sách giao hàng")}</span>
+      <span>{t("Chính sách đổi trả")}</span>
+      <span>{t("Quy định chung")}</span>
+      <span>{t("Bảo mật thông tin")}</span>
+    </div>
+  </div>
+
+  {/* COT 4: LIEN HE + SOCIAL */}
+  <div className="footer-col footer-contact-social-col">
+    <h4 className="footer-heading">{t("Liên hệ & Đặt hàng")}</h4>
+
+    {renderContact({
+      has: hasHotline,
+      href: telHref,
+      icon: <Phone size={14} />,
+      labelKey: "Hotline",
+      value: contact.hotline,
+    })}
+
+    {renderContact({
+      has: hasEmail,
+      href: `mailto:${contact.email}`,
+      icon: <Mail size={14} />,
+      labelKey: "Email",
+      value: contact.email,
+    })}
+
+    <div className="footer-socials">
+      {SOCIALS.map(({ Icon, href, label, color }) => (
+        <a
+          key={label}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={label}
+          aria-label={label}
+          className="footer-social"
+          style={{ "--social-color": color }}
+        >
+          <Icon size={15} />
+        </a>
+      ))}
+    </div>
+
+    <div className="footer-compliance-badge">
+      {t("Đã thông báo Bộ Công Thương")}
+    </div>
+  </div>
+</div>
 
       <div className="footer-copyright">
         © {new Date().getFullYear()} Canteen VWA ·{" "}

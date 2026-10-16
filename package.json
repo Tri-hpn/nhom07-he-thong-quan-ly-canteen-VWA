@@ -14,18 +14,13 @@
     "prestart": "node scripts/free-dev-ports.mjs 5173 3000 && node scripts/backfill-from-mongo.mjs --quiet",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "ports": "node scripts/free-dev-ports.mjs --dry",
-
     "postinstall": "node scripts/backfill-from-mongo.mjs --quiet || true",
-
     "check": "node --check server-json.js && node --check menuImageStore.js && node --check autoTranslate.js",
-
     "translate": "node scripts/auto-translate-locales.mjs",
     "translate:force": "node scripts/auto-translate-locales.mjs --force",
     "translate:dry": "node scripts/auto-translate-locales.mjs --dry-run",
-
     "i18n:report": "node scripts/i18n-report.mjs",
     "i18n:check": "node scripts/check-i18n-duplicate.mjs && node scripts/check-locale-coverage.mjs",
-
     "translate:db": "node scripts/backfill-from-mongo.mjs",
     "translate:db:dry": "node scripts/backfill-from-mongo.mjs --dry-run",
     "translate:db:force": "node scripts/backfill-from-mongo.mjs --force",
@@ -35,10 +30,8 @@
     "translate:db:zh": "node scripts/backfill-from-mongo.mjs --lang=zh",
     "translate:db:purge": "node scripts/backfill-from-mongo.mjs --purge",
     "translate:db:clean": "node scripts/backfill-from-mongo.mjs --dry-run --purge",
-
     "cleanup": "node scripts/backfill-from-mongo.mjs --quiet --dry-run",
     "cleanup:purge": "node scripts/backfill-from-mongo.mjs --purge",
-
     "check:i18n": "node scripts/check-i18n-duplicate.mjs && node scripts/check-locale-coverage.mjs",
     "cleanup-db": "node scripts/cleanup-db.mjs",
     "db:migrate-images": "node menuImageStore.js",
@@ -46,6 +39,7 @@
     "merge-db": "node scripts/split.mjs merge"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",
@@ -55,6 +49,7 @@
     "mongodb": "^7.7.0",
     "mongoose": "^8.24.4",
     "node-fetch": "^2.7.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",

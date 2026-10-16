@@ -41,6 +41,8 @@ import CustomerMenu from "./pages/customer/CustomerMenu";
 import CustomerCart from "./pages/customer/CustomerCart";
 import CustomerCheckout from "./pages/customer/CustomerCheckout";
 import CustomerOrders from "./pages/customer/CustomerOrders";
+import PublicOrderQr from "./pages/customer/PublicOrderQr";
+import ChatBotWidget from "./components/ChatBotWidget";
 import CustomerProfile from "./pages/customer/CustomerProfile";
 import CustomerPromotions from "./pages/customer/CustomerPromotions";
 import CustomerSuccess from "./pages/customer/CustomerSuccess";
@@ -96,6 +98,7 @@ export default function App() {
   const { user, loading, login, logout, setUser, mustChangePassword } =
     useAuth();
 
+  const [orderChatRequest, setOrderChatRequest] = useState(null);
   const [cart, setCart] = useState(() => {
     try {
       const saved = localStorage.getItem("canteen_cart");
@@ -243,6 +246,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/payment-result" element={<PaymentResult />} />
+          <Route path="/order-qr/:code" element={<PublicOrderQr />} />
 
           <Route
             path="/auth/google/callback"
@@ -371,9 +375,10 @@ export default function App() {
           element={<Navigate to="/customer/promotions" replace />}
         />
 
+        <Route path="/order-qr/:code" element={<PublicOrderQr />} />
         <Route
           path="/customer/orders"
-          element={wrapCustomer(<CustomerOrders user={user} />)}
+          element={wrapCustomer(<><CustomerOrders user={user} onOpenSupport={setOrderChatRequest} /><ChatBotWidget cart={cart} setCart={setCart} user={user} hideLauncher supportRequest={orderChatRequest} onSupportRequestHandled={() => setOrderChatRequest(null)} /></>)}
         />
 
         <Route

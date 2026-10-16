@@ -8,7 +8,7 @@
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import {
   User, Phone, Clock, FileText, Tag, CheckCircle2, CreditCard, Gift, X, Zap,
   Loader2, Home, ChevronRight, Wallet, QrCode, Banknote, Copy, Check,
@@ -40,8 +40,9 @@ const FALLBACK_TIME_SLOTS = [
 const EMPTY_ARRAY = Object.freeze([]);
 
 const MIN_REDEEM_POINTS = 100;
-const REDEEM_PER_POINT = 10;
+const REDEEM_PER_POINT = 100;
 const REDEEM_MAX_AMOUNT = 2500;
+const MIN_ORDER_POINTS_REDEEM = 10;
 const COUNTDOWN_START = 585;
 
 const SELECTED_CART_KEY = "canteen_cart_selected";
@@ -118,6 +119,10 @@ function slotToString(slot) {
 
 export default function CustomerCheckout({ cart, setCart, user }) {
   const navigate = useNavigate();
+  const checkoutLocation = useLocation();
+  const buyNowItem = checkoutLocation.state?.buyNowItem || null;
+  const buyNowItems = Array.isArray(checkoutLocation.state?.buyNowItems) ? checkoutLocation.state.buyNowItems : [];
+  const isBuyNow = Boolean(buyNowItem || buyNowItems.length);
   const { t, tData } = useI18n();
 
   const [name, setName] = useState(() => user?.name || "");
@@ -135,6 +140,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [points, setPoints] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
   const [settings, setSettings] = useState(null);
+  const [qrImageFailedUrl, setQrImageFailedUrl] = useState('');
   const [timeSlots, setTimeSlots] = useState(FALLBACK_TIME_SLOTS);
   const [initLoading, setInitLoading] = useState(true);
 
@@ -155,6 +161,17 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [selectedKeys] = useCrossTabSync(SELECTED_CART_KEY, EMPTY_ARRAY);
 
   const lines = useMemo(() => {
+    if (buyNowItems.length) {
+      return buyNowItems.map((item, index) => ({
+        ...item,
+        _key: `__buy_now_item_${index}__`
+      }));
+    }
+
+    if (buyNowItem && typeof buyNowItem === "object") {
+      return [{ ...buyNowItem, _key: "__buy_now_item__" }];
+    }
+
     if (!selectedKeys || !selectedKeys.length) {
       return Object.entries(cart).map(([key, item]) => ({
         ...item,
@@ -166,7 +183,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return Object.entries(cart)
       .filter(([key]) => selectedSet.has(key))
       .map(([key, item]) => ({ ...item, _key: key }));
-  }, [cart, selectedKeys]);
+  }, [buyNowItem, buyNowItems, cart, selectedKeys]);
 
   const subtotal = useMemo(
     () =>
@@ -177,9 +194,15 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     [lines]
   );
 
-  const pointsDiscount = usePoints
-    ? Math.min(REDEEM_MAX_AMOUNT, points * REDEEM_PER_POINT)
-    : 0;
+  const pointsToRedeem = Math.min(
+    Math.max(0, Math.floor(Number(points) || 0)),
+    Math.floor(REDEEM_MAX_AMOUNT / REDEEM_PER_POINT),
+    Math.floor(Math.max(0, Number(subtotal) || 0) / REDEEM_PER_POINT)
+  );
+  const pointsDiscount =
+    usePoints && !appliedVoucher && pointsToRedeem >= MIN_ORDER_POINTS_REDEEM
+      ? pointsToRedeem * REDEEM_PER_POINT
+      : 0;
 
   const total = useMemo(
     () => Math.max(0, subtotal - discount - pointsDiscount),
@@ -274,6 +297,61 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     };
   }, []);
 
+  // Sync customer VietQR from latest Admin bank settings
+  useEffect(() => {
+    let cancelled = false;
+    let requesting = false;
+
+    const refreshBankSettings = async () => {
+      if (
+        cancelled ||
+        requesting ||
+        document.visibilityState === "hidden"
+      ) return;
+
+      requesting = true;
+
+      try {
+        const latest = await api.settings.get();
+
+        if (cancelled || !latest || typeof latest !== "object") return;
+
+        setSettings((current) => {
+          if (
+            current &&
+            String(current.bank || "") === String(latest.bank || "") &&
+            String(current.account || "") === String(latest.account || "") &&
+            String(current.accountName || "") === String(latest.accountName || "")
+          ) {
+            return current;
+          }
+
+          return { ...(current || {}), ...latest };
+        });
+      } catch {
+        // Giu cau hinh cu neu mang tam thoi that bai
+      } finally {
+        requesting = false;
+      }
+    };
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "hidden") {
+        void refreshBankSettings();
+      }
+    };
+
+    const timerId = window.setInterval(refreshBankSettings, 10000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
   useEffect(() => {
     if (user?.name) setName((cur) => (cur ? cur : user.name));
     if (user?.phone) setPhone((cur) => (cur ? cur : user.phone));
@@ -311,6 +389,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         setDiscount(res.value);
         setVoucherCode(res.code);
         setAppliedVoucher({ code: res.code, value: res.value });
+        setUsePoints(false);
         toast(
           `${t("Đã áp dụng voucher")}: -${money(res.value)}`,
           "success"
@@ -402,6 +481,74 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return noteParts.join(" · ");
   }, [note, pickupTime, t]);
 
+  const buildOrderDiscountPayload = useCallback(async () => {
+    if (!usePoints) {
+      return {
+        discount: Number(discount) || 0,
+        voucherCode: appliedVoucher?.code || "",
+      };
+    }
+
+    if (appliedVoucher) {
+      toast(
+        t("Chỉ có thể sử dụng voucher hoặc Green Points cho một đơn hàng."),
+        "warning"
+      );
+      return null;
+    }
+
+    if (pointsToRedeem < MIN_ORDER_POINTS_REDEEM) {
+      toast(
+        t("Cần tối thiểu 10 điểm và đơn hàng từ 1.000 đ để sử dụng Green Points."),
+        "warning"
+      );
+      return null;
+    }
+
+    // API hien co quy doi diem thanh voucher:
+    // gia tri voucher = so diem doi * 100 VND.
+    const pointVoucher = await api.points.redeem({
+      points: pointsToRedeem,
+    });
+
+    const redeemedValue = Number(pointVoucher?.value) || 0;
+
+    if (
+      !pointVoucher?.code ||
+      redeemedValue !== pointsToRedeem * REDEEM_PER_POINT ||
+      redeemedValue > subtotal
+    ) {
+      await reloadVouchersAndPoints();
+      throw new Error(
+        t("Không xác minh được voucher đổi điểm. Vui lòng kiểm tra lại voucher trong tài khoản.")
+      );
+    }
+
+    // Neu dat don that bai, voucher da tao van duoc giu lai
+    // trong tai khoan de khach co the su dung lai.
+    setUsePoints(false);
+    setDiscount(redeemedValue);
+    setVoucherCode(pointVoucher.code);
+    setAppliedVoucher({
+      code: pointVoucher.code,
+      value: redeemedValue,
+    });
+
+    await reloadVouchersAndPoints();
+
+    return {
+      discount: redeemedValue,
+      voucherCode: pointVoucher.code,
+    };
+  }, [
+    usePoints,
+    appliedVoucher,
+    discount,
+    pointsToRedeem,
+    subtotal,
+    reloadVouchersAndPoints,
+    t,
+  ]);
   const submitOrder = useCallback(
     async (method) => {
       if (submittingRef.current) return;
@@ -418,18 +565,22 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       setSubmittingOrder(true);
 
       try {
+        const orderDiscountPayload = await buildOrderDiscountPayload();
+        if (!orderDiscountPayload) return;
+
         const order = await api.orders.create({
           items: buildItemsPayload(),
           payment: method,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-          discount: discount + pointsDiscount,
-          voucherCode: appliedVoucher?.code || "",
+          ...orderDiscountPayload,
         });
 
-        const selectedKeysArr = lines.map((m) => m._key);
-        const remainCart = removeOrderedItems(cart, selectedKeysArr);
-        setCart(remainCart);
+        if (!isBuyNow) {
+          const selectedKeysArr = lines.map((m) => m._key);
+          const remainCart = removeOrderedItems(cart, selectedKeysArr);
+          setCart(remainCart);
+        }
         toast(
           `${t("Đặt hàng thành công!")} ${t("Mã đơn")}: ${order.code}`,
           "success"
@@ -445,6 +596,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     },
     [
       lines,
+      isBuyNow,
       cart,
       setCart,
       navigate,
@@ -454,6 +606,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       discount,
       pointsDiscount,
       appliedVoucher,
+      buildOrderDiscountPayload,
       t,
     ]
   );
@@ -503,18 +656,22 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       setSubmittingOrder(true);
 
       try {
+        const orderDiscountPayload = await buildOrderDiscountPayload();
+        if (!orderDiscountPayload) return;
+
         const order = await api.orders.create({
           items: buildItemsPayload(),
           payment: paymentMethodArg,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-          discount: discount + pointsDiscount,
-          voucherCode: appliedVoucher?.code || "",
+          ...orderDiscountPayload,
         });
 
-        const selectedKeysArr = lines.map((m) => m._key);
-        const remainCart = removeOrderedItems(cart, selectedKeysArr);
-        setCart(remainCart);
+        if (!isBuyNow) {
+          const selectedKeysArr = lines.map((m) => m._key);
+          const remainCart = removeOrderedItems(cart, selectedKeysArr);
+          setCart(remainCart);
+        }
         toast(
           `${t("Đặt hàng thành công!")} ${t("Mã đơn")}: ${order.code}`,
           "success"
@@ -531,6 +688,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     },
     [
       lines,
+      isBuyNow,
       cart,
       setCart,
       navigate,
@@ -540,6 +698,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       discount,
       pointsDiscount,
       appliedVoucher,
+      buildOrderDiscountPayload,
       t,
     ]
   );
@@ -573,6 +732,67 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     ? `CANTEEN ${paymentOrder.code}`
     : "CANTEEN";
 
+  const normalizedBankCode = String(bankCode || "").trim();
+  const normalizedBankAccount = String(bankAccount || "").replace(/\s+/g, "");
+
+  const vietQrParams = new URLSearchParams({
+    amount: String(Math.max(0, Math.round(Number(total) || 0))),
+    addInfo: transferContent,
+    accountName: bankAccountName,
+  });
+
+  const vietQrImageUrl =
+    normalizedBankCode && normalizedBankAccount
+      ? `https://img.vietqr.io/image/${encodeURIComponent(normalizedBankCode)}-${encodeURIComponent(normalizedBankAccount)}-compact2.svg?${vietQrParams.toString()}`
+      : "";
+  const downloadVietQrImage = async () => {
+    if (!vietQrImageUrl) {
+      toast(t("Chưa có mã QR để tải xuống"), "error");
+      return;
+    }
+
+    try {
+      const response = await fetch(vietQrImageUrl, {
+        method: "GET",
+        mode: "cors",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Khong tai duoc anh QR");
+      }
+
+      const blob = await response.blob();
+
+      if (!blob.size || (blob.type && !blob.type.startsWith("image/"))) {
+        throw new Error("Du lieu tra ve khong phai anh QR");
+      }
+
+      const extension = /\.svg(?:[?#]|$)/i.test(vietQrImageUrl)
+        ? "svg"
+        : "png";
+
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download = `canteen-vwa-vietqr-${Date.now()}.${extension}`;
+      link.style.display = "none";
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+      toast(t("Đã tải ảnh mã QR xuống máy"), "success");
+    } catch (error) {
+      console.error("Download VietQR failed:", error);
+      toast(
+        t("Không tải được ảnh QR tự động. Vui lòng kiểm tra kết nối và thử lại."),
+        "error"
+      );
+    }
+  };
   return (
     <div className="checkout-v2">
       <section className="checkout-header">
@@ -726,7 +946,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <input
                   type="checkbox"
                   checked={usePoints}
-                  onChange={(e) => setUsePoints(e.target.checked)}
+                  onChange={(e) => {
+                    if (e.target.checked && appliedVoucher) {
+                      toast(t("Chỉ có thể sử dụng voucher hoặc Green Points cho một đơn hàng."), "warning");
+                      return;
+                    }
+                    setUsePoints(e.target.checked);
+                  }}
                 />
                 <div className="checkout-points-option__body">
                   <div className="checkout-points-option__head">
@@ -745,7 +971,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <button
                 type="button"
                 className="checkout-panel__cta"
-                onClick={() => openPayment("WALLET")}
+                onClick={() => confirmPayment("WALLET")}
                 disabled={submittingOrder || total > walletBalance}
               >
                 <Check size={20} />
@@ -777,76 +1003,46 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <div className="checkout-qr-grid">
                 <div className="checkout-qr-frame">
                   <div className="checkout-qr-frame__inner">
-                    <svg
-                      viewBox="0 0 200 200"
-                      className="checkout-qr-svg"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <rect fill="#131b2e" height="50" rx="4" width="50" x="10" y="10" />
-                      <rect fill="#fff" height="30" rx="2" width="30" x="20" y="20" />
-                      <rect fill="#004ac6" height="18" rx="1" width="18" x="26" y="26" />
-
-                      <rect fill="#131b2e" height="50" rx="4" width="50" x="140" y="10" />
-                      <rect fill="#fff" height="30" rx="2" width="30" x="150" y="20" />
-                      <rect fill="#004ac6" height="18" rx="1" width="18" x="156" y="26" />
-
-                      <rect fill="#131b2e" height="50" rx="4" width="50" x="10" y="140" />
-                      <rect fill="#fff" height="30" rx="2" width="30" x="20" y="150" />
-                      <rect fill="#004ac6" height="18" rx="1" width="18" x="26" y="156" />
-
-                      {[
-                        [70, 15], [90, 15], [115, 25], [70, 35],
-                        [15, 70], [35, 70], [20, 95],
-                        [140, 70], [165, 70], [140, 90], [160, 95], [175, 115],
-                        [70, 65], [95, 65], [115, 65],
-                        [65, 90], [90, 90], [120, 90],
-                        [65, 115], [95, 120], [120, 120],
-                        [70, 145], [95, 145], [130, 145],
-                        [70, 165], [100, 165], [125, 170],
-                        [155, 145], [175, 150], [155, 175],
-                      ].map(([x, y], i) => (
-                        <rect
-                          key={i}
-                          fill={i % 3 === 0 ? "#004ac6" : "#131b2e"}
-                          height="10"
-                          rx="1"
-                          width="10"
-                          x={x}
-                          y={y}
-                        />
-                      ))}
-
-                      <rect fill="#004ac6" height="50" rx="8" width="50" x="75" y="75" />
-                      <text
-                        fill="#fff"
-                        fontFamily="'Plus Jakarta Sans', sans-serif"
-                        fontSize="14"
-                        fontWeight="700"
-                        textAnchor="middle"
-                        x="100"
-                        y="105"
+                    {vietQrImageUrl && qrImageFailedUrl !== vietQrImageUrl ? (
+                      <img
+                        src={vietQrImageUrl}
+                        className="checkout-qr-svg"
+                        alt={`Ma VietQR thanh toan cho ${bankAccountName}`}
+                        width="200"
+                        height="200"
+                        decoding="async"
+                        onError={() => setQrImageFailedUrl(vietQrImageUrl)}
+                      />
+                    ) : (
+                      <div
+                        className="checkout-qr-unavailable"
+                        style={{
+                          width: 200,
+                          height: 200,
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          gap: 10,
+                          textAlign: "center",
+                        }}
                       >
-                        VWA
-                      </text>
-                    </svg>
+                        <QrCode size={36} />
+                        <span>
+                          {bankAccount
+                            ? t("Khong tai duoc ma VietQR. Kiem tra ket noi hoac cau hinh ngan hang.")
+                            : t("Admin chua cau hinh tai khoan nhan tien.")}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="checkout-qr-frame__brand">
-                    <span>Napas 247</span>
-                    <span>•</span>
-                    <span className="blue">VietQR</span>
-                    <span>•</span>
-                    <span className="tertiary">VNPAY</span>
-                  </div>
+
 
                   <div className="checkout-qr-frame__actions">
-                    <button type="button">
+                    <button type="button" onClick={downloadVietQrImage}>
                       <Download size={14} />
                       {t("Lưu ảnh QR")}
-                    </button>
-                    <button type="button">
-                      <ExternalLink size={14} />
-                      {t("Mở App Ngân Hàng")}
                     </button>
                   </div>
                 </div>
@@ -926,7 +1122,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <button
                 type="button"
                 className="checkout-panel__cta"
-                onClick={() => openPayment("QR")}
+                onClick={() => confirmPayment("QR")}
                 disabled={submittingOrder}
               >
                 <BadgeCheck size={20} />
@@ -1236,7 +1432,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   {t("Tóm tắt đơn hàng")} ({lines.length} {t("món")})
                 </b>
               </div>
-              <Link to="/customer/cart">{t("Chỉnh sửa")}</Link>
+
             </div>
 
             <div className="checkout-pickup-badge">
@@ -1279,6 +1475,130 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               ))}
             </div>
 
+            <div
+              className="checkout-voucher-panel"
+              style={{
+                margin: "12px 0",
+                padding: "14px",
+                border: "1px solid #dbeafe",
+                borderRadius: "12px",
+                background: "#f8fbff"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "10px" }}>
+                <Tag size={17} color="#2563eb" />
+                <strong style={{ color: "#173b8f" }}>Voucher giảm giá</strong>
+              </div>
+
+              {appliedVoucher ? (
+                <div style={{
+                  padding: "12px",
+                  borderRadius: "8px",
+                  background: "#ecfdf5",
+                  border: "1px solid #a7f3d0"
+                }}>
+                  <div style={{ color: "#047857", fontWeight: 700 }}>
+                    ✓ Đã áp dụng mã {appliedVoucher.code}
+                  </div>
+                  <div style={{ color: "#047857", fontSize: "13px", marginTop: "5px" }}>
+                    Giảm {money(discount)} cho đơn hàng
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearVoucher}
+                    style={{
+                      marginTop: "8px",
+                      padding: "7px 12px",
+                      border: "1px solid #a7f3d0",
+                      borderRadius: "7px",
+                      background: "#fff",
+                      color: "#047857",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Bỏ áp dụng
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      type="text"
+                      value={voucherCode}
+                      onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          applyVoucher(voucherCode);
+                        }
+                      }}
+                      placeholder="Nhập mã voucher"
+                      aria-label="Mã voucher"
+                      disabled={applyingVoucher}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        padding: "10px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        background: "#fff"
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => applyVoucher(voucherCode)}
+                      disabled={applyingVoucher || !voucherCode.trim()}
+                      style={{
+                        padding: "10px 14px",
+                        border: 0,
+                        borderRadius: "8px",
+                        background: applyingVoucher || !voucherCode.trim() ? "#94a3b8" : "#2563eb",
+                        color: "#fff",
+                        fontWeight: 700,
+                        cursor: applyingVoucher || !voucherCode.trim() ? "not-allowed" : "pointer"
+                      }}
+                    >
+                      {applyingVoucher ? "Đang kiểm tra..." : "Áp dụng"}
+                    </button>
+                  </div>
+
+                  {myVouchers.filter((v) => !v.used).length > 0 && (
+                    <div style={{ marginTop: "10px" }}>
+                      <label style={{ display: "block", fontSize: "12px", color: "#475569", marginBottom: "5px" }}>
+                        Hoặc chọn voucher đã lưu
+                      </label>
+                      <select
+                        value=""
+                        disabled={applyingVoucher}
+                        onChange={(e) => {
+                          if (e.target.value) applyVoucher(e.target.value);
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "10px",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: "8px",
+                          background: "#fff"
+                        }}
+                      >
+                        <option value="">-- Chọn voucher --</option>
+                        {myVouchers.filter((v) => !v.used).map((v) => (
+                          <option key={v.id || v.code} value={v.code}>
+                            {v.code} — Giảm {money(Number(v.value) || 0)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {myVouchers.filter((v) => !v.used).length === 0 && (
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: "8px 0 0" }}>
+                      Bạn chưa có voucher đã lưu. Hãy nhập mã voucher hợp lệ.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
             <div className="checkout-summary__costs">
               <div className="checkout-cost-row">
                 <span>{t("Tạm tính:")}</span>
@@ -1319,7 +1639,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               </div>
             </div>
 
-            {(paymentMethod === "wallet" || paymentMethod === "qr") ? (
+            {(paymentMethod === "wallet" || paymentMethod === "qr") && (
               <div className="checkout-summary__note">
                 <Info size={16} />
                 <span>
@@ -1328,31 +1648,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     : t("Vui lòng hoàn tất chuyển khoản, sau đó ấn xác nhận.")}
                 </span>
               </div>
-            ) : (
-              <button
-                type="button"
-                className="checkout-summary__cta"
-                onClick={() =>
-                  submitOrder(paymentMethod === "card" ? "CARD" : "CASH")
-                }
-                disabled={submittingOrder}
-              >
-                {submittingOrder ? (
-                  <>
-                    <Loader2 size={18} className="checkout-spin" />
-                    {t("Đang xử lý...")}
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={20} />
-                    {t("Xác nhận đặt đơn")}
-                  </>
-                )}
-              </button>
             )}
 
-            <Link to="/customer/cart" className="checkout-summary__back">
-              {t("Quay lại giỏ hàng chỉnh sửa")}
+            <Link
+              to={isBuyNow ? "/customer/menu" : "/customer/cart"}
+              className="checkout-summary__back"
+            >
+              {isBuyNow ? t("Quay lại thực đơn") : t("Quay lại giỏ hàng chỉnh sửa")}
             </Link>
           </div>
 
