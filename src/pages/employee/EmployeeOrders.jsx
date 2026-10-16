@@ -1044,7 +1044,10 @@ export default function EmployeeOrders() {
                       isProcessing={advancingId === (o._id || o.id)}
                       elapsed={calcElapsedSec(o.created_at)}
                       onAdvance={() => advance(o)}
-                      t={t}
+                      onApproveGreen={approveGreen}
+                      onRejectGreen={rejectGreen}
+                      greenBusy={greenBusyId === (o._id || o.id)}
+                                            t={t}
                     />
                   ))}
                 </KDSRow>
@@ -1079,6 +1082,9 @@ export default function EmployeeOrders() {
                       isProcessing={advancingId === (o._id || o.id)}
                       elapsed={calcElapsedSec(o.created_at)}
                       onAdvance={() => advance(o)}
+                      onApproveGreen={approveGreen}
+                      onRejectGreen={rejectGreen}
+                      greenBusy={greenBusyId === (o._id || o.id)}
                       t={t}
                     />
                   ))}
@@ -1113,6 +1119,9 @@ export default function EmployeeOrders() {
                       isPriority={idx === 0 && !expandedRows.ready}
                       isProcessing={advancingId === (o._id || o.id)}
                       onAdvance={() => advance(o)}
+                      onApproveGreen={approveGreen}
+                      onRejectGreen={rejectGreen}
+                      greenBusy={greenBusyId === (o._id || o.id)}
                       t={t}
                     />
                   ))}
