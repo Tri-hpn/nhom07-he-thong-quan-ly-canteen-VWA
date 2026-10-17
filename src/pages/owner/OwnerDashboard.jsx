@@ -287,7 +287,7 @@ export default function OwnerDashboard() {
         <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 16 }}>{error}</div>
         <button
           onClick={() => loadAll()}
-          style={{
+          style={{ display: "none",
             padding: "10px 20px",
             background: "#ef4444",
             color: "#fff",
@@ -296,7 +296,7 @@ export default function OwnerDashboard() {
             cursor: "pointer",
             fontWeight: 600,
             fontSize: 13,
-            display: "inline-flex",
+            display: "none",
             alignItems: "center",
             gap: 6,
           }}
@@ -322,7 +322,7 @@ export default function OwnerDashboard() {
       >
         <div
           style={{
-            display: "flex",
+            display: "none", // Ẩn thanh Realtime
             alignItems: "center",
             gap: 8,
             fontSize: 12,
@@ -348,29 +348,7 @@ export default function OwnerDashboard() {
           </span>
         </div>
 
-        <button
-          onClick={() => loadAll()}
-          disabled={refreshing}
-          style={{
-            padding: "6px 12px",
-            background: "var(--bg-tertiary, #f5f7fb)",
-            border: "1px solid var(--border-color, #e5e9ef)",
-            borderRadius: 6,
-            cursor: refreshing ? "not-allowed" : "pointer",
-            fontSize: 12,
-            color: "var(--text-primary, #172033)",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            opacity: refreshing ? 0.6 : 1,
-          }}
-        >
-          <RefreshCw
-            size={13}
-            style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }}
-          />
-          {t("Làm mới")}
-        </button>
+        
       </div>
 
       {/* KPI CARDS */}
