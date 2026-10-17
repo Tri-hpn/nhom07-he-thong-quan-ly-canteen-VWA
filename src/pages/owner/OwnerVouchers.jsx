@@ -2,10 +2,13 @@
 // OWNERVOUCHERS.JSX — Quản lý voucher (Admin)
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
+// ✅ V4: Nhận URL params từ trang Chat để tạo voucher cho khách
+// ✅ V5: Fix lỗi dropdown không tự chọn khách hàng (Controlled Component)
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings,
 } from "lucide-react";
@@ -82,6 +85,7 @@ function readStoredFilters() {
 
 export default function OwnerVouchers() {
   const { t } = useI18n();
+  const [searchParams] = useSearchParams();
 
   // Filter options — useMemo vì phụ thuộc t
   const SOURCE_FILTERS = useMemo(
@@ -122,6 +126,7 @@ export default function OwnerVouchers() {
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formValue, setFormValue] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState(""); // ✅ V5: Controlled select
 
   // ✅ V3: Khởi tạo filter từ localStorage
   const [filters, setFilters] = useState(() => readStoredFilters());
@@ -187,10 +192,24 @@ export default function OwnerVouchers() {
     load();
   }, [load]);
 
-  // Sync formValue khi mở/đổi modal
+  // Auto open modal from URL params
+  useEffect(() => {
+    if (searchParams.get("action") === "create") {
+      const uId = searchParams.get("userId");
+      const uName = searchParams.get("userName");
+      setModal({ 
+        code: generateCode(), 
+        user_id: uId ? Number(uId) : "", 
+        user_name: uName || "" 
+      });
+    }
+  }, [searchParams]);
+
+  // Sync formValue và selectedUserId khi mở/đổi modal
   useEffect(() => {
     if (modal) {
       setFormValue(modal.value != null ? Number(modal.value) : "");
+      setSelectedUserId(modal.user_id ? String(modal.user_id) : ""); // ✅ V5
     }
   }, [modal]);
 
@@ -376,15 +395,13 @@ export default function OwnerVouchers() {
     const f = new FormData(e.currentTarget);
     const code = f.get("code")?.trim().toUpperCase();
     const value = Number(formValue);
-    const userId = f.get("user_id") ? Number(f.get("user_id")) : null;
-    const pointsUsed = Number(f.get("points_used")) || 0;
+    const userId = selectedUserId ? Number(selectedUserId) : null;
 
     // Validate cơ bản
     if (!code) return toast(t("Vui lòng nhập mã voucher"), "error");
     if (!value || value <= 0) return toast(t("Giá trị phải lớn hơn 0"), "error");
     if (value > 10_000_000)
       return toast(t("Giá trị tối đa 10 triệu"), "error");
-    if (pointsUsed < 0) return toast(t("Số điểm không được âm"), "error");
 
     // ✅ V1: Validate trùng mã (case-insensitive, bỏ qua chính nó khi edit)
     const currentId = modal?.id;
@@ -402,7 +419,7 @@ export default function OwnerVouchers() {
 
     setSaving(true);
     try {
-      const data = { code, value, user_id: userId, points_used: pointsUsed };
+      const data = { code, value, user_id: userId };
       if (modal?.id) {
         await api.vouchers.update(modal.id, data);
         toast(t("Đã cập nhật voucher"), "success");
@@ -520,7 +537,7 @@ export default function OwnerVouchers() {
     let a = null;
     try {
       const rows = [
-        [t("Mã"), t("Giá trị"), t("Nguồn"), t("Khách hàng"), t("Điểm đổi"), t("Trạng thái"), t("Ngày tạo")],
+        [t("Mã"), t("Giá trị"), t("Nguồn"), t("Khách hàng"), t("Trạng thái"), t("Ngày tạo")],
         ...filtered.map((v) => {
           const c = customerMap.get(String(v.user_id));
           const src = getSource(v).label;
@@ -534,7 +551,6 @@ export default function OwnerVouchers() {
             v.value,
             src,
             customerName,
-            v.points_used || 0,
             v.used ? t("Đã dùng") : t("Chưa dùng"),
             v.created_at
               ? new Date(v.created_at).toLocaleString("vi-VN")
@@ -1178,7 +1194,8 @@ export default function OwnerVouchers() {
             </label>
             <select
               name="user_id"
-              defaultValue={modal.user_id || ""}
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
               disabled={saving}
               style={inputStyle}
             >
@@ -1189,16 +1206,6 @@ export default function OwnerVouchers() {
                 </option>
               ))}
             </select>
-
-            <label style={labelStyle}>{t("Số điểm đổi (nếu có)")}</label>
-            <input
-              name="points_used"
-              type="number"
-              min="0"
-              defaultValue={modal.points_used || 0}
-              disabled={saving}
-              style={inputStyle}
-            />
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button

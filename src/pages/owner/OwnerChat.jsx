@@ -1,19 +1,20 @@
 // ============================================================
-// OWNERCHAT.JSX — Trang quản lý Chat cho Admin (V1)
+// OWNERCHAT.JSX — Trang quản lý Chat cho Admin (V2)
 // ============================================================
 // Chức năng:
 //   - Xem tất cả hội thoại khách ↔ nhân viên (polling 3s)
 //   - Đọc nội dung tin nhắn realtime
 //   - Tiếp quản hội thoại (nhắn trực tiếp với khách)
-//   - Panel phải: toggle global chat + per-employee,
-//     hàng chờ yêu cầu chuyển tiếp
+//   - Panel phải: Hồ sơ khách + Tặng voucher + toggle global chat
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   MessageCircle, RefreshCw, Loader2, AlertCircle, Search, X,
   Headset, Send, User as UserIcon, Lock, Unlock, ShieldAlert,
   CheckCircle2, XCircle, ChevronLeft, Pin, PinOff, Bell,
+  Ticket, Heart, Microwave, Smartphone, Utensils, ChevronRight
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -78,6 +79,11 @@ function fmtRelative(iso) {
   }
 }
 
+function fmtMoney(n) {
+  const num = Number(n) || 0;
+  return num.toLocaleString("vi-VN") + "đ";
+}
+
 function DateDivider({ iso }) {
   const label = fmtDateLabel(iso);
   const variant = getDateLabelVariant(iso);
@@ -93,6 +99,7 @@ function DateDivider({ iso }) {
 
 export default function OwnerChat() {
   const { t } = useI18n();
+  const navigate = useNavigate();
 
   // ---------- Data ----------
   const [conversations, setConversations] = useState([]);
@@ -107,6 +114,11 @@ export default function OwnerChat() {
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+
+  // ---------- Context Data (Customer Info) ----------
+  const [contextData, setContextData] = useState(null);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [currentOrderIdx, setCurrentOrderIdx] = useState(0);
 
   // ---------- Compose ----------
   const [text, setText] = useState("");
@@ -221,8 +233,29 @@ export default function OwnerChat() {
           x.user_id === c.user_id ? { ...x, unread: 0 } : x
         )
       );
+      
+      // Reset context data
+      setContextData(null);
+      setCustomerOrders([]);
+      setCurrentOrderIdx(0);
+
       await loadMessages(c.user_id, false);
       loadConvs(true);
+
+      // Fetch context data
+      api.chat.getContext(c.user_id).then(data => {
+        if (selectedRef.current?.user_id === c.user_id) setContextData(data);
+      }).catch(() => {});
+
+      // Fetch orders
+      api.orders.all("Tất cả").then(allOrders => {
+        if (selectedRef.current?.user_id !== c.user_id) return;
+        const list = Array.isArray(allOrders) ? allOrders : [];
+        const myOrders = list
+          .filter(o => o.customer_id === c.user_id && !["Hoàn thành", "Đã hủy"].includes(o.status))
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setCustomerOrders(myOrders);
+      }).catch(() => {});
     },
     [loadMessages, loadConvs]
   );
@@ -785,14 +818,124 @@ export default function OwnerChat() {
           )}
         </div>
 
-        {/* ============== COLUMN 3: ADMIN CONTROLS ============== */}
-        <AdminChatControls
-          onTransferCountChange={setTransferCount}
-          onTakeoverUser={(userId) => {
-            const c = conversations.find((x) => String(x.user_id) === String(userId));
-            if (c) openConv(c);
-          }}
-        />
+        {/* ============== COLUMN 3: ADMIN CONTROLS & CUSTOMER INFO ============== */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, overflowY: "auto" }}>
+          
+          {/* BLOCK HỒ SƠ KHÁCH HÀNG */}
+          {selected && (
+            <div className="chat-context-card" style={{ background: "#fff", borderRadius: 12, padding: 16, border: "1px solid #e7ebf0" }}>
+              
+              {/* Nút Tặng Voucher */}
+              <button
+                onClick={() => navigate(`/owner/vouchers?action=create&userId=${selected.user_id}&userName=${encodeURIComponent(selected.user_name)}`)}
+                style={{
+                  width: "100%", padding: "10px", borderRadius: 8, border: 0, background: "#2634d5", color: "#fff",
+                  fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  cursor: "pointer", marginBottom: 16
+                }}
+              >
+                <Ticket size={16} /> {t("Tặng voucher cho khách")}
+              </button>
+
+              {/* Hồ sơ */}
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontWeight: 700, color: "var(--st-text)" }}>{t("Hồ sơ khách dùng bữa")}</span>
+                <span style={{ padding: "2px 8px", background: "#f0f4ff", color: "#2634d5", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
+                  {contextData?.user?.tier || t("Hạng Bạc")}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
+                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#f0f4ff", display: "grid", placeItems: "center" }}>
+                  {contextData?.user?.avatar || selected.user_avatar ? (
+                    <img src={contextData?.user?.avatar || selected.user_avatar} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                  ) : <UserIcon size={24} style={{ color: "#2634d5" }} />}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{contextData?.user?.name || selected.user_name}</div>
+                  <div style={{ fontSize: 12, color: "var(--st-text-muted)", marginTop: 2 }}>{contextData?.user?.faculty || "—"}</div>
+                  <div style={{ fontSize: 11, color: "#18a967", fontWeight: 600, marginTop: 2 }}>Tích lũy: {contextData?.user?.points || 0} Green Points</div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: 12, background: "#f5f7fb", borderRadius: 8, marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--st-text-muted)" }}>{t("Ví VWA Pay")}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "var(--st-text)" }}>{fmtMoney(contextData?.wallet?.balance || 0)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--st-text-muted)" }}>{t("Đơn tháng này")}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#2634d5" }}>{contextData?.ordersThisMonth || 0} {t("đơn")}</div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, padding: 12, background: "#f4f6fd", borderRadius: 8, marginBottom: 16 }}>
+                <Heart size={18} style={{ color: "#2634d5", flexShrink: 0 }} />
+                <div style={{ fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>{t("Ghi chú khẩu vị cá nhân:")}</div>
+                  <div style={{ color: "var(--st-text-muted)" }}>"Không ăn cay nhiều, ưu tiên cơm nóng, dùng ít đá giải khát."</div>
+                </div>
+              </div>
+
+              {/* Đơn đang xử lý */}
+              {customerOrders.length > 0 ? (() => {
+                const currentOrder = customerOrders[currentOrderIdx];
+                return (
+                  <div style={{ border: "1px solid #e7ebf0", borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: "var(--st-text-muted)", fontWeight: 600 }}>{t("ĐƠN HÀNG ĐANG XỬ LÝ")}</div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#2634d5", marginTop: 2 }}>{currentOrder.code}</div>
+                      </div>
+                      {customerOrders.length > 1 && (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button onClick={() => setCurrentOrderIdx(p => Math.max(0, p - 1))} disabled={currentOrderIdx === 0} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #e7ebf0", background: "#fff", cursor: currentOrderIdx === 0 ? "not-allowed" : "pointer" }}><ChevronLeft size={14} /></button>
+                          <button onClick={() => setCurrentOrderIdx(p => Math.min(customerOrders.length - 1, p + 1))} disabled={currentOrderIdx === customerOrders.length - 1} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #e7ebf0", background: "#fff", cursor: currentOrderIdx === customerOrders.length - 1 ? "not-allowed" : "pointer" }}><ChevronRight size={14} /></button>
+                        </div>
+                      )}
+                      <div style={{ padding: "4px 10px", background: "#2634d5", color: "#fff", borderRadius: 6, fontWeight: 700, fontSize: 13 }}>
+                        #{selected.token || (Number(selected.user_id) % 50 + 1)}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "#f0f4ff", borderRadius: 6, marginBottom: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Microwave size={14} /> {t("Trạng thái")}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#2634d5" }}>{t(currentOrder.status)}</span>
+                    </div>
+
+                    {(currentOrder.items || []).map((item, idx) => (
+                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "6px 0", borderBottom: "1px dashed #e7ebf0" }}>
+                        <div><span style={{ fontWeight: 700 }}>{item.qty}x</span> {t(item.name)}</div>
+                        <div style={{ fontWeight: 600 }}>{fmtMoney(item.price)}</div>
+                      </div>
+                    ))}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 13, fontWeight: 700 }}>
+                      <span>{t("Tổng cộng")}</span>
+                      <span>{fmtMoney(currentOrder.subtotal)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 13, fontWeight: 700, color: "#18a967" }}>
+                      <span>{t("Đã thu qua")} {currentOrder.payment}:</span>
+                      <span>{fmtMoney(currentOrder.total)}</span>
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div style={{ textAlign: "center", padding: 20, color: "var(--st-text-muted)", fontSize: 12 }}>
+                  {t("Khách chưa có đơn nào đang xử lý")}
+                </div>
+              )}
+            </div>
+          )}
+
+          <AdminChatControls
+            onTransferCountChange={setTransferCount}
+            onTakeoverUser={(userId) => {
+              const c = conversations.find((x) => String(x.user_id) === String(userId));
+              if (c) openConv(c);
+            }}
+          />
+        </div>
       </div>
 
       <style>{`

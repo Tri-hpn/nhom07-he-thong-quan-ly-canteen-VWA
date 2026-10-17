@@ -1,10 +1,10 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V9 - FINAL)
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V11 - FINAL)
 // ============================================================
-// V9 (2026-10):
-//   - ✅ Thêm menu "Chat & Hỗ trợ" cho ADMIN (/owner/chat)
-//   - ✅ Badge số yêu cầu chuyển tiếp chat đang chờ
-//   - Giữ V8: label dùng key có trong en.json
+// V11 (2026-10):
+//   - ✅ Đồng nhất giao diện Employee giống Admin.
+//   - ✅ Thêm Role Chip cho cả 2 bên.
+//   - ✅ XOÁ HOÀN TOÀN khối thông tin User ở cuối Sidebar.
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -71,7 +71,6 @@ const MENU_CONFIG = {
           ["wallet_admin", "Ví",                  "/owner/wallet"],
           ["employees",    "Quản lý nhân viên",   "/owner/employees"],
           ["customers",    "Khách hàng",          "/owner/customers"],
-          // ✅ V9: Chat & Hỗ trợ
           ["chat",         "Chat & Hỗ trợ",       "/owner/chat", { badge: "chat" }],
           ["permissions",  "Phân quyền",          "/owner/permissions"],
           ["backup",       "Backup dữ liệu",      "/owner/backup"],
@@ -82,7 +81,7 @@ const MENU_CONFIG = {
   EMPLOYEE: {
     zones: [
       {
-        label: "Nhân viên & Bếp (KDS)",
+        label: null,
         items: [
           ["dashboard",   "Tổng quan ca làm việc", "/employee"],
           ["kds_kanban",  "Bàn làm việc (Kanban)", "/employee/orders", { badge: "kds_kanban" }],
@@ -109,12 +108,6 @@ const MENU_CONFIG = {
       },
     ],
   },
-};
-
-const PROFILE_CONFIG = {
-  ADMIN:    { to: "/owner/profile",    label: "Quản trị viên" },
-  EMPLOYEE: { to: "/employee/profile", label: "Nhân viên" },
-  CUSTOMER: { to: "/customer/profile", label: "Khách hàng" },
 };
 
 const ROOT_PATHS = ["/owner", "/employee", "/customer"];
@@ -150,14 +143,6 @@ function isNavItemActive(to, siblings, location) {
   });
 }
 
-function getInitials(name) {
-  if (!name) return "VWA";
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "VWA";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
 function readCartCount() {
   try {
     const raw = localStorage.getItem("canteen_cart");
@@ -180,142 +165,6 @@ function readLastSeen(key) {
   }
 }
 
-function StaffSidebarUser({ user, onLogout, t }) {
-  if (!user) return null;
-
-  return (
-    <div className="staff-sidebar-user">
-      <div className="staff-sidebar-user__row">
-        <div className="staff-sidebar-user__avatar">
-          {user.avatar ? (
-            <img
-              src={user.avatar}
-              alt={user.name || t("Avatar")}
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.style.display = "none";
-              }}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            getInitials(user.name)
-          )}
-        </div>
-        <div className="staff-sidebar-user__info">
-          <span className="staff-sidebar-user__name">
-            {user.name || t("Nhân viên")}
-          </span>
-          <span className="staff-sidebar-user__role">
-            {user.employeeCode || "NV-2024-08"} • {t("Quầy 01")}
-          </span>
-        </div>
-      </div>
-
-      <div className="staff-sidebar-user__footer">
-        <span className="staff-sidebar-user__tag">
-          {t("Thu ngân / ĐP Bếp")}
-        </span>
-        <button
-          type="button"
-          className="staff-sidebar-user__logout"
-          onClick={onLogout}
-          title={t("Đăng xuất")}
-          aria-label={t("Đăng xuất")}
-        >
-          <LogOut size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ProfileLink({ user, role, onNavClick, t }) {
-  const cfg = PROFILE_CONFIG[role];
-  if (!cfg || !user) return null;
-
-  const initials = getInitials(user.name);
-
-  return (
-    <Link
-      to={cfg.to}
-      onClick={onNavClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 12px",
-        marginTop: 10,
-        background: "transparent",
-        borderRadius: 12,
-        textDecoration: "none",
-        transition: "background 0.2s",
-      }}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.background = "var(--sky-100, #E0F2FE)")
-      }
-      onMouseLeave={(e) =>
-        (e.currentTarget.style.background = "transparent")
-      }
-    >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: "50%",
-          background:
-            "linear-gradient(135deg, var(--sky-400, #38BDF8), var(--sky-600, #0284C7))",
-          color: "#fff",
-          display: "grid",
-          placeItems: "center",
-          fontSize: 13,
-          fontWeight: 700,
-          flexShrink: 0,
-          overflow: "hidden",
-        }}
-      >
-        {user.avatar ? (
-          <img
-            src={user.avatar}
-            alt={user.name || t("Avatar")}
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.style.display = "none";
-            }}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          initials
-        )}
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <b
-          style={{
-            display: "block",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "var(--sky-ink-900, #0F172A)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {user.name || t("Khách")}
-        </b>
-        <small
-          style={{
-            display: "block",
-            fontSize: 11,
-            color: "var(--sky-ink-500, #64748B)",
-          }}
-        >
-          {t(cfg.label)}
-        </small>
-      </div>
-    </Link>
-  );
-}
-
 export default function Sidebar({ role, onLogout, user }) {
   const { t } = useI18n();
 
@@ -325,7 +174,6 @@ export default function Sidebar({ role, onLogout, user }) {
   const [voucherCount, setVoucherCount] = useState(0);
   const [kdsCount, setKdsCount] = useState(0);
   const [prepCount, setPrepCount] = useState(0);
-  // ✅ V9: badge số yêu cầu chuyển tiếp chat
   const [chatTransferCount, setChatTransferCount] = useState(0);
 
   const [tabVisible, setTabVisible] = useState(
@@ -436,7 +284,6 @@ export default function Sidebar({ role, onLogout, user }) {
         setKdsCount(kanbanCount);
         setPrepCount(prepCountValue);
       } else if (role === "ADMIN") {
-        // ✅ V9: đếm yêu cầu chuyển tiếp chat đang chờ
         const pending = await api.chat.admin
           .transferRequests("pending")
           .catch(() => []);
@@ -473,7 +320,6 @@ export default function Sidebar({ role, onLogout, user }) {
     window.addEventListener("points-seen", onRefresh);
     window.addEventListener("order-reviewed", onRefresh);
     window.addEventListener("orders-seen", onRefresh);
-    // ✅ V9: refresh badge khi resolve transfer
     window.addEventListener("chat-transfer-updated", onRefresh);
 
     return () => {
@@ -496,26 +342,9 @@ export default function Sidebar({ role, onLogout, user }) {
     (key) => {
       if (key === "orders" && orderPending > 0) return orderPending;
       if (key === "promotions" && voucherCount > 0) return voucherCount;
-
-      if (
-        (key === "kds_kanban" || key === "kds") &&
-        kdsCount > 0
-      ) {
-        return kdsCount;
-      }
-
-      if (
-        (key === "prep" || key === "kds_prep") &&
-        prepCount > 0
-      ) {
-        return prepCount;
-      }
-
-      // ✅ V9: badge chat transfer cho ADMIN
-      if (key === "chat" && chatTransferCount > 0) {
-        return chatTransferCount;
-      }
-
+      if ((key === "kds_kanban" || key === "kds") && kdsCount > 0) return kdsCount;
+      if ((key === "prep" || key === "kds_prep") && prepCount > 0) return prepCount;
+      if (key === "chat" && chatTransferCount > 0) return chatTransferCount;
       return 0;
     },
     [orderPending, voucherCount, kdsCount, prepCount, chatTransferCount]
@@ -539,18 +368,16 @@ export default function Sidebar({ role, onLogout, user }) {
       >
         <div className="brand">
           <LogoVWACompact size={40} />
-
           <div className="brand-text">
             <strong>CANTEEN VWA</strong>
             <small>{isStaff ? t("KDS/SAAS") : "VWA"}</small>
           </div>
         </div>
 
-        {!isStaff && (
-          <div className="role-chip">
-            {role === "ADMIN" ? t("Quản trị viên") : t("Khách hàng")}
-          </div>
-        )}
+        {/* Role chip đồng bộ cho cả 3 role */}
+        <div className="role-chip">
+          {role === "ADMIN" ? t("Quản trị viên") : role === "EMPLOYEE" ? t("Nhân viên") : t("Khách hàng")}
+        </div>
 
         <nav>
           {config.zones.map((zone, zIdx) => (
@@ -595,19 +422,7 @@ export default function Sidebar({ role, onLogout, user }) {
           ))}
         </nav>
 
-        {isStaff && (
-          <div className="staff-sidebar-node">
-            <div className="staff-sidebar-node__left">
-              <span className="staff-sidebar-node__dot" />
-              <span>POS Node #01</span>
-            </div>
-            <span className="staff-sidebar-node__version">v2.4.0</span>
-          </div>
-        )}
-
-        {isStaff ? (
-          <StaffSidebarUser user={user} onLogout={onLogout} t={t} />
-        ) : null}
+        {/* Đã xoá hoàn toàn khối thông tin User ở đây */}
       </aside>
     </>
   );

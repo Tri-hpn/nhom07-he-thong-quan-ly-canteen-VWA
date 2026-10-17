@@ -1,24 +1,10 @@
 // ============================================================
-// EMPLOYEEMENU.JSX — Quản lý Kho & Báo hết món (86 List) V3
+// EMPLOYEEMENU.JSX — Quản lý Kho & Báo hết món (86 List) V7
 // ============================================================
-// Layout theo design mới (MẪU A — card ngang compact):
-//   - Hero header + 2 quick actions (bỏ Batch 86)
-//   - 4 KPI cards (Tổng món, Đang bán, Tạm hết hàng, Đã tắt)
-//   - Filter: search + 3 dropdowns + category pills
-//   - Grid card ngang (giống trang khách) với:
-//       • Ảnh vuông 96px
-//       • Info: category, tên, giá cũ/mới, rating/kcal/phút
-//       • Bottom: stepper - 1 +  |  +10 +20  |  Tạm hết hàng/Mở lại
-//   - Pagination 12 món/trang
-//   - Audit log table
-//
-// 🔧 PHÂN QUYỀN:
-//   - Nhân viên CHỈ được adjust stock + tạm hết hàng (stock=0)
-//   - Nhân viên KHÔNG được tắt món (active=0) — chỉ admin
-//   - Món active=0 hoặc stock=0 vẫn hiện cho NV (có badge trạng thái)
-//   - Chỉ XOÁ (api.menu.remove) mới ẩn hoàn toàn
-//
-// 🔧 FIX #81: audit log dùng Intl.DateTimeFormat cố định (VN, 24h)
+// V7:
+//   - ✅ FIX: Dropdown filter bị chìm (thêm z-index).
+//   - ✅ FIX: Danh sách trống do dính khoảng trắng trong ô search.
+//   - ✅ FIX: Reset trang ngay lập tức khi đổi bộ lọc.
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -26,12 +12,13 @@ import {
   Search, X, Loader2, AlertCircle, RefreshCw, Package, Store, Ban,
   Hourglass, FileSpreadsheet, History, Plus, Minus, Timer, AlertTriangle,
   CheckCircle2, ToggleLeft, ToggleRight, Utensils, Sparkles, RotateCcw,
-  Filter, ChevronLeft, ChevronRight, Star, Flame, Clock, Power, EyeOff,
+  Filter, ChevronLeft, ChevronRight, Star, Flame, Clock, Power,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
+import { useAuth } from "../../contexts/AuthContext";
 
 // ============================================================
 // CONSTANTS
@@ -41,10 +28,13 @@ const REFRESH_MS = 30000;
 const LOW_STOCK_THRESHOLD = 10;
 const MAX_STOCK = 100;
 const PAGE_SIZE = 12;
+const AUDIT_STORAGE_KEY = "canteen_audit_log";
 
-// 🔧 FIX #81: formatter cố định cho audit log (VN timezone, 24h)
-const AUDIT_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+const AUDIT_TIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
   timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
@@ -104,14 +94,9 @@ function getStationId(item) {
 function getStockStatus(item) {
   const stock = Number(item.stock) || 0;
   const active = Number(item.active) !== 0;
-
-  // Đã tắt món (admin tắt)
   if (!active) return "DISABLED";
-  // Tạm hết hàng (NV báo hết)
   if (stock === 0) return "OUT";
-  // Sắp hết
   if (stock < LOW_STOCK_THRESHOLD) return "LOW";
-  // Đang bán
   return "ACTIVE";
 }
 
@@ -124,12 +109,24 @@ function getFALLBACK_IMG() {
   );
 }
 
+function getSafeAuditLog() {
+  try {
+    const saved = localStorage.getItem(AUDIT_STORAGE_KEY);
+    if (!saved || saved === "undefined" || saved === "null") return [];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 
 export default function EmployeeMenu() {
   const { t, tData } = useI18n();
+  const { user } = useAuth();
 
   // ---- Data ----
   const [items, setItems] = useState([]);
@@ -150,11 +147,20 @@ export default function EmployeeMenu() {
   // ---- Action tracking ----
   const [processingIds, setProcessingIds] = useState(() => new Set());
 
-  // ---- Audit log (local state) ----
-  const [auditLog, setAuditLog] = useState([]);
+  // ---- Audit log ----
+  const [auditLog, setAuditLog] = useState(getSafeAuditLog);
+  const [showAuditModal, setShowAuditModal] = useState(false);
 
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(auditLog));
+    } catch (e) {
+      console.warn("Không thể lưu nhật ký:", e);
+    }
+  }, [auditLog]);
 
   // ============================================================
   // LOAD
@@ -170,7 +176,6 @@ export default function EmployeeMenu() {
       setError("");
 
       try {
-        // Load TẤT CẢ món (kể cả active=0) — endpoint mặc định trả hết
         const data = await api.menu.list("", "Tất cả", "popular");
         if (myReqId !== reqIdRef.current) return;
         const list = Array.isArray(data) ? data : [];
@@ -199,11 +204,6 @@ export default function EmployeeMenu() {
     return () => clearInterval(timer);
   }, [load]);
 
-  // Reset page khi filter/search đổi
-  useEffect(() => {
-    setPage(1);
-  }, [search, stationFilter, statusFilter, sortBy, category]);
-
   // ============================================================
   // DERIVED
   // ============================================================
@@ -212,7 +212,6 @@ export default function EmployeeMenu() {
     return items.map((m) => {
       const stock = typeof m.stock === "number" ? m.stock : 0;
       const sold = typeof m.sold === "number" ? m.sold : 0;
-      // Tổng xuất ban đầu = stock còn + sold đã bán
       const totalStock = stock + sold;
 
       return {
@@ -254,24 +253,21 @@ export default function EmployeeMenu() {
   const filtered = useMemo(() => {
     let list = [...enrichedItems];
 
-    // Category
+    // 1. Category
     if (category !== "ALL") {
       list = list.filter((m) => m._catId === category);
     }
-
-    // Station
+    // 2. Station
     if (stationFilter !== "ALL") {
       list = list.filter((m) => m._stationId === stationFilter);
     }
-
-    // Status
+    // 3. Status
     if (statusFilter !== "ALL") {
       list = list.filter((m) => m._stockStatus === statusFilter);
     }
-
-    // Search
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
+    // 4. Search (Trim trước khi filter)
+    const q = search.trim().toLowerCase();
+    if (q) {
       list = list.filter(
         (m) =>
           (m.name || "").toLowerCase().includes(q) ||
@@ -280,23 +276,16 @@ export default function EmployeeMenu() {
       );
     }
 
-    // Sort
+    // 5. Sort
     list.sort((a, b) => {
-      // Ưu tiên: DISABLED xuống cuối, OUT lên đầu
       const order = { OUT: 0, LOW: 1, ACTIVE: 2, DISABLED: 3 };
       const oa = order[a._stockStatus] ?? 4;
       const ob = order[b._stockStatus] ?? 4;
       if (oa !== ob) return oa - ob;
 
-      if (sortBy === "STOCK_ASC") {
-        return a._stock - b._stock;
-      }
-      if (sortBy === "STOCK_DESC") {
-        return b._stock - a._stock;
-      }
-      if (sortBy === "NAME") {
-        return (a.name || "").localeCompare(b.name || "", "vi");
-      }
+      if (sortBy === "STOCK_ASC") return a._stock - b._stock;
+      if (sortBy === "STOCK_DESC") return b._stock - a._stock;
+      if (sortBy === "NAME") return (a.name || "").localeCompare(b.name || "", "vi");
       return 0;
     });
 
@@ -315,6 +304,10 @@ export default function EmployeeMenu() {
   // AUDIT LOG
   // ============================================================
 
+  const staffName = user?.name || t("Nhân viên");
+  const staffCode = user?.employeeCode || user?.code || "";
+  const staffDisplay = staffCode ? `${staffName} (${staffCode})` : staffName;
+
   const addAudit = useCallback(
     (dish, action, reason, actionVariant = "neutral") => {
       const timeStr = AUDIT_TIME_FORMATTER.format(new Date());
@@ -328,14 +321,14 @@ export default function EmployeeMenu() {
             action,
             actionVariant,
             reason,
-            staff: "Trần Thị Mai (NV-2024-08)",
+            staff: staffDisplay,
             status: "Đã đồng bộ",
           },
           ...log,
-        ].slice(0, 10)
+        ].slice(0, 50)
       );
     },
-    []
+    [staffDisplay]
   );
 
   // ============================================================
@@ -351,7 +344,6 @@ export default function EmployeeMenu() {
     });
   };
 
-  // 🔧 Toggle "Tạm hết hàng" — set stock = 0 hoặc khôi phục
   const handleToggleOut = useCallback(
     async (item) => {
       const id = item._id || item.id;
@@ -385,7 +377,6 @@ export default function EmployeeMenu() {
     [processingIds, load, addAudit, t]
   );
 
-  // 🔧 Adjust stock (+1/-1 hoặc +10/+20)
   const handleAdjustStock = useCallback(
     async (item, delta) => {
       const id = item._id || item.id;
@@ -416,11 +407,49 @@ export default function EmployeeMenu() {
   const handleSyncKitchen = () =>
     toast(t("Đã đồng bộ tồn kho từ KDS Bếp Trưởng"), "success");
   const handleViewLog = () => {
-    const el = document.getElementById("menu86-audit-section");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setShowAuditModal(true);
   };
-  const handleExportExcel = () =>
-    toast(t("Đang xuất file Excel nhật ký..."), "success");
+
+  const handleExportExcel = () => {
+    if (auditLog.length === 0) {
+      toast(t("Không có dữ liệu để xuất"), "warning");
+      return;
+    }
+
+    const headers = [
+      "Thời gian", "Món ăn/SKU", "Quầy", "Thao tác", "Lý do ghi nhận", "Nhân viên thực hiện", "Trạng thái App"
+    ];
+
+    const rows = auditLog.map((log) => [
+      `"${log.time}"`,
+      `"${log.dish}"`,
+      `"${log.station}"`,
+      `"${log.action}"`,
+      `"${log.reason}"`,
+      `"${log.staff}"`,
+      `"${log.status}"`,
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Nhat_Ky_Menu_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast(t("Đã xuất file nhật ký thành công"), "success");
+  };
+
+  // Hàm thay đổi filter (tự động reset trang)
+  const handleFilterChange = (setter) => (e) => {
+    setter(e.target.value);
+    setPage(1);
+  };
 
   // ============================================================
   // RENDER
@@ -597,7 +626,10 @@ export default function EmployeeMenu() {
             <input
               className="menu86-filter__search-input"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               placeholder={t(
                 "Tìm kiếm nhanh theo tên món, mã SKU (VD: CB-01), nguyên liệu..."
               )}
@@ -606,7 +638,10 @@ export default function EmployeeMenu() {
               <button
                 type="button"
                 className="menu86-filter__search-clear"
-                onClick={() => setSearch("")}
+                onClick={() => {
+                  setSearch("");
+                  setPage(1);
+                }}
                 aria-label={t("Xoá tìm kiếm")}
               >
                 <X size={16} />
@@ -614,13 +649,13 @@ export default function EmployeeMenu() {
             )}
           </div>
 
-          <div className="menu86-filter__selects">
+          <div className="menu86-filter__selects" style={{ position: "relative", zIndex: 10 }}>
             <div className="menu86-filter__select-wrap">
               <Filter size={16} className="menu86-filter__select-icon" />
               <select
                 className="menu86-filter__select"
                 value={stationFilter}
-                onChange={(e) => setStationFilter(e.target.value)}
+                onChange={handleFilterChange(setStationFilter)}
               >
                 {STATION_OPTIONS.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -635,7 +670,7 @@ export default function EmployeeMenu() {
               <select
                 className="menu86-filter__select"
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={handleFilterChange(setStatusFilter)}
               >
                 {STATUS_OPTIONS.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -650,7 +685,7 @@ export default function EmployeeMenu() {
               <select
                 className="menu86-filter__select"
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={handleFilterChange(setSortBy)}
               >
                 {SORT_OPTIONS.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -663,7 +698,7 @@ export default function EmployeeMenu() {
         </div>
 
         {/* Category pills */}
-        <div className="menu86-cat-pills">
+        <div className="menu86-cat-pills" style={{ position: "relative", zIndex: 1 }}>
           {[
             { id: "ALL", label: t("Tất cả món"), count: categoryCounts.ALL },
             { id: "COM", label: t("Cơm trưa sinh viên"), count: categoryCounts.COM },
@@ -676,7 +711,10 @@ export default function EmployeeMenu() {
               key={c.id}
               type="button"
               className={`menu86-cat-pill ${category === c.id ? "active" : ""}`}
-              onClick={() => setCategory(c.id)}
+              onClick={() => {
+                setCategory(c.id);
+                setPage(1);
+              }}
             >
               {c.label} ({c.count})
             </button>
@@ -717,7 +755,7 @@ export default function EmployeeMenu() {
         </div>
       )}
 
-      {/* ============ FOOD GRID (MẪU A) ============ */}
+      {/* ============ FOOD GRID ============ */}
       {loading && paginatedItems.length === 0 ? (
         <div className="dish86-empty">
           <Loader2
@@ -730,7 +768,7 @@ export default function EmployeeMenu() {
         <div className="dish86-empty">
           <Package size={40} style={{ opacity: 0.3, marginBottom: 8 }} />
           <div>
-            {search || category !== "ALL" || statusFilter !== "ALL"
+            {search.trim() || category !== "ALL" || statusFilter !== "ALL" || stationFilter !== "ALL"
               ? t("Không có món nào khớp bộ lọc")
               : t("Chưa có món nào")}
           </div>
@@ -793,99 +831,183 @@ export default function EmployeeMenu() {
         </>
       )}
 
-      {/* ============ AUDIT LOG ============ */}
-      <section className="menu86-audit" id="menu86-audit-section">
-        <div className="menu86-audit__head">
-          <div className="menu86-audit__head-left">
-            <FileSpreadsheet size={24} style={{ color: "var(--st-primary)" }} />
-            <div>
-              <h2 className="menu86-audit__title">
-                {t("Nhật Ký Đóng/Mở & Tạm Hết Hàng Trong Ca Trực")}
-              </h2>
-              <p className="menu86-audit__sub">
-                {t(
-                  "Minh bạch hoạt động thao tác của nhân viên phục vụ và bếp trưởng điều phối"
-                )}
-              </p>
+      {/* ============ AUDIT MODAL ============ */}
+      {showAuditModal && (
+        <div className="menu86-modal-overlay" onClick={() => setShowAuditModal(false)}>
+          <div className="menu86-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="menu86-modal__header">
+              <div className="menu86-modal__title-wrap">
+                <FileSpreadsheet size={24} style={{ color: "var(--st-primary)" }} />
+                <div>
+                  <h2 className="menu86-modal__title">
+                    {t("Nhật Ký Đóng/Mở & Tạm Hết Hàng Trong Ca Trực")}
+                  </h2>
+                  <p className="menu86-modal__sub">
+                    {t("Minh bạch hoạt động thao tác của nhân viên phục vụ và bếp trưởng điều phối")}
+                  </p>
+                </div>
+              </div>
+              <div className="menu86-modal__actions">
+                <button
+                  type="button"
+                  className="menu86-audit__export"
+                  onClick={handleExportExcel}
+                >
+                  <FileSpreadsheet size={14} />
+                  {t("Xuất file Excel")}
+                </button>
+                <button
+                  type="button"
+                  className="menu86-modal__close"
+                  onClick={() => setShowAuditModal(false)}
+                  title={t("Đóng")}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="menu86-modal__body">
+              <div className="menu86-audit__table-wrap">
+                <table className="menu86-audit__table">
+                  <thead>
+                    <tr>
+                      <th>{t("Thời gian")}</th>
+                      <th>{t("Món ăn / SKU")}</th>
+                      <th>{t("Quầy")}</th>
+                      <th>{t("Thao tác")}</th>
+                      <th>{t("Lý do ghi nhận")}</th>
+                      <th>{t("Nhân viên thực hiện")}</th>
+                      <th>{t("Trạng thái App")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLog.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan="7"
+                          style={{
+                            textAlign: "center",
+                            padding: 24,
+                            color: "var(--st-text-muted)",
+                          }}
+                        >
+                          {t("Chưa có thao tác nào trong ca này")}
+                        </td>
+                      </tr>
+                    ) : (
+                      auditLog.map((row) => (
+                        <tr key={row.id}>
+                          <td className="menu86-audit__time">{row.time}</td>
+                          <td className="menu86-audit__dish">{row.dish}</td>
+                          <td>
+                            <span className="menu86-audit__station">
+                              {row.station}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`menu86-audit__action menu86-audit__action--${row.actionVariant}`}
+                            >
+                              {row.actionVariant === "danger" && <Ban size={12} />}
+                              {row.actionVariant === "warning" && <Timer size={12} />}
+                              {row.actionVariant === "success" && <Plus size={12} />}
+                              {row.action}
+                            </span>
+                          </td>
+                          <td className="menu86-audit__reason">{row.reason}</td>
+                          <td className="menu86-audit__staff">{row.staff}</td>
+                          <td className="menu86-audit__status">{row.status}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-          <div className="menu86-audit__head-right">
-            <span className="menu86-audit__note">
-              {t("Tự động lưu vào hệ thống kiểm toán VWA")}
-            </span>
-            <button
-              type="button"
-              className="menu86-audit__export"
-              onClick={handleExportExcel}
-            >
-              <FileSpreadsheet size={14} />
-              {t("Xuất file Excel")}
-            </button>
-          </div>
         </div>
-
-        <div className="menu86-audit__table-wrap">
-          <table className="menu86-audit__table">
-            <thead>
-              <tr>
-                <th>{t("Thời gian")}</th>
-                <th>{t("Món ăn / SKU")}</th>
-                <th>{t("Quầy")}</th>
-                <th>{t("Thao tác")}</th>
-                <th>{t("Lý do ghi nhận")}</th>
-                <th>{t("Nhân viên thực hiện")}</th>
-                <th>{t("Trạng thái App")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditLog.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan="7"
-                    style={{
-                      textAlign: "center",
-                      padding: 24,
-                      color: "var(--st-text-muted)",
-                    }}
-                  >
-                    {t("Chưa có thao tác nào trong ca này")}
-                  </td>
-                </tr>
-              ) : (
-                auditLog.map((row) => (
-                  <tr key={row.id}>
-                    <td className="menu86-audit__time">{row.time}</td>
-                    <td className="menu86-audit__dish">{row.dish}</td>
-                    <td>
-                      <span className="menu86-audit__station">
-                        {row.station}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className={`menu86-audit__action menu86-audit__action--${row.actionVariant}`}
-                      >
-                        {row.actionVariant === "danger" && <Ban size={12} />}
-                        {row.actionVariant === "warning" && <Timer size={12} />}
-                        {row.actionVariant === "success" && <Plus size={12} />}
-                        {row.action}
-                      </span>
-                    </td>
-                    <td className="menu86-audit__reason">{row.reason}</td>
-                    <td className="menu86-audit__staff">{row.staff}</td>
-                    <td className="menu86-audit__status">{row.status}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      )}
 
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
+        }
+        
+        /* 🔧 CSS CHO MODAL */
+        .menu86-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.6);
+          backdrop-filter: blur(4px);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+        }
+        .menu86-modal {
+          background: var(--st-surface);
+          border-radius: var(--st-radius-xl);
+          box-shadow: var(--st-shadow-4);
+          width: 100%;
+          max-width: 1050px;
+          max-height: 90vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .menu86-modal__header {
+          padding: 20px;
+          border-bottom: 1px solid var(--st-outline-light);
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          background: var(--st-surface-low);
+        }
+        .menu86-modal__title-wrap {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .menu86-modal__title {
+          margin: 0;
+          font-family: var(--st-font-head);
+          font-size: 18px;
+          font-weight: 700;
+          color: var(--st-text);
+        }
+        .menu86-modal__sub {
+          margin: 4px 0 0;
+          font-size: 13px;
+          color: var(--st-text-muted);
+        }
+        .menu86-modal__actions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .menu86-modal__close {
+          background: transparent;
+          border: 0;
+          cursor: pointer;
+          color: var(--st-text-muted);
+          border-radius: 50%;
+          padding: 6px;
+          display: grid;
+          place-items: center;
+          transition: background 0.15s;
+        }
+        .menu86-modal__close:hover {
+          background: var(--st-surface-high);
+          color: var(--st-text);
+        }
+        .menu86-modal__body {
+          padding: 20px;
+          overflow-y: auto;
+          flex: 1;
         }
       `}</style>
     </div>
@@ -893,7 +1015,7 @@ export default function EmployeeMenu() {
 }
 
 // ============================================================
-// SUB-COMPONENT: Dish86CardRow — Card ngang (Mẫu A)
+// SUB-COMPONENT: Dish86CardRow
 // ============================================================
 
 function Dish86CardRow({
@@ -920,32 +1042,15 @@ function Dish86CardRow({
       ? t("tô")
       : t("suất");
 
-  // Badge trạng thái
   let statusBadge = null;
   if (isDisabled) {
-    statusBadge = {
-      variant: "disabled",
-      icon: <Power size={11} />,
-      text: t("Đã tắt món"),
-    };
+    statusBadge = { variant: "disabled", icon: <Power size={11} />, text: t("Đã tắt món") };
   } else if (isOut) {
-    statusBadge = {
-      variant: "out",
-      icon: <Ban size={11} />,
-      text: t("Tạm hết hàng"),
-    };
+    statusBadge = { variant: "out", icon: <Ban size={11} />, text: t("Tạm hết hàng") };
   } else if (isLow) {
-    statusBadge = {
-      variant: "low",
-      icon: <AlertTriangle size={11} />,
-      text: t("Sắp hết hàng"),
-    };
+    statusBadge = { variant: "low", icon: <AlertTriangle size={11} />, text: t("Sắp hết hàng") };
   } else if (isActive) {
-    statusBadge = {
-      variant: "active",
-      icon: <CheckCircle2 size={11} />,
-      text: t("Đang bán"),
-    };
+    statusBadge = { variant: "active", icon: <CheckCircle2 size={11} />, text: t("Đang bán") };
   }
 
   return (
@@ -958,7 +1063,6 @@ function Dish86CardRow({
           : ""
       }`}
     >
-      {/* Ảnh vuông 96px */}
       <div className="menu86-card-row__img-wrap">
         <img
           src={item.image || getFALLBACK_IMG()}
@@ -976,7 +1080,6 @@ function Dish86CardRow({
         )}
       </div>
 
-      {/* Info */}
       <div className="menu86-card-row__info">
         <span className="menu86-card-row__category">
           {item.category}
@@ -986,7 +1089,6 @@ function Dish86CardRow({
           {tData(item, "name") || item.name}
         </h3>
 
-        {/* Giá */}
         <div className="menu86-card-row__price-row">
           {item.original_price > item.price && (
             <span className="menu86-card-row__price-old">
@@ -1003,7 +1105,6 @@ function Dish86CardRow({
           )}
         </div>
 
-        {/* Meta: rating + kcal + thời gian */}
         <div className="menu86-card-row__meta">
           {item.rating > 0 && (
             <span className="menu86-card-row__meta-item">
@@ -1025,7 +1126,6 @@ function Dish86CardRow({
           )}
         </div>
 
-        {/* Status badge + stock X/Y */}
         <div className="menu86-card-row__status-row">
           {statusBadge && (
             <span
@@ -1053,9 +1153,7 @@ function Dish86CardRow({
           </span>
         </div>
 
-        {/* Actions */}
         <div className="menu86-card-row__actions">
-          {/* Stepper */}
           <div className="menu86-card-row__stepper">
             <button
               type="button"
@@ -1078,7 +1176,6 @@ function Dish86CardRow({
             </button>
           </div>
 
-          {/* Quick add */}
           <div className="menu86-card-row__quick">
             <button
               type="button"
@@ -1098,7 +1195,6 @@ function Dish86CardRow({
             </button>
           </div>
 
-          {/* Toggle Out */}
           <button
             type="button"
             className={`menu86-card-row__toggle-out ${

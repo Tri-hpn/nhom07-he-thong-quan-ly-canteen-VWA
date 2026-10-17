@@ -1,16 +1,12 @@
 // ============================================================
-// useI18n.js — Hook đa ngôn ngữ (V6 - FINAL)
+// useI18n.js — Hook đa ngôn ngữ (V7 - PERFORMANCE)
 // ============================================================
-// V5 (2026-10):
-//   - ✅ FIX CRITICAL: thêm tData() — dịch field dữ liệu
-//
-// V6 (2026-10) - FINAL:
-//   - 🔧 FIX CRITICAL: dùng useSyncExternalStore → re-render ĐÚNG
-//     khi locale thay đổi (KHÔNG cần F5)
-//   - 🔧 Xoá biến setLocale bị trùng tên
+// V7 (2026-10):
+//   - ✅ Bỏ hoàn toàn console.warn gây spam và chậm.
+//   - ✅ Thêm Local Cache trong Hook để tránh xử lý lại chuỗi.
 // ============================================================
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore, useRef } from "react";
 import {
   getLocale,
   subscribe,
@@ -18,28 +14,40 @@ import {
   t as tGlobal,
 } from "../lib/i18n";
 
-const isDev = import.meta.env.DEV;
-const warnedKeys = new Set();
-
 export function useI18n() {
-  // 🔧 V6: useSyncExternalStore — React 18+ official way
+  // 🔧 useSyncExternalStore — React 18+ official way
   const locale = useSyncExternalStore(
     subscribe,
     getLocale,
     getLocale // SSR fallback
   );
 
-  /**
-   * t(key, params) — dịch key UI
-   * Fallback: dict[key] → dict[trim] → dict[normalize] → key
-   */
+  // 🔧 Bộ nhớ đệm cấp Hook: Lưu kết quả đã xử lý (bao gồm replace params)
+  const localCacheRef = useRef(new Map());
+  const lastLocaleRef = useRef(locale);
+
+  // Nếu đổi ngôn ngữ, xoá cache local
+  if (lastLocaleRef.current !== locale) {
+    localCacheRef.current.clear();
+    lastLocaleRef.current = locale;
+  }
+
   const t = useCallback(
     (key, params) => {
       if (key === undefined || key === null) return "";
 
       const k = String(key);
+      // Tạo cache key bao gồm cả params
+      const cacheKey = params ? `${k}::${JSON.stringify(params)}` : k;
+      
+      const localCache = localCacheRef.current;
+      if (localCache.has(cacheKey)) {
+        return localCache.get(cacheKey);
+      }
+
       let translated = tGlobal(k);
 
+      // Nếu không tìm thấy, thử trim và normalize
       if (translated === k || !translated) {
         const trimmed = k.trim();
         if (trimmed !== k) {
@@ -52,24 +60,23 @@ export function useI18n() {
           const t3 = tGlobal(normalized);
           if (t3 && t3 !== normalized) translated = t3;
         }
-
-        if (isDev && translated === k && !warnedKeys.has(k)) {
-          warnedKeys.add(k);
-          if (k.length > 0 && k.length < 200 && !k.startsWith("/")) {
-            console.warn(`[i18n] Key chưa dịch: "${k}"`);
-          }
-        }
+        
+        // 🔧 Đã xoá cục console.warn gây chậm trang ở đây
       }
 
-      if (params && typeof translated === "string") {
+      // Xử lý tham số (params)
+      if (params && typeof translated === "string" && translated.includes("{")) {
         translated = translated.replace(/\{(\w+)\}/g, (match, name) => {
           return params[name] !== undefined ? String(params[name]) : match;
         });
       }
 
-      return translated || k;
+      const result = translated || k;
+      
+      // Lưu vào cache
+      localCache.set(cacheKey, result);
+      return result;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [locale]
   );
 

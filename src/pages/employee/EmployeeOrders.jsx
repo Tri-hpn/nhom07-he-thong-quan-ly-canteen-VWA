@@ -1,10 +1,9 @@
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban + Station Filter (V13)
+// EMPLOYEEORDERS.JSX — KDS Kanban + Station Filter (V16)
 // ============================================================
-// V13:
-//   - ✅ Xoá badge số lượng ở góc phải block
-//   - ✅ Đổi layout thành 1 hàng cuộn ngang (10 thẻ)
-//   - ✅ Đồng nhất trang Admin và Employee
+// V16:
+//   - ✅ Thêm nút "Ẩn bớt" khi đã mở rộng.
+//   - ✅ Đảm bảo layout cuộn ngang 1 hàng.
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -13,7 +12,7 @@ import {
   CheckCircle2, Wallet, Timer, TrendingUp, User, Lock,
   ChevronDown, PackageCheck, Volume2, VolumeX, Store,
   UtensilsCrossed, ListFilter, Inbox, Play, Soup, ArrowRight,
-  Clock, Flame,
+  Clock, Flame, ChevronLeft
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../../api";
@@ -34,7 +33,7 @@ import {
 
 const POLL_MS = 5000;
 const COMPLETED_LIMIT = 8;
-const ROW_LIMIT = 10; // 🔧 Tăng lên 10 thẻ
+const ROW_LIMIT = 10;
 const SOUND_REPEAT_MS = 4000;
 const SOUND_STORAGE_KEY = "canteen.kds_sound_enabled";
 
@@ -221,6 +220,24 @@ export default function EmployeeOrders({ isAdmin = false }) {
       localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "1" : "0");
     } catch (_) {}
   }, [soundEnabled]);
+
+  // 🔧 Mở khóa âm thanh ngay sau tương tác đầu tiên của người dùng
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === "suspended") {
+            ctx.resume();
+          }
+        }
+      } catch (e) {}
+      document.removeEventListener("click", unlockAudio);
+    };
+    document.addEventListener("click", unlockAudio);
+    return () => document.removeEventListener("click", unlockAudio);
+  }, []);
 
   useEffect(() => {
     if (!showStationMenu) return;
@@ -504,10 +521,11 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
   const takeVisible = useCallback(
     (list, key) => {
-      if (expandedRows[key]) return { visible: list, hiddenCount: 0 };
+      if (expandedRows[key]) return { visible: list, hiddenCount: 0, isExpanded: true };
       return {
         visible: list.slice(0, ROW_LIMIT),
         hiddenCount: Math.max(0, list.length - ROW_LIMIT),
+        isExpanded: false
       };
     },
     [expandedRows]
@@ -619,7 +637,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
   return (
     <>
       <div className="kds-workbench">
-        {/* ERROR */}
         {error && (
           <div className="kds-error">
             <AlertCircle size={18} />
@@ -636,28 +653,18 @@ export default function EmployeeOrders({ isAdmin = false }) {
             <div className="kds-console__card">
               <span className="kds-console__card-dot" />
               <div className="kds-console__card-info">
-                <span className="kds-console__card-label">
-                  {t("Ca Vận Hành")}
-                </span>
-                <span className="kds-console__card-value">
-                  {shiftLabel}
-                </span>
+                <span className="kds-console__card-label">{t("Ca Vận Hành")}</span>
+                <span className="kds-console__card-value">{shiftLabel}</span>
               </div>
             </div>
 
             <div className="kds-console__card">
               <User size={22} className="kds-console__card-icon" />
               <div className="kds-console__card-info">
-                <span className="kds-console__card-label">
-                  {t("Nhân sự trực")}
-                </span>
+                <span className="kds-console__card-label">{t("Nhân sự trực")}</span>
                 <span className="kds-console__card-value">
                   {staffName}
-                  {staffCode && (
-                    <span className="kds-console__card-sub">
-                      {" "}(ID: {staffCode})
-                    </span>
-                  )}
+                  {staffCode && <span className="kds-console__card-sub"> (ID: {staffCode})</span>}
                 </span>
               </div>
             </div>
@@ -667,54 +674,35 @@ export default function EmployeeOrders({ isAdmin = false }) {
               className="kds-console__sound-btn"
               onClick={toggleSound}
               aria-pressed={soundEnabled}
-              title={
-                soundEnabled
-                  ? t("Đang bật — bấm để tắt")
-                  : t("Đang tắt — bấm để bật")
-              }
+              title={soundEnabled ? t("Đang bật — bấm để tắt") : t("Đang tắt — bấm để bật")}
             >
               {soundEnabled ? (
                 <Volume2 size={22} style={{ color: "var(--st-success)" }} />
               ) : (
-                <VolumeX
-                  size={22}
-                  style={{ color: "var(--st-text-muted)" }}
-                />
+                <VolumeX size={22} style={{ color: "var(--st-text-muted)" }} />
               )}
               <div className="kds-console__sound-text">
-                <span className="kds-console__sound-label">
-                  {t("Âm báo đơn")}
-                </span>
+                <span className="kds-console__sound-label">{t("Âm báo đơn")}</span>
                 <span
                   className="kds-console__sound-status"
-                  style={{
-                    color: soundEnabled
-                      ? "var(--st-success)"
-                      : "var(--st-text-muted)",
-                  }}
+                  style={{ color: soundEnabled ? "var(--st-success)" : "var(--st-text-muted)" }}
                 >
                   {soundEnabled
-                    ? kpi.pending > 0
-                      ? `${t("Đang báo")} (${kpi.pending})`
-                      : t("Đang bật")
+                    ? kpi.pending > 0 ? `${t("Đang báo")} (${kpi.pending})` : t("Đang bật")
                     : t("Đã tắt")}
                 </span>
               </div>
               <span
                 className="kds-console__sound-dot"
                 style={{
-                  background: soundEnabled
-                    ? "var(--st-success)"
-                    : "var(--st-outline)",
-                  boxShadow: soundEnabled
-                    ? "0 0 0 3px rgba(24, 169, 103, 0.2)"
-                    : "none",
+                  background: soundEnabled ? "var(--st-success)" : "var(--st-outline)",
+                  boxShadow: soundEnabled ? "0 0 0 3px rgba(24, 169, 103, 0.2)" : "none",
                 }}
               />
             </button>
           </div>
 
-          {/* ============ STATION TABS + DROPDOWN ============ */}
+          {/* STATION TABS + DROPDOWN */}
           <div ref={stationMenuRef} className="kds-station-menu-wrap">
             <button
               type="button"
@@ -724,11 +712,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
               aria-haspopup="menu"
             >
               <currentStationObj.icon size={16} />
-              <span>
-                {stationFilter === "all"
-                  ? t("Tải ca trạm")
-                  : t(currentStationObj.label)}
-              </span>
+              <span>{stationFilter === "all" ? t("Tải ca trạm") : t(currentStationObj.label)}</span>
               <ChevronDown size={14} />
             </button>
 
@@ -742,9 +726,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
                       key={s.id}
                       type="button"
                       role="menuitem"
-                      className={`kds-station-menu__item ${
-                        active ? "active" : ""
-                      }`}
+                      className={`kds-station-menu__item ${active ? "active" : ""}`}
                       onClick={() => changeStation(s.id)}
                     >
                       <Icon size={16} />
@@ -762,9 +744,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
               <button
                 key={s.id}
                 type="button"
-                className={`kds-station-tab ${
-                  stationFilter === s.id ? "active" : ""
-                }`}
+                className={`kds-station-tab ${stationFilter === s.id ? "active" : ""}`}
                 onClick={() => changeStation(s.id)}
               >
                 {t(s.label)}
@@ -777,18 +757,12 @@ export default function EmployeeOrders({ isAdmin = false }) {
         <div className="kds-kpi-grid">
           <div className="kds-kpi kds-kpi--danger">
             <div className="kds-kpi__head">
-              <span className="kds-kpi__label">
-                {t("Đơn Mới Cần Duyệt")}
-              </span>
+              <span className="kds-kpi__label">{t("Đơn Mới Cần Duyệt")}</span>
               {kpi.pending > 0 && <span className="kds-kpi__pulse" />}
             </div>
             <div className="kds-kpi__value-row">
-              <span className="kds-kpi__value">
-                {String(kpi.pending).padStart(2, "0")}
-              </span>
-              {kpi.pending > 0 && (
-                <span className="kds-kpi__badge">{t("GẤP")}</span>
-              )}
+              <span className="kds-kpi__value">{String(kpi.pending).padStart(2, "0")}</span>
+              {kpi.pending > 0 && <span className="kds-kpi__badge">{t("GẤP")}</span>}
             </div>
             <div className="kds-kpi__bar">
               <div
@@ -800,15 +774,11 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
           <div className="kds-kpi">
             <div className="kds-kpi__head">
-              <span className="kds-kpi__label">
-                {t("Đang Chuẩn Bị (Prep)")}
-              </span>
+              <span className="kds-kpi__label">{t("Đang Chuẩn Bị (Prep)")}</span>
               <ChefHat size={20} style={{ color: "var(--st-secondary)" }} />
             </div>
             <div className="kds-kpi__value-row">
-              <span className="kds-kpi__value">
-                {String(kpi.prep).padStart(2, "0")}
-              </span>
+              <span className="kds-kpi__value">{String(kpi.prep).padStart(2, "0")}</span>
               <span className="kds-kpi__unit">{t("Bếp đang xào")}</span>
             </div>
             <div className="kds-kpi__bar">
@@ -821,15 +791,11 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
           <div className="kds-kpi">
             <div className="kds-kpi__head">
-              <span className="kds-kpi__label">
-                {t("Chờ Khách Lấy (Ready)")}
-              </span>
+              <span className="kds-kpi__label">{t("Chờ Khách Lấy (Ready)")}</span>
               <PackageCheck size={20} style={{ color: "var(--st-primary)" }} />
             </div>
             <div className="kds-kpi__value-row">
-              <span className="kds-kpi__value">
-                {String(kpi.ready).padStart(2, "0")}
-              </span>
+              <span className="kds-kpi__value">{String(kpi.ready).padStart(2, "0")}</span>
               <span className="kds-kpi__unit">{t("Tủ giữ nóng OK")}</span>
             </div>
             <div className="kds-kpi__bar">
@@ -842,19 +808,12 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
           <div className="kds-kpi">
             <div className="kds-kpi__head">
-              <span className="kds-kpi__label">
-                {t("Hoàn Thành Trong Ca")}
-              </span>
-              <CheckCircle2
-                size={20}
-                style={{ color: "var(--st-text-muted)" }}
-              />
+              <span className="kds-kpi__label">{t("Hoàn Thành Trong Ca")}</span>
+              <CheckCircle2 size={20} style={{ color: "var(--st-text-muted)" }} />
             </div>
             <div className="kds-kpi__value-row">
               <span className="kds-kpi__value">{kpi.completedToday}</span>
-              <span className="kds-kpi__unit">
-                {kpi.onTimePct}% {t("đúng giờ")}
-              </span>
+              <span className="kds-kpi__unit">{kpi.onTimePct}% {t("đúng giờ")}</span>
             </div>
             <div className="kds-kpi__bar">
               <div
@@ -866,9 +825,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
           <div className="kds-kpi kds-kpi--primary">
             <div className="kds-kpi__head">
-              <span className="kds-kpi__label">
-                {t("Doanh Thu Tạm Tính")}
-              </span>
+              <span className="kds-kpi__label">{t("Doanh Thu Tạm Tính")}</span>
               <Wallet size={20} style={{ color: "var(--st-primary)" }} />
             </div>
             <div className="kds-kpi__value-row">
@@ -893,9 +850,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
                 className="kds-filter__search-input"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder={t(
-                  "Tìm theo Mã Đơn (#ORD-), Tên SV hoặc MSSV..."
-                )}
+                placeholder={t("Tìm theo Mã Đơn (#ORD-), Tên SV hoặc MSSV...")}
               />
             </div>
 
@@ -906,9 +861,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
                 onChange={(e) => setTimeframeFilter(e.target.value)}
               >
                 <option value="all">{t("Mọi khung giờ nhận")}</option>
-                <option value="1130">
-                  {t("11:30 - 12:00 (Cao điểm)")}
-                </option>
+                <option value="1130">{t("11:30 - 12:00 (Cao điểm)")}</option>
                 <option value="1200">{t("12:00 - 12:30")}</option>
                 <option value="1230">{t("12:30 - 13:00")}</option>
               </select>
@@ -958,9 +911,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
             >
               <RefreshCw
                 size={16}
-                style={{
-                  animation: refreshing ? "spin 1s linear infinite" : "none",
-                }}
+                style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }}
               />
               <span>{t("Đồng bộ KDS")}</span>
             </button>
@@ -972,10 +923,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
           {/* ROW 1: PENDING */}
           {showRow1 &&
             (() => {
-              const { visible, hiddenCount } = takeVisible(
-                filteredRows.pending,
-                "pending"
-              );
+              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.pending, "pending");
               return (
                 <KDSRow
                   title={t("Đơn Mới")}
@@ -983,7 +931,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
                   variant="pending"
                   empty={t("Không có đơn mới")}
                   moreCount={hiddenCount}
+                  isExpanded={isExpanded}
                   onMore={() => toggleExpand("pending")}
+                  t={t}
                 >
                   {visible.map((o, idx) => (
                     <KDSTicket
@@ -991,7 +941,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
                       order={o}
                       variant="pending"
                       layout="tall"
-                      isPriority={idx === 0 && !expandedRows.pending}
+                      isPriority={idx === 0 && !isExpanded}
                       isProcessing={advancingId === (o._id || o.id)}
                       elapsed={calcElapsedSec(o.created_at)}
                       onAdvance={() => advance(o)}
@@ -1009,10 +959,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
           {/* ROW 2: CONFIRMED */}
           {showRow2 &&
             (() => {
-              const { visible, hiddenCount } = takeVisible(
-                filteredRows.confirmed,
-                "confirmed"
-              );
+              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.confirmed, "confirmed");
               return (
                 <KDSRow
                   title={t("Đã Xác Nhận")}
@@ -1020,7 +967,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
                   variant="confirmed"
                   empty={t("Không có đơn đã xác nhận")}
                   moreCount={hiddenCount}
+                  isExpanded={isExpanded}
                   onMore={() => toggleExpand("confirmed")}
+                  t={t}
                 >
                   {visible.map((o, idx) => (
                     <KDSTicket
@@ -1028,7 +977,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
                       order={o}
                       variant="confirmed"
                       layout="tall"
-                      isPriority={idx === 0 && !expandedRows.confirmed}
+                      isPriority={idx === 0 && !isExpanded}
                       isProcessing={advancingId === (o._id || o.id)}
                       elapsed={calcElapsedSec(o.created_at)}
                       onAdvance={() => advance(o)}
@@ -1045,10 +994,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
           {/* ROW 3: PREP */}
           {showRow3 &&
             (() => {
-              const { visible, hiddenCount } = takeVisible(
-                filteredRows.prep,
-                "prep"
-              );
+              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.prep, "prep");
               return (
                 <KDSRow
                   title={t("Đang Nấu")}
@@ -1056,7 +1002,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
                   variant="prep"
                   empty={t("Không có đơn đang nấu")}
                   moreCount={hiddenCount}
+                  isExpanded={isExpanded}
                   onMore={() => toggleExpand("prep")}
+                  t={t}
                 >
                   {visible.map((o, idx) => (
                     <KDSTicket
@@ -1064,7 +1012,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
                       order={o}
                       variant="prep"
                       layout="tall"
-                      isPriority={idx === 0 && !expandedRows.prep}
+                      isPriority={idx === 0 && !isExpanded}
                       isProcessing={advancingId === (o._id || o.id)}
                       elapsed={calcElapsedSec(o.created_at)}
                       onAdvance={() => advance(o)}
@@ -1081,10 +1029,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
           {/* ROW 4: READY */}
           {showRow4 &&
             (() => {
-              const { visible, hiddenCount } = takeVisible(
-                filteredRows.ready,
-                "ready"
-              );
+              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.ready, "ready");
               return (
                 <KDSRow
                   title={t("Sẵn Sàng Nhận")}
@@ -1092,7 +1037,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
                   variant="ready"
                   empty={t("Không có đơn sẵn sàng")}
                   moreCount={hiddenCount}
+                  isExpanded={isExpanded}
                   onMore={() => toggleExpand("ready")}
+                  t={t}
                 >
                   {visible.map((o, idx) => (
                     <KDSTicket
@@ -1100,7 +1047,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
                       order={o}
                       variant="ready"
                       layout="tall"
-                      isPriority={idx === 0 && !expandedRows.ready}
+                      isPriority={idx === 0 && !isExpanded}
                       isProcessing={advancingId === (o._id || o.id)}
                       onAdvance={() => advance(o)}
                       onApproveGreen={approveGreen}
@@ -1121,6 +1068,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
               variant="completed"
               empty={t("Chưa có đơn hoàn thành")}
               isStrip
+              t={t}
             >
               {filteredRows.completed.map((o) => (
                 <CompletedStripItem key={o._id || o.id} order={o} t={t} />
@@ -1128,8 +1076,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
               {filteredRows.completedTotal > COMPLETED_LIMIT && (
                 <button type="button" className="kds-completed__more">
-                  {t("Xem tất cả")} {filteredRows.completedTotal}{" "}
-                  {t("đơn →")}
+                  {t("Xem tất cả")} {filteredRows.completedTotal} {t("đơn →")}
                 </button>
               )}
             </KDSRow>
@@ -1140,16 +1087,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
       {/* CONFIRM REJECT */}
       <ConfirmDialog
         open={!!confirmReject}
-        title={
-          confirmReject
-            ? `${t("Từ chối đơn")} ${confirmReject.code}?`
-            : ""
-        }
-        message={
-          confirmReject
-            ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}`
-            : ""
-        }
+        title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""}
+        message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""}
         confirmText={t("Từ chối & Hoàn tiền")}
         cancelText={t("Giữ đơn")}
         danger
@@ -1157,49 +1096,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
         onConfirm={executeReject}
         onClose={() => !advancingId && setConfirmReject(null)}
       />
-
-      {/* 🔧 CSS OVERRIDE: Cuộn ngang 1 hàng */}
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-
-        /* Ghi đè CSS để tạo hiệu ứng cuộn ngang */
-        .kds-row__body {
-          flex-wrap: nowrap !important;
-          overflow-x: auto !important;
-          overflow-y: hidden !important;
-          align-items: stretch !important;
-          padding-bottom: 16px !important; /* Tạo khoảng trống cho thanh cuộn */
-        }
-
-        /* Cố định chiều rộng thẻ đơn để không bị bóp méo */
-        .kds-row__body > .kds-card,
-        .kds-row__body > article,
-        .kds-row__body > .kds-ticket,
-        .kds-row__body > .kds-pickup {
-          flex: 0 0 260px !important;
-          max-width: 260px !important;
-          min-width: 260px !important;
-        }
-
-        /* Tùy chỉnh thanh cuộn cho đẹp */
-        .kds-row__body::-webkit-scrollbar {
-          height: 8px;
-        }
-        .kds-row__body::-webkit-scrollbar-track {
-          background: var(--st-surface-low);
-          border-radius: 4px;
-        }
-        .kds-row__body::-webkit-scrollbar-thumb {
-          background: var(--st-outline);
-          border-radius: 4px;
-        }
-        .kds-row__body::-webkit-scrollbar-thumb:hover {
-          background: var(--st-text-light);
-        }
-      `}</style>
     </>
   );
 }
@@ -1215,12 +1111,12 @@ function KDSRow({
   empty,
   moreCount = 0,
   onMore,
+  isExpanded = false,
   isStrip = false,
   children,
+  t,
 }) {
-  const hasChildren = Array.isArray(children)
-    ? children.length > 0
-    : !!children;
+  const hasChildren = Array.isArray(children) ? children.length > 0 : !!children;
 
   return (
     <section className={`kds-row kds-row--${variant}`}>
@@ -1228,31 +1124,40 @@ function KDSRow({
         <div className="kds-row__title-wrap">
           <span className={`kds-row__dot kds-row__dot--${variant}`} />
           <span className="kds-row__title">{title}</span>
-          {subtitle && (
-            <span className="kds-row__subtitle">{subtitle}</span>
-          )}
+          {subtitle && <span className="kds-row__subtitle">{subtitle}</span>}
         </div>
-        {/* Đã xoá badge số lượng ở đây */}
       </div>
 
-      <div
-        className={`kds-row__body ${
-          isStrip ? "kds-row__body--strip" : ""
-        }`}
-      >
+      <div className={`kds-row__body ${isStrip ? "kds-row__body--strip" : ""}`}>
         {hasChildren ? (
           <>
             {children}
-            {moreCount > 0 && (
+            
+            {/* Nút Xem thêm / Ẩn bớt */}
+            {isExpanded ? (
               <button
                 type="button"
                 className="kds-row__more"
                 onClick={onMore}
-                style={{ flexShrink: 0 }} // Đảm bảo nút xem thêm không bị co
+                style={{ borderStyle: "solid", background: "var(--st-surface-container)" }}
               >
-                +{moreCount} đơn nữa — Xem thêm
+                <ChevronLeft size={18} style={{ marginBottom: 4 }} />
+                <span>{t("Ẩn bớt")}</span>
               </button>
-            )}
+            ) : moreCount > 0 ? (
+              <button
+                type="button"
+                className="kds-row__more"
+                onClick={onMore}
+              >
+                <span>{t("Xem thêm")}</span>
+                <span style={{ fontSize: 11, color: "var(--st-text-muted)", marginTop: 4 }}>
+                  +{moreCount} {t("đơn")}
+                </span>
+                <ArrowRight size={16} style={{ marginTop: 4 }} />
+              </button>
+            ) : null}
+            
           </>
         ) : (
           <div className="kds-row__empty">{empty}</div>

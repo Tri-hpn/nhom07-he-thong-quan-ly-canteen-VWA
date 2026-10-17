@@ -1,0 +1,4054 @@
+[
+  {
+    "id": 1,
+    "code": "VWA-93507849",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 350,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T04:51:47.849Z",
+    "updated_at": "2026-09-19T04:55:07.549Z",
+    "_id": "6ad39567ae012593f03d6009"
+  },
+  {
+    "id": 2,
+    "code": "VWA-93851033",
+    "customer_id": 2,
+    "customer_name": "Nguyễn Văn Nam",
+    "subtotal": 45000,
+    "discount": 0,
+    "total": 45000,
+    "points_earned": 450,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 2,
+        "name": "Cơm sườn nướng",
+        "price": 45000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T04:57:31.033Z",
+    "updated_at": "2026-09-19T05:01:22.232Z",
+    "_id": "6ad39567ae012593f03d600a"
+  },
+  {
+    "id": 3,
+    "code": "VWA-05154862",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 105000,
+    "discount": 0,
+    "total": 105000,
+    "points_earned": 1050,
+    "status": "Đã hủy",
+    "payment": "QR",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 2
+      },
+      {
+        "menu_item_id": 8,
+        "name": "Bún chả chay",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T08:05:54.862Z",
+    "_id": "6ad39567ae012593f03d600b"
+  },
+  {
+    "id": 4,
+    "code": "VWA-08475272",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 350,
+    "status": "Đã hủy",
+    "payment": "QR",
+    "note": "Nhận lúc 12:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T09:01:15.273Z",
+    "_id": "6ad39567ae012593f03d600c"
+  },
+  {
+    "id": 5,
+    "code": "VWA-08581534",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 350,
+    "status": "Đã hủy",
+    "payment": "Thẻ",
+    "note": "Nhận lúc 00:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T09:03:01.534Z",
+    "_id": "6ad39567ae012593f03d600d"
+  },
+  {
+    "id": 6,
+    "code": "VWA-29275436",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 350,
+    "status": "Đã hủy",
+    "payment": "QR",
+    "note": "Nhận lúc 00:12",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T14:47:55.436Z",
+    "_id": "6ad39567ae012593f03d600e"
+  },
+  {
+    "id": 7,
+    "code": "VWA-33936585",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 350,
+    "status": "Hoàn thành",
+    "payment": "QR",
+    "note": "Nhận lúc 00:25",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T16:05:36.585Z",
+    "updated_at": "2026-09-19T16:49:40.229Z",
+    "_id": "6ad39567ae012593f03d600f"
+  },
+  {
+    "id": 8,
+    "code": "VWA-34150973",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 10000,
+    "total": 25000,
+    "points_earned": 250,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 00:12",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T16:09:10.974Z",
+    "updated_at": "2026-09-19T16:49:41.353Z",
+    "_id": "6ad39567ae012593f03d6010"
+  },
+  {
+    "id": 9,
+    "code": "VWA-43206431",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 10000,
+    "total": 25000,
+    "points_earned": 250,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 11:00 - 11:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T18:40:06.431Z",
+    "updated_at": "2026-09-19T18:41:01.230Z",
+    "_id": "6ad39567ae012593f03d6011"
+  },
+  {
+    "id": 10,
+    "code": "VWA-48037118",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 20000,
+    "total": 15000,
+    "points_earned": 150,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 12:30 - 13:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T20:00:37.118Z",
+    "updated_at": "2026-09-19T20:11:10.738Z",
+    "_id": "6ad39567ae012593f03d6012"
+  },
+  {
+    "id": 11,
+    "code": "VWA-48109792",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 350,
+    "status": "Hoàn thành",
+    "payment": "QR",
+    "note": "Nhận lúc 12:00 - 12:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-19T20:01:49.792Z",
+    "updated_at": "2026-09-19T20:11:12.489Z",
+    "_id": "6ad39567ae012593f03d6013"
+  },
+  {
+    "id": 12,
+    "code": "VWA-32174793",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 65650,
+    "discount": 100000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 13:00 - 13:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 3,
+        "name": "Bún bò Huế",
+        "price": 45000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-20T19:22:54.793Z",
+    "updated_at": "2026-09-27T14:46:40.201Z",
+    "_id": "6ad39567ae012593f03d6014"
+  },
+  {
+    "id": 13,
+    "code": "VWA-32260202",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 131300,
+    "discount": 10000,
+    "total": 121300,
+    "points_earned": 1213,
+    "status": "Đã hủy",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 13:30 - 14:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 2
+      },
+      {
+        "menu_item_id": 2,
+        "name": "Cơm sườn nướng",
+        "price": 45000,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 3,
+        "name": "Bún bò Huế",
+        "price": 45000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-20T19:24:20.202Z",
+    "_id": "6ad39567ae012593f03d6015"
+  },
+  {
+    "id": 14,
+    "code": "VWA-32522725",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 61950,
+    "discount": 50000,
+    "total": 11950,
+    "points_earned": 119,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 12:00 - 12:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 2
+      }
+    ],
+    "created_at": "2026-09-20T19:28:42.725Z",
+    "updated_at": "2026-09-27T14:46:31.761Z",
+    "_id": "6ad39567ae012593f03d6016"
+  },
+  {
+    "id": 15,
+    "code": "VWA-32789079",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 45650,
+    "discount": 50000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 12:30 - 13:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 6,
+        "name": "Trà đào cam sả",
+        "price": 25000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-20T19:33:09.079Z",
+    "updated_at": "2026-09-27T14:46:26.532Z",
+    "_id": "6ad39567ae012593f03d6017"
+  },
+  {
+    "id": 16,
+    "code": "VWA-57848569",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 61950,
+    "discount": 100000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Ch? x�c nh?n",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 10:30 - 11:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 2
+      },
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-21T02:30:48.569Z",
+    "_id": "6ad39567ae012593f03d6018"
+  },
+  {
+    "id": 17,
+    "code": "VWA-59673108",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 206,
+    "status": "Đã hủy",
+    "payment": "Tiền mặt",
+    "note": "Test tự động",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-21T03:01:13.108Z",
+    "_id": "6ad39567ae012593f03d6019"
+  },
+  {
+    "id": 18,
+    "code": "VWA-59729721",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 60650,
+    "discount": 10000,
+    "total": 50650,
+    "points_earned": 506,
+    "status": "Hoàn thành",
+    "payment": "Ví Canteen",
+    "note": "Test E2E",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 5,
+        "name": "Bánh mì thịt",
+        "price": 20000,
+        "qty": 2
+      }
+    ],
+    "created_at": "2026-09-21T03:02:09.721Z",
+    "updated_at": "2026-09-21T03:03:19.900Z",
+    "received_at": "2026-09-21T03:03:19.957Z",
+    "_id": "6ad39567ae012593f03d601a"
+  },
+  {
+    "id": 19,
+    "code": "VWA-61506952",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 40000,
+    "discount": 50000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Hoàn thành",
+    "payment": "Ví Canteen",
+    "note": "Nhận lúc 14:30 - 15:00",
+    "items": [
+      {
+        "menu_item_id": 4,
+        "name": "Phở bò",
+        "price": 40000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-25T18:38:26.952Z",
+    "updated_at": "2026-09-25T18:39:32.801Z",
+    "_id": "6ad39567ae012593f03d601b"
+  },
+  {
+    "id": 20,
+    "code": "VWA-41758279-R3N",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 0,
+    "discount": 0,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_1627520124",
+        "price": 10000,
+        "qty": 0
+      }
+    ],
+    "created_at": "2026-09-26T16:55:58.282Z",
+    "updated_at": "2026-09-27T14:46:13.746Z",
+    "_id": "6ad39567ae012593f03d601c"
+  },
+  {
+    "id": 21,
+    "code": "VWA-41758693-0EF",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": -10000,
+    "discount": 0,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_1627520124",
+        "price": 10000,
+        "qty": -1
+      }
+    ],
+    "created_at": "2026-09-26T16:55:58.693Z",
+    "updated_at": "2026-09-27T14:46:14.824Z",
+    "_id": "6ad39567ae012593f03d601d"
+  },
+  {
+    "id": 22,
+    "code": "VWA-41758929-MBV",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 15000,
+    "discount": 0,
+    "total": 15000,
+    "points_earned": 150,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_1627520124",
+        "price": 10000,
+        "qty": 1.5
+      }
+    ],
+    "created_at": "2026-09-26T16:55:58.929Z",
+    "updated_at": "2026-09-27T14:46:18.654Z",
+    "_id": "6ad39567ae012593f03d601e"
+  },
+  {
+    "id": 23,
+    "code": "VWA-41759361-8QC",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 10000,
+    "discount": 0,
+    "total": 10000,
+    "points_earned": 100,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_1627520124",
+        "price": 10000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-26T16:55:59.361Z",
+    "updated_at": "2026-09-27T14:46:00.651Z",
+    "_id": "6ad39567ae012593f03d601f"
+  },
+  {
+    "id": 24,
+    "code": "VWA-41761590-917",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 30000,
+    "discount": 0,
+    "total": 30000,
+    "points_earned": 300,
+    "status": "Đã hủy",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_1627520124",
+        "price": 10000,
+        "qty": 3
+      }
+    ],
+    "created_at": "2026-09-26T16:56:01.590Z",
+    "updated_at": "2026-09-26T16:56:02.216Z",
+    "_id": "6ad39567ae012593f03d6020"
+  },
+  {
+    "id": 25,
+    "code": "VWA-41763305-EGZ",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20000,
+    "discount": 0,
+    "total": 20000,
+    "points_earned": 200,
+    "status": "Đã hủy",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_1627520124",
+        "price": 10000,
+        "qty": 2
+      }
+    ],
+    "created_at": "2026-09-26T16:56:03.305Z",
+    "_id": "6ad39567ae012593f03d6021"
+  },
+  {
+    "id": 26,
+    "code": "VWA-42167059-NQUOS",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 30000,
+    "discount": 0,
+    "total": 30000,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_2042745357",
+        "price": 10000,
+        "qty": 3
+      }
+    ],
+    "created_at": "2026-09-26T17:02:47.059Z",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-09-26T17:02:47.759Z",
+    "_id": "6ad39567ae012593f03d6022"
+  },
+  {
+    "id": 27,
+    "code": "VWA-42168998-U3OIR",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20000,
+    "discount": 0,
+    "total": 20000,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "ZZ_Test_2042745357",
+        "price": 10000,
+        "qty": 2
+      }
+    ],
+    "created_at": "2026-09-26T17:02:48.998Z",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-09-26T17:02:49.393Z",
+    "_id": "6ad39567ae012593f03d6023"
+  },
+  {
+    "id": 28,
+    "code": "VWA-66303398-3GVZ6",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20000,
+    "discount": 10000,
+    "total": 10000,
+    "points_earned": 100,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 11:00 - 11:30",
+    "items": [
+      {
+        "menu_item_id": 5,
+        "name": "Bánh mì thịt",
+        "price": 20000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-28T03:31:43.398Z",
+    "updated_at": "2026-09-28T03:32:50.836Z",
+    "_id": "6ad39567ae012593f03d6024"
+  },
+  {
+    "id": 29,
+    "code": "VWA-68246255-J3RBC",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 42000,
+    "discount": 100000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 12:00 - 12:30",
+    "items": [
+      {
+        "menu_item_id": 28,
+        "name": "Bún bò Nam Bộ",
+        "price": 42000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-28T04:04:06.255Z",
+    "updated_at": "2026-09-28T04:07:33.350Z",
+    "_id": "6ad39567ae012593f03d6025"
+  },
+  {
+    "id": 30,
+    "code": "VWA-78000540-KW270",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 45000,
+    "discount": 50000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "payment": "Thẻ",
+    "note": "Nhận lúc 14:30 - 15:00",
+    "items": [
+      {
+        "menu_item_id": 3,
+        "name": "Bún bò Huế",
+        "price": 45000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-28T06:46:40.540Z",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-09-28T07:11:49.692Z",
+    "_id": "6ad39567ae012593f03d6026"
+  },
+  {
+    "id": 31,
+    "code": "VWA-78775839-TNOOL",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20650,
+    "discount": 50000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 14:00 - 14:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-28T06:59:35.839Z",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-09-28T07:11:53.971Z",
+    "_id": "6ad39567ae012593f03d6027"
+  },
+  {
+    "id": 32,
+    "code": "VWA-31421819-PU7XX",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20650,
+    "discount": 75000,
+    "total": 0,
+    "points_earned": 0,
+    "status": "Hoàn thành",
+    "payment": "Ví Canteen",
+    "note": "siêu cay · checkout.notePickupPrefix 08:30 - 09:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T01:23:41.819Z",
+    "updated_at": "2026-09-30T01:24:19.919Z",
+    "_id": "6ad39567ae012593f03d6028"
+  },
+  {
+    "id": 33,
+    "code": "VWA-37444211-ZH4EC",
+    "customer_id": 8,
+    "customer_name": "hà",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 206,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "checkout.notePickupPrefix 11:00 - 11:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T03:04:04.211Z",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-13T14:23:08.618Z",
+    "updated_at": "2026-10-13T22:49:40.201Z",
+    "received_at": "2026-10-13T22:49:40.201Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:40.201Z",
+    "_id": "6ad39567ae012593f03d6029"
+  },
+  {
+    "id": 34,
+    "code": "VWA-37519251-10PRQ",
+    "customer_id": 8,
+    "customer_name": "hà",
+    "subtotal": 30000,
+    "discount": 0,
+    "total": 30000,
+    "points_earned": 300,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "checkout.notePickupPrefix 10:30 - 11:00",
+    "items": [
+      {
+        "menu_item_id": 7,
+        "name": "Cơm chay thập cẩm",
+        "price": 30000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T03:05:19.251Z",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-13T14:23:02.625Z",
+    "updated_at": "2026-10-13T22:49:40.696Z",
+    "received_at": "2026-10-13T22:49:40.696Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:40.696Z",
+    "_id": "6ad39567ae012593f03d602a"
+  },
+  {
+    "id": 35,
+    "code": "VWA-37683530-P9OCY",
+    "customer_id": 8,
+    "customer_name": "hà",
+    "subtotal": 70000,
+    "discount": 10000,
+    "total": 60000,
+    "points_earned": 600,
+    "status": "Hoàn thành",
+    "payment": "Thẻ",
+    "note": "checkout.notePickupPrefix 12:30 - 13:00",
+    "items": [
+      {
+        "menu_item_id": 3,
+        "name": "Bún bò Huế",
+        "price": 45000,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 6,
+        "name": "Trà đào cam sả",
+        "price": 25000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T03:08:03.530Z",
+    "updated_at": "2026-10-13T22:49:40.912Z",
+    "received_at": "2026-10-13T22:49:40.912Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:40.912Z",
+    "_id": "6ad39567ae012593f03d602b"
+  },
+  {
+    "id": 36,
+    "code": "VWA-37819002-J7RAE",
+    "customer_id": 8,
+    "customer_name": "hà",
+    "subtotal": 112500,
+    "discount": 0,
+    "total": 112500,
+    "points_earned": 1125,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "checkout.notePickupPrefix 11:00 - 11:30",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "Combo mlem",
+        "price": 112500,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T03:10:19.002Z",
+    "updated_at": "2026-10-13T22:49:41.145Z",
+    "received_at": "2026-10-13T22:49:41.145Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:41.145Z",
+    "_id": "6ad39567ae012593f03d602c"
+  },
+  {
+    "id": 37,
+    "code": "VWA-37985312-UCTPL",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 41300,
+    "discount": 0,
+    "total": 41300,
+    "points_earned": 413,
+    "status": "Hoàn thành",
+    "payment": "Ví Canteen",
+    "note": "checkout.notePickupPrefix 10:30 - 11:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T03:13:05.312Z",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-13T14:23:11.797Z",
+    "updated_at": "2026-10-13T22:49:41.952Z",
+    "received_at": "2026-10-13T22:49:41.952Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:41.952Z",
+    "_id": "6ad39567ae012593f03d602d"
+  },
+  {
+    "id": 38,
+    "code": "VWA-38075070-2TARJ",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 45650,
+    "discount": 0,
+    "total": 45650,
+    "points_earned": 456,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "checkout.notePickupPrefix 10:30 - 11:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 6,
+        "name": "Trà đào cam sả",
+        "price": 25000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T03:14:35.070Z",
+    "updated_at": "2026-10-13T22:49:42.164Z",
+    "received_at": "2026-10-13T22:49:42.164Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:42.164Z",
+    "_id": "6ad39567ae012593f03d602e"
+  },
+  {
+    "id": 39,
+    "code": "VWA-58100307-X1CC9",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 40000,
+    "discount": 0,
+    "total": 40000,
+    "points_earned": 400,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 16:00 - 16:30",
+    "items": [
+      {
+        "menu_item_id": 4,
+        "name": "Phở bò",
+        "price": 40000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T08:48:20.307Z",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-13T14:23:26.076Z",
+    "updated_at": "2026-10-13T22:49:42.412Z",
+    "received_at": "2026-10-13T22:49:42.412Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:42.412Z",
+    "_id": "6ad39567ae012593f03d602f"
+  },
+  {
+    "id": 40,
+    "code": "VWA-58158765-Z1ZHV",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 112500,
+    "discount": 0,
+    "total": 112500,
+    "points_earned": 1125,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 16:30 - 17:00",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "Combo mlem",
+        "price": 112500,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T08:49:18.765Z",
+    "updated_at": "2026-10-13T22:49:42.889Z",
+    "received_at": "2026-10-13T22:49:42.889Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:42.889Z",
+    "_id": "6ad39567ae012593f03d6030"
+  },
+  {
+    "id": 41,
+    "code": "VWA-58557033-JCK4A",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20000,
+    "discount": 0,
+    "total": 20000,
+    "points_earned": 200,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 17:00 - 17:30",
+    "items": [
+      {
+        "menu_item_id": 5,
+        "name": "Bánh mì thịt",
+        "price": 20000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T08:55:57.033Z",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-13T14:23:54.262Z",
+    "updated_at": "2026-10-13T22:49:43.089Z",
+    "received_at": "2026-10-13T22:49:43.089Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:43.089Z",
+    "_id": "6ad39567ae012593f03d6031"
+  },
+  {
+    "id": 42,
+    "code": "VWA-58713683-WNTH8",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 45000,
+    "discount": 0,
+    "total": 45000,
+    "points_earned": 450,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 16:30 - 17:00",
+    "items": [
+      {
+        "menu_item_id": 3,
+        "name": "Bún bò Huế",
+        "price": 45000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-09-30T08:58:33.683Z",
+    "updated_at": "2026-10-13T22:49:43.638Z",
+    "received_at": "2026-10-13T22:49:43.638Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:43.638Z",
+    "_id": "6ad39567ae012593f03d6032"
+  },
+  {
+    "id": 43,
+    "code": "VWA-61900795-HZ481",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 40000,
+    "discount": 0,
+    "total": 40000,
+    "points_earned": 400,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 17:00 - 17:30",
+    "items": [
+      {
+        "menu_item_id": 6,
+        "name": "Trà đào cam sả",
+        "price": 40000,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 8,
+            "name": "Trân châu trắng",
+            "price": 5000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-09-30T09:51:40.795Z",
+    "updated_at": "2026-10-13T22:49:35.082Z",
+    "received_at": "2026-10-13T22:49:35.082Z",
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:35.083Z",
+    "_id": "6ad39567ae012593f03d6033"
+  },
+  {
+    "id": 44,
+    "code": "VWA-62991071-DGHNI",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 122500,
+    "discount": 0,
+    "total": 122500,
+    "points_earned": 1225,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 17:30 - 18:00",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "Combo mlem",
+        "price": 122500,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-09-30T10:09:51.071Z",
+    "updated_at": "2026-10-13T16:17:12.054Z",
+    "received_at": "2026-10-13T16:17:12.054Z",
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T16:17:12.054Z",
+    "_id": "6ad39567ae012593f03d6034"
+  },
+  {
+    "id": 45,
+    "code": "VWA-63137855-X48U4",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 61000,
+    "discount": 0,
+    "total": 61000,
+    "points_earned": 610,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 17:30 - 18:00",
+    "items": [
+      {
+        "menu_item_id": 8,
+        "name": "Bún chả chay",
+        "price": 61000,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 17,
+            "name": "Trứng ốp la",
+            "price": 8000
+          },
+          {
+            "id": 18,
+            "name": "Trứng chiên",
+            "price": 8000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-09-30T10:12:17.855Z",
+    "updated_at": "2026-09-30T10:33:41.824Z",
+    "_id": "6ad39567ae012593f03d6035"
+  },
+  {
+    "id": 46,
+    "code": "VWA-64591423-7X956",
+    "customer_id": 8,
+    "customer_name": "hà",
+    "subtotal": 51000,
+    "discount": 0,
+    "total": 51000,
+    "points_earned": 510,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 18:00 - 18:30",
+    "items": [
+      {
+        "menu_item_id": 10,
+        "name": "Gỏi cuốn chay",
+        "price": 51000,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 18,
+            "name": "Trứng chiên",
+            "price": 8000
+          },
+          {
+            "id": 17,
+            "name": "Trứng ốp la",
+            "price": 8000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-09-30T10:36:31.423Z",
+    "updated_at": "2026-10-13T22:49:44.270Z",
+    "received_at": "2026-10-13T22:49:44.270Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:44.270Z",
+    "_id": "6ad39567ae012593f03d6036"
+  },
+  {
+    "id": 47,
+    "code": "VWA-64742544-GTH02",
+    "customer_id": 8,
+    "customer_name": "hà",
+    "subtotal": 46000,
+    "discount": 0,
+    "total": 46000,
+    "points_earned": 460,
+    "status": "Hoàn thành",
+    "payment": "Tiền mặt",
+    "note": "Nhận lúc 18:00 - 18:30",
+    "items": [
+      {
+        "menu_item_id": 12,
+        "name": "Mì xào chay",
+        "price": 46000,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 18,
+            "name": "Trứng chiên",
+            "price": 8000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-09-30T10:39:02.545Z",
+    "updated_at": "2026-10-13T22:49:44.691Z",
+    "received_at": "2026-10-13T22:49:44.691Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:49:44.691Z",
+    "_id": "6ad39567ae012593f03d6037"
+  },
+  {
+    "id": 48,
+    "code": "VWA-64785330-YUJEQ",
+    "customer_id": 8,
+    "customer_name": "hà",
+    "subtotal": 58000,
+    "discount": 0,
+    "total": 58000,
+    "points_earned": 580,
+    "status": "Hoàn thành",
+    "payment": "Thẻ",
+    "note": "Nhận lúc 18:00 - 18:30",
+    "items": [
+      {
+        "menu_item_id": 9,
+        "name": "Phở chay",
+        "price": 58000,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 17,
+            "name": "Trứng ốp la",
+            "price": 8000
+          },
+          {
+            "id": 20,
+            "name": "Thêm rau",
+            "price": 5000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-09-30T10:39:45.330Z",
+    "updated_at": "2026-09-30T15:20:50.348Z",
+    "_id": "6ad39567ae012593f03d6038"
+  },
+  {
+    "id": 49,
+    "code": "VWA-16168670-FJLGM",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 92650,
+    "discount": 10000,
+    "total": 82650,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "payment": "CASH",
+    "note": "Nhận hàng: 10:30 - 11:00",
+    "items": [
+      {
+        "menu_item_id": 63,
+        "name": "Combo Trưa Tỉnh Táo",
+        "price": 72000,
+        "qty": 1
+      },
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-13T18:29:28.671Z",
+    "voucher_code": "SALE10K-U3",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-10-13T22:47:40.891Z",
+    "_id": "6ad39567ae012593f03d6039"
+  },
+  {
+    "id": 50,
+    "code": "VWA-17194323-CGAZU",
+    "customer_id": 3,
+    "customer_name": "Trần Văn Trí",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "payment": "CASH",
+    "note": "Nhận hàng: 07:30 - 08:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-13T18:46:34.323Z",
+    "voucher_code": "",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-10-13T22:36:53.327Z",
+    "_id": "6ad39567ae012593f03d603a"
+  },
+  {
+    "id": 51,
+    "code": "VWA-31852591-Q5LG2",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 10000,
+    "total": 10650,
+    "points_earned": 1,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 13:00 - 13:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-13T22:50:52.591Z",
+    "voucher_code": "VOUCHER0043",
+    "updated_at": "2026-10-13T22:58:36.635Z",
+    "received_at": "2026-10-13T22:58:36.635Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T22:58:36.635Z",
+    "_id": "6ad39567ae012593f03d603b"
+  },
+  {
+    "id": 52,
+    "code": "VWA-32334466-FQHKK",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 30000,
+    "discount": 0,
+    "total": 30000,
+    "points_earned": 3,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 12:00 - 12:30",
+    "items": [
+      {
+        "menu_item_id": 11,
+        "name": "Đậu hũ sốt cà",
+        "price": 30000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-13T22:58:54.466Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-13T23:04:14.060Z",
+    "received_at": "2026-10-13T23:04:14.060Z",
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T23:04:14.060Z",
+    "_id": "6ad39567ae012593f03d603c"
+  },
+  {
+    "id": 53,
+    "code": "VWA-32423495-CYYOA",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 30000,
+    "discount": 0,
+    "total": 30000,
+    "points_earned": 3,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 14:00 - 14:30",
+    "items": [
+      {
+        "menu_item_id": 24,
+        "name": "Trà sữa trân châu",
+        "price": 30000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-13T23:00:23.495Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-13T23:09:09.676Z",
+    "received_at": "2026-10-13T23:09:09.676Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T23:09:09.676Z",
+    "_id": "6ad39567ae012593f03d603d"
+  },
+  {
+    "id": 54,
+    "code": "VWA-32994040-ZDBCF",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 259000,
+    "discount": 0,
+    "total": 259000,
+    "points_earned": 25,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 13:00 - 13:30",
+    "items": [
+      {
+        "menu_item_id": 65,
+        "name": "Combo Tiết Kiệm i (3-4 người)",
+        "price": 259000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-13T23:09:54.040Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-13T23:20:55.155Z",
+    "received_at": "2026-10-13T23:20:55.155Z",
+    "received_by": "hà mã",
+    "received_by_id": 2,
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-13T23:20:55.155Z",
+    "_id": "6ad39567ae012593f03d603e"
+  },
+  {
+    "id": 55,
+    "code": "VWA-33681211-ZOJM7",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 25000,
+    "discount": 0,
+    "total": 25000,
+    "points_earned": 2,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 12:30 - 13:00",
+    "items": [
+      {
+        "menu_item_id": 10,
+        "name": "Gỏi cuốn chay",
+        "price": 25000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-13T23:21:21.211Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-14T02:43:49.402Z",
+    "received_at": "2026-10-14T02:43:49.402Z",
+    "pickup_points_awarded": true,
+    "pickup_points_earned": 5,
+    "pickup_points_awarded_at": "2026-10-14T02:43:49.402Z",
+    "_id": "6ad39567ae012593f03d603f"
+  },
+  {
+    "id": 56,
+    "code": "VWA-46747638-P5ZZF",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 30000,
+    "discount": 10000,
+    "total": 20000,
+    "points_earned": 2,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 10:00 - 10:30",
+    "items": [
+      {
+        "menu_item_id": 7,
+        "name": "Cơm chay thập cẩm",
+        "price": 30000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T02:59:07.639Z",
+    "voucher_code": "VOUCHER0011",
+    "updated_at": "2026-10-14T05:34:04.055Z",
+    "_id": "6ad39567ae012593f03d6040"
+  },
+  {
+    "id": 57,
+    "code": "VWA-51903090-J5AIJ",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 12:00 - 12:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T04:25:03.090Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-14T05:34:04.751Z",
+    "_id": "6ad39567ae012593f03d6041"
+  },
+  {
+    "id": 58,
+    "code": "VWA-55958966-D6Y7G",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 206,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 14:00 - 14:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T05:32:38.966Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-14T05:34:05.207Z",
+    "_id": "6ad39567ae012593f03d6042"
+  },
+  {
+    "id": 59,
+    "code": "VWA-56013253-HCTTU",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 41300,
+    "discount": 0,
+    "total": 41300,
+    "points_earned": 413,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 13:00 - 13:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 2
+      }
+    ],
+    "created_at": "2026-10-14T05:33:33.253Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-14T05:34:05.548Z",
+    "_id": "6ad39567ae012593f03d6043"
+  },
+  {
+    "id": 60,
+    "code": "VWA-56934094-CRYA0",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 206,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 13:00 - 13:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T05:48:54.094Z",
+    "voucher_code": "",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-14T05:58:03.342Z",
+    "updated_at": "2026-10-14T05:58:24.603Z",
+    "_id": "6ad39567ae012593f03d6044"
+  },
+  {
+    "id": 61,
+    "code": "VWA-57459698-VBKY4",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 206,
+    "status": "Hoàn thành",
+    "payment": "CASH",
+    "note": "Nhận hàng: 13:00 - 13:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T05:57:39.699Z",
+    "voucher_code": "",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-14T05:58:04.006Z",
+    "updated_at": "2026-10-14T05:58:25.389Z",
+    "_id": "6ad39567ae012593f03d6045"
+  },
+  {
+    "id": 62,
+    "code": "VWA-57538284-WORAK",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 45000,
+    "discount": 0,
+    "total": 45000,
+    "points_earned": 450,
+    "status": "Sẵn sàng nhận",
+    "payment": "CASH",
+    "note": "Nhận hàng: 13:30 - 14:00",
+    "items": [
+      {
+        "menu_item_id": 2,
+        "name": "Cơm sườn nướng",
+        "price": 45000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T05:58:58.284Z",
+    "voucher_code": "",
+    "_stock_deducted": true,
+    "_stock_deducted_at": "2026-10-14T05:59:09.146Z",
+    "updated_at": "2026-10-14T08:23:18.622Z",
+    "_id": "6ad39567ae012593f03d6046"
+  },
+  {
+    "id": 63,
+    "code": "VWA-61015158-M7TAH",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Đang chuẩn bị",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "CASH",
+    "note": "Nhận hàng: 14:00 - 14:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T06:56:55.159Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-14T08:21:55.843Z",
+    "_id": "6ad39567ae012593f03d6047"
+  },
+  {
+    "id": 64,
+    "code": "VWA-61344779-RR9MZ",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Sẵn sàng nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:24.779Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-16T13:58:04.381Z",
+    "_id": "6ad39567ae012593f03d6048"
+  },
+  {
+    "id": 65,
+    "code": "VWA-61345029-0SY5D",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 12,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "approved",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:25.029Z",
+    "voucher_code": "",
+    "green_approved_by": 2,
+    "green_approved_by_name": "hà mã",
+    "green_approved_at": "2026-10-14T08:13:46.986Z",
+    "_id": "6ad39567ae012593f03d6049"
+  },
+  {
+    "id": 66,
+    "code": "VWA-61345292-0791C",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "rejected",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:25.292Z",
+    "voucher_code": "",
+    "green_rejected_by": 2,
+    "green_rejected_by_name": "hà mã",
+    "green_rejected_at": "2026-10-14T08:13:49.836Z",
+    "_id": "6ad39567ae012593f03d604a"
+  },
+  {
+    "id": 67,
+    "code": "VWA-61345546-IWZFW",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 12,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "approved",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:25.546Z",
+    "voucher_code": "",
+    "green_approved_by": 2,
+    "green_approved_by_name": "hà mã",
+    "green_approved_at": "2026-10-14T08:19:28.723Z",
+    "_id": "6ad39567ae012593f03d604b"
+  },
+  {
+    "id": 68,
+    "code": "VWA-61345810-96UBK",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Sẵn sàng nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:25.810Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-16T13:59:30.647Z",
+    "_id": "6ad39567ae012593f03d604c"
+  },
+  {
+    "id": 69,
+    "code": "VWA-61346085-BXV69",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Đã xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:26.085Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-16T13:59:50.832Z",
+    "_id": "6ad39567ae012593f03d604d"
+  },
+  {
+    "id": 70,
+    "code": "VWA-61346331-3Y2F2",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:26.331Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d604e"
+  },
+  {
+    "id": 71,
+    "code": "VWA-61346603-JVC8Z",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:26.603Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d604f"
+  },
+  {
+    "id": 72,
+    "code": "VWA-61346860-W296A",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:26.860Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6050"
+  },
+  {
+    "id": 73,
+    "code": "VWA-61347114-6433K",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:27.114Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6051"
+  },
+  {
+    "id": 74,
+    "code": "VWA-61347369-UKO7A",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:27.369Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6052"
+  },
+  {
+    "id": 75,
+    "code": "VWA-61347625-IYTQE",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:27.625Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6053"
+  },
+  {
+    "id": 76,
+    "code": "VWA-61347890-KOL85",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:27.890Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6054"
+  },
+  {
+    "id": 77,
+    "code": "VWA-61348152-ONDTN",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:28.152Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6055"
+  },
+  {
+    "id": 78,
+    "code": "VWA-61348409-1GUY3",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:28.409Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6056"
+  },
+  {
+    "id": 79,
+    "code": "VWA-61348671-QXU01",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:28.671Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6057"
+  },
+  {
+    "id": 80,
+    "code": "VWA-61348925-I7JWA",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:28.925Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6058"
+  },
+  {
+    "id": 81,
+    "code": "VWA-61349197-OCHG3",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:29.197Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6059"
+  },
+  {
+    "id": 82,
+    "code": "VWA-61349458-A2AHU",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:29.458Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d605a"
+  },
+  {
+    "id": 83,
+    "code": "VWA-61349725-DWL9U",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:29.725Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d605b"
+  },
+  {
+    "id": 84,
+    "code": "VWA-61349992-7DRPP",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:29.992Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d605c"
+  },
+  {
+    "id": 85,
+    "code": "VWA-61350258-S3OC3",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:30.258Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d605d"
+  },
+  {
+    "id": 86,
+    "code": "VWA-61350526-E1624",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:30.526Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d605e"
+  },
+  {
+    "id": 87,
+    "code": "VWA-61350777-LDCFE",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:30.777Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d605f"
+  },
+  {
+    "id": 88,
+    "code": "VWA-61351038-3TSDS",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:31.038Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6060"
+  },
+  {
+    "id": 89,
+    "code": "VWA-61351292-O5TLH",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:31.292Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6061"
+  },
+  {
+    "id": 90,
+    "code": "VWA-61351546-QWVQU",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:31.546Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6062"
+  },
+  {
+    "id": 91,
+    "code": "VWA-61351802-XOYG7",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:31.802Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6063"
+  },
+  {
+    "id": 92,
+    "code": "VWA-61352056-I9RBM",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:32.056Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6064"
+  },
+  {
+    "id": 93,
+    "code": "VWA-61352310-4ZFYK",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:32.310Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6065"
+  },
+  {
+    "id": 94,
+    "code": "VWA-61352576-PDG6T",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:32.576Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6066"
+  },
+  {
+    "id": 95,
+    "code": "VWA-61352833-KTGYX",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:32.833Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6067"
+  },
+  {
+    "id": 96,
+    "code": "VWA-61353092-5DLJZ",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:33.092Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6068"
+  },
+  {
+    "id": 97,
+    "code": "VWA-61353354-IQW3C",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:33.354Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6069"
+  },
+  {
+    "id": 98,
+    "code": "VWA-61353609-8V82X",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:33.609Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d606a"
+  },
+  {
+    "id": 99,
+    "code": "VWA-61353869-9V82M",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:33.869Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d606b"
+  },
+  {
+    "id": 100,
+    "code": "VWA-61354120-L74O9",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:34.120Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d606c"
+  },
+  {
+    "id": 101,
+    "code": "VWA-61354379-861U0",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:34.379Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d606d"
+  },
+  {
+    "id": 102,
+    "code": "VWA-61354639-28PUB",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:34.639Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d606e"
+  },
+  {
+    "id": 103,
+    "code": "VWA-61354899-QPVTI",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:34.899Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d606f"
+  },
+  {
+    "id": 104,
+    "code": "VWA-61355158-7C4L6",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:35.158Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6070"
+  },
+  {
+    "id": 105,
+    "code": "VWA-61355425-FA3GV",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:35.425Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6071"
+  },
+  {
+    "id": 106,
+    "code": "VWA-61355678-6M53S",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:35.678Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6072"
+  },
+  {
+    "id": 107,
+    "code": "VWA-61355937-4VQXR",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:35.937Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6073"
+  },
+  {
+    "id": 108,
+    "code": "VWA-61356200-QKNSX",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:36.200Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6074"
+  },
+  {
+    "id": 109,
+    "code": "VWA-61356456-JTAEG",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:36.456Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6075"
+  },
+  {
+    "id": 110,
+    "code": "VWA-61356720-6EKJ9",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:36.720Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6076"
+  },
+  {
+    "id": 111,
+    "code": "VWA-61356980-7E7S9",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:36.980Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6077"
+  },
+  {
+    "id": 112,
+    "code": "VWA-61357237-3JOS8",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:37.237Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6078"
+  },
+  {
+    "id": 113,
+    "code": "VWA-61357502-P4BCL",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:37.502Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6079"
+  },
+  {
+    "id": 114,
+    "code": "VWA-61357759-LZJU9",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:37.759Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d607a"
+  },
+  {
+    "id": 115,
+    "code": "VWA-61358017-51B91",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 10,
+    "payment": "Tiền mặt",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:02:38.017Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d607b"
+  },
+  {
+    "id": 116,
+    "code": "VWA-61568592-O5MYS",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 25000,
+    "discount": 0,
+    "total": 25000,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "CASH",
+    "note": "Nhận hàng: 14:30 - 15:00",
+    "items": [
+      {
+        "menu_item_id": 6,
+        "name": "Trà đào cam sả",
+        "price": 25000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T07:06:08.592Z",
+    "voucher_code": "",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-10-14T08:09:40.626Z",
+    "_id": "6ad39567ae012593f03d607c"
+  },
+  {
+    "id": 117,
+    "code": "VWA-65310735-GJGYT",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 259000,
+    "discount": 0,
+    "total": 259000,
+    "points_earned": 0,
+    "status": "Đã hủy",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "CASH",
+    "note": "Nhận hàng: 15:30 - 16:00",
+    "items": [
+      {
+        "menu_item_id": 65,
+        "name": "Combo Tiết Kiệm i (3-4 người)",
+        "price": 259000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T08:08:30.735Z",
+    "voucher_code": "",
+    "_stock_rolled_back": true,
+    "updated_at": "2026-10-14T08:24:17.995Z",
+    "_id": "6ad39567ae012593f03d607d"
+  },
+  {
+    "id": 118,
+    "code": "VWA-66107634-AC6RB",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 45000,
+    "discount": 0,
+    "total": 45000,
+    "points_earned": 4,
+    "status": "Sẵn sàng nhận",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "CASH",
+    "note": "Nhận hàng: 15:30 - 16:00",
+    "items": [
+      {
+        "menu_item_id": 2,
+        "name": "Cơm sườn nướng",
+        "price": 45000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T08:21:47.634Z",
+    "voucher_code": "",
+    "updated_at": "2026-10-14T08:23:33.350Z",
+    "_id": "6ad39567ae012593f03d607e"
+  },
+  {
+    "id": 119,
+    "code": "VWA-66509153-P7534",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 3,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 8,
+    "payment": "CASH",
+    "note": "Nhận hàng: 15:30 - 16:00",
+    "items": [
+      {
+        "menu_item_id": 8,
+        "name": "Bún chả chay",
+        "price": 35000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T08:28:29.153Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d607f"
+  },
+  {
+    "id": 120,
+    "code": "VWA-66570981-AKBVN",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 112500,
+    "discount": 0,
+    "total": 112500,
+    "points_earned": 11,
+    "status": "Chờ xác nhận",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "CASH",
+    "note": "Nhận hàng: 15:30 - 16:00",
+    "items": [
+      {
+        "menu_item_id": 30,
+        "name": "Combo mlem",
+        "price": 112500,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T08:29:30.981Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6080"
+  },
+  {
+    "id": 121,
+    "code": "VWA-66595821-90GBE",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 30000,
+    "discount": 0,
+    "total": 30000,
+    "points_earned": 3,
+    "status": "Chờ xác nhận",
+    "green_requested": true,
+    "green_status": "pending",
+    "green_points": 8,
+    "payment": "CASH",
+    "note": "Nhận hàng: 16:00 - 16:30",
+    "items": [
+      {
+        "menu_item_id": 24,
+        "name": "Trà sữa trân châu",
+        "price": 30000,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T08:29:55.821Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6081"
+  },
+  {
+    "id": 122,
+    "code": "VWA-98410268-HQWZ4",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "payment": "CASH",
+    "note": "Nhận hàng: 14:00 - 14:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T17:20:10.268Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6082"
+  },
+  {
+    "id": 123,
+    "code": "VWA-98488336-L4U1N",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 10000,
+    "total": 10650,
+    "points_earned": 1,
+    "status": "Chờ xác nhận",
+    "payment": "Ví Canteen",
+    "note": "Nhận hàng: 12:00 - 12:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T17:21:28.336Z",
+    "voucher_code": "VOUCHER0044",
+    "_id": "6ad39567ae012593f03d6083"
+  },
+  {
+    "id": 124,
+    "code": "VWA-00258592-3Q4XV",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 1140000,
+    "discount": 20000,
+    "total": 1120000,
+    "points_earned": 112,
+    "status": "Chờ xác nhận",
+    "payment": "CASH",
+    "note": "Nhận hàng: 07:00 - 07:30",
+    "items": [
+      {
+        "menu_item_id": 27,
+        "name": "Cơm gà nướng mật ong",
+        "price": 38000,
+        "qty": 30
+      }
+    ],
+    "created_at": "2026-10-14T17:50:58.592Z",
+    "voucher_code": "VOUCHER0032-U3",
+    "_id": "6ad39567ae012593f03d6084"
+  },
+  {
+    "id": 125,
+    "code": "VWA-00335358-J12TV",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "payment": "CARD",
+    "note": "Nhận hàng: 07:30 - 08:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T17:52:15.358Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6085"
+  },
+  {
+    "id": 126,
+    "code": "VWA-02363473-GTTRJ",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "payment": "CASH",
+    "note": "Nhận hàng: 14:30 - 15:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "qty": 1
+      }
+    ],
+    "created_at": "2026-10-14T18:26:03.473Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6086"
+  },
+  {
+    "id": 127,
+    "code": "VWA-02519149-RE2PB",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 38650,
+    "discount": 0,
+    "total": 38650,
+    "points_earned": 3,
+    "status": "Chờ xác nhận",
+    "payment": "CASH",
+    "note": "Nhận hàng: 14:00 - 14:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 38650,
+        "base_price": 20650,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 1,
+            "name": "Trứng ốp la",
+            "price": 8000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-10-14T18:28:39.149Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6087"
+  },
+  {
+    "id": 128,
+    "code": "VWA-04044559-GV2P0",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "payment": "CARD",
+    "note": "Nhận hàng: 13:00 - 13:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "base_price": 20650,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-14T18:54:04.559Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6088"
+  },
+  {
+    "id": 129,
+    "code": "VWA-04450809-F7XTI",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 108000,
+    "discount": 0,
+    "total": 108000,
+    "points_earned": 10,
+    "status": "Chờ xác nhận",
+    "payment": "QR",
+    "note": "Nhận hàng: 08:30 - 09:00",
+    "items": [
+      {
+        "menu_item_id": 7,
+        "name": "Cơm chay thập cẩm",
+        "price": 40000,
+        "base_price": 30000,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": []
+      },
+      {
+        "menu_item_id": 12,
+        "name": "Mì xào chay",
+        "price": 28000,
+        "base_price": 28000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      },
+      {
+        "menu_item_id": 15,
+        "name": "Bún chả Hà Nội",
+        "price": 40000,
+        "base_price": 40000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-14T19:00:50.809Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6089"
+  },
+  {
+    "id": 130,
+    "code": "VWA-04580766-TFK4Q",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 35000,
+    "discount": 0,
+    "total": 35000,
+    "points_earned": 3,
+    "status": "Chờ xác nhận",
+    "payment": "CARD",
+    "note": "Nhận hàng: 13:30 - 14:00",
+    "items": [
+      {
+        "menu_item_id": 8,
+        "name": "Bún chả chay",
+        "price": 35000,
+        "base_price": 35000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-14T19:03:00.766Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d608a"
+  },
+  {
+    "id": 131,
+    "code": "VWA-04830881-P2J99",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 20000,
+    "total": 650,
+    "points_earned": 0,
+    "status": "Chờ xác nhận",
+    "payment": "QR",
+    "note": "Nhận hàng: 07:30 - 08:00",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "base_price": 20650,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-14T19:07:10.881Z",
+    "voucher_code": "VOUCHER0019",
+    "_id": "6ad39567ae012593f03d608b"
+  },
+  {
+    "id": 132,
+    "code": "VWA-04865411-4DNUY",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 61000,
+    "discount": 30000,
+    "total": 31000,
+    "points_earned": 3,
+    "status": "Chờ xác nhận",
+    "payment": "WALLET",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 9,
+        "name": "Phở chay",
+        "price": 61000,
+        "base_price": 35000,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 23,
+            "name": "Canh thêm",
+            "price": 8000
+          },
+          {
+            "id": 18,
+            "name": "Trứng chiên",
+            "price": 8000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-10-14T19:07:45.412Z",
+    "voucher_code": "TEST823868-U3",
+    "_id": "6ad39567ae012593f03d608c"
+  },
+  {
+    "id": 133,
+    "code": "VWA-04886039-H1111",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 65000,
+    "discount": 0,
+    "total": 65000,
+    "points_earned": 6,
+    "status": "Chờ xác nhận",
+    "payment": "CARD",
+    "note": "Nhận hàng: 13:30 - 14:00",
+    "items": [
+      {
+        "menu_item_id": 2,
+        "name": "Cơm sườn nướng",
+        "price": 65000,
+        "base_price": 45000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": [
+          {
+            "id": 2,
+            "name": "Thịt bò thêm",
+            "price": 15000
+          },
+          {
+            "id": 4,
+            "name": "Rau thêm",
+            "price": 5000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-10-14T19:08:06.039Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d608d"
+  },
+  {
+    "id": 134,
+    "code": "VWA-09163515-5QOIZ",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20000,
+    "discount": 0,
+    "total": 20000,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "payment": "QR",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 25,
+        "name": "Nước dừa tươi",
+        "price": 20000,
+        "base_price": 20000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-14T20:19:23.515Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d608e"
+  },
+  {
+    "id": 135,
+    "code": "VWA-09205354-I2RP0",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "payment": "WALLET",
+    "note": "Nhận hàng: 16:00 - 16:30",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "base_price": 20650,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-14T20:20:05.355Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d608f"
+  },
+  {
+    "id": 136,
+    "code": "VWA-09704287-X7Q5A",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 35000,
+    "discount": 2500,
+    "total": 32500,
+    "points_earned": 3,
+    "status": "Chờ xác nhận",
+    "payment": "WALLET",
+    "note": "Nhận hàng: 07:30 - 08:00",
+    "items": [
+      {
+        "menu_item_id": 8,
+        "name": "Bún chả chay",
+        "price": 35000,
+        "base_price": 35000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-14T20:28:24.287Z",
+    "voucher_code": "VOUCHER0052",
+    "_id": "6ad39567ae012593f03d6090"
+  },
+  {
+    "id": 137,
+    "code": "VWA-90390730-SQRCE",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 38650,
+    "discount": 0,
+    "total": 38650,
+    "points_earned": 3,
+    "status": "Chờ xác nhận",
+    "payment": "QR",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 38650,
+        "base_price": 20650,
+        "qty": 1,
+        "size": {
+          "id": "L",
+          "name": "Lớn",
+          "extra_price": 10000
+        },
+        "toppings": [
+          {
+            "id": 25,
+            "name": "Ít cay",
+            "price": 0
+          },
+          {
+            "id": 23,
+            "name": "Canh thêm",
+            "price": 8000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-10-15T18:53:10.730Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6091"
+  },
+  {
+    "id": 138,
+    "code": "VWA-90406533-2BW3I",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 53000,
+    "discount": 0,
+    "total": 53000,
+    "points_earned": 5,
+    "status": "Chờ xác nhận",
+    "payment": "QR",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 2,
+        "name": "Cơm sườn nướng",
+        "price": 53000,
+        "base_price": 45000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": [
+          {
+            "id": 1,
+            "name": "Trứng ốp la",
+            "price": 8000
+          }
+        ]
+      }
+    ],
+    "created_at": "2026-10-15T18:53:26.533Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6092"
+  },
+  {
+    "id": 139,
+    "code": "VWA-05784409-OGZ17",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "ChÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â xÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡c nhÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂºÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­n",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "QR",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "base_price": 20650,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-17T02:56:24.409Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6093"
+  },
+  {
+    "id": 140,
+    "code": "VWA-24622984-ZNLNA",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 20650,
+    "discount": 0,
+    "total": 20650,
+    "points_earned": 2,
+    "status": "Chờ xác nhận",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "QR",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 1,
+        "name": "Cơm gà sốt tiêu",
+        "price": 20650,
+        "base_price": 20650,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-17T08:10:22.984Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6094"
+  },
+  {
+    "id": 141,
+    "code": "VWA-26472345-TXC4D",
+    "customer_id": 3,
+    "customer_name": "ĐOÀN THỊ MINH HÀ",
+    "subtotal": 45000,
+    "discount": 0,
+    "total": 45000,
+    "points_earned": 4,
+    "status": "Chờ xác nhận",
+    "green_requested": false,
+    "green_status": null,
+    "green_points": 0,
+    "payment": "QR",
+    "note": "",
+    "items": [
+      {
+        "menu_item_id": 2,
+        "name": "Cơm sườn nướng",
+        "price": 45000,
+        "base_price": 45000,
+        "qty": 1,
+        "size": {
+          "id": "S",
+          "name": "Nhỏ",
+          "extra_price": 0
+        },
+        "toppings": []
+      }
+    ],
+    "created_at": "2026-10-17T08:41:12.345Z",
+    "voucher_code": "",
+    "_id": "6ad39567ae012593f03d6095"
+  }
+]

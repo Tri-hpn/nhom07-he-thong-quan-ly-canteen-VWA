@@ -347,21 +347,14 @@ function getPointsConfig(db) {
 }
 
 // ============================================================
-// MONGODB
+// MONGODB (SPLIT COLLECTIONS)
 // ============================================================
 const MONGO_URI = process.env.MONGO_URI;
-let MongoModel = null;
 let dbCache = null;
 let mongoReady = false;
 let mongoConnecting = null;
 
-if (MONGO_URI) {
-  const dbSchema = new mongoose.Schema(
-    { _id: { type: String, default: "main" }, data: { type: mongoose.Schema.Types.Mixed } },
-    { collection: "canteen_db", minimize: false }
-  );
-  MongoModel = mongoose.model("CanteenDB", dbSchema);
-}
+const OBJECT_KEYS = ['settings', 'chat_conversations', 'points_config'];
 
 // ============================================================
 // DEFAULT TIME SLOTS
@@ -556,39 +549,21 @@ function buildSeedData() {
 }
 
 // ============================================================
-// INIT MONGO
+// INIT MONGO (Split Collections)
 // ============================================================
 async function initMongo() {
-  console.log("🔍 INIT MONGO DEBUG:");
-  console.log("   process.env.MONGO_URI có?:", !!process.env.MONGO_URI);
-  console.log("   MONGO_URI length:", (process.env.MONGO_URI || "").length);
-  console.log("   MONGO_URI prefix:", (process.env.MONGO_URI || "").slice(0, 30));
-  console.log("   MONGO_URI suffix:", (process.env.MONGO_URI || "").slice(-30));
-  console.log("   MongoModel có?:", !!MongoModel);
-  console.log("   VERCEL:", process.env.VERCEL);
-
-  if (mongoConnecting) {
-    console.log("⏳ Đợi connection đang chạy...");
-    return mongoConnecting;
-  }
-
-  if (mongoReady && dbCache) {
-    console.log("✅ Đã connected từ trước");
-    return true;
-  }
+  if (mongoConnecting) return mongoConnecting;
+  if (mongoReady && dbCache) return true;
 
   mongoConnecting = (async () => {
     try {
-      if (!MONGO_URI || !MongoModel) {
-        console.log("⚠️ Không có MONGO_URI — dùng seed rỗng");
+      if (!MONGO_URI) {
         dbCache = buildSeedData();
         mongoReady = false;
         return false;
       }
 
       console.log("🔌 Đang kết nối MongoDB...");
-      const t0 = Date.now();
-
       await mongoose.connect(MONGO_URI, {
         serverSelectionTimeoutMS: 25000,
         socketTimeoutMS: 45000,
@@ -601,105 +576,68 @@ async function initMongo() {
         retryReads: true,
       });
 
-      console.log("✅ Đã kết nối MongoDB trong " + (Date.now() - t0) + "ms");
-
-      console.log("🖼  Kiểm tra ảnh món ăn...");
-      let migration;
+      console.log("✅ Đã kết nối MongoDB");
+      const db = mongoose.connection.db;
+      
+      // Image migration
       try {
-        migration = await migrateInlineMenuImages({ log: (m) => console.log("   " + m) });
-      } catch (e) {
-        migration = { ok: false, error: e.message };
-        console.error("❌ Di trú ảnh lỗi:", e.message);
-      }
+        await migrateInlineMenuImages({ log: (m) => console.log("   " + m) });
+      } catch (e) {}
 
-      if (!migration.ok) {
-        if (process.env.VERCEL) {
-          console.warn("⚠️  Không tách ảnh (" + (migration.error || "?") + ") — tiếp tục");
+      const seed = buildSeedData();
+      const cache = {};
+      const collections = await db.listCollections().toArray();
+      const collNames = collections.map(c => c.name);
+      
+      let isEmpty = true;
+      for (const key of Object.keys(seed)) {
+        if (collNames.includes(key)) {
+          const docs = await db.collection(key).find({}).toArray();
+          if (docs.length > 0) isEmpty = false;
+          if (OBJECT_KEYS.includes(key)) {
+            cache[key] = docs[0] || seed[key];
+          } else {
+            cache[key] = docs;
+          }
         } else {
-          console.warn("⚠️  Không tách ảnh — chạy: npm run db:migrate-images");
+          cache[key] = seed[key];
         }
       }
 
-      console.log("⏳ Đang tải DB...");
-      const t1 = Date.now();
-      const doc = await MongoModel.findById(MAIN_DOC_ID).lean();
-
-      if (!doc) {
+      if (isEmpty) {
         console.log("📦 DB chưa có — khởi tạo seed...");
-        const seed = buildSeedData();
-        await MongoModel.create({ _id: MAIN_DOC_ID, data: seed });
         dbCache = seed;
-        console.log("✅ Đã seed DB lên MongoDB");
+        await saveDBOrThrow(seed);
       } else {
-        dbCache = doc.data;
-
-        // AUTO-REFILL: Nếu inventory < 20 items → nạp lại 20 items
+        dbCache = cache;
+        
+        // Auto-refill
         if (!Array.isArray(dbCache.inventory) || dbCache.inventory.length < 20) {
-          console.log("⚠️  Inventory thiếu items → auto-refill 20 nguyên liệu...");
-          dbCache.inventory = [
-            { code: "NL001", name: "Gạo",       qty: 100, unit: "kg",  min: 10 },
-            { code: "NL002", name: "Thịt gà",   qty: 12,  unit: "kg",  min: 10 },
-            { code: "NL003", name: "Thịt bò",   qty: 8,   unit: "kg",  min: 10 },
-            { code: "NL004", name: "Bún",       qty: 15,  unit: "kg",  min: 10 },
-            { code: "NL005", name: "Thịt heo",  qty: 25,  unit: "kg",  min: 10 },
-            { code: "NL006", name: "Phở",       qty: 30,  unit: "kg",  min: 10 },
-            { code: "NL007", name: "Mì",        qty: 20,  unit: "kg",  min: 10 },
-            { code: "NL008", name: "Trứng gà",  qty: 100, unit: "cái", min: 10 },
-            { code: "NL009", name: "Rau sống",  qty: 20,  unit: "kg",  min: 10 },
-            { code: "NL010", name: "Cà chua",   qty: 15,  unit: "kg",  min: 10 },
-            { code: "NL011", name: "Hành",      qty: 10,  unit: "kg",  min: 10 },
-            { code: "NL012", name: "Dầu ăn",    qty: 20,  unit: "lít", min: 10 },
-            { code: "NL013", name: "Nước mắm",  qty: 10,  unit: "lít", min: 10 },
-            { code: "NL014", name: "Cà phê",    qty: 8,   unit: "kg",  min: 10 },
-            { code: "NL015", name: "Bánh mì",   qty: 100, unit: "cái", min: 10 },
-            { code: "NL016", name: "Sữa đặc",   qty: 20,  unit: "hộp", min: 10 },
-            { code: "NL017", name: "Trà",       qty: 5,   unit: "kg",  min: 10 },
-            { code: "NL018", name: "Đậu hủ",    qty: 15,  unit: "kg",  min: 10 },
-            { code: "NL019", name: "Xúc xích",  qty: 100, unit: "cái", min: 10 },
-            { code: "NL020", name: "Khoai tây", qty: 30,  unit: "kg",  min: 10 },
-          ];
-          saveDB(dbCache);
-          console.log("✅ Đã refill 20 nguyên liệu và save vào DB");
+          dbCache.inventory = seed.inventory;
+          await saveDBOrThrow(dbCache);
         }
-
-        // FIX #2: normalize email khi load DB
+        
+        // Normalize
         if (Array.isArray(dbCache.users)) {
           for (const u of dbCache.users) {
             if (u.email) u.email = normalizeEmail(u.email);
           }
         }
-
-        // Migration chat schema
+        
+        // Chat schema migration
         const chatChanged = ensureChatSchema(dbCache);
-        if (chatChanged) {
-          console.log("🔧 Đã migration chat schema (chat_enabled, transfer_requests)");
-          saveDB(dbCache);
-        }
-
-        console.log(
-          "✅ Đã load DB trong " + (Date.now() - t1) + "ms: " +
-          (dbCache.menu_items?.length || 0) + " món, " +
-          (dbCache.users?.length || 0) + " users"
-        );
+        if (chatChanged) await saveDBOrThrow(dbCache);
       }
 
       mongoReady = true;
-      console.log("✅ MONGO READY = TRUE");
+      console.log("✅ MONGO READY");
       return true;
 
     } catch (e) {
-      console.error("❌ MONGODB LỖI CHI TIẾT:");
-      console.error("   Error name:", e.name);
-      console.error("   Error message:", e.message);
-      console.error("   Error code:", e.code);
-      if (e.reason) console.error("   Reason:", e.reason?.message || e.reason);
-      if (e.stack) console.error("   Stack:", e.stack.split("\n").slice(0, 5).join("\n"));
-
+      console.error("❌ MONGODB LỖI:", e.message);
       mongoReady = false;
       dbCache = buildSeedData();
-      console.log("⚠️ Fallback: dùng seed rỗng (app vẫn chạy được)");
       return false;
-
     } finally {
       mongoConnecting = null;
     }
@@ -710,12 +648,7 @@ async function initMongo() {
 
 function loadDB() {
   if (dbCache) return dbCache;
-
-  console.log("⚠️ loadDB: dbCache null → trigger lazy init");
-  initMongo().catch((e) => {
-    console.error("❌ Lazy init lỗi:", e.message);
-  });
-
+  initMongo().catch(() => {});
   dbCache = buildSeedData();
   return dbCache;
 }
@@ -724,44 +657,62 @@ let saveQueue = Promise.resolve();
 
 function saveDB(data) {
   dbCache = data;
-
-  if (mongoReady && MongoModel) {
-    const inlineCount = countInlineMenuImages(data);
-    if (inlineCount > 0) {
-      console.warn("⚠️  Còn " + inlineCount + " ảnh base64 trong menu_items");
-    }
-
+  if (mongoReady && mongoose.connection.db) {
+    const db = mongoose.connection.db;
     saveQueue = saveQueue
-      .then(() =>
-        MongoModel.updateOne(
-          { _id: MAIN_DOC_ID },
-          { $set: { data: data } },
-          { upsert: true }
-        )
-      )
+      .then(async () => {
+        for (const [key, value] of Object.entries(data)) {
+          if (key === '_id' || key === '__v') continue;
+          const coll = db.collection(key);
+          
+          if (Array.isArray(value)) {
+            await coll.deleteMany({});
+            if (value.length > 0) {
+              const sanitized = value.map(item => {
+                const copy = { ...item };
+                delete copy._id;
+                return copy;
+              });
+              await coll.insertMany(sanitized);
+            }
+          } else if (typeof value === 'object' && value !== null) {
+            const sanitized = { ...value };
+            delete sanitized._id;
+            await coll.deleteMany({});
+            await coll.insertOne(sanitized);
+          }
+        }
+      })
       .catch((e) => console.error("Mongo save error:", e.message));
-
     return;
   }
-
-  console.warn("⚠️ saveDB: MongoDB chưa kết nối — dữ liệu CHỈ lưu trong RAM");
 }
 
 async function saveDBOrThrow(data) {
   dbCache = data;
-
-  if (mongoReady && MongoModel) {
-    const inlineCount = countInlineMenuImages(data);
-    if (inlineCount > 0) {
-      console.warn("⚠️  Còn " + inlineCount + " ảnh base64 trong menu_items");
+  if (mongoReady && mongoose.connection.db) {
+    const db = mongoose.connection.db;
+    for (const [key, value] of Object.entries(data)) {
+      if (key === '_id' || key === '__v') continue;
+      const coll = db.collection(key);
+      
+      if (Array.isArray(value)) {
+        await coll.deleteMany({});
+        if (value.length > 0) {
+          const sanitized = value.map(item => {
+            const copy = { ...item };
+            delete copy._id;
+            return copy;
+          });
+          await coll.insertMany(sanitized);
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        const sanitized = { ...value };
+        delete sanitized._id;
+        await coll.deleteMany({});
+        await coll.insertOne(sanitized);
+      }
     }
-
-    await MongoModel.updateOne(
-      { _id: MAIN_DOC_ID },
-      { $set: { data: data } },
-      { upsert: true }
-    );
-    return;
   }
 }
 
@@ -849,7 +800,6 @@ function rollbackCancelledOrder(db, order) {
     order.points_earned = 0;
   }
 
-  // Hoàn điểm Sống Xanh nếu đã duyệt
   const __greenBonus = Number(order.green_points) || 0;
   if (order.green_status === "approved" && __greenBonus > 0) {
     const __cust = (db.users || []).find((u) => u.id === order.customer_id);
@@ -925,13 +875,10 @@ function getInitPromise() {
   if (initPromise) return initPromise;
   initPromise = (async () => {
     try {
-      console.log("🔍 [middleware] Bắt đầu init MongoDB...");
       const ok = await initMongo();
-      console.log("✅ [middleware] initMongo() xong — ok =", ok);
       if (ok) migrateMenuNutrition();
       return ok;
     } catch (e) {
-      console.error("❌ [middleware] initMongo() lỗi:", e.message);
       return false;
     }
   })();
@@ -940,8 +887,6 @@ function getInitPromise() {
 
 app.use(async (req, res, next) => {
   if (mongoReady) return next();
-
-  console.log("⏳ Request đến — đợi MongoDB init...");
   await getInitPromise();
   next();
 });
@@ -994,7 +939,6 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
     res.setHeader("ETag", '"' + req.params.id + "-" + image.rev + '"');
     res.send(image.buffer);
   } catch (e) {
-    console.error("GET /api/uploads/menu/" + req.params.id + " lỗi:", e.message);
     res.status(500).json({ message: "Lỗi tải ảnh: " + e.message });
   }
 });
@@ -1339,8 +1283,6 @@ const MICROSOFT_OAUTH_ENABLED = !!(MICROSOFT_CLIENT_ID && MICROSOFT_CLIENT_SECRE
 
 async function microsoftCallbackHandler(req, res) {
   try {
-    console.log("🔵 [Microsoft OAuth] Callback received. Method:", req.method);
-
     if (!MICROSOFT_OAUTH_ENABLED) {
       return res.status(503).json({ message: "Microsoft OAuth chưa được cấu hình trên server" });
     }
@@ -1358,7 +1300,6 @@ async function microsoftCallbackHandler(req, res) {
       `${proto}://${fwdHost}/api/auth/callback/microsoft-entra-id`;
 
     if (!code) {
-      console.error("❌ [Microsoft OAuth] Thiếu code");
       return res.status(400).json({ message: "Thiếu code" });
     }
 
@@ -1379,7 +1320,6 @@ async function microsoftCallbackHandler(req, res) {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.access_token) {
-      console.error("❌ [Microsoft OAuth] Token error:", tokenData);
       return res.status(400).json({
         message: tokenData.error_description || "Không lấy được access token từ Microsoft",
       });
@@ -1392,22 +1332,17 @@ async function microsoftCallbackHandler(req, res) {
     const emailNorm = normalizeEmail(profile.mail || profile.userPrincipalName || "");
 
     if (!emailNorm) {
-      console.error("❌ [Microsoft OAuth] Không lấy được email:", profile);
       return res.status(400).json({ message: "Microsoft không trả về email" });
     }
 
-    console.log("✅ [Microsoft OAuth] Profile:", emailNorm);
-
     const db = loadDB();
     const classify = classifyEmail(emailNorm);
-    console.log("🔍 [Microsoft OAuth] Classify:", classify);
 
     let user = db.users.find((u) => normalizeEmail(u.email) === emailNorm);
     let isNewUser = false;
     let autoFilled = false;
 
     if (user) {
-      console.log("✅ [Microsoft OAuth] User đã tồn tại:", emailNorm);
       if (!user.provider) user.provider = "microsoft";
       if (profile.displayName && !user.name) user.name = profile.displayName;
 
@@ -1455,16 +1390,6 @@ async function microsoftCallbackHandler(req, res) {
       autoFilled = autoFillFromCode(db, user);
       saveDB(db);
       isNewUser = true;
-
-      if (isTeacherWithCode) {
-        console.log("✅ [Microsoft OAuth] Đã tạo GV (CUSTOMER) mới + wallet:", emailNorm);
-      } else if (isStudent) {
-        console.log("✅ [Microsoft OAuth] Đã tạo SV (CUSTOMER) mới + wallet:", emailNorm);
-      } else if (isTeacher) {
-        console.log("✅ [Microsoft OAuth] Đã tạo GV (CUSTOMER, không mã) mới + wallet:", emailNorm);
-      } else {
-        console.log("✅ [Microsoft OAuth] Đã tạo CUSTOMER mới (domain khác) + wallet:", emailNorm);
-      }
     }
 
     const token = jwt.sign(
@@ -1476,7 +1401,6 @@ async function microsoftCallbackHandler(req, res) {
     if (req.method === "GET") {
       const origin = `${proto}://${fwdHost}`;
       const frontendUrl = `${origin}/login?token=${encodeURIComponent(token)}&provider=microsoft`;
-      console.log("✅ [Microsoft OAuth] Redirect về frontend:", frontendUrl);
       return res.redirect(frontendUrl);
     }
 
@@ -1496,7 +1420,6 @@ async function microsoftCallbackHandler(req, res) {
       },
     });
   } catch (e) {
-    console.error("❌ [Microsoft OAuth] Lỗi:", e);
     res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message });
   }
 }
@@ -2001,7 +1924,6 @@ app.post("/api/orders", auth(), async (req, res) => {
     const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode, isGreen = false } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
 
-    // FIX #5: gom món theo menu_item_id để check 1 lần
     const qtyByItem = new Map();
     const menuById = new Map((db.menu_items || []).map(
       (m) => [String(m.id), m]
@@ -2023,62 +1945,33 @@ app.post("/api/orders", auth(), async (req, res) => {
       const q = Number(it.qty);
 
       if (!Number.isFinite(q) || q <= 0 || !Number.isInteger(q)) {
-        return res.status(400).json({
-          message: "Số lượng món không hợp lệ"
-        });
+        return res.status(400).json({ message: "Số lượng món không hợp lệ" });
       }
 
       const mid = String(it.menuItem ?? "");
       const m = menuById.get(mid);
 
-      if (!m) {
-        return res.status(400).json({
-          message: "Món không tồn tại (id=" + mid + ")"
-        });
-      }
+      if (!m) return res.status(400).json({ message: "Món không tồn tại (id=" + mid + ")" });
+      if (!m.active) return res.status(400).json({ message: `${m.name} đã tạm ngừng bán` });
 
-      if (!m.active) {
-        return res.status(400).json({
-          message: `${m.name} đã tạm ngừng bán`
-        });
-      }
-
-      // Cộng dồn số lượng để kiểm tra tồn kho, không gộp dòng món
       qtyByItem.set(mid, (qtyByItem.get(mid) || 0) + q);
 
       const requestedSize = String(it.size || "S");
-      const selectedSize = sizeList.find(
-        (size) => String(size.id) === requestedSize
-      );
+      const selectedSize = sizeList.find((size) => String(size.id) === requestedSize);
 
-      if (!selectedSize) {
-        return res.status(400).json({
-          message: `Size ${requestedSize} không hợp lệ cho món ${m.name}`
-        });
-      }
+      if (!selectedSize) return res.status(400).json({ message: `Size ${requestedSize} không hợp lệ cho món ${m.name}` });
 
-      const requestedToppings = Array.isArray(it.toppings)
-        ? it.toppings
-        : [];
-
+      const requestedToppings = Array.isArray(it.toppings) ? it.toppings : [];
       const selectedToppings = [];
       const seenToppings = new Set();
 
       for (const toppingId of requestedToppings) {
         const toppingIdString = String(toppingId);
-
         if (seenToppings.has(toppingIdString)) continue;
         seenToppings.add(toppingIdString);
 
-        const topping = toppingList.find(
-          (entry) => String(entry.id) === toppingIdString
-        );
-
-        if (!topping) {
-          return res.status(400).json({
-            message: `Topping không tồn tại (id=${toppingIdString})`
-          });
-        }
+        const topping = toppingList.find((entry) => String(entry.id) === toppingIdString);
+        if (!topping) return res.status(400).json({ message: `Topping không tồn tại (id=${toppingIdString})` });
 
         selectedToppings.push({
           id: topping.id,
@@ -2088,17 +1981,8 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
 
       const basePrice = Math.max(0, Number(m.price) || 0);
-      const sizeExtra = Math.max(
-        0,
-        Number(selectedSize.extra_price) || 0
-      );
-
-      const toppingsTotal = selectedToppings.reduce(
-        (sum, topping) => sum + topping.price,
-        0
-      );
-
-      // Giá món + phụ thu size + topping
+      const sizeExtra = Math.max(0, Number(selectedSize.extra_price) || 0);
+      const toppingsTotal = selectedToppings.reduce((sum, topping) => sum + topping.price, 0);
       const unitPrice = basePrice + sizeExtra + toppingsTotal;
       subtotal += unitPrice * q;
 
@@ -2108,27 +1992,19 @@ app.post("/api/orders", auth(), async (req, res) => {
         price: unitPrice,
         base_price: basePrice,
         qty: q,
-        size: {
-          id: selectedSize.id,
-          name: selectedSize.name || selectedSize.id,
-          extra_price: sizeExtra
-        },
+        size: { id: selectedSize.id, name: selectedSize.name || selectedSize.id, extra_price: sizeExtra },
         toppings: selectedToppings
       });
     }
 
-    // Kiểm tra tồn kho theo tổng số lượng của từng mã món
     for (const [mid, qty] of qtyByItem) {
       const m = menuById.get(mid);
-
       if ((Number(m.stock) || 0) < qty) {
-        return res.status(400).json({
-          message: `${m.name} không đủ hàng (còn ${Number(m.stock) || 0}, cần ${qty})`
-        });
+        return res.status(400).json({ message: `${m.name} không đủ hàng (còn ${Number(m.stock) || 0}, cần ${qty})` });
       }
-
       touchedItems.push({ m, q: qty });
     }
+    
     const pickupSlotId = (() => {
       const direct = String(pickupTime || "").replace(/\s/g, "");
       if (/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(direct)) return direct;
@@ -2139,12 +2015,8 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (pickupSlotId) {
       const slots = getTimeSlots(db);
       const slot = slots.find((s) => s.id === pickupSlotId);
-      if (!slot) {
-        return res.status(400).json({ message: `Khung giờ ${pickupSlotId} không tồn tại. Vui lòng chọn khung giờ khác.` });
-      }
-      if (!slot.enabled) {
-        return res.status(400).json({ message: `Khung giờ ${pickupSlotId} đã kín hoặc tạm ngưng. Vui lòng chọn khung giờ khác.` });
-      }
+      if (!slot) return res.status(400).json({ message: `Khung giờ ${pickupSlotId} không tồn tại. Vui lòng chọn khung giờ khác.` });
+      if (!slot.enabled) return res.status(400).json({ message: `Khung giờ ${pickupSlotId} đã kín hoặc tạm ngưng. Vui lòng chọn khung giờ khác.` });
     }
 
     let computedDiscount = 0;
@@ -2156,9 +2028,7 @@ app.post("/api/orders", auth(), async (req, res) => {
         !v.used
       );
       if (!vc) return res.status(400).json({ message: "Voucher không hợp lệ hoặc đã dùng" });
-      if (Number(vc.value) > subtotal) {
-        return res.status(400).json({ message: "Voucher vượt quá giá trị đơn hàng" });
-      }
+      if (Number(vc.value) > subtotal) return res.status(400).json({ message: "Voucher vượt quá giá trị đơn hàng" });
       computedDiscount = Number(vc.value) || 0;
       usedVoucher = vc;
     }
@@ -2170,9 +2040,7 @@ app.post("/api/orders", auth(), async (req, res) => {
     }
 
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) {
-      return res.status(400).json({
-        message: `Giảm giá không khớp với voucher (client=${clientDiscount}, voucher=${computedDiscount})`
-      });
+      return res.status(400).json({ message: `Giảm giá không khớp với voucher (client=${clientDiscount}, voucher=${computedDiscount})` });
     }
 
     total = Math.max(0, subtotal - computedDiscount);

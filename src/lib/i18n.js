@@ -1,12 +1,9 @@
 // ============================================================
-// i18n.js — Hệ thống đa ngôn ngữ (V6 - FINAL)
+// i18n.js — Hệ thống đa ngôn ngữ (V7 - PERFORMANCE)
 // ============================================================
-// V5 (2026-10) - FINAL:
-//   - 🔧 FIX L11: getCoverage() — chỉ cần v !== "" là "đã dịch"
-//   - 🔧 FIX L17: import.meta.hot.dispose() cleanup listener
-// V6 (2026-10):
-//   - 🔧 FIX H5: getCoverage bỏ điều kiện `v !== k` (trùng với
-//     comment L11 nói fix nhưng code cũ vẫn chưa fix)
+// V7 (2026-10):
+//   - ✅ Thêm cache (translationCache) để tăng tốc độ dịch.
+//   - ✅ Tránh việc phải tìm kiếm lại các key đã biết.
 // ============================================================
 
 import vi from "./i18n/locales/vi.json";
@@ -23,6 +20,7 @@ let currentLocale = "vi";
 let snapshot = currentLocale;
 
 const listeners = new Set();
+const translationCache = new Map(); // 🔧 Cache tăng tốc độ dịch
 
 // ---------- Load initial locale ----------
 try {
@@ -53,6 +51,7 @@ export function setLocale(locale) {
 
   currentLocale = locale;
   snapshot = locale;
+  translationCache.clear(); // 🔧 Xoá cache khi đổi ngôn ngữ
 
   try {
     localStorage.setItem(STORAGE_KEY, locale);
@@ -81,15 +80,32 @@ export function t(key) {
   if (!key) return "";
 
   const k = String(key);
-  const dict = LOCALES[currentLocale] || {};
+  const cacheKey = `${currentLocale}::${k}`;
 
-  if (dict[k] !== undefined && dict[k] !== "") return dict[k];
-
-  if (currentLocale !== "vi") {
-    const viDict = LOCALES.vi || {};
-    if (viDict[k] !== undefined && viDict[k] !== "") return viDict[k];
+  // 🔧 1. Kiểm tra cache trước (nhanh nhất)
+  if (translationCache.has(cacheKey)) {
+    return translationCache.get(cacheKey);
   }
 
+  const dict = LOCALES[currentLocale] || {};
+
+  // 🔧 2. Tìm trong từ điển hiện tại
+  if (dict[k] !== undefined && dict[k] !== "") {
+    translationCache.set(cacheKey, dict[k]);
+    return dict[k];
+  }
+
+  // 🔧 3. Fallback về tiếng Việt
+  if (currentLocale !== "vi") {
+    const viDict = LOCALES.vi || {};
+    if (viDict[k] !== undefined && viDict[k] !== "") {
+      translationCache.set(cacheKey, viDict[k]);
+      return viDict[k];
+    }
+  }
+
+  // 🔧 4. Không tìm thấy -> Lưu cache là chính nó để lần sau không phải tìm lại
+  translationCache.set(cacheKey, k);
   return k;
 }
 
@@ -105,8 +121,6 @@ export function getCoverage(locale = currentLocale) {
 
   for (const k of viKeys) {
     const v = dict[k];
-    // ✅ FIX H5: bản dịch trùng VI (tên riêng, thương hiệu) vẫn là "đã dịch".
-    // Chỉ coi là "missing" khi value rỗng/null/undefined.
     if (v !== undefined && v !== null && v !== "") {
       translated++;
     } else {
@@ -140,7 +154,6 @@ if (typeof window !== "undefined") {
     const newLang = e?.detail?.lang;
     if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
-
     setLocale(newLang);
   };
 
@@ -149,7 +162,6 @@ if (typeof window !== "undefined") {
     const newLang = e.newValue;
     if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
-
     setLocale(newLang);
   };
 

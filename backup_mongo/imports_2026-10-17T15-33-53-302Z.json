@@ -1,0 +1,51 @@
+[
+  {
+    "id": 3,
+    "code": "NL001",
+    "name": "Gạo",
+    "qty": 15,
+    "before": 110.6,
+    "after": 125.6,
+    "unit": "kg",
+    "supplier": "teset5",
+    "note": "",
+    "unit_cost": 45000,
+    "cost": 675000,
+    "imported_by": "Quản trị viên",
+    "imported_by_id": 1,
+    "created_at": "2026-10-14T06:01:34.130Z",
+    "_id": "6ad3956cae012593f03d613d"
+  },
+  {
+    "id": 2,
+    "code": "NL001",
+    "name": "Gạo",
+    "qty": 12,
+    "before": 99.2,
+    "after": 111.2,
+    "unit": "kg",
+    "supplier": "87",
+    "note": "",
+    "unit_cost": 45000,
+    "cost": 540000,
+    "imported_by": "Quản trị viên",
+    "imported_by_id": 1,
+    "created_at": "2026-10-14T05:34:34.848Z",
+    "_id": "6ad3956cae012593f03d613e"
+  },
+  {
+    "id": 1,
+    "code": "TEST948788",
+    "name": "Test NL 948788",
+    "qty": 20,
+    "before": 10,
+    "after": 30,
+    "unit": "kg",
+    "supplier": "NCC Test",
+    "note": "E2E",
+    "imported_by": "Quản trị viên",
+    "imported_by_id": 1,
+    "created_at": "2026-09-21T03:05:49.054Z",
+    "_id": "6ad3956cae012593f03d613f"
+  }
+]

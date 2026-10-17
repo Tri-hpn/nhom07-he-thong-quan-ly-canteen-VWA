@@ -1,22 +1,19 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V7 - FINAL)
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V15 - FINAL)
 // ============================================================
-// V7 (2026-10):
-//   - ✅ MỚI: hiển thị banner khi Admin TẮT quyền chat
-//   - ✅ MỚI: hiển thị banner khi Admin đang giữ hội thoại
-//   - ✅ MỚI: nút "Chuyển Admin" gọi API thật (tạo transfer request)
-//   - ✅ MỚI: khóa input + nút gửi khi bị tắt / bị admin giữ
-//   - Giữ V6.2: FIX chấm đỏ "Chưa đọc", race condition,
-//     auto-scroll smart, in tem, ghim localStorage
+// V15 (2026-10):
+//   - ✅ FIX TTS: Dùng Google Translate TTS (không cần cài OS voice).
+//   - ✅ FIX TTS Fallback: Báo lỗi nếu thiếu giọng Việt, không đọc tiếng Anh.
+//   - ✅ Giữ nguyên: Nút chuyển đơn, giao diện đồng bộ, auto sync 3s.
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   MessageCircle, RefreshCw, Loader2, AlertCircle, Search, X, Phone,
-  Vibrate, Printer, Pin, ImagePlus, Smile, MessageSquareMore, Ticket,
+  Printer, Pin, ImagePlus, Smile, MessageSquareMore, Ticket,
   Send, Bolt, Headset, User as UserIcon, Clock, Smartphone, Utensils,
-  CheckCircle2, Heart, Edit3, Megaphone, Bell, ArrowLeftRight, Gift,
-  Microwave, Sparkles, Check, PinOff, Lock,
+  CheckCircle2, Heart, Edit3, Megaphone, Bell, ArrowLeftRight,
+  Microwave, Sparkles, Check, PinOff, Lock, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -146,35 +143,98 @@ function writePrintNote(orderCode, note) {
   } catch {}
 }
 
-function playCallBeep() {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
+// 🔧 Hàm dự phòng: Dùng SpeechSynthesis của trình duyệt (nếu Google TTS lỗi)
+function fallbackBrowserTTS(text, langCode) {
+  if (!("speechSynthesis" in window)) {
+    toast("Trình duyệt không hỗ trợ tính năng đọc.", "warning");
+    return;
+  }
 
-    const makeTone = (freq, startAt, duration) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.gain.exponentialRampToValueAtTime(0.3, startAt + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(startAt);
-      osc.stop(startAt + duration + 0.05);
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Ánh xạ mã ngôn ngữ
+    const apiLangMap = {
+      vi: "vi-VN",
+      en: "en-US",
+      ja: "ja-JP",
+      ko: "ko-KR",
+      zh: "zh-CN",
+    };
+    const targetLang = apiLangMap[langCode] || langCode;
+
+    utterance.lang = targetLang;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    const doSpeak = () => {
+      const voices = window.speechSynthesis.getVoices();
+      
+      // Tìm giọng đọc chính xác
+      let voice = null;
+      if (langCode === "vi") {
+        voice = voices.find((v) => v.lang === "vi-VN") || voices.find((v) => v.lang.startsWith("vi"));
+      } else {
+        voice = voices.find((v) => v.lang === targetLang) || voices.find((v) => v.lang.startsWith(langCode));
+      }
+
+      if (voice) {
+        utterance.voice = voice;
+        window.speechSynthesis.speak(utterance);
+      } else if (langCode === "vi") {
+        // Nếu là tiếng Việt mà máy không có giọng -> Báo lỗi, không đọc tiếng Anh
+        toast("Máy tính chưa cài giọng đọc tiếng Việt. Vui lòng thêm gói ngôn ngữ trong Cài đặt Windows/Mac.", "warning", { duration: 5000 });
+      } else {
+        // Các ngôn ngữ khác nếu không có giọng thì đọc mặc định
+        window.speechSynthesis.speak(utterance);
+      }
     };
 
-    makeTone(660, now, 0.12);
-    makeTone(880, now + 0.18, 0.12);
-    makeTone(1320, now + 0.36, 0.25);
+    if (window.speechSynthesis.getVoices().length > 0) {
+      doSpeak();
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.onvoiceschanged = null;
+        doSpeak();
+      };
+    }
+  } catch (error) {
+    console.error("Lỗi phát âm thanh dự phòng:", error);
+  }
+}
 
-    setTimeout(() => {
-      try { ctx.close(); } catch (_) {}
-    }, 900);
-  } catch (e) {}
+// 🔧 Hàm đọc đa ngôn ngữ (Ưu tiên Google TTS để không cần cài gói ngôn ngữ)
+function speakCustomerCall(text, locale) {
+  if (!text) return;
+
+  const langMap = {
+    vi: "vi",
+    en: "en",
+    ja: "ja",
+    ko: "ko",
+    zh: "zh-CN",
+  };
+  
+  const targetLang = langMap[locale] || "vi";
+
+  // 1. Dùng Google Translate TTS (chất lượng cao, không cần cài OS voice)
+  try {
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${targetLang}&client=tw-ob`;
+    const audio = new Audio(url);
+    
+    audio.onerror = () => {
+      console.warn("Google TTS bị lỗi, chuyển sang giọng trình duyệt");
+      fallbackBrowserTTS(text, targetLang);
+    };
+
+    audio.play().catch((err) => {
+      console.warn("Không thể tự động phát âm thanh, chuyển sang giọng trình duyệt:", err);
+      fallbackBrowserTTS(text, targetLang);
+    });
+  } catch (err) {
+    fallbackBrowserTTS(text, targetLang);
+  }
 }
 
 // ============================================================
@@ -710,7 +770,7 @@ function PrintLabelModal({ open, customer, order, onClose }) {
 // ============================================================
 
 export default function EmployeeChat() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
@@ -725,7 +785,8 @@ export default function EmployeeChat() {
   const [contextData, setContextData] = useState(null);
   const [loadingContext, setLoadingContext] = useState(false);
 
-  const [customerOrder, setCustomerOrder] = useState(null);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [currentOrderIdx, setCurrentOrderIdx] = useState(0);
 
   const [currentStaff, setCurrentStaff] = useState([]);
 
@@ -739,7 +800,6 @@ export default function EmployeeChat() {
 
   const [internalNote, setInternalNote] = useState("");
 
-  // ✅ MỚI V7: trạng thái quyền chat của nhân viên hiện tại
   const [chatPermission, setChatPermission] = useState({
     enabled: true,
     assignedToAdminUsers: [],
@@ -759,7 +819,7 @@ export default function EmployeeChat() {
   }, [selected]);
 
   // ============================================================
-  // ✅ MỚI V7: LOAD QUYỀN CHAT + POLLING
+  // LOAD QUYỀN CHAT + POLLING
   // ============================================================
   useEffect(() => {
     let cancelled = false;
@@ -775,7 +835,7 @@ export default function EmployeeChat() {
             : [],
         });
       } catch {
-        // silent — backend chưa có endpoint thì coi như enabled
+        // silent
       } finally {
         if (!cancelled) setLoadingPermission(false);
       }
@@ -881,7 +941,8 @@ export default function EmployeeChat() {
       setSelected(c);
       setMessages([]);
       setInternalNote(c.note || "");
-      setCustomerOrder(null);
+      setCustomerOrders([]);
+      setCurrentOrderIdx(0);
       lastMsgCountRef.current = 0;
       lastConvIdRef.current = null;
 
@@ -907,7 +968,7 @@ export default function EmployeeChat() {
         .catch(() => setContextData(null))
         .finally(() => setLoadingContext(false));
 
-      // Đơn đang xử lý
+      // Đơn đang xử lý (Lấy tất cả)
       api.orders
         .all("Tất cả")
         .then((allOrders) => {
@@ -924,9 +985,10 @@ export default function EmployeeChat() {
                 new Date(b.created_at).getTime() -
                 new Date(a.created_at).getTime()
             );
-          setCustomerOrder(myOrders[0] || null);
+          setCustomerOrders(myOrders);
+          setCurrentOrderIdx(0);
         })
-        .catch(() => setCustomerOrder(null));
+        .catch(() => setCustomerOrders([]));
     },
     [loadMessages, loadConvs]
   );
@@ -982,7 +1044,7 @@ export default function EmployeeChat() {
   }, [messages, selected?.user_id]);
 
   // ============================================================
-  // COMPUTED — check disabled
+  // COMPUTED
   // ============================================================
   const isSelectedHeldByAdmin =
     selected &&
@@ -990,6 +1052,8 @@ export default function EmployeeChat() {
 
   const isInputDisabled =
     sending || !chatPermission.enabled || isSelectedHeldByAdmin;
+
+  const currentOrder = customerOrders[currentOrderIdx];
 
   // ============================================================
   // SEND
@@ -1000,7 +1064,6 @@ export default function EmployeeChat() {
       const val = (contentOverride ?? text).trim();
       if (!val || !selected || sending) return;
 
-      // ✅ V7: chặn khi bị tắt / bị admin giữ
       if (!chatPermission.enabled) {
         toast(
           t("Admin đã tắt quyền chat của bạn. Vui lòng liên hệ quản trị viên."),
@@ -1125,27 +1188,28 @@ export default function EmployeeChat() {
     setShowCallModal(true);
   };
 
-  const handleVibrate = () => {
-    if (!selected) return;
-    if (navigator.vibrate) {
-      navigator.vibrate([200, 100, 200, 100, 200]);
-    }
-    toast(t("Đã gửi rung thông báo khẩn"), "success");
-  };
-
   const handleRecall = () => {
     if (!selected) return;
     const token = selected.token || genToken(selected.user_id);
-    playCallBeep();
+    const customerName = selected.user_name || t("Khách");
+    const counterNum = selected.table || currentOrder?.station || "01"; 
+
+    // 🔧 Xây dựng câu thông báo đa ngôn ngữ
+    const announceTemplate = t("Xin mời khách hàng {name} đến quầy số {counter} nhận đồ.");
+    const announceText = announceTemplate
+      .replace("{name}", customerName)
+      .replace("{counter}", counterNum);
+
+    // Gọi hàm đọc đa ngôn ngữ
+    speakCustomerCall(announceText, locale);
+
     toast(
-      `📢 ${t("Đang phát loa:")} Mời số #${token} ${t("đến nhận món")}`,
+      `📢 ${t("Đang phát loa:")} ${announceText}`,
       "info",
       {
         variant: "card",
-        title: `📢 ${t("Đang phát loa")} #${token}`,
-        description: t(
-          "Mời quý khách đến quầy nhận món. Vui lòng chú ý loa thông báo."
-        ),
+        title: `📢 ${t("Đang phát loa")}`,
+        description: announceText,
         duration: 5000,
       }
     );
@@ -1156,7 +1220,6 @@ export default function EmployeeChat() {
     toast(t("Đã gửi thông báo 'Món đã sẵn sàng'"), "success");
   };
 
-  // ✅ V7: gọi API thật để tạo transfer request
   const handleTransferAdmin = async () => {
     if (!selected) return;
     try {
@@ -1170,12 +1233,10 @@ export default function EmployeeChat() {
     }
   };
 
-  const handleGiftVoucher = () => {
-    toast(t("Đã tặng voucher xin lỗi"), "success");
-  };
-
   const handleSwapDish = () => {
-    toast(t("Đã gửi yêu cầu đổi món lên bếp"), "info");
+    if (!selected || !currentOrder) return;
+    toast(t("Đã gửi yêu cầu đổi món cho đơn {code} tới Bếp", { code: currentOrder.code }), "info");
+    send(`🔄 Yêu cầu đổi món cho đơn ${currentOrder.code}. Nhờ Bếp xử lý!`);
   };
 
   const handleTogglePin = useCallback(() => {
@@ -1200,6 +1261,14 @@ export default function EmployeeChat() {
     });
   }, [selected, t]);
 
+  const handlePrevOrder = () => {
+    setCurrentOrderIdx((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleNextOrder = () => {
+    setCurrentOrderIdx((prev) => Math.min(customerOrders.length - 1, prev + 1));
+  };
+
   // ============================================================
   // RENDER
   // ============================================================
@@ -1210,28 +1279,6 @@ export default function EmployeeChat() {
 
   return (
     <div className="chat-workspace">
-      {/* ============ HERO ============ */}
-      <section className="chat-hero">
-        <div className="chat-hero__left">
-          <span className="chat-hero__eyebrow">
-            <span className="chat-hero__eyebrow-dot" />
-            {t("Trực ca hỗ trợ thời gian thực")}
-          </span>
-        </div>
-
-        <div className="chat-hero__actions">
-          <button
-            type="button"
-            className="chat-hero__action chat-hero__action--danger"
-            onClick={handleTransferAdmin}
-            disabled={!selected || !chatPermission.enabled}
-          >
-            <Headset size={18} />
-            <span>{t("Chuyển Admin")}</span>
-          </button>
-        </div>
-      </section>
-
       {/* ============ KPI RIBBON ============ */}
       <div className="chat-kpi-ribbon">
         <div className="chat-kpi">
@@ -1621,15 +1668,18 @@ export default function EmployeeChat() {
                   >
                     <Phone size={18} />
                   </button>
+                  
                   <button
                     type="button"
                     className="chat-main__icon-btn"
-                    onClick={handleVibrate}
-                    title={t("Rung thông báo")}
-                    aria-label={t("Rung thông báo")}
+                    onClick={handleTransferAdmin}
+                    disabled={!selected || !chatPermission.enabled}
+                    title={t("Chuyển Admin")}
+                    aria-label={t("Chuyển Admin")}
                   >
-                    <Vibrate size={18} />
+                    <Headset size={18} style={{ color: "var(--st-danger)" }} />
                   </button>
+
                   <button
                     type="button"
                     className="chat-main__icon-btn"
@@ -1661,7 +1711,7 @@ export default function EmployeeChat() {
                 </div>
               </div>
 
-              {/* ✅ MỚI V7: banner bị tắt chat / bị admin giữ */}
+              {/* Banner bị tắt chat / bị admin giữ */}
               {!loadingPermission && (
                 !chatPermission.enabled ? (
                   <div className="emp-chat-banner emp-chat-banner--danger">
@@ -1936,7 +1986,7 @@ export default function EmployeeChat() {
               </div>
             </div>
 
-            {customerOrder ? (
+            {customerOrders.length > 0 ? (
               <div className="chat-context-card">
                 <div className="chat-order-inspector__head">
                   <div className="chat-order-inspector__info">
@@ -1944,9 +1994,37 @@ export default function EmployeeChat() {
                       {t("Đơn hàng đang xử lý")}
                     </span>
                     <span className="chat-order-inspector__code">
-                      {customerOrder.code}
+                      {currentOrder.code}
                     </span>
                   </div>
+                  
+                  {customerOrders.length > 1 && (
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button
+                        onClick={handlePrevOrder}
+                        disabled={currentOrderIdx === 0}
+                        style={{
+                          width: 24, height: 24, borderRadius: 6, border: "1px solid var(--st-outline-light)",
+                          background: "var(--st-surface)", cursor: currentOrderIdx === 0 ? "not-allowed" : "pointer",
+                          display: "grid", placeItems: "center", opacity: currentOrderIdx === 0 ? 0.5 : 1
+                        }}
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <button
+                        onClick={handleNextOrder}
+                        disabled={currentOrderIdx === customerOrders.length - 1}
+                        style={{
+                          width: 24, height: 24, borderRadius: 6, border: "1px solid var(--st-outline-light)",
+                          background: "var(--st-surface)", cursor: currentOrderIdx === customerOrders.length - 1 ? "not-allowed" : "pointer",
+                          display: "grid", placeItems: "center", opacity: currentOrderIdx === customerOrders.length - 1 ? 0.5 : 1
+                        }}
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="chat-order-inspector__token">
                     #{selected.token || genToken(selected.user_id)}
                   </div>
@@ -1961,12 +2039,12 @@ export default function EmployeeChat() {
                     {t("Trạng thái hiện tại")}
                   </span>
                   <span className="chat-order-inspector__status-value">
-                    {t(customerOrder.status)}
+                    {t(currentOrder.status)}
                   </span>
                 </div>
 
                 <div className="chat-order-inspector__items">
-                  {(customerOrder.items || []).map((item, index) => (
+                  {(currentOrder.items || []).map((item, index) => (
                     <div
                       key={index}
                       className="chat-order-inspector__item"
@@ -1989,20 +2067,20 @@ export default function EmployeeChat() {
                 <div className="chat-order-inspector__summary">
                   <div className="chat-order-inspector__row">
                     <span>{t("Tổng cộng")}</span>
-                    <span>{fmtMoney(customerOrder.subtotal)}</span>
+                    <span>{fmtMoney(currentOrder.subtotal)}</span>
                   </div>
-                  {customerOrder.discount > 0 && (
+                  {currentOrder.discount > 0 && (
                     <div className="chat-order-inspector__row chat-order-inspector__row--success">
                       <span>{t("Giảm giá")}</span>
-                      <span>-{fmtMoney(customerOrder.discount)}</span>
+                      <span>-{fmtMoney(currentOrder.discount)}</span>
                     </div>
                   )}
                   <div className="chat-order-inspector__row chat-order-inspector__row--final">
                     <span className="chat-order-inspector__row-label">
-                      {t("Đã thu qua")} {customerOrder.payment}:
+                      {t("Đã thu qua")} {currentOrder.payment}:
                     </span>
                     <span className="chat-order-inspector__row-value">
-                      {fmtMoney(customerOrder.total)}
+                      {fmtMoney(currentOrder.total)}
                     </span>
                   </div>
                 </div>
@@ -2033,14 +2111,6 @@ export default function EmployeeChat() {
                     >
                       <ArrowLeftRight size={14} />
                       {t("Đổi món khác")}
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-trigger-btn"
-                      onClick={handleGiftVoucher}
-                    >
-                      <Gift size={14} />
-                      {t("Tặng Voucher")}
                     </button>
                   </div>
                 </div>
@@ -2095,7 +2165,7 @@ export default function EmployeeChat() {
       <PrintLabelModal
         open={showPrintModal}
         customer={selected}
-        order={customerOrder}
+        order={currentOrder}
         onClose={() => setShowPrintModal(false)}
       />
 

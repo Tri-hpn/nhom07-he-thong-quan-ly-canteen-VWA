@@ -13,14 +13,8 @@
    Scope: class .staff-* / .emp-* / .inv86-* / .kds-* / .prep-* /
           .shifthist-* / .chat-* (role EMPLOYEE + OWNER)
    
-   🔧 V2: Thêm section 34-40 cho layout mới (KDS full-width, 
-          lowstock, highstock, tasks, admin emp card)
-   🔧 V3: FIX layout chat — ô ghi chú trải cột 1+2, cột 3 row-span 2
-   🔧 V4: FIX KDS card vuông vắn — đồng nhất /employee và /employee/orders
-          - XÓA .kds-card--tall (gây min-height 240px)
-          - SỬA 9 class: kds-row__grid, kds-card, kds-card__head,
-            kds-card__code, kds-card__items, kds-card__actions,
-            kds-card__btn, kds-card__customer, kds-card__meta
+   🔧 V6: Dọn dẹp toàn bộ cấu trúc, sửa lại đánh số thứ tự (1-45),
+          gộp các block trùng lặp, fix dạt trái Menu86, fix cuộn ngang KDS.
    ============================================================ */
 
 /* ============================================================
@@ -326,7 +320,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   5. HERO BANNER
+   4. HERO BANNER
    ============================================================ */
 
 .staff-hero {
@@ -511,7 +505,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   6. KPI CARDS GRID
+   5. KPI CARDS GRID
    ============================================================ */
 
 .staff-kpi-grid {
@@ -718,7 +712,7 @@ html.dark-mode {
 .staff-kpi-card__hint b { color: var(--st-text); }
 
 /* ============================================================
-   7. DUAL WORKSPACE GRID (KDS + Inventory)
+   6. DUAL WORKSPACE GRID (KDS + Inventory)
    ============================================================ */
 
 .staff-workspace {
@@ -749,7 +743,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   8. KDS GRID — 3 cột cho EmployeeHome (KHÔNG scroll riêng)
+   7. KDS GRID — 3 cột cho EmployeeHome (KHÔNG scroll riêng)
    ============================================================ */
 
 .kds-header {
@@ -995,7 +989,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   9. KDS TICKET — Card cho KDS board
+   8. KDS TICKET — Card cho KDS board
    ============================================================ */
 
 .kds-ticket {
@@ -1331,8 +1325,9 @@ html.dark-mode {
 .kds-pickup__btn--success:hover {
   background: #15803d;
 }
+
 /* ============================================================
-   10. LIVE FEED TICKER
+   9. LIVE FEED TICKER
    ============================================================ */
 
 .kds-ticker {
@@ -1387,7 +1382,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   11. INVENTORY 86 LIST
+   10. INVENTORY 86 LIST
    ============================================================ */
 
 .inv86-card {
@@ -1653,7 +1648,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   12. VSATTP CHECKLIST
+   11. VSATTP CHECKLIST
    ============================================================ */
 
 .vsattp-card {
@@ -1798,7 +1793,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   13. TELEMETRY DOCK
+   12. TELEMETRY DOCK
    ============================================================ */
 
 .telemetry-dock {
@@ -1888,7 +1883,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   15. RESPONSIVE — Chung
+   13. RESPONSIVE — Chung
    ============================================================ */
 
 @media (max-width: 1024px) {
@@ -1928,7 +1923,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   17. CHAT WORKSPACE — 3-column layout + ô ghi chú trải cột 1+2
+   14. CHAT WORKSPACE — 3-column layout + ô ghi chú trải cột 1+2
    ============================================================ */
 
 .chat-workspace {
@@ -2133,13 +2128,6 @@ html.dark-mode {
 
 /* ============================================================
    LAYOUT GRID — 3 cột + ô ghi chú trải cột 1+2
-   ------------------------------------------------------------
-   ┌─────────────┬──────────────────────┬─────────────────┐
-   │ Conv List   │   Chat Stream        │  Hồ sơ khách    │
-   │ (cột 1)     │   (cột 2)            │  Đơn hàng XL    │  ← Row 1
-   ├─────────────┴──────────────────────┤                 │
-   │ Ghi chú nội bộ (trải cột 1+2)      │  (kéo dài)      │  ← Row 2
-   └─────────────────────────────────────┴─────────────────┘
    ============================================================ */
 
 .chat-workspace-grid {
@@ -2155,7 +2143,6 @@ html.dark-mode {
     grid-template-rows: auto 1fr;
   }
 
-  /* Cột 3: chiếm cả 2 hàng → đáy ngang ô ghi chú */
   .chat-workspace-grid > .chat-context {
     grid-column: 3 / 4;
     grid-row: 1 / 3;
@@ -2163,21 +2150,18 @@ html.dark-mode {
     min-height: 0;
   }
 
-  /* Cột 1: hàng 1 */
   .chat-workspace-grid > .chat-conv {
     grid-column: 1 / 2;
     grid-row: 1 / 2;
     align-self: start;
   }
 
-  /* Cột 2: hàng 1 */
   .chat-workspace-grid > .chat-main {
     grid-column: 2 / 3;
     grid-row: 1 / 2;
     align-self: start;
   }
 
-  /* Ô ghi chú: hàng 2, trải cột 1+2 */
   .chat-workspace-grid > .chat-context-card--fullwidth {
     grid-column: 1 / 3;
     grid-row: 2 / 3;
@@ -2210,7 +2194,6 @@ html.dark-mode {
   }
 }
 
-/* Responsive: mobile — stack 1 cột */
 @media (max-width: 1023px) {
   .chat-workspace-grid {
     grid-template-columns: 1fr;
@@ -2241,7 +2224,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   18. CHAT COLUMN 1 — CONVERSATION LIST
+   15. CHAT COLUMN 1 — CONVERSATION LIST
    ============================================================ */
 
 .chat-conv {
@@ -2565,7 +2548,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   19. CHAT COLUMN 2 — CHAT STREAM
+   16. CHAT COLUMN 2 — CHAT STREAM
    ============================================================ */
 
 .chat-main {
@@ -2999,7 +2982,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   20. QUICK REPLIES BAR
+   17. QUICK REPLIES BAR
    ============================================================ */
 
 .chat-quick-bar {
@@ -3048,7 +3031,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   21. CHAT INPUT AREA
+   18. CHAT INPUT AREA
    ============================================================ */
 
 .chat-input-area {
@@ -3162,7 +3145,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   22. CHAT COLUMN 3 — CONTEXT INSPECTOR
+   19. CHAT COLUMN 3 — CONTEXT INSPECTOR
    ============================================================ */
 
 .chat-context {
@@ -3614,7 +3597,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   23. CHAT RESPONSIVE
+   20. CHAT RESPONSIVE
    ============================================================ */
 
 @media (max-width: 1023px) {
@@ -3636,7 +3619,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   24. ORDERS DISPATCH WORKSPACE
+   21. ORDERS DISPATCH WORKSPACE
    ============================================================ */
 
 .orders-workspace {
@@ -4418,7 +4401,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   25. ORDER DETAIL PANEL (RIGHT)
+   22. ORDER DETAIL PANEL (RIGHT)
    ============================================================ */
 
 .orders-detail {
@@ -5099,7 +5082,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   26. MENU / 86 LIST WORKSPACE
+   23. MENU / 86 LIST WORKSPACE
    ============================================================ */
 
 .menu86-workspace {
@@ -6252,7 +6235,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   27. KDS WORKBENCH — Console + Station tabs + KPI 5 + Filter
+   24. KDS WORKBENCH — Console + Station tabs + KPI 5 + Filter
    ============================================================ */
 
 .kds-workbench {
@@ -6706,7 +6689,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   28. KDS BOARD — Kanban 5 cột (EmployeeOrders)
+   25. KDS BOARD — Kanban 5 cột (EmployeeOrders)
    ============================================================ */
 
 .kds-board {
@@ -6742,17 +6725,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   KDS CARD — 🔧 V4: ĐỒNG NHẤT cho /employee và /employee/orders
-   ------------------------------------------------------------
-   Sửa để card vuông vắn, gọn gàng như ảnh mong muốn:
-     - Padding nhỏ (10px 12px), gap 6px
-     - Head align center, min-height 28px
-     - Code font 13px + ellipsis (không wrap)
-     - Items padding 8px, gap 4px
-     - Actions gap 4px
-     - Btn min-height 38px
-     - Customer font 12px + ellipsis
-     - Meta font 11px
+   26. KDS CARD — ĐỒNG NHẤT cho /employee và /employee/orders
    ============================================================ */
 
 .kds-card {
@@ -6869,7 +6842,6 @@ html.dark-mode {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  /* ✅ FIX: Cố định chiều cao tối thiểu để card không bị co giãn */
   min-height: 60px;
   overflow: hidden;
 }
@@ -6889,7 +6861,6 @@ html.dark-mode {
   font-weight: 700;
   min-width: 0;
   flex: 1;
-  /* ✅ FIX: Giới hạn 2 dòng + ellipsis — không cho wrap vô tội vạ */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -6897,7 +6868,7 @@ html.dark-mode {
   text-overflow: ellipsis;
   word-break: break-word;
   line-height: 1.35;
-  max-height: calc(1.35em * 2); /* = 2 dòng */
+  max-height: calc(1.35em * 2);
 }
 
 .kds-card__item-price {
@@ -6934,7 +6905,6 @@ html.dark-mode {
   gap: 8px;
   font-family: var(--st-font-body);
   font-size: 11px;
-  /* ✅ FIX: Đảm bảo meta không co lại khi items ngắn */
   flex-shrink: 0;
 }
 
@@ -7066,7 +7036,6 @@ html.dark-mode {
   display: grid;
   grid-template-columns: 1fr;
   gap: 4px;
-  /* ✅ FIX: Nút luôn ở đáy card — không bị đẩy lên/xuống theo độ dài món */
   margin-top: auto;
 }
 
@@ -7074,7 +7043,6 @@ html.dark-mode {
   grid-template-columns: 1fr 1fr;
 }
 
-/* 🔧 Nút "Từ chối" + nút chính xếp DỌC */
 .kds-card__actions--stack {
   grid-template-columns: 1fr !important;
   display: flex !important;
@@ -7251,7 +7219,7 @@ html.dark-mode {
 }
 
 /* ============================================================
-   29. EMPLOYEE CHECK-IN/OUT CONTAINERS
+   27. EMPLOYEE CHECK-IN/OUT CONTAINERS
    ============================================================ */
 
 .checkin-clock {
@@ -7307,7 +7275,7 @@ html.dark-mode {
 html.dark-mode .checkin-clock { color: #93C5FD; }
 
 /* ============================================================
-   30. SHIFT HISTORY — Lịch sử ca hôm nay (nhân viên/KDS)
+   28. SHIFT HISTORY — Lịch sử ca hôm nay (nhân viên/KDS)
    ============================================================ */
 
 .shifthist {
@@ -7787,7 +7755,7 @@ html.dark-mode .shifthist-pill--warning {
 }
 
 /* ============================================================
-   31. ORDER DATE LABEL — nhãn "Hôm nay / Hôm qua / dd/mm"
+   29. ORDER DATE LABEL — nhãn "Hôm nay / Hôm qua / dd/mm"
    ============================================================ */
 
 .kds-card__date-label {
@@ -7823,7 +7791,7 @@ html.dark-mode .shifthist-pill--warning {
 }
 
 /* ============================================================
-   32. PREP WORKSPACE — Trang "Chuẩn bị đơn"
+   30. PREP WORKSPACE — Trang "Chuẩn bị đơn"
    ============================================================ */
 
 .prep-workspace {
@@ -8338,7 +8306,7 @@ html.dark-mode .prep-card__note {
 }
 
 /* ============================================================
-   33. SHIFT CHECK-IN CARD — Chấm công trong trang Ca làm việc
+   31. SHIFT CHECK-IN CARD — Chấm công trong trang Ca làm việc
    ============================================================ */
 
 .shift-checkin-card {
@@ -8553,8 +8521,9 @@ html.dark-mode .prep-card__note {
   min-width: 180px;
   padding-right: 38px;
 }
+
 /* ============================================================
-   34. KDS FULLWIDTH — Layout 3 dòng vertical (EmployeeHome V2)
+   32. KDS FULLWIDTH — Layout 3 dòng vertical (EmployeeHome V2)
    ============================================================ */
 
 .kds-fullwidth {
@@ -8618,7 +8587,7 @@ html.dark-mode .prep-card__note {
 }
 
 /* ============================================================
-   35. KDS TICKET PRIORITY — Hiệu ứng nháy cho đơn cũ nhất
+   33. KDS TICKET PRIORITY — Hiệu ứng nháy cho đơn cũ nhất
    ============================================================ */
 
 @keyframes kdsPriorityPulse {
@@ -8736,7 +8705,7 @@ html.dark-mode .kds-pickup--priority {
 }
 
 /* ============================================================
-   36. GRID 2 CỘT — Món Cần Bổ Sung + Tồn Kho Nhiều Nhất
+   34. GRID 2 CỘT — Món Cần Bổ Sung + Tồn Kho Nhiều Nhất
    ============================================================ */
 
 .staff-workspace-bottom {
@@ -8753,7 +8722,7 @@ html.dark-mode .kds-pickup--priority {
 }
 
 /* ============================================================
-   37. LOWSTOCK CARD — Món Cần Bổ Sung
+   35. LOWSTOCK CARD — Món Cần Bổ Sung
    ============================================================ */
 
 .lowstock-card {
@@ -9016,7 +8985,7 @@ html.dark-mode .lowstock-row--danger {
 }
 
 /* ============================================================
-   38. HIGHSTOCK CARD — Tồn Kho Nhiều Nhất
+   36. HIGHSTOCK CARD — Tồn Kho Nhiều Nhất
    ============================================================ */
 
 .highstock-card {
@@ -9210,7 +9179,7 @@ html.dark-mode .highstock-card__head {
 }
 
 /* ============================================================
-   39. TASKS CARD — Công Việc Được Giao (full-width)
+   37. TASKS CARD — Công Việc Được Giao (full-width)
    ============================================================ */
 
 .tasks-card {
@@ -9488,8 +9457,9 @@ html.dark-mode .tasks-row__check--done {
     max-height: 380px;
   }
 }
+
 /* ============================================================
-   40. MENU86 CARD ROW — Card ngang cho EmployeeMenu
+   38. MENU86 CARD ROW — Card ngang cho EmployeeMenu
    ============================================================ */
 
 .menu86-grid {
@@ -9725,9 +9695,11 @@ html.dark-mode .tasks-row__check--done {
   font-variant-numeric: tabular-nums;
 }
 
+/* 🔧 Đã sửa: Căn trái toàn bộ nút */
 .menu86-card-row__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   margin-top: 4px;
   padding-top: 10px;
@@ -9820,6 +9792,7 @@ html.dark-mode .tasks-row__check--done {
   cursor: not-allowed;
 }
 
+/* 🔧 Đã sửa: Xoá margin-left: auto để không bị đẩy sang phải */
 .menu86-card-row__toggle-out {
   display: inline-flex;
   align-items: center;
@@ -9833,7 +9806,6 @@ html.dark-mode .tasks-row__check--done {
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
-  margin-left: auto;
   flex-shrink: 0;
   line-height: 1.2;
 }
@@ -9891,7 +9863,6 @@ html.dark-mode .tasks-row__check--done {
   }
 
   .menu86-card-row__toggle-out {
-    margin-left: 0;
     flex: 1;
     justify-content: center;
   }
@@ -9940,7 +9911,7 @@ html.dark-mode .menu86-card-row__step-btn {
 }
 
 /* ============================================================
-   41. MENU86 PAGINATION — Phân trang
+   39. MENU86 PAGINATION — Phân trang
    ============================================================ */
 
 .menu86-pagination {
@@ -10077,12 +10048,11 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   background: var(--st-surface-container);
   color: #60a5fa;
 }
-/* ============================================================ */
-/* 42. KDS ROWS — Layout dòng vertical (V6/V7)                  */
-/* ------------------------------------------------------------ */
-/* 🔧 FIX: card trong mỗi dòng xếp NGANG (flex-wrap). Mỗi card   */
-/* rộng cố định 240px, tự động trải ngang.                       */
-/* ============================================================ */
+
+/* ============================================================
+   40. KDS ROWS — Layout dòng vertical + Cuộn ngang
+   ============================================================ */
+
 .kds-board--rows {
   display: flex;
   flex-direction: column;
@@ -10139,426 +10109,26 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   font-weight: 500;
 }
 
-.kds-row__count {
-  font-family: var(--st-font-head);
-  font-weight: 800;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-.kds-row__count--pending   { background: var(--st-danger-bg);    color: var(--st-danger); }
-.kds-row__count--confirmed { background: var(--st-warning-bg);   color: var(--st-secondary); }
-.kds-row__count--prep      { background: var(--st-primary-container); color: var(--st-primary); }
-.kds-row__count--ready     { background: var(--st-success-bg);   color: var(--st-success); }
-.kds-row__count--completed { background: var(--st-surface-high);    color: var(--st-text-muted); }
-
+/* 🔧 BODY CỦA KDS ROW: Ép 1 hàng ngang + cuộn */
 .kds-row__body {
   padding: 12px;
-  display: flex;
-  flex-wrap: wrap;
+  display: flex !important;
+  flex-wrap: nowrap !important; /* Ép 1 hàng ngang, không cho rớt dòng */
+  overflow-x: auto !important;  /* Bật thanh cuộn ngang */
+  overflow-y: hidden !important;
   gap: 12px;
-  align-items: flex-start;
-}
-
-.kds-row__body > .kds-card,
-.kds-row__body > article,
-.kds-row__body > .kds-ticket,
-.kds-row__body > .kds-pickup {
-  flex: 0 0 240px;
-  max-width: 240px;
-  min-width: 0;
-}
-
-.kds-row__empty {
-  flex: 1 1 100%;
-  padding: 24px;
-  text-align: center;
-  color: var(--st-text-muted);
-  font-size: 13px;
-  font-style: italic;
-}
-
-.kds-row__more {
-  flex: 1 1 100%;
-  padding: 10px;
-  border: 1px dashed var(--st-outline);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--st-text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: var(--st-font-head);
-  transition: all 0.15s;
-}
-.kds-row__more:hover {
-  background: var(--st-surface-low);
-  color: var(--st-text);
-  border-color: var(--st-primary);
-}
-
-/* ============================================================ */
-/* 43. ROW 5 — Gần Nhất (compact strip)                          */
-/* ============================================================ */
-.kds-row__body--strip {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 280px;
-  overflow-y: auto;
-  flex-wrap: nowrap;
   align-items: stretch;
+  padding-bottom: 16px !important; /* Khoảng trống cho thanh cuộn */
 }
 
-.kds-row__body--strip > * {
-  flex: 0 0 auto;
-  max-width: 100%;
-}
-
-.kds-completed-strip-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--st-surface-low);
-  font-size: 13px;
-  gap: 12px;
-  border: 1px solid transparent;
-  transition: all 0.15s;
-}
-.kds-completed-strip-item:hover {
-  border-color: var(--st-outline-light);
-  background: var(--st-surface-container);
-}
-
-.kds-completed-strip-item__left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.kds-completed-strip-item__icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--st-success-bg);
-  color: var(--st-success);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.kds-completed-strip-item__code {
-  font-family: var(--st-font-head);
-  font-weight: 700;
-  font-size: 12px;
-  color: var(--st-text);
-  white-space: nowrap;
-}
-
-.kds-completed-strip-item__customer {
-  font-size: 12px;
-  color: var(--st-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kds-completed-strip-item__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.kds-completed-strip-item__time {
-  font-size: 11px;
-  color: var(--st-text-muted);
-  font-family: var(--st-font-head);
-}
-
-.kds-completed-strip-item__total {
-  font-family: var(--st-font-head);
-  font-weight: 700;
-  font-size: 13px;
-  color: var(--st-primary);
-  white-space: nowrap;
-}
-
-/* ============================================================ */
-/* 44. Priority blink — đơn cũ nhất mỗi dòng                     */
-/* ============================================================ */
-.kds-ticket--priority {
-  animation: kds-blink 1.4s ease-in-out infinite;
-  border-color: var(--st-danger) !important;
-}
-
-@keyframes kds-blink {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55);
-    border-color: rgba(239, 68, 68, 0.9);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
-    border-color: rgba(239, 68, 68, 0.4);
-  }
-}
-
-/* ============================================================ */
-/* 45. Responsive — mobile                                        */
-/* ============================================================ */
-@media (max-width: 640px) {
-  .kds-row__body {
-    padding: 8px;
-  }
-  .kds-row__body > .kds-card,
-  .kds-row__body > article,
-  .kds-row__body > .kds-ticket,
-  .kds-row__body > .kds-pickup {
-    flex: 1 1 100%;
-    max-width: 100%;
-  }
-  .kds-row__head {
-    padding: 10px 12px;
-  }
-  .kds-row__title {
-    font-size: 14px;
-  }
-  .kds-row__subtitle {
-    display: none;
-  }
-}
-
-
-/* ============================================================
-   41. MENU86 PAGINATION
-   ============================================================ */
-
-.menu86-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 24px;
-  padding: 14px 20px;
-  background: var(--st-surface);
-  border: 1px solid var(--st-outline-light);
-  border-radius: var(--st-radius-lg);
-  box-shadow: var(--st-shadow-1);
-  flex-wrap: wrap;
-}
-
-.menu86-page-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: var(--st-surface-low);
-  color: var(--st-text);
-  border: 1px solid var(--st-outline-light);
-  border-radius: var(--st-radius-md);
-  font-family: var(--st-font-head);
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-
-.menu86-page-btn:hover:not(:disabled) {
-  background: var(--st-surface-container);
-  border-color: var(--st-primary-container);
-  color: var(--st-primary);
-  transform: translateY(-1px);
-}
-
-.menu86-page-btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
-}
-
-.menu86-page-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.menu86-page-indicator {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 8px 18px;
-  background: linear-gradient(135deg, var(--st-primary-container), var(--st-primary));
-  color: var(--st-on-primary);
-  border-radius: var(--st-radius-md);
-  font-family: var(--st-font-head);
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
-  white-space: nowrap;
-}
-
-.menu86-page-indicator__label {
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0.85;
-}
-
-.menu86-page-indicator__current {
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  line-height: 1;
-}
-
-.menu86-page-indicator__sep {
-  font-size: 16px;
-  font-weight: 400;
-  opacity: 0.6;
-  padding: 0 2px;
-}
-
-.menu86-page-indicator__total {
-  font-size: 14px;
-  font-weight: 700;
-  opacity: 0.9;
-}
-
-@media (max-width: 640px) {
-  .menu86-pagination {
-    padding: 12px 14px;
-    gap: 10px;
-  }
-
-  .menu86-page-btn {
-    padding: 9px 14px;
-    font-size: 12.5px;
-    flex: 1;
-    justify-content: center;
-    min-width: 0;
-  }
-
-  .menu86-page-indicator {
-    padding: 6px 14px;
-    order: -1;
-    flex-basis: 100%;
-    justify-content: center;
-  }
-
-  .menu86-page-indicator__current {
-    font-size: 18px;
-  }
-}
-
-html.dark-mode .menu86-pagination {
-  background: var(--st-surface);
-  border-color: var(--st-outline-light);
-}
-
-html.dark-mode .menu86-page-btn {
-  background: var(--st-surface-low);
-  color: #e2e8f0;
-  border-color: var(--st-outline);
-}
-
-html.dark-mode .menu86-page-btn:hover:not(:disabled) {
-  background: var(--st-surface-container);
-  color: #60a5fa;
-}
-
-/* ============================================================
-   42. KDS ROWS — Layout dòng vertical
-   ============================================================ */
-
-.kds-board--rows {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.kds-row {
-  border: 1px solid var(--st-outline-light);
-  border-radius: var(--st-radius-lg);
-  background: var(--st-surface);
-  overflow: hidden;
-}
-
-.kds-row__head {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--st-outline-light);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--st-surface-low);
-  gap: 12px;
-}
-
-.kds-row__title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.kds-row__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.kds-row__dot--pending   { background: var(--st-danger);    box-shadow: 0 0 0 3px var(--st-danger-bg); }
-.kds-row__dot--confirmed { background: var(--st-secondary); box-shadow: 0 0 0 3px var(--st-warning-bg); }
-.kds-row__dot--prep      { background: var(--st-primary);   box-shadow: 0 0 0 3px var(--st-primary-container); }
-.kds-row__dot--ready     { background: var(--st-success);   box-shadow: 0 0 0 3px var(--st-success-bg); }
-.kds-row__dot--completed { background: var(--st-text-muted); }
-
-.kds-row__title {
-  font-family: var(--st-font-head);
-  font-weight: 800;
-  font-size: 15px;
-  color: var(--st-text);
-  white-space: nowrap;
-}
-
-.kds-row__subtitle {
-  font-size: 12px;
-  color: var(--st-text-muted);
-  font-weight: 500;
-}
-
-.kds-row__count {
-  font-family: var(--st-font-head);
-  font-weight: 800;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.kds-row__count--pending   { background: var(--st-danger-bg);    color: var(--st-danger); }
-.kds-row__count--confirmed { background: var(--st-warning-bg);   color: var(--st-secondary); }
-.kds-row__count--prep      { background: var(--st-primary-container); color: var(--st-primary); }
-.kds-row__count--ready     { background: var(--st-success-bg);   color: var(--st-success); }
-.kds-row__count--completed { background: var(--st-surface-high);    color: var(--st-text-muted); }
-
-.kds-row__body {
-  padding: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-start;
-}
-
+/* Cố định chiều rộng của thẻ đơn để không bị bóp méo */
 .kds-row__body > .kds-card,
 .kds-row__body > article,
 .kds-row__body > .kds-ticket,
 .kds-row__body > .kds-pickup {
-  flex: 0 0 240px;
-  max-width: 240px;
-  min-width: 0;
+  flex: 0 0 260px !important;
+  max-width: 260px !important;
+  min-width: 260px !important;
 }
 
 .kds-row__empty {
@@ -10570,27 +10140,53 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   font-style: italic;
 }
 
+/* 🔧 NÚT XEM THÊM / ẨN BỚT (Thu gọn) */
 .kds-row__more {
-  flex: 1 1 100%;
-  padding: 10px;
-  border: 1px dashed var(--st-outline);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--st-text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: var(--st-font-head);
-  transition: all 0.15s;
+  flex: 0 0 auto !important;
+  width: 120px !important;
+  height: auto !important;
+  align-self: stretch !important;
+  border: 1px dashed var(--st-outline) !important;
+  background: var(--st-surface-low) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  font-family: var(--st-font-head) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: var(--st-primary) !important;
+  cursor: pointer !important;
+  border-radius: 8px !important;
+  margin-left: 4px !important;
+  padding: 0 16px !important;
+  white-space: nowrap !important;
+  transition: all 0.15s !important;
 }
+
 .kds-row__more:hover {
+  background: var(--st-primary-dim) !important;
+  border-color: var(--st-primary-container) !important;
+}
+
+/* Tùy chỉnh thanh cuộn cho đẹp */
+.kds-row__body::-webkit-scrollbar {
+  height: 8px;
+}
+.kds-row__body::-webkit-scrollbar-track {
   background: var(--st-surface-low);
-  color: var(--st-text);
-  border-color: var(--st-primary);
+  border-radius: 4px;
+}
+.kds-row__body::-webkit-scrollbar-thumb {
+  background: var(--st-outline);
+  border-radius: 4px;
+}
+.kds-row__body::-webkit-scrollbar-thumb:hover {
+  background: var(--st-text-light);
 }
 
 /* ============================================================
-   43. ROW 5 — Gần Nhất (compact strip)
+   41. ROW 5 — Gần Nhất (compact strip)
    ============================================================ */
 
 .kds-row__body--strip {
@@ -10683,7 +10279,7 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
 }
 
 /* ============================================================
-   44. Priority blink
+   42. PRIORITY BLINK — Đơn cũ nhất mỗi dòng
    ============================================================ */
 
 .kds-ticket--priority {
@@ -10703,7 +10299,7 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
 }
 
 /* ============================================================
-   45. Responsive mobile
+   43. RESPONSIVE MOBILE — KDS
    ============================================================ */
 
 @media (max-width: 640px) {
@@ -10729,7 +10325,7 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
 }
 
 /* ============================================================
-   46. KDS V10 — Layout full-width
+   44. KDS V10 — Layout full-width (FIX)
    ============================================================ */
 
 .kds-workbench {
@@ -10760,23 +10356,7 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   max-width: 100% !important;
 }
 
-.kds-row__body {
-  width: 100% !important;
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 12px !important;
-  align-items: flex-start !important;
-  padding: 14px !important;
-}
-
-.kds-row__body > .kds-card,
-.kds-row__body > article,
-.kds-row__body > .kds-ticket,
-.kds-row__body > .kds-pickup {
-  flex: 1 1 260px !important;
-  max-width: 320px !important;
-  min-width: 240px !important;
-}
+/* Đã xoá các override làm hỏng thanh cuộn ngang */
 
 .kds-row__body--strip {
   flex-direction: column !important;
@@ -10907,7 +10487,7 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
 }
 
 /* ============================================================
-   47. FIX prep-block + kds-board full width
+   45. FIX PREP-BLOCK + CHAT READ/UNREAD
    ============================================================ */
 
 .kds-workbench .kds-board,
@@ -10923,13 +10503,8 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   align-items: stretch !important;
 }
 
-/* ============================================================
-   48. CHAT — Unread/Read rõ ràng + ghim + modal
-   ============================================================ */
+/* ---------- 45.1 Conversation item — chưa đọc / đã đọc ---------- */
 
-/* ---------- 48.1 Conversation item — chưa đọc / đã đọc ---------- */
-
-/* Item CHƯA ĐỌC: nền nhẹ + tên + preview đậm */
 .chat-conv__item--unread {
   background: rgba(38, 52, 213, 0.03);
 }
@@ -10945,7 +10520,6 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   font-weight: 800;
 }
 
-/* Item ĐÃ ĐỌC: in thường, không nền */
 .chat-conv__item--read {
   background: transparent;
 }
@@ -10965,7 +10539,6 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   font-weight: 500;
 }
 
-/* Preview — chưa đọc đậm hơn */
 .chat-conv__preview--unread {
   font-weight: 600;
   color: var(--st-text);
@@ -10976,7 +10549,6 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   color: var(--st-text-muted);
 }
 
-/* Chấm đỏ "chưa đọc" — pulse */
 .chat-conv__unread-dot {
   width: 10px;
   height: 10px;
@@ -10992,7 +10564,7 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   50%      { transform: scale(1.15); opacity: 0.85; }
 }
 
-/* ---------- 48.2 Ghim — nút trạng thái ---------- */
+/* ---------- 45.2 Ghim — nút trạng thái ---------- */
 
 .chat-main__icon-btn--pinned {
   background: rgba(245, 158, 11, 0.12) !important;
@@ -11002,17 +10574,7 @@ html.dark-mode .menu86-page-btn:hover:not(:disabled) {
   background: rgba(245, 158, 11, 0.2) !important;
 }
 
-/* ---------- 48.3 Modal In tem / Gọi điện ---------- */
-
-.chat-workspace .chat-main__header-actions {
-  gap: 4px;
-}
-
-.chat-conv__filter {
-  white-space: nowrap;
-}
-
-/* ---------- 48.4 Dark mode ---------- */
+/* ---------- 45.3 Dark mode ---------- */
 
 html.dark-mode .chat-conv__item--unread {
   background: rgba(96, 165, 250, 0.08);
@@ -11031,9 +10593,6 @@ html.dark-mode .chat-main__icon-btn--pinned {
   background: rgba(245, 158, 11, 0.2) !important;
 }
 
-/* ============================================================
-   KẾT THÚC FILE STYLES-EMPLOYEE.CSS
-   ============================================================ */
 /* ============================================================
    KẾT THÚC FILE STYLES-EMPLOYEE.CSS
    ============================================================ */

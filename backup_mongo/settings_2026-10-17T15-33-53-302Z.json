@@ -1,0 +1,247 @@
+{
+  "bank": "ICB",
+  "account": "106887117085",
+  "accountName": "CANTEEN VWA",
+  "hotline": "0328 866 959",
+  "email": "admin@vwa.vn",
+  "address": "68 Nguyen Chi Thanh, P. Lang, Ha Noi",
+  "timeSlots": [
+    {
+      "id": "07:00-07:30",
+      "start": "07:00",
+      "end": "07:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "07:30-08:00",
+      "start": "07:30",
+      "end": "08:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "08:00-08:30",
+      "start": "08:00",
+      "end": "08:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "08:30-09:00",
+      "start": "08:30",
+      "end": "09:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "09:00-09:30",
+      "start": "09:00",
+      "end": "09:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "09:30-10:00",
+      "start": "09:30",
+      "end": "10:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "10:00-10:30",
+      "start": "10:00",
+      "end": "10:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "10:30-11:00",
+      "start": "10:30",
+      "end": "11:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "11:00-11:30",
+      "start": "11:00",
+      "end": "11:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "11:30-12:00",
+      "start": "11:30",
+      "end": "12:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "12:00-12:30",
+      "start": "12:00",
+      "end": "12:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "12:30-13:00",
+      "start": "12:30",
+      "end": "13:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "13:00-13:30",
+      "start": "13:00",
+      "end": "13:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "13:30-14:00",
+      "start": "13:30",
+      "end": "14:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "14:00-14:30",
+      "start": "14:00",
+      "end": "14:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "14:30-15:00",
+      "start": "14:30",
+      "end": "15:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "15:00-15:30",
+      "start": "15:00",
+      "end": "15:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "15:30-16:00",
+      "start": "15:30",
+      "end": "16:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "16:00-16:30",
+      "start": "16:00",
+      "end": "16:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "16:30-17:00",
+      "start": "16:30",
+      "end": "17:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "17:00-17:30",
+      "start": "17:00",
+      "end": "17:30",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "17:30-18:00",
+      "start": "17:30",
+      "end": "18:00",
+      "enabled": true,
+      "note": ""
+    },
+    {
+      "id": "18:00-18:30",
+      "start": "18:00",
+      "end": "18:30",
+      "enabled": true,
+      "note": ""
+    }
+  ],
+  "chat_enabled_global": true,
+  "majorsMap": {
+    "7310": {
+      "code_full": "7310101 / 7310109",
+      "name": "Kinh tế / Kinh tế số",
+      "faculty": "Khoa Kinh tế"
+    },
+    "7314": {
+      "code_full": "7310401",
+      "name": "Tâm lý học",
+      "faculty": "Khoa Tâm lý"
+    },
+    "7319": {
+      "code_full": "7310399",
+      "name": "Giới và Phát triển",
+      "faculty": "Khoa Giới & Phát triển"
+    },
+    "7324": {
+      "code_full": "7320104",
+      "name": "Truyền thông đa phương tiện",
+      "faculty": "Khoa Truyền thông"
+    },
+    "7341": {
+      "code_full": "7340101",
+      "name": "Quản trị kinh doanh",
+      "faculty": "Khoa Kinh tế - Quản trị"
+    },
+    "7345": {
+      "code_full": "7340115",
+      "name": "Marketing",
+      "faculty": "Khoa Kinh tế - Quản trị"
+    },
+    "7381": {
+      "code_full": "7380101 / 7380107",
+      "name": "Luật / Luật kinh tế",
+      "faculty": "Khoa Luật"
+    },
+    "7482": {
+      "code_full": "7480201",
+      "name": "Công nghệ thông tin / Thiết kế Game",
+      "faculty": "Khoa Công nghệ Thông tin & Truyền thông"
+    },
+    "7761": {
+      "code_full": "7760101",
+      "name": "Công tác xã hội",
+      "faculty": "Khoa Công tác Xã hội"
+    },
+    "7813": {
+      "code_full": "7810103",
+      "name": "Quản trị dịch vụ du lịch và lữ hành",
+      "faculty": "Khoa Du lịch"
+    }
+  },
+  "expenses": [
+    {
+      "id": 1791956075574,
+      "title": "Nhập 12kg Gạo",
+      "amount": 540000,
+      "category": "Nhập hàng",
+      "note": "Mã NL: NL001 · NCC: 87",
+      "date": "2026-10-14T05:34:34.848Z",
+      "source": "import",
+      "import_id": 2
+    },
+    {
+      "id": 1791957694417,
+      "title": "Nhập 15kg Gạo",
+      "amount": 675000,
+      "category": "Nhập hàng",
+      "note": "Mã NL: NL001 · NCC: teset5",
+      "date": "2026-10-14T06:01:34.130Z",
+      "source": "import",
+      "import_id": 3
+    }
+  ],
+  "_id": "6ad3956cae012593f03d6140"
+}

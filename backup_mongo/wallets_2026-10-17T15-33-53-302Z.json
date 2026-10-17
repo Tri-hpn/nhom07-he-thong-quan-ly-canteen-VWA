@@ -1,0 +1,68 @@
+[
+  {
+    "user_id": 3,
+    "balance": 1863250,
+    "bank_name": "MBB",
+    "bank_account": "0328866959",
+    "bank_account_name": "TRAN VAN TRI",
+    "linked_at": "2026-09-20T12:45:30.186Z",
+    "created_at": "2026-09-20T12:25:30.896Z",
+    "updated_at": "2026-10-14T20:28:24.287Z",
+    "_id": "6ad3956cae012593f03d6179"
+  },
+  {
+    "user_id": 4,
+    "balance": 0,
+    "bank_name": "",
+    "bank_account": "",
+    "bank_account_name": "",
+    "linked_at": "",
+    "created_at": "2026-09-27T14:56:24.382Z",
+    "updated_at": "2026-09-27T14:56:24.382Z",
+    "_id": "6ad3956cae012593f03d617a"
+  },
+  {
+    "user_id": 7,
+    "balance": 0,
+    "bank_name": "",
+    "bank_account": "",
+    "bank_account_name": "",
+    "linked_at": "",
+    "created_at": "2026-09-27T15:03:23.181Z",
+    "updated_at": "2026-09-27T15:03:23.181Z",
+    "_id": "6ad3956cae012593f03d617b"
+  },
+  {
+    "user_id": 8,
+    "balance": 0,
+    "bank_name": "",
+    "bank_account": "",
+    "bank_account_name": "",
+    "linked_at": "",
+    "created_at": "2026-09-30T03:02:23.127Z",
+    "updated_at": "2026-09-30T03:02:23.127Z",
+    "_id": "6ad3956cae012593f03d617c"
+  },
+  {
+    "user_id": 9,
+    "balance": 0,
+    "bank_name": "",
+    "bank_account": "",
+    "bank_account_name": "",
+    "linked_at": "",
+    "created_at": "2026-09-30T15:17:08.097Z",
+    "updated_at": "2026-09-30T15:17:08.097Z",
+    "_id": "6ad3956cae012593f03d617d"
+  },
+  {
+    "user_id": 2,
+    "balance": 0,
+    "bank_name": "",
+    "bank_account": "",
+    "bank_account_name": "",
+    "linked_at": "",
+    "created_at": "2026-10-16T13:03:38.716Z",
+    "updated_at": "2026-10-16T13:03:38.716Z",
+    "_id": "6ad3956cae012593f03d617e"
+  }
+]

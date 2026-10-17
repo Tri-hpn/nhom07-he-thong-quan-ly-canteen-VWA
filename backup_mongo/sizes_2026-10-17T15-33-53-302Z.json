@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Nhỏ",
+    "id": "S",
+    "extra_price": 0,
+    "_id": "6ad39564ae012593f03d5fa5"
+  },
+  {
+    "name": "Vừa",
+    "id": "M",
+    "extra_price": 5000,
+    "_id": "6ad39564ae012593f03d5fa6"
+  },
+  {
+    "name": "Lớn",
+    "id": "L",
+    "extra_price": 10000,
+    "_id": "6ad39564ae012593f03d5fa7"
+  }
+]
