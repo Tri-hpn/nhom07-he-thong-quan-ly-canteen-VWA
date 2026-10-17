@@ -186,6 +186,7 @@ export default function i18nPlugin() {
       isDev = config.command === "serve";
     },
     buildStart() {
+      if (!isDev) return; // 🛑 Bỏ qua hoàn toàn khi build trên Vercel
       const stats = writeSource();
       console.log(`[i18n] ✓ Scan xong: ${stats.total} câu\n`);
     },
