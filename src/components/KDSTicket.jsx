@@ -1,13 +1,10 @@
 // ============================================================
-// KDSTICKET.JSX — Ticket đơn trong KDS board (V4 - FINAL)
+// KDSTICKET.JSX — Ticket đơn trong KDS board (V5)
 // ============================================================
-// V4 (2026-10):
-//   - ✅ Fix hiển thị payment — dùng label chuẩn
-//   - ✅ Fix hiển thị MSSV — fallback email nếu không có MSSV
-//   - ✅ Fix card height 100% — đồng đều giữa các card
-//   - ✅ Tên món dài wrap 2 dòng có ellipsis
-//   - ✅ Meta flex-shrink: 0 — không bị co
-//   - ✅ Actions margin-top: auto — ghim đáy
+// V5 (2026-10):
+//   - ✅ Logic Sống Xanh:
+//       + Bước 4 (Sẵn sàng nhận): Hiện nút Duyệt/Từ chối.
+//       + Bước 1, 2, 3: Chỉ hiện badge nhỏ báo "Có Sống Xanh".
 // ============================================================
 
 import {
@@ -188,6 +185,12 @@ export default function KDSTicket({
 
   const isTall = layout === "tall";
 
+  // 🔧 Xác định có điểm Sống Xanh hay không
+  const hasGreen = 
+    order.green_status === "pending" || 
+    order.green_status === "approved" || 
+    Number(order.green_points) > 0;
+
   return (
     <article
       className={`kds-card ${
@@ -345,57 +348,78 @@ export default function KDSTicket({
         <span className="kds-card__total">{money(total)}</span>
       </div>
 
-      {/* GREEN APPROVAL */}
-      {order.green_status === "pending" && (
-        <div className="kds-card__green-block" style={{
-          marginTop: 6, padding: "8px 10px",
-          background: "rgba(24, 169, 103, 0.08)",
-          border: "1px solid rgba(24, 169, 103, 0.35)",
-          borderRadius: 8,
-          display: "flex", flexDirection: "column", gap: 6,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#18a967" }}>
-            <Leaf size={14} />
-            <span>{t("Chờ duyệt Sống Xanh")} +{order.green_points || 0} {t("điểm")}</span>
-          </div>
-          {(onApproveGreen || onRejectGreen) && (
-            <div style={{ display: "flex", gap: 6 }}>
-              {onApproveGreen && (
-                <button
-                  type="button"
-                  onClick={() => onApproveGreen(order)}
-                  disabled={greenBusy || processing}
-                  style={{
-                    flex: 1, padding: "6px 10px", border: 0, borderRadius: 6,
-                    background: "#18a967", color: "#fff", fontWeight: 700,
-                    fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
-                    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
-                    opacity: greenBusy ? 0.6 : 1,
-                  }}
-                >
-                  <Check size={13} /> {t("Duyệt")}
-                </button>
-              )}
-              {onRejectGreen && (
-                <button
-                  type="button"
-                  onClick={() => onRejectGreen(order)}
-                  disabled={greenBusy || processing}
-                  style={{
-                    flex: 1, padding: "6px 10px", borderRadius: 6,
-                    background: "transparent", color: "#ef4444",
-                    border: "1px solid #ef4444", fontWeight: 700,
-                    fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
-                    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
-                    opacity: greenBusy ? 0.6 : 1,
-                  }}
-                >
-                  <XCircle size={13} /> {t("Từ chối")}
-                </button>
-              )}
+      {/* GREEN STATUS */}
+      {hasGreen && (
+        isReady ? (
+          // Bước 4: Khối Duyệt/Từ chối đầy đủ
+          <div className="kds-card__green-block" style={{
+            marginTop: 6, padding: "8px 10px",
+            background: "rgba(24, 169, 103, 0.08)",
+            border: "1px solid rgba(24, 169, 103, 0.35)",
+            borderRadius: 8,
+            display: "flex", flexDirection: "column", gap: 6,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#18a967" }}>
+              <Leaf size={14} />
+              <span>{order.green_status === "pending" ? t("Chờ duyệt Sống Xanh") : t("Đã duyệt Sống Xanh")} +{order.green_points || 0} {t("điểm")}</span>
             </div>
-          )}
-        </div>
+            {order.green_status === "pending" && (onApproveGreen || onRejectGreen) && (
+              <div style={{ display: "flex", gap: 6 }}>
+                {onApproveGreen && (
+                  <button
+                    type="button"
+                    onClick={() => onApproveGreen(order)}
+                    disabled={greenBusy || processing}
+                    style={{
+                      flex: 1, padding: "6px 10px", border: 0, borderRadius: 6,
+                      background: "#18a967", color: "#fff", fontWeight: 700,
+                      fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+                      opacity: greenBusy ? 0.6 : 1,
+                    }}
+                  >
+                    <Check size={13} /> {t("Duyệt")}
+                  </button>
+                )}
+                {onRejectGreen && (
+                  <button
+                    type="button"
+                    onClick={() => onRejectGreen(order)}
+                    disabled={greenBusy || processing}
+                    style={{
+                      flex: 1, padding: "6px 10px", borderRadius: 6,
+                      background: "transparent", color: "#ef4444",
+                      border: "1px solid #ef4444", fontWeight: 700,
+                      fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+                      opacity: greenBusy ? 0.6 : 1,
+                    }}
+                  >
+                    <XCircle size={13} /> {t("Từ chối")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          // Bước 1, 2, 3: Chỉ hiện badge nhỏ báo có Sống Xanh
+          <div style={{
+            marginTop: 6,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "3px 8px",
+            borderRadius: 12,
+            background: "rgba(24, 169, 103, 0.1)",
+            color: "#18a967",
+            fontSize: 11,
+            fontWeight: 700,
+            alignSelf: "flex-start",
+          }}>
+            <Leaf size={12} />
+            <span>{t("Khách mang đồ đựng")} (+{order.green_points || 10}đ)</span>
+          </div>
+        )
       )}
 
       {/* ACTIONS */}

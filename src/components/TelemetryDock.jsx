@@ -1,25 +1,22 @@
 // ============================================================
 // TELEMETRYDOCK.JSX — Dock trạng thái thiết bị + live clock
 // ============================================================
-// 🔧 FIX #69: clock dùng Intl.DateTimeFormat cố định (24h, VN timezone)
-//             thay vì toLocaleTimeString (khác nhau giữa các browser)
-// 🔧 V8: Nhận prop `devices` để hiển thị trạng thái thật
+// 🔧 FIX: Cập nhật danh sách thiết bị chuẩn theo thực tế (3 Quầy + 1 Bếp)
+//          Máy in mặc định "Chưa kết nối" thay vì báo xanh.
 // ============================================================
 
 import { useEffect, useState } from "react";
-import {
-  Server,
-} from "lucide-react";
+import { Server } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 
 const DEFAULT_DEVICES = [
-  { name: "POS Online", status: "online" },
-  { name: "KDS Quầy 1: Kết nối tốt", status: "online" },
-  { name: "KDS Quầy 2: Kết nối tốt", status: "online" },
-  { name: "Máy in bill quẹt mã: Sẵn sàng giấy in", status: "online" },
+  { name: "Quầy 1: Kết nối tốt", status: "online" },
+  { name: "Quầy 2: Kết nối tốt", status: "online" },
+  { name: "Quầy 3: Kết nối tốt", status: "online" },
+  { name: "KDS Bếp: Kết nối tốt", status: "online" },
+  { name: "Máy in bill: Chưa kết nối", status: "warning" },
 ];
 
-// 🔧 FIX #69: formatter tạo 1 lần, output ổn định 24h VN timezone
 const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
   hour: "2-digit",
@@ -37,7 +34,6 @@ export default function TelemetryDock({ devices = DEFAULT_DEVICES }) {
     return () => clearInterval(timer);
   }, []);
 
-  // 🔧 FIX #69: dùng formatter cố định, không phụ thuộc locale browser
   const clockStr = TIME_FORMATTER.format(now);
 
   return (

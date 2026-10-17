@@ -1,14 +1,10 @@
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban + Station Filter (V11 - FINAL)
+// EMPLOYEEORDERS.JSX — KDS Kanban + Station Filter (V13)
 // ============================================================
-// V11 (2026-10):
-//   - ✅ BỎ PrepBlock — mọi tab đều dùng KDSRow (giống tab "Tất cả")
-//   - ✅ Tab "Chờ xử lý" → 2 row riêng: "1. Đơn Mới" + "2. Đã Xác Nhận"
-//   - ✅ Tab "Bếp Nấu"   → 1 row: "3. Đang Nấu"
-//   - ✅ Tab "Quầy Trả Món" → 2 row: "4. Sẵn Sàng Nhận" + "5. Gần Nhất"
-//   - ✅ Tab "Tất cả"    → đủ 5 row
-//   - ✅ Xoá tab "Nước & Bánh"
-//   - ✅ Âm báo đơn: ding lặp mỗi 4s khi còn pending, dừng khi hết
+// V13:
+//   - ✅ Xoá badge số lượng ở góc phải block
+//   - ✅ Đổi layout thành 1 hàng cuộn ngang (10 thẻ)
+//   - ✅ Đồng nhất trang Admin và Employee
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -38,7 +34,7 @@ import {
 
 const POLL_MS = 5000;
 const COMPLETED_LIMIT = 8;
-const ROW_LIMIT = 6;
+const ROW_LIMIT = 10; // 🔧 Tăng lên 10 thẻ
 const SOUND_REPEAT_MS = 4000;
 const SOUND_STORAGE_KEY = "canteen.kds_sound_enabled";
 
@@ -119,7 +115,6 @@ function calcElapsedSec(iso) {
 }
 
 function getOrderPickupMinutes(order) {
-  // Parse từ note "Nhận hàng: 13:00 - 13:30" hoặc pickupTime
   const src = `${order?.pickupTime || order?.pickup || ""} ${order?.note || ""}`;
   const m = src.match(/(\d{1,2}):(\d{2})/);
   if (!m) return null;
@@ -167,7 +162,7 @@ function playDing() {
 // MAIN COMPONENT
 // ============================================================
 
-export default function EmployeeOrders() {
+export default function EmployeeOrders({ isAdmin = false }) {
   const { t } = useI18n();
   const { user } = useAuth();
 
@@ -612,9 +607,6 @@ export default function EmployeeOrders() {
     }
   }, [confirmReject, load, t]);
 
-  // ============================================================
-  // ✅ V11: Xác định row nào hiển thị theo tab — TẤT CẢ DÙNG KDSRow
-  // ============================================================
   const showRow1 = stationFilter === "all" || stationFilter === "pending";
   const showRow2 = stationFilter === "all" || stationFilter === "pending";
   const showRow3 = stationFilter === "all" || stationFilter === "kitchen";
@@ -977,7 +969,7 @@ export default function EmployeeOrders() {
 
         {/* ============ KDS BOARD ============ */}
         <div className="kds-board kds-board--rows">
-          {/* ROW 1: PENDING — hiện khi tab all hoặc pending */}
+          {/* ROW 1: PENDING */}
           {showRow1 &&
             (() => {
               const { visible, hiddenCount } = takeVisible(
@@ -986,11 +978,9 @@ export default function EmployeeOrders() {
               );
               return (
                 <KDSRow
-                  title={t("1. Đơn Mới")}
+                  title={t("Đơn Mới")}
                   subtitle={t("Chờ xác nhận")}
                   variant="pending"
-                  count={filteredRows.pending.length}
-                  countLabel={t("Đơn")}
                   empty={t("Không có đơn mới")}
                   moreCount={hiddenCount}
                   onMore={() => toggleExpand("pending")}
@@ -1025,11 +1015,9 @@ export default function EmployeeOrders() {
               );
               return (
                 <KDSRow
-                  title={t("2. Đã Xác Nhận")}
+                  title={t("Đã Xác Nhận")}
                   subtitle={t("Chờ Bếp")}
                   variant="confirmed"
-                  count={filteredRows.confirmed.length}
-                  countLabel={t("Đơn")}
                   empty={t("Không có đơn đã xác nhận")}
                   moreCount={hiddenCount}
                   onMore={() => toggleExpand("confirmed")}
@@ -1047,7 +1035,7 @@ export default function EmployeeOrders() {
                       onApproveGreen={approveGreen}
                       onRejectGreen={rejectGreen}
                       greenBusy={greenBusyId === (o._id || o.id)}
-                                            t={t}
+                      t={t}
                     />
                   ))}
                 </KDSRow>
@@ -1063,11 +1051,9 @@ export default function EmployeeOrders() {
               );
               return (
                 <KDSRow
-                  title={t("3. Đang Nấu")}
+                  title={t("Đang Nấu")}
                   subtitle={t("Đang chế biến")}
                   variant="prep"
-                  count={filteredRows.prep.length}
-                  countLabel={t("Đơn")}
                   empty={t("Không có đơn đang nấu")}
                   moreCount={hiddenCount}
                   onMore={() => toggleExpand("prep")}
@@ -1101,11 +1087,9 @@ export default function EmployeeOrders() {
               );
               return (
                 <KDSRow
-                  title={t("4. Sẵn Sàng Nhận")}
+                  title={t("Sẵn Sàng Nhận")}
                   subtitle={t("Tủ giữ nóng")}
                   variant="ready"
-                  count={filteredRows.ready.length}
-                  countLabel={t("Đơn")}
                   empty={t("Không có đơn sẵn sàng")}
                   moreCount={hiddenCount}
                   onMore={() => toggleExpand("ready")}
@@ -1132,11 +1116,9 @@ export default function EmployeeOrders() {
           {/* ROW 5: COMPLETED */}
           {showRow5 && (
             <KDSRow
-              title={t("5. Gần Nhất")}
+              title={t("Gần Nhất")}
               subtitle={t("Hoàn thành")}
               variant="completed"
-              count={filteredRows.completedTotal}
-              countLabel={t("Hoàn thành")}
               empty={t("Chưa có đơn hoàn thành")}
               isStrip
             >
@@ -1176,10 +1158,46 @@ export default function EmployeeOrders() {
         onClose={() => !advancingId && setConfirmReject(null)}
       />
 
+      {/* 🔧 CSS OVERRIDE: Cuộn ngang 1 hàng */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
+        }
+
+        /* Ghi đè CSS để tạo hiệu ứng cuộn ngang */
+        .kds-row__body {
+          flex-wrap: nowrap !important;
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          align-items: stretch !important;
+          padding-bottom: 16px !important; /* Tạo khoảng trống cho thanh cuộn */
+        }
+
+        /* Cố định chiều rộng thẻ đơn để không bị bóp méo */
+        .kds-row__body > .kds-card,
+        .kds-row__body > article,
+        .kds-row__body > .kds-ticket,
+        .kds-row__body > .kds-pickup {
+          flex: 0 0 260px !important;
+          max-width: 260px !important;
+          min-width: 260px !important;
+        }
+
+        /* Tùy chỉnh thanh cuộn cho đẹp */
+        .kds-row__body::-webkit-scrollbar {
+          height: 8px;
+        }
+        .kds-row__body::-webkit-scrollbar-track {
+          background: var(--st-surface-low);
+          border-radius: 4px;
+        }
+        .kds-row__body::-webkit-scrollbar-thumb {
+          background: var(--st-outline);
+          border-radius: 4px;
+        }
+        .kds-row__body::-webkit-scrollbar-thumb:hover {
+          background: var(--st-text-light);
         }
       `}</style>
     </>
@@ -1194,8 +1212,6 @@ function KDSRow({
   title,
   subtitle,
   variant,
-  count,
-  countLabel,
   empty,
   moreCount = 0,
   onMore,
@@ -1216,9 +1232,7 @@ function KDSRow({
             <span className="kds-row__subtitle">{subtitle}</span>
           )}
         </div>
-        <span className={`kds-row__count kds-row__count--${variant}`}>
-          {count} {countLabel}
-        </span>
+        {/* Đã xoá badge số lượng ở đây */}
       </div>
 
       <div
@@ -1234,6 +1248,7 @@ function KDSRow({
                 type="button"
                 className="kds-row__more"
                 onClick={onMore}
+                style={{ flexShrink: 0 }} // Đảm bảo nút xem thêm không bị co
               >
                 +{moreCount} đơn nữa — Xem thêm
               </button>
