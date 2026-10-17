@@ -1,10 +1,9 @@
 // ============================================================
 // OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook/Microsoft
 // ============================================================
-// V5 (2026-10):
-//   - ✅ FIX đường dẫn import: ../components/Effects
-//     (file nằm ở src/pages/ nên phải trỏ đúng thư mục components)
-//   - ✅ FIX LỖI 2: Guard calledRef chống double-call trong StrictMode
+// V6 (2026-10):
+//   - 🔧 FIX LỖI ĐĂNG XUẤT NGAY: Import `useAuth` và gọi `setUser(user)` 
+//     ngay sau khi có token để cập nhật Context toàn cục.
 // ============================================================
 
 import { useEffect, useRef, useState } from "react";
@@ -13,20 +12,20 @@ import { Loader2, AlertCircle } from "lucide-react";
 import { api, setToken } from "../api";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";
+import { useAuth } from "../contexts/AuthContext"; // 🔧 Thêm import này
 
 export default function OAuthCallback({ provider, onLoginSuccess }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { t } = useI18n();
+  const { setUser } = useAuth(); // 🔧 Lấy hàm setUser từ Context
 
   const [status, setStatus] = useState("processing");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ FIX: guard chống double-call trong React.StrictMode
   const calledRef = useRef(false);
 
   useEffect(() => {
-    // StrictMode chạy effect 2 lần → guard chặn lần 2
     if (calledRef.current) return;
     calledRef.current = true;
 
@@ -63,6 +62,8 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
       .callback(provider, code, redirectUri)
       .then(({ token, user }) => {
         setToken(token);
+        setUser(user); // 🔧 FIX: Cập nhật user vào AuthContext ngay lập tức
+        
         toast(`${t("Xin chào")} ${user.name}!`, "success");
 
         if (onLoginSuccess) {
