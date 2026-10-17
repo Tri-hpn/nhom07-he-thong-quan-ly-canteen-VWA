@@ -97,3 +97,7 @@ src/lib/i18n/locales/_source.json
 src/lib/i18n/locales/en.js
 
 .audit/
+*.bak-*
+fix-*.mjs
+verify.mjs
+scan.mjs
