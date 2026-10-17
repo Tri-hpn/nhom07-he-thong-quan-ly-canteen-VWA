@@ -607,23 +607,7 @@ export default function Sidebar({ role, onLogout, user }) {
 
         {isStaff ? (
           <StaffSidebarUser user={user} onLogout={onLogout} t={t} />
-        ) : (
-          <>
-            <ProfileLink
-              user={user}
-              role={role}
-              onNavClick={closeSidebar}
-              t={t}
-            />
-            <button
-              type="button"
-              className="logout-btn"
-              onClick={onLogout}
-            >
-              <LogOut size={18} /> {t("Đăng xuất")}
-            </button>
-          </>
-        )}
+        ) : null}
       </aside>
     </>
   );

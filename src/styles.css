@@ -4814,3 +4814,118 @@ html.dark-mode .sc-preview-value {
 /* ============================================================
    KẾT THÚC FILE
    ============================================================ */
+
+/* ============================================================
+   BULLETPROOF LAYOUT (SIDEBAR DỌC - KHÔNG THỂ VỠ)
+   ============================================================ */
+
+/* 1. Khung chính: Xếp 2 cột (Sidebar và Nội dung) */
+.app-shell {
+  display: flex !important;
+  flex-direction: row !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 2. Sidebar: Cố định chiều rộng, tự cuộn */
+.sidebar, aside {
+  width: 260px !important;
+  flex-shrink: 0 !important;
+  height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-y: auto !important;
+  position: relative !important; /* Bỏ fixed để tuân theo Flexbox */
+  margin: 0 !important;
+  border-right: 1px solid #e2e8f0 !important;
+}
+
+/* 3. Ép thẻ <a> bên trong Menu phải xếp dọc */
+.sidebar nav, aside nav {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  padding: 0 12px !important;
+}
+
+.sidebar nav a, aside nav a, .nav-link {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  width: 100% !important;
+  white-space: normal !important;
+  padding: 10px 14px !important;
+  margin-bottom: 4px !important;
+  box-sizing: border-box !important;
+}
+
+/* 4. Main: Chiếm phần còn lại bên phải */
+.main, main.main, .admin-shell .main {
+  flex: 1 !important;
+  width: auto !important;
+  height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  margin-left: 0 !important; /* Xóa margin cũ gây phình to */
+  padding-left: 0 !important;
+}
+
+/* 5. Topbar đứng im */
+.topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 50 !important;
+  flex-shrink: 0 !important;
+}
+
+/* 6. Nội dung cuộn */
+.page-content {
+  flex: 1 !important;
+  overflow-y: auto !important;
+}
+
+/* 7. Customer Layout không có Sidebar */
+.app-shell.customer-layout .main {
+  width: 100% !important;
+}
+
+
+/* ============================================================
+   CỐ ĐỊNH LOGO - CHỈ CUỘN MENU
+   ============================================================ */
+
+/* 1. Khung Sidebar tổng thể: Cấm cuộn */
+.sidebar, aside {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  overflow: hidden !important; /* Cấm cuộn toàn bộ cột */
+}
+
+/* 2. Phần đầu (Logo, Role chip): Giữ nguyên kích thước, không bị co lại */
+.sidebar .brand, 
+aside > div:first-child,
+.sidebar .role-chip {
+  flex-shrink: 0 !important;
+}
+
+/* 3. Phần Menu (Nav): Cho phép cuộn dọc */
+.sidebar nav, aside nav {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-bottom: 20px !important; /* Khoảng trống nhỏ ở cuối menu */
+}
+
+/* Ẩn thanh cuộn cho đẹp (tuỳ chọn) */
+.sidebar nav::-webkit-scrollbar, aside nav::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar nav::-webkit-scrollbar-thumb, aside nav::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}

@@ -302,19 +302,27 @@ export default function Layout({
               </button>
             </div>
 
-            <div className="topbar-right">
-              {/* ⚙️ Cài đặt — mở SettingsModal */}
-              <button
-                type="button"
-                className="topbar-icon-btn"
-                onClick={openSettings}
-                aria-label={t("Cài đặt")}
-                title={t("Cài đặt")}
-              >
+            <div className="topbar-right" style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {user && (
+                <div onClick={() => navigate(role === "ADMIN" ? "/owner/profile" : "/employee/profile")} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#0284C7", color: "#fff", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, overflow: "hidden" }}>
+                      {user.avatar ? (
+                        <img src={user.avatar} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        <span>{user.name ? user.name.slice(0, 2).toUpperCase() : "AD"}</span>
+                      )}
+                    </div>
+                  <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)" }}>{user.name || "Quản trị viên"}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted, #64748b)" }}>{role === "ADMIN" ? "Quản trị viên" : "Nhân viên"}</span>
+                  </div>
+                </div>
+              )}
+              
+              <button type="button" className="topbar-icon-btn" onClick={openSettings} style={{ background: "transparent", border: 0, cursor: "pointer", display: "grid", placeItems: "center", color: "var(--text-muted)" }}>
                 <Settings size={20} />
               </button>
 
-              {/* 🔔 Thông báo */}
               <NotificationBell />
             </div>
           </header>
