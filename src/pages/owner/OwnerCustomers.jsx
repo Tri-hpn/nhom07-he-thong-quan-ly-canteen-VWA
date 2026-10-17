@@ -50,7 +50,7 @@ function getMemberTier(totalSpent) {
 const TIER_BADGE = {
   "Thành viên mới": { color: "#64748b", bg: "#f1f5f9", icon: "👤" },
   "Hạng Bạc":       { color: "#475569", bg: "#e2e8f0", icon: "🥈" },
-  "Hạng Vàng":      { color: "#f59e0b", bg: "#fef3c7", icon: "ðŸ†" },
+  "Hạng Vàng":      { color: "#f59e0b", bg: "#fef3c7", icon: "🏆" },
   "Hạng Kim cương": { color: "#0EA5E9", bg: "#e0f2fe", icon: "💎" },
 };
 
@@ -369,8 +369,8 @@ export default function OwnerCustomers() {
         ? t("Khóa tài khoản") + ` "${c.name}"?`
         : t("Mở khóa tài khoản") + ` "${c.name}"?`,
       message: isLocking
-        ? t("Khách hàng sẽ không thể đÄƒng nhập và đặt món cho đến khi được mở lại.")
-        : t("Khách hàng sẽ có thể đÄƒng nhập và đặt món trở lại."),
+        ? t("Khách hàng sẽ không thể đăng nhập và đặt món cho đến khi được mở lại.")
+        : t("Khách hàng sẽ có thể đăng nhập và đặt món trở lại."),
       confirmText: isLocking ? t("Khóa tài khoản") : t("Mở khóa"),
       cancelText: t("Hủy"),
       danger: isLocking,
@@ -646,7 +646,7 @@ export default function OwnerCustomers() {
     if (v.claimed_from)
       return { label: t("Nhận từ ƯĐ"), color: "#8b5cf6", bg: "#ede9fe", icon: Globe };
     if (v.points_used > 0)
-      return { label: t("Äá»•i điểm"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
+      return { label: t("Đổi điểm"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
     return { label: t("Admin tặng"), color: "#2634d5", bg: "#eef2ff", icon: UserIcon };
   };
 
@@ -813,7 +813,7 @@ export default function OwnerCustomers() {
                       display: "grid",
                       placeItems: "center",
                     }}
-                    aria-label={t("Xóa tìm kiếm")}
+                    aria-label={t("Xoá tìm kiếm")}
                   >
                     <X size={14} />
                   </button>
@@ -860,7 +860,7 @@ export default function OwnerCustomers() {
                   }}
                 >
                   <RotateCcw size={14} />
-                  {t("Xóa lọc")}
+                  {t("Xoá lọc")}
                 </button>
               )}
             </div>
@@ -1393,7 +1393,7 @@ export default function OwnerCustomers() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 20, textAlign: "left" }}>
                 <InfoBlock label={t("Mã KH")} value={`KH${detail.id}`} />
                 <InfoBlock label={t("SĐT")} value={detail.phone || "—"} />
-                <InfoBlock label={t("ĐiỒm tích lũy")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
+                <InfoBlock label={t("Điểm tích lũy")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
                 <InfoBlock label={t("Trạng thái")} value={detail.status || t("Hoạt động")} />
 
                 {detail.student_code ? (
@@ -1401,7 +1401,7 @@ export default function OwnerCustomers() {
                     <InfoBlock label={t("MSSV")} value={detail.student_code} mono />
                     <InfoBlock label={t("Ngành học")} value={detail.major_name || "—"} />
                     <InfoBlock label={t("Khoa")} value={detail.faculty || "—"} />
-                    <InfoBlock label={t("NĒm nhập học")} value={detail.year_in ? String(detail.year_in) : "—"} />
+                    <InfoBlock label={t("Năm nhập học")} value={detail.year_in ? String(detail.year_in) : "—"} />
                   </>
                 ) : (
                   <div style={{ gridColumn: "span 2" }}>
@@ -1670,7 +1670,7 @@ export default function OwnerCustomers() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
               <MiniStat label={t("TỔNG")} value={voucherStats.total} color="#2634d5" bg="#eef2ff" />
               <MiniStat label={t("KHẢ DỤNG")} value={voucherStats.available} color="#18a967" bg="#e8f9f1" />
-              <MiniStat label={t("ÄÃƒ DÙNG")} value={voucherStats.used} color="#ef4444" bg="#fee2e2" />
+              <MiniStat label={t("ĐÃ DÙNG")} value={voucherStats.used} color="#ef4444" bg="#fee2e2" />
               <MiniStat label={t("TỔNG GIÁ TRỊ")} value={fmtMoney(voucherStats.totalValue || 0)} color="#f59e0b" bg="#fff4d8" smallValue />
             </div>
 

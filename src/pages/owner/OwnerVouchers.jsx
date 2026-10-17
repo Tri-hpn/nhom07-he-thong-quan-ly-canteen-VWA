@@ -1170,7 +1170,7 @@ export default function OwnerVouchers() {
               }}
             >
               <Globe size={14} />{" "}
-              {t('Äá»ƒ trống "Khách hàng" → voucher sẽ hiện ở trang "Ưu đãi" cho mọi khách nhận')}
+              {t('Để trống "Khách hàng" → voucher sẽ hiện ở trang "Ưu đãi" cho mọi khách nhận')}
             </div>
 
             <label style={labelStyle}>
@@ -1715,7 +1715,7 @@ function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
                 id="green-approval"
               />
               <label htmlFor="green-approval" style={{ fontSize: 13, fontWeight: 600 }}>
-                ðŸ›¡ï¸ {t("Yêu cầu nhân viên duyệt Sống Xanh")}
+                🛡️ {t("Yêu cầu nhân viên duyệt Sống Xanh")}
               </label>
             </div>
           )}
@@ -1728,7 +1728,7 @@ function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
               disabled={saving} id="review-enabled"
             />
             <label htmlFor="review-enabled" style={{ fontSize: 13, fontWeight: 600 }}>
-              â­ {t("Bật thưởng Đánh giá món")}
+              ⭐ {t("Bật thưởng Đánh giá món")}
             </label>
           </div>
           {earn.review_enabled && (
@@ -1746,7 +1746,7 @@ function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
 
         <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#2634d5", marginBottom: 10 }}>
-            📤 {t("Äá»”I ĐIỂM")}
+            📤 {t("ĐỔI ĐIỂM")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
@@ -1782,7 +1782,7 @@ function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
 
         <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", marginBottom: 10 }}>
-            ðŸŽŸï¸ {t("MỐC VOUCHER")}
+            🎟️ {t("Xóa voucher")}
           </div>
 
           {redeem.tiers.map((tier, idx) => (
@@ -1804,7 +1804,7 @@ function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
                   display: "grid", placeItems: "center",
                   opacity: redeem.tiers.length <= 1 ? 0.4 : 1,
                 }}
-                title={t("Xoá mốc")}
+                title={t("Xoá lọc")}
               >
                 <Trash2 size={14} />
               </button>

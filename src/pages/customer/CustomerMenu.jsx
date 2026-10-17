@@ -33,29 +33,29 @@ const FALLBACK_IMG =
 
 const CATEGORY_ICONS = {
   "Bữa sáng": "", "Bữa trưa": "", "Bữa tối": "", "Món chay": "🥗",
-  "Äá»“ uống": "", "Äá»“ ăn nhanh": "", "Tráng miệng": "",
+  "Đồ uống": "", "Đồ ăn nhanh": "", "Tráng miệng": "",
 };
 
 const CATEGORY_LABEL_TRANSLATIONS = {
   "Bữa sáng": "Breakfast",
   "Bữa trưa": "Lunch",
   "Bữa tối": "Dinner",
-  "Äá»“ ăn nhanh": "Fast Food",
+  "Đồ ăn nhanh": "Fast Food",
   "Món chay": "Vegetarian",
-  "Äá»“ uống": "Drink",
+  "Đồ uống": "Drink",
   "Tráng miệng": "Dessert",
   "Món mặn": "Savory",
 };
 
-const FAST_CATEGORIES = ["Äá»“ ăn nhanh"];
-const HEALTHY_CATEGORIES = ["Món chay", "Äá»“ chay"];
-const COOL_CATEGORIES = ["Äá»“ uống", "Nước ép - Sinh tố", "Coffee & Tea"];
+const FAST_CATEGORIES = ["Đồ ăn nhanh"];
+const HEALTHY_CATEGORIES = ["Món chay", "Đồ chay"];
+const COOL_CATEGORIES = ["Đồ uống", "Nước ép - Sinh tố", "Coffee & Tea"];
 const FAST_PREP_MINUTES = 10;
 
 const PRIORITY_FILTERS = [
   { key: "fast", icon: "⚡", label: "Phục vụ nhanh" },
   { key: "healthy", icon: "🥗", label: "Lành mạnh" },
-  { key: "cool", icon: "â„ï¸", label: "Mát lạnh" },
+  { key: "cool", icon: "❄️", label: "Mát lạnh" },
   { key: "noSpicy", icon: "", label: "Không cay" },
 ];
 
@@ -418,9 +418,9 @@ export default function CustomerMenu({ cart, setCart, user }) {
               {m.description || t("Món ăn ngon tại Canteen VWA")}
             </p>
             <div className="menu-food-card__meta-row">
-              <span>â­ {rating}</span>
+              <span>⭐ {rating}</span>
 
-              <span>â± {prepTime} {t("phút")}</span>
+              <span>⏱ {prepTime} {t("phút")}</span>
             </div>
             <div className="menu-food-card__price-row-sq">
               <span className="menu-food-card__price-sq">{money(m.price)}</span>
@@ -573,7 +573,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
             <Star size={11} fill="#F59E0B" color="#F59E0B" /> {rating}
           </span>
 
-          <span>â± {prepTime} {t("phút")}</span>
+          <span>⏱ {prepTime} {t("phút")}</span>
 
           <div className="menu-food-card__button-group">
 <button

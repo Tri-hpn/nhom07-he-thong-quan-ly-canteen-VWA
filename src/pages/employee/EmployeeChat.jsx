@@ -1166,7 +1166,7 @@ export default function EmployeeChat() {
       });
       toast(t("Đã gửi yêu cầu chuyển lên Admin"), "success");
     } catch (e) {
-      toast(e.message || t("Không gửi được yêu cầu"), "error");
+      toast(e.message || t("Không gửi được yêu cầu rút"), "error");
     }
   };
 

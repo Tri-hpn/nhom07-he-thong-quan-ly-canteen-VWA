@@ -354,7 +354,7 @@ export default function CustomerTopbar({
                   <div className="customer-topbar__notification-list">
                     {notifications.length === 0 ? (
                       <div className="customer-topbar__notification-empty">
-                        {t("Không có thông báo")}
+                        {t("Không có thông báo nào")}
                       </div>
                     ) : (
                       notifications.map((notification) => (

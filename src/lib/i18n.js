@@ -1,8 +1,8 @@
 // ============================================================
-// i18n.js â€” Hệ thống đa ngôn ngữ (V6 - FINAL)
+// i18n.js — Hệ thống đa ngôn ngữ (V6 - FINAL)
 // ============================================================
 // V5 (2026-10) - FINAL:
-//   - 🔧 FIX L11: getCoverage() â€” chỉ cần v !== "" là "đã dịch"
+//   - 🔧 FIX L11: getCoverage() — chỉ cần v !== "" là "đã dịch"
 //   - 🔧 FIX L17: import.meta.hot.dispose() cleanup listener
 // V6 (2026-10):
 //   - 🔧 FIX H5: getCoverage bỏ điều kiện `v !== k` (trùng với
@@ -105,7 +105,7 @@ export function getCoverage(locale = currentLocale) {
 
   for (const k of viKeys) {
     const v = dict[k];
-    // âœ… FIX H5: bản dịch trùng VI (tên riêng, thương hiệu) vẫn là "đã dịch".
+    // ✅ FIX H5: bản dịch trùng VI (tên riêng, thương hiệu) vẫn là "đã dịch".
     // Chỉ coi là "missing" khi value rỗng/null/undefined.
     if (v !== undefined && v !== null && v !== "") {
       translated++;

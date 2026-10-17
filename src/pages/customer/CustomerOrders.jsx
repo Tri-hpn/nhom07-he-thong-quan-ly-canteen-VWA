@@ -83,7 +83,7 @@ const COUNTER_OPTIONS = [
   { id: "all",  label: "Mọi Quầy" },
   { id: "com",  label: "Quầy Cơm Suất",   match: ["Cơm"] },
   { id: "bun",  label: "Quầy Bún / Phở",  match: ["Bún", "Phở", "Món mặn"] },
-  { id: "nuoc", label: "Quầy Trà & Cafe", match: ["Äá»“ uống", "Coffee & Tea", "Nước ép - Sinh tố"] },
+  { id: "nuoc", label: "Quầy Trà & Cafe", match: ["Đồ uống", "Coffee & Tea", "Nước ép - Sinh tố"] },
 ];
 
 // ============================================================
@@ -573,7 +573,7 @@ const activeCounterId = (() => {
           <div className="orders-header__right">
             <div className="orders-sync-badge">
               <span className="orders-sync-dot" />
-              <span>{t("Äá»“ng bộ: Vừa xong")}</span>
+              <span>{t("Đồng bộ: Vừa xong")}</span>
             </div>
             <button
               type="button"
@@ -616,7 +616,7 @@ const activeCounterId = (() => {
           </div>
           <div className="orders-kpi-body">
             <span className="orders-kpi-label">
-              {t("HOìN THìNH THÁNG NìY")}
+              {t("HOÀN THÀNH THÁNG NÀY")}
             </span>
             <div className="orders-kpi-value-row">
               <span className="orders-kpi-value">{stats.completed}</span>
@@ -665,7 +665,7 @@ const activeCounterId = (() => {
               </span>
             </div>
             <span className="orders-kpi-sub">
-              {t("Äá»•i 01 nước ngọt miễn phí")}
+              {t("Đổi 01 nước ngọt miễn phí")}
             </span>
           </div>
         </div>
@@ -1077,7 +1077,7 @@ const activeCounterId = (() => {
       <path d="M-11 -18L-1 -3M-3 -20L7 -4M5 -18L14 -3"
         fill="none" stroke="#a27b4f" strokeWidth="2.2" strokeLinecap="round" />
     </g>
-    <text x="231" y="298" textAnchor="middle" fontSize="11" fill="#72879d">MÓN NƯỚC · Äá»’ ĂN NHANH</text>
+    <text x="231" y="298" textAnchor="middle" fontSize="11" fill="#72879d">MÓN NƯỚC · ĐỒ ĂN NHANH</text>
     {activeCounterId === "Q2" && (
       <g>
         <rect x="278" y="187" width="109" height="20" rx="10" fill="#2634D5" />
@@ -1129,7 +1129,7 @@ const activeCounterId = (() => {
       <path d="M-12 -13Q-8 -19 -12 -24M-3 -13Q1 -19 -3 -24"
         fill="none" stroke="#a6b3cd" strokeWidth="1.7" strokeLinecap="round" />
     </g>
-    <text x="969" y="298" textAnchor="middle" fontSize="11" fill="#72879d">Äá»’ UỐNG · BÁNH NGỌT</text>
+    <text x="969" y="298" textAnchor="middle" fontSize="11" fill="#72879d">ĐỒ UỐNG · BÁNH NGỌT</text>
     {activeCounterId === "Q3" && (
       <g>
         <rect x="1016" y="187" width="109" height="20" rx="10" fill="#2634D5" />
@@ -1402,7 +1402,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
           <span className="orders-stepper__status">
             <span className="orders-stepper__status-dot" />
             {order.status === "Đang chuẩn bị"
-              ? t("Đầu bếp đang thực hiện Ѣ Dự kiến ra món trong 3 phút")
+              ? t("Đầu bếp đang thực hiện • Dự kiến ra món trong 3 phút")
               : `${t("Trạng thái:")} ${t(order.status)}`}
           </span>
           <span className="orders-stepper__step-count">
@@ -1663,7 +1663,7 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
               )}
             </h4>
             <p className="order-history-card__desc">
-              {totalQty}x {t("Suất Ēn")} Ѣ{" "}
+              {totalQty}x {t("suất ăn")} Ѣ{" "}
               {firstItem?.category || t("Cơm")}
             </p>
 

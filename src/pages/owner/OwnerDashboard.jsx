@@ -296,7 +296,6 @@ export default function OwnerDashboard() {
             cursor: "pointer",
             fontWeight: 600,
             fontSize: 13,
-            display: "none",
             alignItems: "center",
             gap: 6,
           }}

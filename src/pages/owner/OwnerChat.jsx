@@ -420,7 +420,7 @@ export default function OwnerChat() {
           </div>
           <div className="chat-kpi-chip chat-kpi-chip--danger">
             <Bell size={16} />
-            <span>{t("Chờ phản hồi")}: <b>{kpi.unread}</b></span>
+            <span>{t("Cần phản hồi")}: <b>{kpi.unread}</b></span>
           </div>
           <div className="chat-kpi-chip chat-kpi-chip--warning">
             <ShieldAlert size={16} />
@@ -580,7 +580,7 @@ export default function OwnerChat() {
                     <div className="chat-conv__tags">
                       {hasTransfer && (
                         <span className="chat-conv__tag chat-conv__tag--danger">
-                          <ShieldAlert size={11} /> {t("Cần admin")}
+                          <ShieldAlert size={11} /> {t("Báo Admin")}
                         </span>
                       )}
                       {isMine && (
@@ -611,7 +611,7 @@ export default function OwnerChat() {
                     color: "var(--st-text)",
                   }}
                 >
-                  {t("Chọn 1 cuộc trò chuyện để xem")}
+                  {t("Chọn 1 cuộc trò chuyện để bắt đầu")}
                 </p>
                 <p
                   style={{
@@ -757,7 +757,7 @@ export default function OwnerChat() {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={onKey}
-                    placeholder={`${t("Nhập tin nhắn cho")} ${selected.user_name || t("khách")}...`}
+                    placeholder={`${t("Nhập tin nhắn...")} ${selected.user_name || t("khách")}...`}
                     disabled={sending}
                     maxLength={MAX_MESSAGE_LENGTH}
                   />

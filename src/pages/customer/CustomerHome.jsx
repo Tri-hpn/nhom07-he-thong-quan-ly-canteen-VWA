@@ -55,7 +55,7 @@ const HOME_CATEGORIES = [
   { id: "com",    label: "Cơm & Món chính",       icon: "𾍨", value: "Cơm" },
   { id: "bun",    label: "Bún - PhỾ - Mì",        icon: "𾍽", value: "Bún - PhỾ - Cháo" },
   { id: "anvat", label: "Ăn vật & Fastfood", icon: "🥗", value: "Đồ ăn nhanh" },
-  { id: "douong", label: "Äá»“ uống & Tráng miệng", icon: "☕", value: "Äá»“ uống" },
+  { id: "douong", label: "Đồ uống & Tráng miệng", icon: "☕", value: "Đồ uống" },
   { id: "chay",   label: "Món chay",              icon: "🥗", value: "Món chay" },
 ];
 
@@ -1061,7 +1061,7 @@ const [items, setItems] = useState([]);
 
             <div className="home-sticky-cart__right">
               <div className="home-sticky-cart__time">
-                <span>{t("Khung giờ nhận Ä‘á» xuất")}</span>
+                <span>{t("Khung giờ nhận đề xuất")}</span>
                 <b>11:45 - 12:00</b>
               </div>
               <Link to="/customer/cart" className="home-sticky-cart__cta">

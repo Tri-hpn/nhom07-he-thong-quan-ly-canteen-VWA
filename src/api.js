@@ -1,11 +1,11 @@
 // ============================================================
-// API.JS Ãƒ¢ââ€š¬ââ‚¬Â HTTP client cho Backend Express (V9 - FINAL)
+// API.JS — HTTP client cho Backend Express (V9 - FINAL)
 // ============================================================
 // V9 (2026-10):
-//   - Ãƒ°Å¸ââ‚¬ÂÃ‚Â§ FIX H6: bÃƒÂ¡Ã‚Â»Ã‚Â api.admin.translationStats vÃƒƒÂ  api.admin.backfillSync
-//     (backend khÃƒƒÂ´ng cÃƒƒÂ³ endpoint tÃ†°Ã†¡ng Ãƒ¡Â»Â©ng)
-//   - Ãƒ°Å¸ââ‚¬ÂÃ‚Â§ FIX H7: bÃƒÂ¡Ã‚Â»Ã‚Â param `all` thÃƒ¡Â»Â«a trong api.menu.list
-//   - GiÃƒ¡Â»Â¯ V8: memoryToken fallback, api.orders.call, api.health
+//   - 🔧 FIX H6: bỏ api.admin.translationStats và api.admin.backfillSync
+//     (backend không có endpoint tương ứng)
+//   - 🔧 FIX H7: bỏ param `all` thừa trong api.menu.list
+//   - Giữ V8: memoryToken fallback, api.orders.call, api.health
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -14,7 +14,7 @@ const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
 // ============================================================
-// TOKEN Ãƒ¢ââ€š¬ââ‚¬Â sessionStorage + memoryToken fallback (Safari private mode)
+// TOKEN — sessionStorage + memoryToken fallback (Safari private mode)
 // ============================================================
 let memoryToken = null;
 
@@ -51,7 +51,7 @@ export function setToken(t) {
         sessionStorage.removeItem("token");
       }
     } catch (e) {
-      console.warn("[api] sessionStorage khÃƒƒÂ´ng dÃƒƒÂ¹ng Ãƒâ€žââ‚¬ËœÃƒâ€ Â°Ãƒ¡Â»Â£c, chuyÃƒ¡Â»Æâ€™n sang memoryToken:", e.message);
+      console.warn("[api] sessionStorage không dùng được, chuyển sang memoryToken:", e.message);
       sessionStorageAvailable = false;
     }
   }
@@ -90,14 +90,14 @@ async function req(path, options = {}) {
     clearTimeout(timeoutId);
     if (e.name === "AbortError") {
       const err = new Error(
-        "YÃƒƒÂªu cÃƒ¡ÂºÂ§u quÃƒƒÂ¡ thÃƒÂ¡Ã‚Â»Ã‚Âi gian. Vui lÃƒƒÂ²ng kiÃƒ¡Â»Æâ€™m tra kÃƒ¡ÂºÂ¿t nÃƒ¡Â»ââ‚¬Ëœi vÃƒƒÂ  thÃƒ¡Â»Â­ lÃƒ¡ÂºÂ¡i."
+        "Yêu cầu quá thời gian. Vui lòng kiểm tra kết nối và thử lại."
       );
       err.status = 0;
       err.isTimeout = true;
       throw err;
     }
     const err = new Error(
-      "KhÃƒƒÂ´ng kÃƒ¡ÂºÂ¿t nÃƒ¡Â»ââ‚¬Ëœi Ãƒâ€žââ‚¬ËœÃƒâ€ Â°Ãƒ¡Â»Â£c mÃƒƒÂ¡y chÃƒ¡Â»Â§: " + (e.message || "unknown error")
+      "Không kết nối được máy chủ: " + (e.message || "unknown error")
     );
     err.status = 0;
     err.isNetworkError = true;
@@ -173,20 +173,20 @@ export const api = {
   stats: () => req("/stats"),
 
   menu: {
-    // Ãƒ¢Åâ€œââ‚¬¦ FIX H7: bÃƒÂ¡Ã‚Â»Ã‚Â param `all` (backend khÃƒƒÂ´ng Ãƒâ€žââ‚¬ËœÃƒÂ¡Ã‚Â»Ã‚Âc)
-    list: (q = "", category = "TÃƒ¡ÂºÂ¥t cÃƒ¡ÂºÂ£", sort = "popular") => {
+    // ✅ FIX H7: bỏ param `all` (backend không đọc)
+    list: (q = "", category = "Tất cả", sort = "popular") => {
       const p = new URLSearchParams();
       if (q) p.set("q", q);
-      if (category && category !== "TÃƒ¡ÂºÂ¥t cÃƒ¡ÂºÂ£") p.set("category", category);
+      if (category && category !== "Tất cả") p.set("category", category);
       if (sort) p.set("sort", sort);
       const qs = p.toString();
       return req("/menu" + (qs ? "?" + qs : ""));
     },
-    listActive: (q = "", category = "TÃƒ¡ÂºÂ¥t cÃƒ¡ÂºÂ£", sort = "popular") => {
+    listActive: (q = "", category = "Tất cả", sort = "popular") => {
       const p = new URLSearchParams();
       p.set("active_only", "1");
       if (q) p.set("q", q);
-      if (category && category !== "TÃƒ¡ÂºÂ¥t cÃƒ¡ÂºÂ£") p.set("category", category);
+      if (category && category !== "Tất cả") p.set("category", category);
       if (sort) p.set("sort", sort);
       return req("/menu?" + p.toString());
     },
@@ -204,8 +204,8 @@ export const api = {
   orders: {
     create:   (data)       => req("/orders",               { method: "POST",  body: JSON.stringify(data) }),
     myOrders: ()           => req("/orders/me"),
-    all: (status = "TÃƒ¡ÂºÂ¥t cÃƒ¡ÂºÂ£") => {
-      const qs = status && status !== "TÃƒ¡ÂºÂ¥t cÃƒ¡ÂºÂ£"
+    all: (status = "Tất cả") => {
+      const qs = status && status !== "Tất cả"
         ? `?status=${encodeURIComponent(status)}` : "";
       return req("/orders" + qs);
     },
@@ -217,7 +217,7 @@ export const api = {
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
 
     remind: (id, data) => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
-    // Ãƒ¢Åâ€œââ‚¬¦ MÃƒ¡Â»Å¡I: log voice call
+    // ✅ MỚI: log voice call
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
 
@@ -466,8 +466,8 @@ export const api = {
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
 
-  // Ãƒ¢Åâ€œââ‚¬¦ FIX H6: chÃƒ¡Â»ââ‚¬° giÃƒ¡Â»Â¯ endpoint `backfill` (backend cÃƒƒÂ³)
-  // Ãƒâ€žÃ‚ÂÃƒƒÂ£ bÃƒÂ¡Ã‚Â»Ã‚Â: translationStats, backfillSync (backend khÃƒƒÂ´ng cÃƒƒÂ³)
+  // ✅ FIX H6: chỉ giữ endpoint `backfill` (backend có)
+  // Đã bỏ: translationStats, backfillSync (backend không có)
   admin: {
     backfill: () => req("/admin/backfill-translations", { method: "POST" }),
   },

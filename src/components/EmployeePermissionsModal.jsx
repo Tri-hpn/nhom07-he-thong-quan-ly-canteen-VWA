@@ -51,7 +51,7 @@ export default function EmployeePermissionsModal({ user, onClose }) {
         permissions: permsRes.permissions || [],
       });
     } catch (e) {
-      setError(e.message || t("Không tải được dữ liệu phân quyền"));
+      setError(e.message || t("Không tải được dữ liệu chấm công"));
     } finally {
       setLoading(false);
     }

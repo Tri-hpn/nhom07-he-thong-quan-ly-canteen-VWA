@@ -556,7 +556,13 @@ export default function App() {
             element={<Navigate to="/owner/finance" replace />}
           />
 
-                      )}
+          <Route
+            path="/owner/permissions"
+            element={wrap(
+              "Phân quyền",
+              "Phân quyền chi tiết cho từng user",
+              <OwnerPermissions />
+            )}
           />
 
           <Route

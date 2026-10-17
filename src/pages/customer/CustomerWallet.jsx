@@ -2,7 +2,7 @@
 // CUSTOMERWALLET.JSX — Ví Canteen VWA Pay (V2 - design mới)
 // ============================================================
 // ✅ GIỮ NGUYÊN: logic, state, hooks, API calls, i18n
-//  THAY Äá»”I: cấu trúc JSX render theo design mới
+//  THAY ĐỔI: cấu trúc JSX render theo design mới
 // ============================================================
 
 import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
@@ -271,7 +271,7 @@ export default function CustomerWallet({ user }) {
         toast(t("Chuyển khoản thành công. Đang chờ duyệt"), "info");
       }
     } catch (error) {
-      toast(error?.message || t("Không tạo được yêu cầu nạp tiền"), "error");
+      toast(error?.message || t("Không tạo được yêu cầu nạp"), "error");
     } finally {
       setTopupSubmitting(false);
     }
@@ -329,7 +329,7 @@ export default function CustomerWallet({ user }) {
       toast(t("Mã QR nạp tiền đã sẵn sàng."), "success");
     } catch (error) {
       toast(
-        error?.message || t("Không tạo được yêu cầu nạp tiền"),
+        error?.message || t("Không tạo được yêu cầu nạp"),
         "error"
       );
     } finally {
@@ -504,7 +504,7 @@ export default function CustomerWallet({ user }) {
                 {t("Quỹ Học Đường")}
               </span>
               <h2>{t("Trợ Giá Sinh Viên Kỳ II")}</h2>
-              <p>{t("NĒm học 2024 - 2025")}</p>
+              <p>{t("Năm học 2024 - 2025")}</p>
             </div>
             <div className="wallet-subsidy-card__icon">
               <Wallet size={22} />
@@ -579,7 +579,7 @@ export default function CustomerWallet({ user }) {
 
           <div className="wallet-points-card__stats">
             <div className="wallet-points-card__stat">
-              <span>{t("ĐiỒm tích lũy")}</span>
+              <span>{t("Điểm tích lũy")}</span>
               <b>{stats.points || 350}</b>
               <small>{t("Đủ đổi 01 ly Trà Sen")}</small>
             </div>
@@ -595,7 +595,7 @@ export default function CustomerWallet({ user }) {
               <Coffee size={22} />
             </div>
             <div>
-              <b>{t("Voucher Giảm 20.000đ Äá»“ Uống")}</b>
+              <b>{t("Voucher Giảm 20.000đ Đồ Uống")}</b>
               <small>{t("Quy đổi ngay với")} {ptsCfg?.redeem?.min_points || 100} {t("Green Points")}</small>
             </div>
           </div>
@@ -605,7 +605,7 @@ export default function CustomerWallet({ user }) {
             onClick={() => window.location.href = "/customer/promotions"}
           >
             <Plus size={16} />
-            {t("Äá»•i điểm nhận quà & voucher ưu đãi")}
+            {t("Đổi điểm nhận quà & voucher ưu đãi")}
           </button>
         </div>
       </section>
@@ -677,7 +677,7 @@ export default function CustomerWallet({ user }) {
             <div
               className="wallet-topup__method-options"
               role="radiogroup"
-              aria-label={t("Phương thức nạp tiền")}
+              aria-label={t("Phương thức nạp tiền:")}
             >
               {/* CASH FIRST */}
               <button
@@ -811,7 +811,7 @@ export default function CustomerWallet({ user }) {
 
                       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
 
-                      toast(t("Lưu thành công!"), "success");
+                      toast(t("Đổi thành công!"), "success");
                     } catch (error) {
                       const fallbackLink = document.createElement("a");
                       fallbackLink.href = qrImage.src;
@@ -859,11 +859,11 @@ export default function CustomerWallet({ user }) {
           <div className="wallet-qr-pos__head">
             <div className="wallet-qr-pos__eyebrow">
               <QrCode size={14} />
-              {t("MÒ THANH TOÁN TẠI QUẦY CANTEEN")}
+              {t("MÃ THANH TOÁN TẠI QUẦY CANTEEN")}
             </div>
             <h2>{t("Dynamic QR Code 1-Chạm")}</h2>
             <p>
-              {t("Đưa mã vào đầu Ä‘á»c tại Quầy 01, Quầy 02 hoặc Quầy nước")}
+              {t("Đưa mã vào đầu đọc tại Quầy 01, Quầy 02 hoặc Quầy nước")}
             </p>
           </div>
 
@@ -1079,7 +1079,7 @@ export default function CustomerWallet({ user }) {
             <Shield size={26} />
           </div>
           <div>
-            <h3>{t("Tiêu chuẩn An toàn & Bảo mật Học Ä‘Æ°á»ng")}</h3>
+            <h3>{t("Tiêu chuẩn An toàn & Bảo mật Học đường")}</h3>
             <p>
               {t("Chứng chỉ bảo mật thanh toán tiêu chuẩn quốc tế PCI-DSS Level 1. Hệ thống tích hợp xác thực SSO an toàn cùng cơ chế tự khóa số dư khi mất thẻ sinh viên.")}
             </p>
@@ -1360,7 +1360,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
           </div>
 
           <button className="wallet-modal__primary" onClick={onSuccess}>
-            {t("Đã hiỒu")}
+            {t("Đã hiểu")}
           </button>
         </div>
       </Modal>

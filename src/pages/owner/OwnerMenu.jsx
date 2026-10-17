@@ -39,7 +39,7 @@ import { useI18n } from "../../hooks/useI18n";
 // ============================================================
 
 const MODAL_Z = 2147483600;
-const DEFAULT_CATEGORY_ICON = "ðŸ½ï¸";
+const DEFAULT_CATEGORY_ICON = "🍽️";
 const MAX_DISCOUNT = 90;
 const MAX_STOCK = 100;
 const LOW_STOCK_THRESHOLD = 10;
@@ -69,7 +69,7 @@ function getFALLBACK_IMG() {
   return (
     "data:image/svg+xml;utf8," +
     encodeURIComponent(
-      `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>ðŸ½ï¸</text></svg>`
+      `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text></svg>`
     )
   );
 }
@@ -577,7 +577,7 @@ export default function OwnerMenu() {
     setConfirm({
       title: `Xóa vĩnh viễn món "${item.name}"?`,
       message:
-        "âš ï¸ HÀNH Äá»˜NG NÀY KHÔNG THỂ HOÀN TÁC.\n\n" +
+        "⚠️ HÀNH ĐỘNG NÀY KHÔNG THỂ HOÀN TÁC.\n\n" +
         "Món sẽ bị XÓA KHỎI DATABASE.\n" +
         "Khác với 'Tắt món' (chỉ ẩn khỏi khách, có thể bật lại).\n\n" +
         "Nếu bạn chỉ muốn ẩn tạm, hãy dùng nút Tắt món.",
@@ -700,7 +700,7 @@ export default function OwnerMenu() {
     <>
       <div>
         {/* ============================================================
-            ðŸ• KHUNG GIỜ NHẬN MÓN
+            🕐 KHUNG GIỜ NHẬN MÓN
             ============================================================ */}
         <div
           style={{
@@ -1081,7 +1081,7 @@ export default function OwnerMenu() {
               fontFamily: "monospace",
             }}
           >
-            ðŸ” DEBUG: Tổng <b>{stats.total}</b> món ·{" "}
+            🔍 DEBUG: Tổng <b>{stats.total}</b> món ·{" "}
             <b style={{ color: "#18a967" }}>{stats.active} đang bán</b> ·{" "}
             <b style={{ color: "#f59e0b" }}>{stats.inactive} đã tắt</b>
           </div>
@@ -1334,7 +1334,7 @@ export default function OwnerMenu() {
                   marginBottom: 8,
                 }}
               >
-                {editingCat ? "âœï¸ Sửa danh mục" : "➕ Thêm danh mục mới"}
+                {editingCat ? "✏️ Sửa danh mục" : "➕ Thêm danh mục mới"}
               </div>
 
               <div
@@ -1709,7 +1709,7 @@ export default function OwnerMenu() {
                     )}
                   </>
                 ) : (
-                  <>💡 Äá»ƒ trống Giá gốc nếu không giảm giá.</>
+                  <>💡 Để trống Giá gốc nếu không giảm giá.</>
                 )}
               </div>
 
@@ -1784,9 +1784,9 @@ export default function OwnerMenu() {
                 }}
               >
                 {[
-                  { key: "is_cool", icon: "â„ï¸", label: "Mát lạnh" },
+                  { key: "is_cool", icon: "❄️", label: "Mát lạnh" },
                   { key: "is_healthy", icon: "🥗", label: "Lành mạnh" },
-                  { key: "is_spicy", icon: "ðŸŒ¶ï¸", label: "Cay" },
+                  { key: "is_spicy", icon: "🌶️", label: "Cay" },
                 ].map((c) => (
                   <label
                     key={c.key}
@@ -1840,7 +1840,7 @@ export default function OwnerMenu() {
                   color: "var(--text-muted, #64748b)",
                 }}
               >
-                💡 Äá»ƒ trống Thời gian / Năng lượng → hệ thống tự gán mặc định theo
+                💡 Để trống Thời gian / Năng lượng → hệ thống tự gán mặc định theo
                 danh mục. Các tiêu chí này dùng cho bộ lọc "Tiêu chí ưu tiên" và
                 "Mức năng lượng" ở trang thực đơn của khách hàng.
               </div>
@@ -2038,7 +2038,7 @@ function AdminMenuCardRow({
   const isDisabled = !isActive;
 
   const unitLabel =
-    item.category === "Äá»“ uống"
+    item.category === "Đồ uống"
       ? t("ly")
       : item.category === "Món mặn"
       ? t("tô")

@@ -1,5 +1,5 @@
 // ============================================================
-// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Äá»•i điểm (V4 - FINAL + i18n)
+// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V4 - FINAL + i18n)
 // ============================================================
 // 🔧 FIX:
 //   - M16: Tab reward filter thật
@@ -60,7 +60,7 @@ const EARN_METHODS = [
     color: "#0051B1",
     title: "Đánh giá món Ēn",
     badge: "+5 pts/lần",
-    desc: "Äá»ƒ lại nhận xét sao & góp ý khẩu vị trong mục Lịch sử đơn hàng để cải thiện chất lượng phục vụ bữa ăn.",
+    desc: "Để lại nhận xét sao & góp ý khẩu vị trong mục Lịch sử đơn hàng để cải thiện chất lượng phục vụ bữa ăn.",
     cta: "Đánh giá đơn gần nhất",
   },
 ];
@@ -112,7 +112,7 @@ const REWARD_TABS = [
   },
   {
     id: "food",
-    label: "Äá»•i Món Ăn & Äá»“ Uống Miễn Phí",
+    label: "Đổi Món Ăn & Đồ Uống Miễn Phí",
     filter: (v) => {
       const code = getCodeUpper(v);
       if (isFoodCode(code)) return true;
@@ -412,7 +412,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     if (points >= 100) {
       return { name: t("Bạc"), short: t("Silver"), next: 500 };
     }
-    return { name: t("Äá»“ng"), short: t("Bronze"), next: 100 };
+    return { name: t("Đồng"), short: t("Bronze"), next: 100 };
   }, [points, t]);
 
   const tierProgress = Math.min(100, (points / tier.next) * 100);
@@ -451,7 +451,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     try {
       const voucher = await api.points.redeem({ points: amount });
       toast(
-        `${t("Äá»•i thành công!")} ${voucher.code} — ${money(voucher.value)}`,
+        `${t("Đổi thành công!")} ${voucher.code} — ${money(voucher.value)}`,
         "success"
       );
       setRedeemPoints(MIN_REDEEM);
@@ -770,7 +770,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                           setReviewComment("");
                         } catch (e) {
                           toast(
-                            e.message || t("Không tải được danh sách đánh giá."),
+                            e.message || t("Không tải được danh sách công việc"),
                             "error"
                           );
                         }
@@ -791,7 +791,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
         <div className="promo-section__head">
           <div>
             <h2 className="promo-section__title">
-              {t("Kho Quà & Voucher Äá»•i Điểm")}
+              {t("Kho Quà & Voucher Đổi Điểm")}
             </h2>
 
           </div>
@@ -802,7 +802,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
 
         {/*  M16: Tab filter giờ hoạt động thật */}
 
-        {/* Äá»•i điểm */}
+        {/* Đổi điểm */}
                 <div className="promo-redeem-area">
 
           <div className="promo-redeem-lower">
@@ -849,7 +849,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                     ) : (
                       <>
                         <Gift size={14} />
-                        {t("Äá»•i ngay")}
+                        {t("Đổi ngay")}
                       </>
                     )}
                   </button>
@@ -861,13 +861,13 @@ const [showEcoModal, setShowEcoModal] = useState(false);
           <div className="promo-redeem-custom">
   <div className="promo-redeem-custom__title">
     <Gift size={17} color="#2563EB" />
-    <strong>{t("Äá»”I ĐIỂM LINH HOẠT THEO Ý MUỐN")}</strong>
+    <strong>{t("ĐỔI ĐIỂM LINH HOẠT THEO Ý MUỐN")}</strong>
   </div>
 
   <p className="promo-redeem-custom__balance">
     {t("Bạn đang có:")}{" "}
     <b>{Number(points || 0).toLocaleString("vi-VN")} {t("điểm")}</b>
-    {" "}({t("Tương đương:")}{" "}
+    {" "}({t("Tương đương")}{" "}
     <b>{money(Number(points || 0) * POINT_TO_VND)}</b>)
   </p>
 
@@ -919,7 +919,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
         {t("Đang đổi...")}
       </>
     ) : (
-      t("Äá»”I SỐ ĐIỂM ÄÃƒ NHẬP")
+      t("ĐỔI SỐ ĐIỂM ĐÃ NHẬP")
     )}
   </button>
 </div>
@@ -979,7 +979,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
             <div className="promo-split__head">
               <div>
                 <h2 className="promo-section__title">
-                  {t("Ví Voucher Đã Äá»•i")} ({grouped.length})
+                  {t("Ví Voucher Đã Đổi")} ({grouped.length})
                 </h2>
 
               </div>
@@ -1000,8 +1000,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                 <p>
                   {rewardTab !== "all"
                     ? t("Thử chọn tab khác hoặc bấm Tất cả ưu đãi.")
-                    : t(
-                        "Äá»•i điểm hoặc nhận voucher từ mục Ưu đãi toàn hệ thống."
+                    : t("Đổi điểm hoặc nhận voucher từ mục Ưu đãi toàn hệ thống."
                       )}
                 </p>
               </div>
@@ -1107,7 +1106,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
           <div id="points-activity" className="promo-split__right" style={{ scrollMarginTop: "24px" }}>
             <div className="promo-split__head">
               <div className="promo-activity-heading"><Wallet size={24} color="#2563EB" /><div><h2 className="promo-section__title">
-                  {t("Biến Äá»™ng Điểm Thưởng")}
+                  {t("Biến Động Điểm Thưởng")}
                 </h2>
 </div></div>
 
@@ -1149,7 +1148,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
           title={
             item.title ||
             (item.type === "redeem"
-              ? t("Äá»•i điểm lấy voucher")
+              ? t("Đổi điểm lấy voucher")
               : item.type === "review"
                 ? t("Thưởng đánh giá món ăn")
                 : item.type === "pickup"
@@ -1268,7 +1267,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
 
               <section>
                 <h4 style={{ margin: "0 0 12px", color: "#1d4ed8" }}>
-                  {t("QUY TẮC Äá»”I ĐIỂM")}
+                  {t("QUY TẮC ĐỔI ĐIỂM")}
                 </h4>
 
                 <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
@@ -1374,7 +1373,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                       <div className="promo-point-history-info">
                         <b>
                           {isRedeem
-                            ? t("Äá»•i voucher")
+                            ? t("Đổi voucher")
                             : t("Tích điểm đơn hàng")}
                         </b>
                         <span>
@@ -1457,7 +1456,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                     alignItems: "center",
                   }}
                 >
-                  {t("Đơn hàng của bạn")}
+                  {t("Giỏ hàng của bạn")}
                 </h4>
 
                 {pickupOrders.length > 0 ? (
@@ -1798,7 +1797,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
             className="promo-modal"
             role="dialog"
             aria-modal="true"
-            aria-label={t("Đánh giá món Ēn")}
+            aria-label={t("Đánh giá món ăn")}
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "min(540px, calc(100vw - 28px))",
@@ -1809,7 +1808,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
           >
             <div className="promo-modal__head">
               <div>
-                <h3>{t("Đánh giá món Ēn")}</h3>
+                <h3>{t("Đánh giá món ăn")}</h3>
                 <p>
                   {t("Đơn")} #{selectedReviewTarget.order.code}
                 </p>

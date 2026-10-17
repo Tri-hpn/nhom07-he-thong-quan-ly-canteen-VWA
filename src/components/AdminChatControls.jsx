@@ -405,7 +405,7 @@ export default function AdminChatControls({
                       {req.reason && (
                         <div className="admin-chat-request-item__reason">
                           <span style={{ color: "var(--st-text-light)" }}>
-                            {t("Lý do:")}
+                            {t("Lý do")}
                           </span>{" "}
                           {req.reason}
                         </div>
