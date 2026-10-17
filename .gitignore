@@ -101,3 +101,8 @@ src/lib/i18n/locales/en.js
 fix-*.mjs
 verify.mjs
 scan.mjs
+backup_mongo/
+check-report.txt
+check-all.ps1
+canteen-db-splitter.mjs
+check-db.mjs
