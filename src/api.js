@@ -1,11 +1,9 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V9 - FINAL)
+// API.JS — HTTP client cho Backend Express (V10 - FINAL)
 // ============================================================
-// V9 (2026-10):
-//   - 🔧 FIX H6: bỏ api.admin.translationStats và api.admin.backfillSync
-//     (backend không có endpoint tương ứng)
-//   - 🔧 FIX H7: bỏ param `all` thừa trong api.menu.list
-//   - Giữ V8: memoryToken fallback, api.orders.call, api.health
+// V10 (2026-10):
+//   - ✅ FIX: Thêm biến `isAuthExpiredDispatched` để chỉ dispatch
+//     sự kiện "auth-expired" 1 lần duy nhất, tránh redirect loop.
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -17,6 +15,7 @@ const UPLOAD_TIMEOUT_MS = 60000;
 // TOKEN — sessionStorage + memoryToken fallback (Safari private mode)
 // ============================================================
 let memoryToken = null;
+let isAuthExpiredDispatched = false; // 🔧 Chốt chặn dispatch 401
 
 let sessionStorageAvailable = (() => {
   try {
@@ -43,6 +42,7 @@ export function getToken() {
 
 export function setToken(t) {
   memoryToken = t || null;
+  if (t) isAuthExpiredDispatched = false; // Reset khi có token mới
   if (sessionStorageAvailable) {
     try {
       if (t) {
@@ -108,9 +108,13 @@ async function req(path, options = {}) {
 
   if (res.status === 401 && token) {
     clearToken();
-    try {
-      window.dispatchEvent(new CustomEvent("auth-expired"));
-    } catch {}
+    // 🔧 FIX: Chỉ dispatch 1 lần duy nhất
+    if (!isAuthExpiredDispatched) {
+      isAuthExpiredDispatched = true;
+      try {
+        window.dispatchEvent(new CustomEvent("auth-expired"));
+      } catch {}
+    }
   }
 
   const contentType = res.headers.get("content-type") || "";
@@ -173,7 +177,6 @@ export const api = {
   stats: () => req("/stats"),
 
   menu: {
-    // ✅ FIX H7: bỏ param `all` (backend không đọc)
     list: (q = "", category = "Tất cả", sort = "popular") => {
       const p = new URLSearchParams();
       if (q) p.set("q", q);
@@ -217,7 +220,6 @@ export const api = {
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
 
     remind: (id, data) => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
-    // ✅ MỚI: log voice call
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
   },
 
@@ -466,8 +468,6 @@ export const api = {
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
 
-  // ✅ FIX H6: chỉ giữ endpoint `backfill` (backend có)
-  // Đã bỏ: translationStats, backfillSync (backend không có)
   admin: {
     backfill: () => req("/admin/backfill-translations", { method: "POST" }),
   },

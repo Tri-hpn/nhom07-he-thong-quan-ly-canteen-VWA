@@ -1,10 +1,9 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V12 - FINAL)
+// APP.JSX — Root component + Routing (V13 - FINAL)
 // ============================================================
-// V12 (2026-10):
-//   - ✅ Thêm route /owner/chat → OwnerChat
-//   - Giữ V11: redirect /employee/prep → tab Bếp Nấu,
-//     cart persistence, auth-expired handler, role-based redirect
+// V13 (2026-10):
+//   - ✅ FIX LỖI RELOAD: Thêm lastAuthExpiredRef chặn vòng lặp 
+//     auth-expired. Sửa handleLogin cập nhật state ngay.
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -71,7 +70,6 @@ import OwnerVouchers from "./pages/owner/OwnerVouchers";
 import OwnerOrders from "./pages/owner/OwnerOrders";
 import OwnerFinance from "./pages/owner/OwnerFinance";
 import OwnerSettings from "./pages/owner/OwnerSettings";
-// ✅ V12: trang quản lý chat admin
 import OwnerChat from "./pages/owner/OwnerChat";
 
 // ============================================================
@@ -112,6 +110,7 @@ export default function App() {
   const location = useLocation();
 
   const lastRedirectRef = useRef({ path: "", timestamp: 0 });
+  const lastAuthExpiredRef = useRef(0); // 🔧 FIX: Chặn loop auth-expired
 
   // Tự động lưu cart vào localStorage
   useEffect(() => {
@@ -124,6 +123,10 @@ export default function App() {
   // Lắng nghe "auth-expired" từ api.js khi gặp 401
   useEffect(() => {
     const handler = () => {
+      const now = Date.now();
+      if (now - lastAuthExpiredRef.current < 2000) return; // 🔧 FIX: Bỏ qua nếu vừa xử lý < 2s
+      lastAuthExpiredRef.current = now;
+
       setToken(null);
       setUser(null);
       setCart({});
@@ -190,9 +193,9 @@ export default function App() {
 
   const handleLogin = async (email, password) => {
     const u = await login(email, password);
-
+    setUser(u); // 🔧 FIX: Cập nhật state ngay lập tức
     const home = homePathForRole(u.role);
-    navigate(home);
+    navigate(home, { replace: true });
     toast("Xin chào " + u.name + "!", "success");
     return true;
   };
@@ -550,7 +553,6 @@ export default function App() {
             element={wrap("Kho hàng", "Nguyên liệu", <OwnerInventory />)}
           />
 
-          {/* ✅ /owner/reports đã được gộp vào /owner/finance */}
           <Route
             path="/owner/reports"
             element={<Navigate to="/owner/finance" replace />}
@@ -632,7 +634,6 @@ export default function App() {
             )}
           />
 
-          {/* ✅ V12: Trang quản lý chat admin */}
           <Route
             path="/owner/chat"
             element={wrap(
