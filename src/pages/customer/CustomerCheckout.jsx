@@ -1,10 +1,10 @@
-﻿// ============================================================
-// CUSTOMERCHECKOUT.JSX Ã¢â‚¬â€ Thanh toÃƒÂ¡n (V5 - FINAL + i18n)
+// ============================================================
+// CUSTOMERCHECKOUT.JSX ââ‚¬” Thanh toÃƒ¡n (V5 - FINAL + i18n)
 // ============================================================
 // V5 (2026-10):
-//   - Ã°Å¸â€Â§ FIX #28: EMPTY_ARRAY module-scoped constant, khÃƒÂ´ng re-create
-//                 mÃ¡Â»â€”i render Ã¢â€ â€™ useCrossTabSync khÃƒÂ´ng bÃ¡Â»â€¹ re-init
-//   - GiÃ¡Â»Â¯ nguyÃƒÂªn toÃƒÂ n bÃ¡Â»â„¢ logic khÃƒÂ¡c
+//   - ðÅ¸”§ FIX #28: EMPTY_ARRAY module-scoped constant, khÃƒ´ng re-create
+//                 mỗi render â— ’ useCrossTabSync khÃƒ´ng bá»—¹ re-init
+//   - Giữ nguyÃƒªn toÃƒ n bá»â„¢ logic khÃƒ¡c
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -37,7 +37,7 @@ const FALLBACK_TIME_SLOTS = [
   "17:00 - 17:30", "17:30 - 18:00", "18:00 - 18:30",
 ];
 
-// Ã°Å¸â€Â§ FIX #28: Module-scoped frozen constant
+// ðŸ§ FIX #28: Module-scoped frozen constant
 const EMPTY_ARRAY = Object.freeze([]);
 
 const MIN_REDEEM_POINTS = 100;
@@ -50,10 +50,10 @@ const SELECTED_CART_KEY = "canteen_cart_selected";
 const CART_KEY = "canteen_cart";
 
 const PAYMENT_METHODS = [
-  { id: "wallet", label: "VÃƒÂ­ VWA Pay",    icon: Wallet },
-  { id: "qr",     label: "MÃƒÂ£ VietQR",     icon: QrCode },
-  { id: "card",   label: "ThÃ¡ÂºÂ» Sinh ViÃƒÂªn", icon: CreditCard },
-  { id: "cash",   label: "TiÃ¡Â»Ân mÃ¡ÂºÂ·t",      icon: Banknote },
+  { id: "wallet", label: "Vҭ VWA Pay",    icon: Wallet },
+  { id: "qr",     label: "Mң VietQR",     icon: QrCode },
+  { id: "card",   label: "Thẻ Sinh ViҪn", icon: CreditCard },
+  { id: "cash",   label: "Tiền mặt",      icon: Banknote },
 ];
 
 // ============================================================
@@ -159,8 +159,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const submittingRef = useRef(false);
   const prevSubtotalRef = useRef(null);
 
-  // Ã°Å¸â€Â§ FIX #28: EMPTY_ARRAY lÃƒÂ  module-scoped frozen constant,
-  // khÃƒÂ´ng phÃ¡ÂºÂ£i re-create mÃ¡Â»â€”i render
+  // ðÅ¸”§ FIX #28: EMPTY_ARRAY lÃƒ  module-scoped frozen constant,
+  // khÃƒ´ng phải re-create mỗi render
   const [selectedKeys] = useCrossTabSync(SELECTED_CART_KEY, EMPTY_ARRAY);
 
   const lines = useMemo(() => {
@@ -221,7 +221,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     if (prevSubtotalRef.current !== subtotal && appliedVoucher) {
       if (appliedVoucher.value > subtotal) {
         toast(
-          t("Voucher khÃƒÂ´ng cÃƒÂ²n hÃ¡Â»Â£p lÃ¡Â»â€¡ do thay Ã„â€˜Ã¡Â»â€¢i Ã„â€˜Ã†Â¡n hÃƒÂ ng"),
+          t("Voucher khÃƒ´ng cÃƒ²n hợp lá»—¡ do thay Ä—˜á»—¢i Ä—˜ơn hÃƒ ng"),
           "warning"
         );
         setDiscount(0);
@@ -378,7 +378,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       const useCode = (code || voucherCode || "").trim().toUpperCase();
 
       if (!useCode) {
-        toast(t("Vui lÃƒÂ²ng nhÃ¡ÂºÂ­p mÃƒÂ£ voucher"), "error");
+        toast(t("Vui lҲng nhập mң voucher"), "error");
         return;
       }
 
@@ -394,12 +394,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         setAppliedVoucher({ code: res.code, value: res.value });
         setUsePoints(false);
         toast(
-          `${t("Ã„ÂÃƒÂ£ ÃƒÂ¡p dÃ¡Â»Â¥ng voucher")}: -${money(res.value)}`,
+          `${t("Ã„ÂÃƒ£ Ãƒ¡p dụng voucher")}: -${money(res.value)}`,
           "success"
         );
       } catch (e) {
         if (myReqId !== voucherReqIdRef.current) return;
-        toast(e.message || t("MÃƒÂ£ voucher khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡"), "error");
+        toast(e.message || t("MÃƒ£ voucher khÃƒ´ng hợp lá»—¡"), "error");
       } finally {
         if (myReqId === voucherReqIdRef.current) setApplyingVoucher(false);
       }
@@ -418,7 +418,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const redeemPoints = async () => {
     if (points < MIN_REDEEM_POINTS) {
       toast(
-        t("BÃ¡ÂºÂ¡n cÃ¡ÂºÂ§n ÃƒÂ­t nhÃ¡ÂºÂ¥t {n} Ã„â€˜iÃ¡Â»Æ’m Ã„â€˜Ã¡Â»Æ’ Ã„â€˜Ã¡Â»â€¢i").replace(
+        t("Bạn cần Ãƒ­t nhất {n} Ä—˜iểm Ä—˜á»ƒ Ä—˜á»—¢i").replace(
           "{n}",
           MIN_REDEEM_POINTS
         ),
@@ -434,14 +434,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         points: MIN_REDEEM_POINTS,
       });
       toast(
-        `${t("Ã„ÂÃ¡Â»â€¢i thÃƒÂ nh cÃƒÂ´ng voucher")} ${voucher.code} Ã¢â‚¬â€ ${money(voucher.value)}`,
+        `${t("Ã„ÂÃ¡Â»—¢i thÃƒ nh cÃƒ´ng voucher")} ${voucher.code} ââ‚¬” ${money(voucher.value)}`,
         "success"
       );
 
       await reloadVouchersAndPoints();
       await applyVoucher(voucher.code);
     } catch (e) {
-      toast(e.message || t("KhÃƒÂ´ng Ã„â€˜Ã¡Â»â€¢i Ã„â€˜Ã†Â°Ã¡Â»Â£c voucher"), "error");
+      toast(e.message || t("KhÃƒ´ng Ä—˜á»—¢i Ä—˜ược voucher"), "error");
     } finally {
       setRedeemLoading(false);
     }
@@ -450,18 +450,18 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const validate = () => {
     const errs = {};
 
-    if (!name.trim()) errs.name = t("Vui lÃƒÂ²ng nhÃ¡ÂºÂ­p hÃ¡Â»Â tÃƒÂªn");
+    if (!name.trim()) errs.name = t("Vui lҲng nhập họ tҪn");
 
     if (!phone.trim()) {
-      errs.phone = t("Vui lÃƒÂ²ng nhÃ¡ÂºÂ­p SÃ„ÂT");
+      errs.phone = t("Vui lÃƒ²ng nhập SÃ„ÂT");
     } else if (!/^[0-9]{10,11}$/.test(phone.trim())) {
-      errs.phone = t("SÃ„ÂT phÃ¡ÂºÂ£i 10-11 sÃ¡Â»â€˜");
+      errs.phone = t("SÃ„ÂT phải 10-11 sỗ˜");
     }
 
     if (!pickupTime.trim()) {
-      errs.pickupTime = t("Vui lÃƒÂ²ng chÃ¡Â»Ân giÃ¡Â»Â nhÃ¡ÂºÂ­n");
+      errs.pickupTime = t("Vui lҲng chọn giờ nhận");
     } else if (isSlotInPast(pickupTime)) {
-      errs.pickupTime = t("Khung giÃ¡Â»Â nÃƒÂ y Ã„â€˜ÃƒÂ£ qua");
+      errs.pickupTime = t("Khung giờ nÃƒ y Ä—˜Ãƒ£ qua");
     }
 
     setErrors(errs);
@@ -480,8 +480,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const buildNotePayload = useCallback(() => {
     const noteParts = [];
     if (note.trim()) noteParts.push(note.trim());
-    if (pickupTime) noteParts.push(`${t("NhÃ¡ÂºÂ­n hÃƒÂ ng:")} ${pickupTime}`);
-    return noteParts.join(" Ã‚Â· ");
+    if (pickupTime) noteParts.push(`${t("Nhận hҠng:")} ${pickupTime}`);
+    return noteParts.join(" · ");
   }, [note, pickupTime, t]);
 
   const buildOrderDiscountPayload = useCallback(async () => {
@@ -494,7 +494,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
     if (appliedVoucher) {
       toast(
-        t("ChÃ¡Â»â€° cÃƒÂ³ thÃ¡Â»Æ’ sÃ¡Â»Â­ dÃ¡Â»Â¥ng voucher hoÃ¡ÂºÂ·c Green Points cho mÃ¡Â»â„¢t Ã„â€˜Ã†Â¡n hÃƒÂ ng."),
+        t("Chá»—° cÃƒ³ thể sử dụng voucher hoặc Green Points cho má»â„¢t Ä—˜ơn hÃƒ ng."),
         "warning"
       );
       return null;
@@ -502,7 +502,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
     if (pointsToRedeem < MIN_ORDER_POINTS_REDEEM) {
       toast(
-        t("CÃ¡ÂºÂ§n tÃ¡Â»â€˜i thiÃ¡Â»Æ’u 10 Ã„â€˜iÃ¡Â»Æ’m vÃƒÂ  Ã„â€˜Ã†Â¡n hÃƒÂ ng tÃ¡Â»Â« 1.000 Ã„â€˜ Ã„â€˜Ã¡Â»Æ’ sÃ¡Â»Â­ dÃ¡Â»Â¥ng Green Points."),
+        t("Cần tỗ˜i thiểu 10 Ä—˜iểm vÃƒ  Ä—˜ơn hÃƒ ng từ 1.000 Ä—˜ Ä—˜á»ƒ sử dụng Green Points."),
         "warning"
       );
       return null;
@@ -523,7 +523,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     ) {
       await reloadVouchersAndPoints();
       throw new Error(
-        t("KhÃƒÂ´ng xÃƒÂ¡c minh Ã„â€˜Ã†Â°Ã¡Â»Â£c voucher Ã„â€˜Ã¡Â»â€¢i Ã„â€˜iÃ¡Â»Æ’m. Vui lÃƒÂ²ng kiÃ¡Â»Æ’m tra lÃ¡ÂºÂ¡i voucher trong tÃƒÂ i khoÃ¡ÂºÂ£n.")
+        t("KhÃƒ´ng xÃƒ¡c minh Ä—˜ược voucher Ä—˜á»—¢i Ä—˜iểm. Vui lÃƒ²ng kiểm tra lại voucher trong tÃƒ i khoản.")
       );
     }
 
@@ -556,11 +556,11 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     async (method) => {
       if (submittingRef.current) return;
       if (!lines.length) {
-        toast(t("GiÃ¡Â»Â hÃƒÂ ng trÃ¡Â»â€˜ng"), "error");
+        toast(t("Giỏ hÃƒ ng trỗ˜ng"), "error");
         return;
       }
       if (!validate()) {
-        toast(t("KiÃ¡Â»Æ’m tra lÃ¡ÂºÂ¡i thÃƒÂ´ng tin"), "error");
+        toast(t("Kiểm tra lại thÃƒ´ng tin"), "error");
         return;
       }
 
@@ -586,13 +586,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           setCart(remainCart);
         }
         toast(
-          `${t("Ã„ÂÃ¡ÂºÂ·t hÃƒÂ ng thÃƒÂ nh cÃƒÂ´ng!")} ${t("MÃƒÂ£ Ã„â€˜Ã†Â¡n")}: ${order.code}`,
+          `${t("Ã„ÂÃ¡ÂºÂ·t hÃƒ ng thÃƒ nh cÃƒ´ng!")} ${t("MÃƒ£ Ä—˜ơn")}: ${order.code}`,
           "success"
         );
 
         navigate("/customer/success", { state: { order } });
       } catch (e) {
-        toast(e.message || t("KhÃƒÂ´ng Ã„â€˜Ã¡ÂºÂ·t Ã„â€˜Ã†Â°Ã¡Â»Â£c hÃƒÂ ng"), "error");
+        toast(e.message || t("KhÃƒ´ng Ä—˜ặt Ä—˜ược hÃƒ ng"), "error");
       } finally {
         submittingRef.current = false;
         setSubmittingOrder(false);
@@ -619,11 +619,11 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     (method) => {
       if (submittingRef.current) return;
       if (!lines.length) {
-        toast(t("GiÃ¡Â»Â hÃƒÂ ng trÃ¡Â»â€˜ng"), "error");
+        toast(t("Giỏ hÃƒ ng trỗ˜ng"), "error");
         return;
       }
       if (!validate()) {
-        toast(t("KiÃ¡Â»Æ’m tra lÃ¡ÂºÂ¡i thÃƒÂ´ng tin"), "error");
+        toast(t("Kiểm tra lại thÃƒ´ng tin"), "error");
         return;
       }
 
@@ -679,14 +679,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           setCart(remainCart);
         }
         toast(
-          `${t("Ã„ÂÃ¡ÂºÂ·t hÃƒÂ ng thÃƒÂ nh cÃƒÂ´ng!")} ${t("MÃƒÂ£ Ã„â€˜Ã†Â¡n")}: ${order.code}`,
+          `${t("Ã„ÂÃ¡ÂºÂ·t hÃƒ ng thÃƒ nh cÃƒ´ng!")} ${t("MÃƒ£ Ä—˜ơn")}: ${order.code}`,
           "success"
         );
         setPaymentOrder(null);
 
         navigate("/customer/success", { state: { order } });
       } catch (e) {
-        toast(e.message || t("KhÃƒÂ´ng Ã„â€˜Ã¡ÂºÂ·t Ã„â€˜Ã†Â°Ã¡Â»Â£c hÃƒÂ ng"), "error");
+        toast(e.message || t("KhÃƒ´ng Ä—˜ặt Ä—˜ược hÃƒ ng"), "error");
       } finally {
         submittingRef.current = false;
         setSubmittingOrder(false);
@@ -712,9 +712,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const copyToClipboard = (text) => {
     try {
       navigator.clipboard.writeText(text);
-      toast(t("Ã„ÂÃƒÂ£ sao chÃƒÂ©p"), "success");
+      toast(t("Ã„ÂÃƒ£ sao chÃƒ©p"), "success");
     } catch {
-      toast(t("KhÃƒÂ´ng sao chÃƒÂ©p Ã„â€˜Ã†Â°Ã¡Â»Â£c"), "error");
+      toast(t("KhÃƒ´ng sao chÃƒ©p Ä—˜ược"), "error");
     }
   };
 
@@ -722,10 +722,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return (
       <div className="checkout-v2-empty">
         <ShoppingBag size={60} />
-        <h3>{t("GiÃ¡Â»Â hÃƒÂ ng Ã„â€˜ang trÃ¡Â»â€˜ng")}</h3>
+        <h3>{t("Giỏ hÃƒ ng Ä—˜ang trỗ˜ng")}</h3>
         <Link to="/customer/menu" className="checkout-v2-empty__btn">
           <Utensils size={16} />
-          {t("KhÃƒÂ¡m phÃƒÂ¡ thÃ¡Â»Â±c Ã„â€˜Ã†Â¡n")}
+          {t("KhÃƒ¡m phÃƒ¡ thực Ä—˜ơn")}
         </Link>
       </div>
     );
@@ -753,7 +753,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       : "";
   const downloadVietQrImage = async () => {
     if (!vietQrImageUrl) {
-      toast(t("ChÃ†Â°a cÃƒÂ³ mÃƒÂ£ QR Ã„â€˜Ã¡Â»Æ’ tÃ¡ÂºÂ£i xuÃ¡Â»â€˜ng"), "error");
+      toast(t("Chưa cÃƒ³ mÃƒ£ QR Ä—˜á»ƒ tải xuỗ˜ng"), "error");
       return;
     }
 
@@ -790,11 +790,11 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       link.remove();
 
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
-      toast(t("Ã„ÂÃƒÂ£ tÃ¡ÂºÂ£i Ã¡ÂºÂ£nh mÃƒÂ£ QR xuÃ¡Â»â€˜ng mÃƒÂ¡y"), "success");
+      toast(t("Ã„ÂÃƒ£ tải ảnh mÃƒ£ QR xuỗ˜ng mÃƒ¡y"), "success");
     } catch (error) {
       console.error("Download VietQR failed:", error);
       toast(
-        t("KhÃƒÂ´ng tÃ¡ÂºÂ£i Ã„â€˜Ã†Â°Ã¡Â»Â£c Ã¡ÂºÂ£nh QR tÃ¡Â»Â± Ã„â€˜Ã¡Â»â„¢ng. Vui lÃƒÂ²ng kiÃ¡Â»Æ’m tra kÃ¡ÂºÂ¿t nÃ¡Â»â€˜i vÃƒÂ  thÃ¡Â»Â­ lÃ¡ÂºÂ¡i."),
+        t("KhÃƒ´ng tải Ä—˜ược ảnh QR tự Ä—˜á»â„¢ng. Vui lÃƒ²ng kiểm tra kết nỗ˜i vÃƒ  thử lại."),
         "error"
       );
     }
@@ -806,21 +806,21 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           <nav className="checkout-breadcrumb">
             <Link to="/customer/home" className="checkout-breadcrumb__link">
               <Home size={14} />
-              {t("Trang chÃ¡Â»Â§")}
+              {t("Trang chủ")}
             </Link>
             <ChevronRight size={14} className="checkout-breadcrumb__sep" />
             <Link to="/customer/cart" className="checkout-breadcrumb__link">
-              {t("GiÃ¡Â»Â hÃƒÂ ng")}
+              {t("Giỏ hҠng")}
             </Link>
             <ChevronRight size={14} className="checkout-breadcrumb__sep" />
             <span className="checkout-breadcrumb__current">
-              {t("Thanh toÃƒÂ¡n Ã„â€˜Ã†Â¡n hÃƒÂ ng")}
+              {t("Thanh toÃƒ¡n Ä—˜ơn hÃƒ ng")}
             </span>
           </nav>
 
           <div className="checkout-timer">
             <Timer size={16} className="checkout-timer__icon" />
-            <span>{t("GiÃ¡Â»Â¯ suÃ¡ÂºÂ¥t & giÃƒÂ¡ Ã†Â°u Ã„â€˜ÃƒÂ£i trong:")}</span>
+            <span>{t("Giữ suất & giÃƒ¡ ưu Ä—˜Ãƒ£i trong:")}</span>
             <b>{countdownStr}</b>
           </div>
         </div>
@@ -831,8 +831,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <Check size={16} />
             </div>
             <div>
-              <span className="checkout-stepper__label">{t("BÃ†Â¯Ã¡Â»Å¡C 1")}</span>
-              <b>{t("ChÃ¡Â»Ân mÃƒÂ³n")}</b>
+              <span className="checkout-stepper__label">{t("BÆ¯á»Å¡C 1")}</span>
+              <b>{t("Chọn mҳn")}</b>
             </div>
           </div>
 
@@ -841,8 +841,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <Check size={16} />
             </div>
             <div>
-              <span className="checkout-stepper__label">{t("BÃ†Â¯Ã¡Â»Å¡C 2")}</span>
-              <b>{t("GiÃ¡Â»Â & TÃƒÂ¹y chÃ¡Â»Ân")}</b>
+              <span className="checkout-stepper__label">{t("BÆ¯á»Å¡C 2")}</span>
+              <b>{t("Giỏ & Tҹy chọn")}</b>
             </div>
           </div>
 
@@ -852,10 +852,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             </div>
             <div>
               <span className="checkout-stepper__label checkout-stepper__label--active">
-                {t("BÃ†Â¯Ã¡Â»Å¡C 3")}
+                {t("BÆ¯á»Å¡C 3")}
               </span>
               <b className="checkout-stepper__label--active">
-                {t("Thanh toÃƒÂ¡n")}
+                {t("Thanh toҡn")}
               </b>
             </div>
           </div>
@@ -865,8 +865,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <Store size={16} />
             </div>
             <div>
-              <span className="checkout-stepper__label">{t("BÃ†Â¯Ã¡Â»Å¡C 4")}</span>
-              <b>{t("NhÃ¡ÂºÂ­n tÃ¡ÂºÂ¡i quÃ¡ÂºÂ§y")}</b>
+              <span className="checkout-stepper__label">{t("BÆ¯á»Å¡C 4")}</span>
+              <b>{t("Nhận tại quầy")}</b>
             </div>
           </div>
         </div>
@@ -876,14 +876,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         <div className="checkout-left">
           <div className="checkout-method-header">
             <div>
-              <h1>{t("PhÃ†Â°Ã†Â¡ng thÃ¡Â»Â©c thanh toÃƒÂ¡n")}</h1>
+              <h1>{t("Phương thức thanh toÃƒ¡n")}</h1>
               <p>
-                {t("ChÃ¡Â»Ân 1 trong 4 hÃƒÂ¬nh thÃ¡Â»Â©c thanh toÃƒÂ¡n thuÃ¡ÂºÂ­n tiÃ¡Â»â€¡n cho sinh viÃƒÂªn & giÃ¡ÂºÂ£ng viÃƒÂªn")}
+                {t("Chọn 1 trong 4 hÃƒ¬nh thức thanh toÃƒ¡n thuận tiá»—¡n cho sinh viÃƒªn & giảng viÃƒªn")}
               </p>
             </div>
             <span className="checkout-method-header__badge">
               <Zap size={14} />
-              {t("XÃ¡Â»Â­ lÃƒÂ½ tÃ¡Â»Â± Ã„â€˜Ã¡Â»â„¢ng 24/7")}
+              {t("Xử lÃƒ½ tự Ä—˜á»â„¢ng 24/7")}
             </span>
           </div>
 
@@ -915,27 +915,27 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     <Wallet size={24} />
                   </div>
                   <div>
-                    <h3>{t("VÃƒÂ­ Ã„ÂiÃ¡Â»â€¡n TÃ¡Â»Â­ Canteen VWA Pay")}</h3>
-                    <span>{t("TÃƒÂ i khoÃ¡ÂºÂ£n thanh toÃƒÂ¡n nÃ¡Â»â„¢i bÃ¡Â»â„¢ hÃ¡Â»Âc viÃ¡Â»â€¡n")}</span>
+                    <h3>{t("VÃƒ­ Ã„Âiá»—¡n Tử Canteen VWA Pay")}</h3>
+                    <span>{t("TÃƒ i khoản thanh toÃƒ¡n ná»â„¢i bá»â„¢ học viá»—¡n")}</span>
                   </div>
                 </div>
                 <span className="checkout-panel__tag checkout-panel__tag--blue">
-                  {t("HoÃƒÂ n")} {(ptsCfg?.earn?.rate_points || 1) / ((ptsCfg?.earn?.rate_amount || 10000) / 100)}% Green Points
+                  {t("HoҠn")} {(ptsCfg?.earn?.rate_points || 1) / ((ptsCfg?.earn?.rate_amount || 10000) / 100)}% Green Points
                 </span>
               </div>
 
               <div className="checkout-wallet-balance">
                 <div>
                   <span className="checkout-wallet-balance__label">
-                    {t("SÃ¡Â»â€˜ dÃ†Â° khÃ¡ÂºÂ£ dÃ¡Â»Â¥ng trong vÃƒÂ­:")}
+                    {t("Sỗ˜ dư khả dụng trong vÃƒ­:")}
                   </span>
                   <div className="checkout-wallet-balance__value">
-                    <b>{money(walletBalance).replace("Ã„â€˜", "")}</b>
-                    <span>Ã„â€˜</span>
+                    <b>{money(walletBalance).replace("Ä—˜", "")}</b>
+                    <span>Ä—˜</span>
                     <span className="checkout-wallet-balance__badge">
                       {total <= walletBalance
-                        ? t("Ã„ÂÃ¡Â»Â§ thanh toÃƒÂ¡n")
-                        : t("KhÃƒÂ´ng Ã„â€˜Ã¡Â»Â§")}
+                        ? t("Ã„ÂÃ¡Â»Â§ thanh toÃƒ¡n")
+                        : t("KhÃƒ´ng Ä—˜ủ")}
                     </span>
                   </div>
                 </div>
@@ -944,7 +944,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   className="checkout-wallet-balance__btn"
                 >
                   <Plus size={16} />
-                  {t("NÃ¡ÂºÂ¡p thÃƒÂªm tiÃ¡Â»Ân")}
+                  {t("Nạp thҪm tiền")}
                 </Link>
               </div>
 
@@ -954,7 +954,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   checked={usePoints}
                   onChange={(e) => {
                     if (e.target.checked && appliedVoucher) {
-                      toast(t("ChÃ¡Â»â€° cÃƒÂ³ thÃ¡Â»Æ’ sÃ¡Â»Â­ dÃ¡Â»Â¥ng voucher hoÃ¡ÂºÂ·c Green Points cho mÃ¡Â»â„¢t Ã„â€˜Ã†Â¡n hÃƒÂ ng."), "warning");
+                      toast(t("Chá»—° cÃƒ³ thể sử dụng voucher hoặc Green Points cho má»â„¢t Ä—˜ơn hÃƒ ng."), "warning");
                       return;
                     }
                     setUsePoints(e.target.checked);
@@ -962,13 +962,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 />
                 <div className="checkout-points-option__body">
                   <div className="checkout-points-option__head">
-                    <b>{t("SÃ¡Â»Â­ dÃ¡Â»Â¥ng Ã„â€˜iÃ¡Â»Æ’m sinh viÃƒÂªn Green Points")}</b>
+                    <b>{t("Sử dụng Ä—˜iểm sinh viÃƒªn Green Points")}</b>
                     <span className="checkout-points-option__discount">
                       -{money(pointsDiscount)}
                     </span>
                   </div>
                   <p>
-                    {t("BÃ¡ÂºÂ¡n Ã„â€˜ang cÃƒÂ³ {points} Ã„â€˜iÃ¡Â»Æ’m tÃƒÂ­ch lÃ…Â©y. Quy Ã„â€˜Ã¡Â»â€¢i tÃ¡Â»â€˜i Ã„â€˜a 2.500 Ã„â€˜ cho suÃ¡ÂºÂ¥t Ã„Æ’n nÃƒÂ y.")
+                    {t("Bạn Ä—˜ang cÃƒ³ {points} Ä—˜iểm tÃƒ­ch lũy. Quy Ä—˜á»—¢i tỗ˜i Ä—˜a 2.500 Ä—˜ cho suất ăn nÃƒ y.")
                       .replace("{points}", points)}
                   </p>
                 </div>
@@ -981,7 +981,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 disabled={submittingOrder || total > walletBalance}
               >
                 <Check size={20} />
-                {t("XÃƒÂ¡c nhÃ¡ÂºÂ­n trÃ¡Â»Â« vÃƒÂ­ & HoÃƒÂ n tÃ¡ÂºÂ¥t Ã„â€˜Ã†Â¡n")} ({money(total)})
+                {t("XÃƒ¡c nhận trừ vÃƒ­ & HoÃƒ n tất Ä—˜ơn")} ({money(total)})
               </button>
             </div>
           )}
@@ -994,15 +994,15 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     <QrCode size={24} />
                   </div>
                   <div>
-                    <h3>{t("QuÃƒÂ©t mÃƒÂ£ VietQR / NgÃƒÂ¢n hÃƒÂ ng")}</h3>
+                    <h3>{t("Quҩt mң VietQR / NgҢn hҠng")}</h3>
                     <span>
-                      {t("TÃ†Â°Ã†Â¡ng thÃƒÂ­ch vÃ¡Â»â€ºi hÃ†Â¡n 45+ App NgÃƒÂ¢n HÃƒÂ ng & Momo, VNPay")}
+                      {t("Tương thÃƒ­ch vá»—ºi hơn 45+ App NgÃƒ¢n HÃƒ ng & Momo, VNPay")}
                     </span>
                   </div>
                 </div>
                 <span className="checkout-panel__live">
                   <span className="checkout-panel__live-dot" />
-                  {t("TÃ¡Â»Â± Ã„â€˜Ã¡Â»â„¢ng Ã„â€˜Ã¡Â»â€˜i soÃƒÂ¡t")}
+                  {t("Tự Ä—˜á»â„¢ng Ä—˜ỗ˜i soÃƒ¡t")}
                 </span>
               </div>
 
@@ -1046,7 +1046,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <div className="checkout-qr-frame__actions">
                     <button type="button" onClick={downloadVietQrImage}>
                       <Download size={14} />
-                      {t("LÃ†Â°u Ã¡ÂºÂ£nh QR")}
+                      {t("Lưu ảnh QR")}
                     </button>
                   </div>
                 </div>
@@ -1054,18 +1054,18 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <div className="checkout-qr-info">
                   <div className="checkout-qr-info__row">
                     <div>
-                      <span>{t("Ã„ÂÃ†Â N VÃ¡Â»Å  THÃ¡Â»Â¤ HÃ†Â¯Ã¡Â»Å¾NG")}</span>
+                      <span>{t("Ã„ÂÃ†Â N Vá»Å  THỤ HÆ¯á»Å¾NG")}</span>
                       <b>{bankAccountName}</b>
                       <small>
-                        {t("NgÃƒÂ¢n hÃƒÂ ng:")} {bankCode}
+                        {t("NgҢn hҠng:")} {bankCode}
                       </small>
                     </div>
                   </div>
 
                   <div className="checkout-qr-info__row">
                     <div>
-                      <span>{t("SÃ¡Â»Â TÃƒâ‚¬I KHOÃ¡ÂºÂ¢N")}</span>
-                      <b className="mono">{bankAccount || "Ã¢â‚¬â€"}</b>
+                      <span>{t("SỐ TÀI KHOẢN")}</span>
+                      <b className="mono">{bankAccount || "ââ‚¬”"}</b>
                     </div>
                     {bankAccount && (
                       <button
@@ -1075,14 +1075,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                         }
                       >
                         <Copy size={14} />
-                        {t("Sao chÃƒÂ©p")}
+                        {t("Sao chҩp")}
                       </button>
                     )}
                   </div>
 
                   <div className="checkout-qr-info__row">
                     <div>
-                      <span>{t("NÃ¡Â»ËœI DUNG CHUYÃ¡Â»â€šN KHOÃ¡ÂºÂ¢N")}</span>
+                      <span>{t("Ná»ËœI DUNG CHUYỗšN KHOẢN")}</span>
                       <b className="mono blue">{transferContent}</b>
                     </div>
                     <button
@@ -1090,13 +1090,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       onClick={() => copyToClipboard(transferContent)}
                     >
                       <Copy size={14} />
-                      {t("Sao chÃƒÂ©p")}
+                      {t("Sao chҩp")}
                     </button>
                   </div>
 
                   <div className="checkout-qr-info__row checkout-qr-info__row--amount">
                     <div>
-                      <span>{t("SÃ¡Â»Â TIÃ¡Â»â‚¬N CHÃƒÂNH XÃƒÂC")}</span>
+                      <span>{t("SỐ TIá»â‚¬N CHÃƒÂNH XÃƒÂC")}</span>
                       <b className="mono blue large">{money(total)}</b>
                     </div>
                     <button
@@ -1105,7 +1105,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       onClick={() => copyToClipboard(String(total))}
                     >
                       <Copy size={14} />
-                      {t("Sao chÃƒÂ©p")}
+                      {t("Sao chҩp")}
                     </button>
                   </div>
                 </div>
@@ -1116,9 +1116,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <RefreshCw size={18} className="checkout-spin" />
                 </div>
                 <div>
-                  <b>{t("Ã„Âang chÃ¡Â»Â nhÃ¡ÂºÂ­n tiÃ¡Â»Ân tÃ¡Â»Â« tÃƒÂ i khoÃ¡ÂºÂ£n...")}</b>
+                  <b>{t("Ã„Âang chờ nhận tiền từ tÃƒ i khoản...")}</b>
                   <p>
-                    {t("HÃ¡Â»â€¡ thÃ¡Â»â€˜ng sÃ¡ÂºÂ½ tÃ¡Â»Â± Ã„â€˜Ã¡Â»â„¢ng xÃƒÂ¡c nhÃ¡ÂºÂ­n Ã„â€˜Ã†Â¡n trong 2 - 5 giÃƒÂ¢y ngay sau khi giao dÃ¡Â»â€¹ch thÃƒÂ nh cÃƒÂ´ng.")}
+                    {t("Há»—¡ thỗ˜ng sẽ tự Ä—˜á»â„¢ng xÃƒ¡c nhận Ä—˜ơn trong 2 - 5 giÃƒ¢y ngay sau khi giao dá»—¹ch thÃƒ nh cÃƒ´ng.")}
                   </p>
                 </div>
               </div>
@@ -1130,7 +1130,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 disabled={submittingOrder}
               >
                 <BadgeCheck size={20} />
-                {t("TÃƒÂ´i Ã„â€˜ÃƒÂ£ chuyÃ¡Â»Æ’n khoÃ¡ÂºÂ£n / HoÃƒÂ n tÃ¡ÂºÂ¥t")}
+                {t("TÃƒ´i Ä—˜Ãƒ£ chuyển khoản / HoÃƒ n tất")}
               </button>
             </div>
           )}
@@ -1143,9 +1143,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     <CreditCard size={24} />
                   </div>
                   <div>
-                    <h3>{t("ThÃ¡ÂºÂ» Sinh ViÃƒÂªn LiÃƒÂªn KÃ¡ÂºÂ¿t / ChÃ¡ÂºÂ¡m POS")}</h3>
+                    <h3>{t("Thẻ Sinh ViҪn LiҪn Kết / Chạm POS")}</h3>
                     <span>
-                      {t("ThÃ¡ÂºÂ» chip contactless BIDV / Agribank tÃƒÂ­ch hÃ¡Â»Â£p thÃ¡ÂºÂ» sinh viÃƒÂªn HVPNVN")}
+                      {t("Thẻ chip contactless BIDV / Agribank tҭch hợp thẻ sinh viҪn HVPNVN")}
                     </span>
                   </div>
                 </div>
@@ -1156,9 +1156,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <Wifi size={32} />
                 </div>
                 <div>
-                  <b>{t("HÃ†Â°Ã¡Â»â€ºng dÃ¡ÂºÂ«n thanh toÃƒÂ¡n tÃ¡ÂºÂ¡i quÃ¡ÂºÂ§y")}</b>
+                  <b>{t("HÆ°á»—ºng dẫn thanh toÃƒ¡n tại quầy")}</b>
                   <p>
-                    {t("Khi Ã„â€˜Ã¡ÂºÂ¿n QuÃ¡ÂºÂ§y 01 (CÃ†Â¡m) Ã„â€˜Ã¡Â»Æ’ nhÃ¡ÂºÂ­n suÃ¡ÂºÂ¥t, bÃ¡ÂºÂ¡n chÃ¡Â»â€° cÃ¡ÂºÂ§n Ã„â€˜Ã†Â°a thÃ¡ÂºÂ» sinh viÃƒÂªn chÃ¡ÂºÂ¡m nhÃ¡ÂºÂ¹ vÃƒÂ o Kiosk tÃ¡Â»Â± phÃ¡Â»Â¥c vÃ¡Â»Â¥ hoÃ¡ÂºÂ·c mÃƒÂ¡y POS di Ã„â€˜Ã¡Â»â„¢ng cÃ¡Â»Â§a nhÃƒÂ¢n viÃƒÂªn Ã„â€˜Ã¡Â»Æ’ hoÃƒÂ n tÃ¡ÂºÂ¥t trÃ¡Â»Â« tiÃ¡Â»Ân trong tÃƒÂ­ch tÃ¡ÂºÂ¯c.")}
+                    {t("Khi Ä—˜ến Quầy 01 (Cơm) Ä—˜á»ƒ nhận suất, bạn chá»—° cần Ä—˜ưa thẻ sinh viÃƒªn chạm nhẹ vÃƒ o Kiosk tự phục vụ hoặc mÃƒ¡y POS di Ä—˜á»â„¢ng của nhÃƒ¢n viÃƒªn Ä—˜á»ƒ hoÃƒ n tất trừ tiền trong tÃƒ­ch tắc.")}
                   </p>
                 </div>
               </div>
@@ -1167,10 +1167,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <div className="checkout-card-user__left">
                   <CreditCard size={18} />
                   <span>
-                    {t("ThÃ¡ÂºÂ» SV:")} {user?.name || "NguyÃ¡Â»â€¦n VÃ„Æ’n A"} (K21 - CNTT)
+                    {t("Thẻ SV:")} {user?.name || "Nguyễn Văn A"} (K21 - CNTT)
                   </span>
                 </div>
-                <span className="checkout-card-user__num">Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢ 8098</span>
+                <span className="checkout-card-user__num">ââ‚¬¢ââ‚¬¢ââ‚¬¢ââ‚¬¢ 8098</span>
               </div>
 
               <button
@@ -1182,12 +1182,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 {submittingOrder ? (
                   <>
                     <Loader2 size={18} className="checkout-spin" />
-                    {t("Ã„Âang xÃ¡Â»Â­ lÃƒÂ½...")}
+                    {t("Ã„Âang xử lÃƒ½...")}
                   </>
                 ) : (
                   <>
                     <Check size={20} />
-                    {t("XÃƒÂ¡c nhÃ¡ÂºÂ­n Ã„â€˜Ã¡ÂºÂ·t suÃ¡ÂºÂ¥t & ChÃ¡ÂºÂ¡m thÃ¡ÂºÂ» khi nhÃ¡ÂºÂ­n mÃƒÂ³n")}
+                    {t("XÃƒ¡c nhận Ä—˜ặt suất & Chạm thẻ khi nhận mÃƒ³n")}
                   </>
                 )}
               </button>
@@ -1202,9 +1202,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     <Banknote size={24} />
                   </div>
                   <div>
-                    <h3>{t("TiÃ¡Â»Ân MÃ¡ÂºÂ·t TrÃ¡Â»Â±c TiÃ¡ÂºÂ¿p TÃ¡ÂºÂ¡i QuÃ¡ÂºÂ§y")}</h3>
+                    <h3>{t("Tiền Mặt Trực Tiếp Tại Quầy")}</h3>
                     <span>
-                      {t("Thanh toÃƒÂ¡n cho nhÃƒÂ¢n viÃƒÂªn thu ngÃƒÂ¢n tÃ¡ÂºÂ¡i QuÃ¡ÂºÂ§y 01 khi lÃ¡ÂºÂ¥y cÃ†Â¡m")}
+                      {t("Thanh toÃƒ¡n cho nhÃƒ¢n viÃƒªn thu ngÃƒ¢n tại Quầy 01 khi lấy cơm")}
                     </span>
                   </div>
                 </div>
@@ -1213,24 +1213,24 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <div className="checkout-cash-info">
                 <div className="checkout-cash-info__head">
                   <Info size={18} />
-                  <b>{t("LÃ†Â°u ÃƒÂ½ khi thanh toÃƒÂ¡n tiÃ¡Â»Ân mÃ¡ÂºÂ·t")}</b>
+                  <b>{t("Lưu Ãƒ½ khi thanh toÃƒ¡n tiền mặt")}</b>
                 </div>
                 <p>
-                  {t("Vui lÃƒÂ²ng chuÃ¡ÂºÂ©n bÃ¡Â»â€¹ sÃ¡ÂºÂµn Ã„â€˜ÃƒÂºng hoÃ¡ÂºÂ·c gÃ¡ÂºÂ§n Ã„â€˜Ã¡Â»Â§ sÃ¡Â»â€˜ tiÃ¡Â»Ân")}{" "}
+                  {t("Vui lÃƒ²ng chuẩn bá»—¹ sẵn Ä—˜Ãƒºng hoặc gần Ä—˜ủ sỗ˜ tiền")}{" "}
                   <b>{money(total)}</b>{" "}
-                  {t("Ã„â€˜Ã¡Â»Æ’ giÃƒÂºp quÃ¡ÂºÂ§y phÃ¡Â»Â¥c vÃ¡Â»Â¥ trÃ†Â°a nhanh chÃƒÂ³ng, trÃƒÂ¡nh ÃƒÂ¹n tÃ¡ÂºÂ¯c hÃƒÂ ng chÃ¡Â»Â trong giÃ¡Â»Â cao Ã„â€˜iÃ¡Â»Æ’m cÃ¡Â»Â§a hÃ¡Â»Âc viÃ¡Â»â€¡n.")}
+                  {t("Ä—˜á»ƒ giÃƒºp quầy phục vụ trưa nhanh chÃƒ³ng, trÃƒ¡nh Ãƒ¹n tắc hÃƒ ng chờ trong giờ cao Ä—˜iểm của học viá»—¡n.")}
                 </p>
 
                 <div className="checkout-cash-info__denoms">
-                  <span>{t("MÃ¡Â»â€¡nh giÃƒÂ¡ tiÃ¡Â»Ân dÃ¡Â»Â± kiÃ¡ÂºÂ¿n Ã„â€˜Ã†Â°a:")}</span>
+                  <span>{t("Má»—¡nh giÃƒ¡ tiền dự kiến Ä—˜ưa:")}</span>
                   <div className="checkout-cash-info__denoms-row">
                     <button type="button">
-                      {t("Ã„ÂÃƒÂºng")} {money(total)}
+                      {t("Ã„ÂÃƒºng")} {money(total)}
                     </button>
                     <button type="button">
-                      {t("Ã„ÂÃ†Â°a 50.000 Ã„â€˜ (ThÃ¡Â»â€˜i 15k)")}
+                      {t("Ã„ÂÃ†Â°a 50.000 Ä—˜ (Thỗ˜i 15k)")}
                     </button>
-                    <button type="button">{t("Ã„ÂÃ†Â°a 100.000 Ã„â€˜")}</button>
+                    <button type="button">{t("Ã„ÂÃ†Â°a 100.000 Ä—˜")}</button>
                   </div>
                 </div>
               </div>
@@ -1244,12 +1244,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 {submittingOrder ? (
                   <>
                     <Loader2 size={18} className="checkout-spin" />
-                    {t("Ã„Âang xÃ¡Â»Â­ lÃƒÂ½...")}
+                    {t("Ã„Âang xử lÃƒ½...")}
                   </>
                 ) : (
                   <>
                     <Check size={20} />
-                    {t("XÃƒÂ¡c nhÃ¡ÂºÂ­n Ã„â€˜Ã¡ÂºÂ·t Ã„â€˜Ã†Â¡n & TrÃ¡ÂºÂ£ tiÃ¡Â»Ân mÃ¡ÂºÂ·t tÃ¡ÂºÂ¡i quÃ¡ÂºÂ§y")}
+                    {t("XÃƒ¡c nhận Ä—˜ặt Ä—˜ơn & Trả tiền mặt tại quầy")}
                   </>
                 )}
               </button>
@@ -1260,9 +1260,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             <div className="checkout-security__left">
               <Shield size={26} />
               <div>
-                <b>{t("Thanh toÃƒÂ¡n bÃ¡ÂºÂ£o mÃ¡ÂºÂ­t chuÃ¡ÂºÂ©n SSL / PCI-DSS")}</b>
+                <b>{t("Thanh toҡn bảo mật chuẩn SSL / PCI-DSS")}</b>
                 <span>
-                  {t("Cam kÃ¡ÂºÂ¿t hoÃƒÂ n tiÃ¡Â»Ân 100% tÃ¡Â»Â± Ã„â€˜Ã¡Â»â„¢ng nÃ¡ÂºÂ¿u quÃ¡ÂºÂ§y tÃ¡ÂºÂ¡m hÃ¡ÂºÂ¿t mÃƒÂ³n hoÃ¡ÂºÂ·c phÃƒÂ¡t sinh lÃ¡Â»â€”i")}
+                  {t("Cam kết hoÃƒ n tiền 100% tự Ä—˜á»â„¢ng nếu quầy tạm hết mÃƒ³n hoặc phÃƒ¡t sinh lỗi")}
                 </span>
               </div>
             </div>
@@ -1286,11 +1286,11 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               </div>
               <div className="checkout-student__info">
                 <div className="checkout-student__name-row">
-                  <b>{user?.name || t("Sinh viÃƒÂªn")}</b>
+                  <b>{user?.name || t("Sinh viҪn")}</b>
                   <span>K21 CNTT</span>
                 </div>
                 <div className="checkout-student__meta">
-                  {t("MSSV:")} 2151010088 Ã¢â‚¬Â¢ {t("TrÃ¡Â»Â£ giÃƒÂ¡ SV 2025")}
+                  {t("MSSV:")} 2151010088 ââ‚¬¢ {t("Trợ giÃƒ¡ SV 2025")}
                 </div>
               </div>
             </div>
@@ -1301,11 +1301,11 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             <div className="checkout-verify__head">
               <div className="checkout-verify__title">
                 <BadgeCheck size={20} />
-                <b>{t("XÃƒÂ¡c minh thÃƒÂ´ng tin nhÃ¡ÂºÂ­n mÃƒÂ³n")}</b>
+                <b>{t("Xҡc minh thҴng tin nhận mҳn")}</b>
               </div>
               <span className="checkout-verify__badge">
                 <Shield size={12} />
-                {t("BÃ¡ÂºÂ¯t buÃ¡Â»â„¢c trÃ†Â°Ã¡Â»â€ºc khi Ã„â€˜Ã¡ÂºÂ·t")}
+                {t("Bắt buá»â„¢c trÆ°á»—ºc khi Ä—˜ặt")}
               </span>
             </div>
 
@@ -1314,7 +1314,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 className={`checkout-field${errors.name ? " has-error" : ""}`}
               >
                 <span className="checkout-field__label">
-                  <User size={13} /> {t("HÃ¡Â»Â tÃƒÂªn ngÃ†Â°Ã¡Â»Âi nhÃ¡ÂºÂ­n")}
+                  <User size={13} /> {t("Họ tÃƒªn ngÃ†Â°Ã¡Â»Âi nhận")}
                 </span>
                 <input
                   type="text"
@@ -1326,7 +1326,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       setErrors((prev) => ({ ...prev, name: "" }));
                     }
                   }}
-                  placeholder={t("NguyÃ¡Â»â€¦n VÃ„Æ’n A")}
+                  placeholder={t("Nguyễn Văn A")}
                   autoComplete="name"
                 />
                 {errors.name && (
@@ -1340,7 +1340,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 className={`checkout-field${errors.phone ? " has-error" : ""}`}
               >
                 <span className="checkout-field__label">
-                  <Phone size={13} /> {t("SÃ¡Â»â€˜ Ã„â€˜iÃ¡Â»â€¡n thoÃ¡ÂºÂ¡i nhÃ¡ÂºÂ­n mÃƒÂ³n")}
+                  <Phone size={13} /> {t("Sỗ˜ Ä—˜iá»—¡n thoại nhận mÃƒ³n")}
                 </span>
                 <input
                   type="tel"
@@ -1368,7 +1368,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 }`}
               >
                 <span className="checkout-field__label">
-                  <Clock size={13} /> {t("GiÃ¡Â»Â nhÃ¡ÂºÂ­n mÃƒÂ³n")}
+                  <Clock size={13} /> {t("Giờ nhận mҳn")}
                 </span>
                 <select
                   className="checkout-field__input"
@@ -1383,15 +1383,15 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 >
                   <option value="">
                     {initLoading
-                      ? t("-- Ã„Âang tÃ¡ÂºÂ£i khung giÃ¡Â»Â --")
-                      : t("-- ChÃ¡Â»Ân khung giÃ¡Â»Â nhÃ¡ÂºÂ­n --")}
+                      ? t("-- Ã„Âang tải khung giờ --")
+                      : t("-- Chọn khung giờ nhận --")}
                   </option>
                   {timeSlots.map((slot) => {
                     const past = isSlotInPast(slot);
                     return (
                       <option key={slot} value={slot} disabled={past}>
                         {slot}
-                        {past ? ` (${t("Ã„â€˜ÃƒÂ£ qua")})` : ""}
+                        {past ? ` (${t("Ä—˜Ãƒ£ qua")})` : ""}
                       </option>
                     );
                   })}
@@ -1406,7 +1406,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <label className="checkout-field checkout-field--full">
                 <span className="checkout-field__label">
                   <FileText size={13} />{" "}
-                  {t("Ghi chÃƒÂº cho bÃ¡ÂºÂ¿p (khÃƒÂ´ng bÃ¡ÂºÂ¯t buÃ¡Â»â„¢c)")}
+                  {t("Ghi chÃƒº cho bếp (khÃƒ´ng bắt buá»â„¢c)")}
                 </span>
                 <textarea
                   className="checkout-field__input checkout-field__input--area"
@@ -1414,12 +1414,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder={t(
-                    "VD: ÃƒÂ­t cay, khÃƒÂ´ng hÃƒÂ nh, gÃ¡Â»Âi trÃ†Â°Ã¡Â»â€ºc khi tÃ¡Â»â€ºi quÃ¡ÂºÂ§y..."
+                    "VD: Ãƒ­t cay, khÃƒ´ng hÃƒ nh, gọi trÆ°á»—ºc khi tá»—ºi quầy..."
                   )}
                 />
               </label>
 
-              {/* SÃ¡Â»ÂNG XANH HÃ¡Â»Å’C Ã„ÂÃ†Â¯Ã¡Â»Å“NG */}
+              {/* SỐNG XANH Há»Å’C Ã„ÂÃ†Â¯Ã¡Â»Å“NG */}
               <label
                 className="checkout-field checkout-field--full"
                 style={{
@@ -1453,7 +1453,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 >
                   <span>
                     <Leaf size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
-                    {t("TÃƒÂ´i mang bÃƒÂ¬nh nÃ†Â°Ã¡Â»â€ºc / hÃ¡Â»â„¢p cÃ†Â¡m riÃƒÂªng")}
+                    {t("TÃƒ´i mang bÃƒ¬nh nÆ°á»—ºc / há»â„¢p cơm riÃƒªng")}
                   </span>
                   <span
                     style={{
@@ -1462,7 +1462,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       color: "var(--text-muted, #64748b)",
                     }}
                   >
-                    {t("SÃ¡Â»â€˜ng Xanh HÃ¡Â»Âc Ã„ÂÃ†Â°Ã¡Â»Âng Ã¢â‚¬â€ cÃ¡Â»â„¢ng")} {ptsCfg?.earn?.green_points || 10} {t("Ã„â€˜iÃ¡Â»Æ’m sau khi nhÃƒÂ¢n viÃƒÂªn duyÃ¡Â»â€¡t")}
+                    {t("Sỗ˜ng Xanh Học Ã„ÂÃ†Â°Ã¡Â»Âng ââ‚¬” cá»â„¢ng")} {ptsCfg?.earn?.green_points || 10} {t("Ä—˜iểm sau khi nhÃƒ¢n viÃƒªn duyá»—¡t")}
                   </span>
                 </span>
               </label>
@@ -1471,7 +1471,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             <p className="checkout-verify__hint">
               <Info size={14} />
               {t(
-                "ThÃƒÂ´ng tin nÃƒÂ y dÃƒÂ¹ng Ã„â€˜Ã¡Â»Æ’ liÃƒÂªn hÃ¡Â»â€¡ khi mÃƒÂ³n Ã„â€˜ÃƒÂ£ sÃ¡ÂºÂµn sÃƒÂ ng vÃƒÂ  Ã„â€˜Ã¡Â»Æ’ in phiÃ¡ÂºÂ¿u bÃ¡ÂºÂ¿p KDS."
+                "ThÃƒ´ng tin nÃƒ y dÃƒ¹ng Ä—˜á»ƒ liÃƒªn há»—¡ khi mÃƒ³n Ä—˜Ãƒ£ sẵn sÃƒ ng vÃƒ  Ä—˜á»ƒ in phiếu bếp KDS."
               )}
             </p>
           </div>
@@ -1481,7 +1481,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <div>
                 <Utensils size={20} />
                 <b>
-                  {t("TÃƒÂ³m tÃ¡ÂºÂ¯t Ã„â€˜Ã†Â¡n hÃƒÂ ng")} ({lines.length} {t("mÃƒÂ³n")})
+                  {t("TÃƒ³m tắt Ä—˜ơn hÃƒ ng")} ({lines.length} {t("mҳn")})
                 </b>
               </div>
 
@@ -1490,10 +1490,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             <div className="checkout-pickup-badge">
               <div>
                 <Store size={18} />
-                <b>{t("QuÃ¡ÂºÂ§y 01 (CÃ†Â¡m) & QuÃ¡ÂºÂ§y 03 (NÃ†Â°Ã¡Â»â€ºc)")}</b>
+                <b>{t("Quầy 01 (Cơm) & Quầy 03 (NÆ°á»—ºc)")}</b>
               </div>
               <span>
-                {t("Ca TrÃ†Â°a")} Ã¢â‚¬Â¢ {t("Ã„â€šn tÃ¡ÂºÂ¡i quÃ¡ÂºÂ§y")}
+                {t("Ca Trưa")} ââ‚¬¢ {t("Ä—šn tại quầy")}
               </span>
             </div>
 
@@ -1510,12 +1510,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <div className="checkout-summary-item__info">
                     <h4>{tData(m, "name")}</h4>
                     <div className="checkout-summary-item__meta">
-                      <span>QuÃ¡ÂºÂ§y 01</span>
-                      <span>Ã¢â‚¬Â¢</span>
+                      <span>Quầy 01</span>
+                      <span>ââ‚¬¢</span>
                       <span>SL: {m.qty}</span>
                       {m.discount_percent > 0 && (
                         <span className="checkout-summary-item__tag">
-                          {t("TrÃ¡Â»Â£ giÃƒÂ¡")}
+                          {t("Trợ giҡ")}
                         </span>
                       )}
                     </div>
@@ -1539,7 +1539,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             >
               <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "10px" }}>
                 <Tag size={17} color="#2563eb" />
-                <strong style={{ color: "#173b8f" }}>Voucher giÃ¡ÂºÂ£m giÃƒÂ¡</strong>
+                <strong style={{ color: "#173b8f" }}>Voucher giảm giҡ</strong>
               </div>
 
               {appliedVoucher ? (
@@ -1550,10 +1550,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   border: "1px solid #a7f3d0"
                 }}>
                   <div style={{ color: "#047857", fontWeight: 700 }}>
-                    Ã¢Å“â€œ Ã„ÂÃƒÂ£ ÃƒÂ¡p dÃ¡Â»Â¥ng mÃƒÂ£ {appliedVoucher.code}
+                    âÅ““ Ã„ÂÃƒ£ Ãƒ¡p dụng mÃƒ£ {appliedVoucher.code}
                   </div>
                   <div style={{ color: "#047857", fontSize: "13px", marginTop: "5px" }}>
-                    GiÃ¡ÂºÂ£m {money(discount)} cho Ã„â€˜Ã†Â¡n hÃƒÂ ng
+                    Giảm {money(discount)} cho Ä—˜ơn hÃƒ ng
                   </div>
                   <button
                     type="button"
@@ -1568,7 +1568,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       cursor: "pointer"
                     }}
                   >
-                    BÃ¡Â»Â ÃƒÂ¡p dÃ¡Â»Â¥ng
+                    Bỏ ҡp dụng
                   </button>
                 </div>
               ) : (
@@ -1584,8 +1584,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                           applyVoucher(voucherCode);
                         }
                       }}
-                      placeholder="NhÃ¡ÂºÂ­p mÃƒÂ£ voucher"
-                      aria-label="MÃƒÂ£ voucher"
+                      placeholder="Nhập mң voucher"
+                      aria-label="Mң voucher"
                       disabled={applyingVoucher}
                       style={{
                         flex: 1,
@@ -1610,14 +1610,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                         cursor: applyingVoucher || !voucherCode.trim() ? "not-allowed" : "pointer"
                       }}
                     >
-                      {applyingVoucher ? "Ã„Âang kiÃ¡Â»Æ’m tra..." : "ÃƒÂp dÃ¡Â»Â¥ng"}
+                      {applyingVoucher ? "Ã„Âang kiểm tra..." : "Òp dụng"}
                     </button>
                   </div>
 
                   {myVouchers.filter((v) => !v.used).length > 0 && (
                     <div style={{ marginTop: "10px" }}>
                       <label style={{ display: "block", fontSize: "12px", color: "#475569", marginBottom: "5px" }}>
-                        HoÃ¡ÂºÂ·c chÃ¡Â»Ân voucher Ã„â€˜ÃƒÂ£ lÃ†Â°u
+                        Hoặc chọn voucher Ä—˜Ãƒ£ lưu
                       </label>
                       <select
                         value=""
@@ -1633,10 +1633,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                           background: "#fff"
                         }}
                       >
-                        <option value="">-- ChÃ¡Â»Ân voucher --</option>
+                        <option value="">-- Chọn voucher --</option>
                         {myVouchers.filter((v) => !v.used).map((v) => (
                           <option key={v.id || v.code} value={v.code}>
-                            {v.code} Ã¢â‚¬â€ GiÃ¡ÂºÂ£m {money(Number(v.value) || 0)}
+                            {v.code} ââ‚¬” Giảm {money(Number(v.value) || 0)}
                           </option>
                         ))}
                       </select>
@@ -1645,7 +1645,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
                   {myVouchers.filter((v) => !v.used).length === 0 && (
                     <p style={{ fontSize: "12px", color: "#64748b", margin: "8px 0 0" }}>
-                      BÃ¡ÂºÂ¡n chÃ†Â°a cÃƒÂ³ voucher Ã„â€˜ÃƒÂ£ lÃ†Â°u. HÃƒÂ£y nhÃ¡ÂºÂ­p mÃƒÂ£ voucher hÃ¡Â»Â£p lÃ¡Â»â€¡.
+                      Bạn chưa cÃƒ³ voucher Ä—˜Ãƒ£ lưu. HÃƒ£y nhập mÃƒ£ voucher hợp lá»—¡.
                     </p>
                   )}
                 </>
@@ -1653,7 +1653,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             </div>
             <div className="checkout-summary__costs">
               <div className="checkout-cost-row">
-                <span>{t("TÃ¡ÂºÂ¡m tÃƒÂ­nh:")}</span>
+                <span>{t("Tạm tҭnh:")}</span>
                 <b>{money(subtotal)}</b>
               </div>
 
@@ -1661,7 +1661,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <div className="checkout-cost-row checkout-cost-row--discount">
                   <span>
                     <Tag size={14} />
-                    {t("MÃƒÂ£ giÃ¡ÂºÂ£m giÃƒÂ¡")}
+                    {t("Mң giảm giҡ")}
                     {appliedVoucher?.code && ` (${appliedVoucher.code})`}:
                   </span>
                   <b>-{money(discount)}</b>
@@ -1672,7 +1672,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <div className="checkout-cost-row checkout-cost-row--discount">
                   <span>
                     <Sparkles size={14} />
-                    {t("Ã„ÂiÃ¡Â»Æ’m Green Points:")}
+                    {t("Ã„Âiểm Green Points:")}
                   </span>
                   <b>-{money(pointsDiscount)}</b>
                 </div>
@@ -1680,9 +1680,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
               <div className="checkout-summary__total">
                 <div>
-                  <span>{t("TÃ¡Â»â€NG TIÃ¡Â»â‚¬N THANH TOÃƒÂN")}</span>
+                  <span>{t("TỔNG TIá»â‚¬N THANH TOÃƒÂN")}</span>
                   <small>
-                    {t("Ã„ÂÃƒÂ£ bao gÃ¡Â»â€œm VAT & trÃ¡Â»Â£ giÃƒÂ¡ hÃ¡Â»Âc Ã„â€˜Ã†Â°Ã¡Â»Âng")}
+                    {t("Ã„ÂÃƒ£ bao gồm VAT & trợ giÃƒ¡ học Ä—˜Ã†Â°Ã¡Â»Âng")}
                   </small>
                 </div>
                 <div className="checkout-summary__total-value">
@@ -1696,8 +1696,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <Info size={16} />
                 <span>
                   {paymentMethod === "wallet"
-                    ? t("VÃƒÂ­ sÃ¡ÂºÂ½ bÃ¡Â»â€¹ trÃ¡Â»Â« ngay khi bÃ¡ÂºÂ¡n xÃƒÂ¡c nhÃ¡ÂºÂ­n Ã„â€˜Ã†Â¡n hÃƒÂ ng.")
-                    : t("Vui lÃƒÂ²ng hoÃƒÂ n tÃ¡ÂºÂ¥t chuyÃ¡Â»Æ’n khoÃ¡ÂºÂ£n, sau Ã„â€˜ÃƒÂ³ Ã¡ÂºÂ¥n xÃƒÂ¡c nhÃ¡ÂºÂ­n.")}
+                    ? t("VÃƒ­ sẽ bá»—¹ trừ ngay khi bạn xÃƒ¡c nhận Ä—˜ơn hÃƒ ng.")
+                    : t("Vui lÃƒ²ng hoÃƒ n tất chuyển khoản, sau Ä—˜Ãƒ³ ấn xÃƒ¡c nhận.")}
                 </span>
               </div>
             )}
@@ -1706,16 +1706,16 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               to={isBuyNow ? "/customer/menu" : "/customer/cart"}
               className="checkout-summary__back"
             >
-              {isBuyNow ? t("Quay lÃ¡ÂºÂ¡i thÃ¡Â»Â±c Ã„â€˜Ã†Â¡n") : t("Quay lÃ¡ÂºÂ¡i giÃ¡Â»Â hÃƒÂ ng chÃ¡Â»â€°nh sÃ¡Â»Â­a")}
+              {isBuyNow ? t("Quay lại thực Ä—˜ơn") : t("Quay lại giỏ hÃƒ ng chá»—°nh sửa")}
             </Link>
           </div>
 
           <div className="checkout-kds-note">
             <Microwave size={20} />
             <div>
-              <b>{t("Quy trÃƒÂ¬nh chuyÃ¡Â»Æ’n bÃ¡ÂºÂ¿p KDS tÃ¡Â»Â± Ã„â€˜Ã¡Â»â„¢ng:")}</b>
+              <b>{t("Quy trÃƒ¬nh chuyển bếp KDS tự Ä—˜á»â„¢ng:")}</b>
               <p>
-                {t("Sau khi Ã¡ÂºÂ¥n hoÃƒÂ n tÃ¡ÂºÂ¥t thanh toÃƒÂ¡n, quÃ¡ÂºÂ§y bÃ¡ÂºÂ¿p 01 & quÃ¡ÂºÂ§y nÃ†Â°Ã¡Â»â€ºc 03 sÃ¡ÂºÂ½ lÃ¡ÂºÂ­p tÃ¡Â»Â©c nhÃ¡ÂºÂ­n vÃƒÂ© Ã„â€˜iÃ¡Â»â€¡n tÃ¡Â»Â­ Ã„â€˜Ã¡Â»Æ’ chuÃ¡ÂºÂ©n bÃ¡Â»â€¹ thÃ¡Â»Â©c Ã„Æ’n nÃƒÂ³ng sÃ¡Â»â€˜t kÃ¡Â»â€¹p thÃ¡Â»Âi cho bÃ¡ÂºÂ¡n.")}
+                {t("Sau khi ấn hoÃƒ n tất thanh toÃƒ¡n, quầy bếp 01 & quầy nÆ°á»—ºc 03 sẽ lập tức nhận vÃƒ© Ä—˜iá»—¡n tử Ä—˜á»ƒ chuẩn bá»—¹ thức ăn nÃƒ³ng sỗ˜t ká»—¹p thời cho bạn.")}
               </p>
             </div>
           </div>

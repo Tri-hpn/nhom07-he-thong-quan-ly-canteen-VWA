@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "HÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡ thÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng quÃƒÂ¡Ã‚ÂºÃ‚Â£n lÃ„â€šÃ‚Â½ Canteen VWA",
+  "description": "Hệ thống quản lĂ½ Canteen VWA",
   "scripts": {
     "predev": "node scripts/free-dev-ports.mjs 5173",
     "dev": "vite",
@@ -58,6 +58,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.3",
     "concurrently": "^10.0.5",
+    "iconv-lite": "^0.7.3",
     "vite": "^5.4.10"
   },
   "engines": {

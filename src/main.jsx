@@ -1,9 +1,9 @@
-﻿// ============================================================
-// MAIN.JSX â€” Entry point (V6 - FINAL)
+// ============================================================
+// MAIN.JSX — Entry point (V6 - FINAL)
 // ============================================================
 // V6 (2026-10):
-//   - ðŸ”§ FIX M6: HMR dispose unmount root â€” trÃ¡nh stale component
-//     sau khi sá»­a code trong dev
+//   - 🔧 FIX M6: HMR dispose unmount root — tránh stale component
+//     sau khi sửa code trong dev
 // ============================================================
 
 import React from "react";
@@ -17,7 +17,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { initI18n } from "./lib/i18n";
 
 // ============================================================
-// STYLES â€” Thá»© tá»± QUAN TRá»ŒNG (khÃ´ng Ä‘á»•i)
+// STYLES — Thứ tự QUAN TRỌNG (không đổi)
 // ============================================================
 import "./styles.css";
 import "./styles-sky.css";
@@ -26,7 +26,7 @@ import "./styles-admin.css";
 import "./styles-customer.css";
 
 // ============================================================
-// LÆ¯á»šI AN TOÃ€N TOÃ€N Cá»¤C â€” báº¯t lá»—i async khÃ´ng qua ErrorBoundary
+// LƯỚI AN TOÀN TOÀN CỤC — bắt lỗi async không qua ErrorBoundary
 // ============================================================
 window.addEventListener("unhandledrejection", (e) => {
   console.error("[unhandledrejection]", e.reason);
@@ -40,13 +40,13 @@ window.addEventListener("error", (e) => {
 // ============================================================
 const rootEl = document.getElementById("root");
 if (!rootEl) {
-  throw new Error("KhÃ´ng tÃ¬m tháº¥y #root trong index.html");
+  throw new Error("Không tìm thấy #root trong index.html");
 }
 
-// âœ… FIX V5: guard gáº¯n vÃ o DOM â€” khÃ´ng bá»‹ reset khi HMR
+// ✅ FIX V5: guard gắn vào DOM — không bị reset khi HMR
 if (rootEl.dataset.reactMounted === "1") {
   console.warn(
-    "[main] #root Ä‘Ã£ Ä‘Æ°á»£c mount â€” skip renderApp() Ä‘á»ƒ trÃ¡nh double-render"
+    "[main] #root đã được mount — skip renderApp() để tránh double-render"
   );
 } else {
   rootEl.dataset.reactMounted = "1";
@@ -57,7 +57,7 @@ if (rootEl.dataset.reactMounted === "1") {
     root.render(
       <React.StrictMode>
         {/*
-          âœ… FIX CRITICAL: AuthProvider PHáº¢I bá»c NGOÃ€I BrowserRouter
+          ✅ FIX CRITICAL: AuthProvider PHẢI bọc NGOÀI BrowserRouter
         */}
         <AuthProvider>
           <BrowserRouter
@@ -75,7 +75,7 @@ if (rootEl.dataset.reactMounted === "1") {
   }
 
   // ============================================================
-  // INIT I18N â€” khÃ´ng block render, cÃ³ guard chá»‘ng double
+  // INIT I18N — không block render, có guard chống double
   // ============================================================
   (async () => {
     try {
@@ -91,7 +91,7 @@ if (rootEl.dataset.reactMounted === "1") {
     }
   })();
 
-  // âœ… FIX M6: HMR cleanup â€” unmount root Ä‘á»ƒ láº§n sau mount láº¡i tá»« Ä‘áº§u
+  // ✅ FIX M6: HMR cleanup — unmount root để lần sau mount lại từ đầu
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       try {
