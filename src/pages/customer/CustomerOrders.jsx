@@ -15,14 +15,13 @@ import { Link } from "react-router-dom";
 import {
   RefreshCw, Package, Clock, CheckCircle2, XCircle, ShoppingBag,
   ChevronLeft, ChevronRight, Loader2, AlertCircle, ChefHat, Bell,
-  QrCode, Receipt, Headset, Soup, Utensils, Store, X, Sparkles,
+  Receipt, Headset, Soup, Utensils, Store, X, Sparkles,
   Wallet, Leaf, Flame,
 } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { useI18n } from "../../hooks/useI18n";
 import CustomerOrderDetail from "../../components/CustomerOrderDetail";
-import { QRCodeCanvas } from "qrcode.react";
 
 // ============================================================
 // CONSTANTS
@@ -144,10 +143,6 @@ function getOrderId(order) {
   return order?._id || order?.id || null;
 }
 
-function getOrderQrValue(order) {
-  const code = String(order?.code || "").trim();
-  return code ? `${window.location.origin}/order-qr/${encodeURIComponent(code)}` : "";
-}
 
 function getPickupPin(order) {
   if (!order) return "—";
@@ -293,7 +288,6 @@ export default function CustomerOrders({ user, onOpenSupport }) {
   const [page, setPage] = useState(1);
 
   const [selected, setSelected] = useState(null);
-  const [qrOrder, setQrOrder] = useState(null);
   const [showCounterMap, setShowCounterMap] = useState(false);
   const reminderStorageKey = `canteen_order_reminders_v1_${user?.id || user?._id || "customer"}`;
   const [remindedOrderIds, setRemindedOrderIds] = useState(() => {
@@ -697,7 +691,6 @@ const activeCounterId = (() => {
           <LiveOrderCard
             order={liveOrder}
             onView={() => goToOrderDetail(liveOrder)}
-            onShowQr={() => setQrOrder(liveOrder)}
             onOpenSupport={onOpenSupport}
             onRemindOrder={handleRemindOrder}
             isReminderSet={Boolean(remindedOrderIds[String(getOrderId(liveOrder) || liveOrder?.code || "")])}
@@ -833,7 +826,6 @@ const activeCounterId = (() => {
                 key={getOrderId(order)}
                 order={order}
                 onView={() => goToOrderDetail(order)}
-                onShowQr={() => setQrOrder(order)}
                 onReorder={handleReorderOrder}
                 t={t}
               />
@@ -925,7 +917,6 @@ const activeCounterId = (() => {
                   <b>"{t("Sẵn sàng nhận món")}"</b>,{" "}
                   {t("bạn hãy di chuyển đến màn hình KDS tại quầy tương ứng, xuất trình mã PIN số")}{" "}
                   <b>#{getPickupPin(liveOrder)}</b>{" "}
-                  {t("hoặc quét mã QR để nhận khay cơm nhanh chóng, không cần chen hàng.")}
                 </p>
               </div>
             </div>
@@ -1307,66 +1298,6 @@ const activeCounterId = (() => {
           </section>
         </div>
       )}
-      {qrOrder && (
-        <div
-          role="presentation"
-          onClick={() => setQrOrder(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 10050,
-            background: "rgba(15, 23, 42, 0.64)",
-            display: "grid",
-            placeItems: "center",
-            padding: 16,
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("Mã QR đơn hàng")}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(100%, 420px)",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              background: "#fff",
-              color: "#172033",
-              borderRadius: 24,
-              padding: 24,
-              boxShadow: "0 24px 70px rgba(0,0,0,.24)",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
-              <h3 style={{ margin: 0, fontSize: 19 }}>{t("QR riêng của đơn hàng")}</h3>
-              <button type="button" onClick={() => setQrOrder(null)} aria-label={t("Đóng")} style={{ border: 0, background: "#f1f5f9", borderRadius: 10, width: 36, height: 36, cursor: "pointer", fontSize: 22 }}>×</button>
-            </div>
-            <div style={{ color: "#2563eb", fontWeight: 800, fontSize: 16, margin: "8px 0 4px", overflowWrap: "anywhere" }}>
-              #{qrOrder.code || getOrderId(qrOrder)}
-            </div>
-            <div style={{ color: qrOrder.status === "Sẵn sàng nhận" ? "#15803d" : "#64748b", fontWeight: 700, fontSize: 13, marginBottom: 16 }}>
-              {t("Trạng thái:")} {t(qrOrder.status || "Chờ xác nhận")}
-            </div>
-            {getOrderQrValue(qrOrder) ? (
-              <div style={{ display: "inline-flex", padding: 14, border: "1px solid #e2e8f0", borderRadius: 18, background: "#fff" }}>
-                <QRCodeCanvas value={getOrderQrValue(qrOrder)} size={220} level="H" includeMargin />
-              </div>
-            ) : (
-              <p style={{ color: "#dc2626" }}>{t("Đơn hàng chưa có mã để tạo QR.")}</p>
-            )}
-            <p style={{ color: "#475569", fontSize: 13, lineHeight: 1.55, margin: "16px 0 18px" }}>
-              {qrOrder.status === "Sẵn sàng nhận"
-                ? t("Đưa mã QR này cho nhân viên tại quầy để xác nhận nhận đúng đơn hàng.")
-                : t("Mã QR được tạo riêng theo mã đơn. Chỉ xác nhận nhận món khi đơn chuyển sang trạng thái Sẵn sàng nhận.")}
-            </p>
-            <button type="button" onClick={() => setQrOrder(null)} style={{ width: "100%", border: 0, borderRadius: 12, padding: "12px 16px", background: "#2634d5", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
-              {t("Đóng")}
-            </button>
-          </div>
-        </div>
-      )}
-
       {selected && (
         <CustomerOrderDetail
           order={selected}
@@ -1419,7 +1350,7 @@ function SkeletonBox({ w, h, radius = 6 }) {
 // SUB: LiveOrderCard
 // ============================================================
 
-function LiveOrderCard({ order, onView, onShowQr, onOpenSupport, onRemindOrder, isReminderSet, t }) {
+function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminderSet, t }) {
   if (!order) return null;
 
   const stepIndex = STATUS_STEP_INDEX[order.status] || 1;
@@ -1465,15 +1396,6 @@ function LiveOrderCard({ order, onView, onShowQr, onOpenSupport, onRemindOrder, 
             </span>
             <span className="orders-live-card__pin-value">#{pin}</span>
           </div>
-          <button
-            type="button"
-            className="orders-live-card__qr-btn"
-            onClick={onShowQr}
-            title={t("Hiển thị QR riêng theo mã đơn hàng")}
-          >
-            <QrCode size={22} />
-            <span>{t("Mã QR đơn")}</span>
-          </button>
         </div>
       </div>
 
@@ -1684,7 +1606,7 @@ function LiveOrderCard({ order, onView, onShowQr, onOpenSupport, onRemindOrder, 
 // SUB: OrderHistoryCard
 // ============================================================
 
-function OrderHistoryCard({ order, onView, onShowQr, onReorder, t }) {
+function OrderHistoryCard({ order, onView, onReorder, t }) {
   const items = order.items || [];
   const firstItem = items[0];
   const totalQty = getTotalQty(order);
@@ -1789,14 +1711,6 @@ function OrderHistoryCard({ order, onView, onShowQr, onReorder, t }) {
           </div>
 
           <div className="order-history-card__actions">
-            <button
-              type="button"
-              className="order-card-action"
-              onClick={onShowQr}
-              title={t("Hiển thị QR riêng theo mã đơn hàng")}
-            >
-              <QrCode size={13} /> {t("Mã QR")}
-            </button>
             <button
               type="button"
               className="order-card-action"
