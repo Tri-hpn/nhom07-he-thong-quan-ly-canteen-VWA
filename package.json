@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "HÃƒÂ¡Ã‚Â»Ã¢â‚¬Â¡ thÃƒÂ¡Ã‚Â»Ã¢â‚¬Ëœng quÃƒÂ¡Ã‚ÂºÃ‚Â£n lÃ„â€šÃ‚Â½ Canteen VWA",
+  "description": "Hệ thống quản lĂ½ Canteen VWA",
   "scripts": {
     "predev": "node scripts/free-dev-ports.mjs 5173",
     "dev": "vite",
@@ -14,7 +14,7 @@
     "prestart": "node scripts/free-dev-ports.mjs 5173 3000",
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "ports": "node scripts/free-dev-ports.mjs --dry",
-"postinstall": "echo skip-backfill",
+    "postinstall": "echo skip-backfill",
     "check": "node --check server-json.js && node --check menuImageStore.js && node --check autoTranslate.js",
     "translate": "node scripts/auto-translate-locales.mjs",
     "translate:force": "node scripts/auto-translate-locales.mjs --force",
@@ -48,7 +48,7 @@
     "lucide-react": "^0.468.0",
     "mongodb": "^7.7.0",
     "mongoose": "^8.24.4",
-"node-fetch": "^2.7.0",
+    "node-fetch": "^2.7.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -58,6 +58,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.3",
     "concurrently": "^10.0.5",
+    "iconv-lite": "^0.7.3",
     "vite": "^5.4.10"
   },
   "engines": {

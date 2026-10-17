@@ -1,11 +1,11 @@
-﻿// ============================================================
-// CUSTOMERORDERS.JSX â€” ÄÆ¡n hÃ ng cá»§a tÃ´i (V6 - FINAL + i18n)
+// ============================================================
+// CUSTOMERORDERS.JSX — Đơn hàng của tôi (V6 - FINAL + i18n)
 // ============================================================
 // V5 (2026-10):
-//   - ðŸ”§ FIX #30: getRelativeDateLabel dÃ¹ng source-text i18n
+//   - 🔧 FIX #30: getRelativeDateLabel dùng source-text i18n
 // V6 (2026-10):
-//   - ðŸ”§ FIX: Customer tháº¥y status má»›i ngay khi tab quay láº¡i
-//             (visibilitychange â†’ fetch ngay, khÃ´ng chá» 15s)
+//   - 🔧 FIX: Customer thấy status mới ngay khi tab quay lại
+//             (visibilitychange → fetch ngay, không chờ 15s)
 //   - Poll 15s khi tab visible
 // ============================================================
 
@@ -35,55 +35,55 @@ const FALLBACK_IMG =
   encodeURIComponent(
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
       <rect fill='#f5f7fb' width='100' height='100'/>
-      <text x='50' y='58' font-size='40' text-anchor='middle'>ðŸ½ï¸</text>
+      <text x='50' y='58' font-size='40' text-anchor='middle'></text>
     </svg>`
   );
 
 const ACTIVE_STATUSES = [
-  "Chá» xÃ¡c nháº­n",
-  "ÄÃ£ xÃ¡c nháº­n",
-  "Äang chuáº©n bá»‹",
-  "Sáºµn sÃ ng nháº­n",
+  "Chờ xác nhận",
+  "Đã xác nhận",
+  "Đang chuẩn bị",
+  "Sẵn sàng nhận",
 ];
 
 const TAB_MAP = {
   all:       () => true,
   preparing: (s) =>
-    s === "Äang chuáº©n bá»‹" || s === "ÄÃ£ xÃ¡c nháº­n" || s === "Chá» xÃ¡c nháº­n",
-  ready:     (s) => s === "Sáºµn sÃ ng nháº­n",
-  completed: (s) => s === "HoÃ n thÃ nh",
-  cancelled: (s) => s === "ÄÃ£ há»§y",
+    s === "Đang chuẩn bị" || s === "Đã xác nhận" || s === "Chờ xác nhận",
+  ready:     (s) => s === "Sẵn sàng nhận",
+  completed: (s) => s === "Hoàn thành",
+  cancelled: (s) => s === "Đã hủy",
 };
 
 const STEPPER_STEPS = [
-  { key: "placed",    label: "ÄÃ£ xÃ¡c nháº­n & Tráº£ tiá»n", subKey: "time" },
-  { key: "preparing", label: "Äang cháº¿ biáº¿n",           subKey: "status" },
-  { key: "ready",     label: "Sáºµn sÃ ng nháº­n",           subKey: "note" },
-  { key: "done",      label: "HoÃ n táº¥t",                subKey: "note" },
+  { key: "placed",    label: "Đã xác nhận & Trả tiền", subKey: "time" },
+  { key: "preparing", label: "Đang chế biến",           subKey: "status" },
+  { key: "ready",     label: "Sẵn sàng nhận",           subKey: "note" },
+  { key: "done",      label: "Hoàn tất",                subKey: "note" },
 ];
 
 const STATUS_STEP_INDEX = {
-  "Chá» xÃ¡c nháº­n":  1,
-  "ÄÃ£ xÃ¡c nháº­n":   1,
-  "Äang chuáº©n bá»‹": 2,
-  "Sáºµn sÃ ng nháº­n": 3,
-  "HoÃ n thÃ nh":    4,
-  "ÄÃ£ há»§y":        0,
+  "Chờ xác nhận":  1,
+  "Đã xác nhận":   1,
+  "Đang chuẩn bị": 2,
+  "Sẵn sàng nhận": 3,
+  "Hoàn thành":    4,
+  "Đã hủy":        0,
 };
 
 const TIME_RANGE_OPTIONS = [
-  { id: "today",  label: "HÃ´m nay" },
-  { id: "7days",  label: "7 ngÃ y qua" },
-  { id: "30days", label: "30 ngÃ y qua" },
-  { id: "month",  label: "ThÃ¡ng nÃ y" },
-  { id: "all",    label: "Táº¥t cáº£ thá»i gian" },
+  { id: "today",  label: "Hôm nay" },
+  { id: "7days",  label: "7 ngày qua" },
+  { id: "30days", label: "30 ngày qua" },
+  { id: "month",  label: "Tháng này" },
+  { id: "all",    label: "Tất cả thời gian" },
 ];
 
 const COUNTER_OPTIONS = [
-  { id: "all",  label: "Má»i Quáº§y" },
-  { id: "com",  label: "Quáº§y CÆ¡m Suáº¥t",   match: ["CÆ¡m"] },
-  { id: "bun",  label: "Quáº§y BÃºn / Phá»Ÿ",  match: ["BÃºn", "Phá»Ÿ", "MÃ³n máº·n"] },
-  { id: "nuoc", label: "Quáº§y TrÃ  & Cafe", match: ["Äá»“ uá»‘ng", "Coffee & Tea", "NÆ°á»›c Ã©p - Sinh tá»‘"] },
+  { id: "all",  label: "Mọi Quầy" },
+  { id: "com",  label: "Quầy Cơm Suất",   match: ["Cơm"] },
+  { id: "bun",  label: "Quầy Bún / Phở",  match: ["Bún", "Phở", "Món mặn"] },
+  { id: "nuoc", label: "Quầy Trà & Cafe", match: ["Äá»“ uống", "Coffee & Tea", "Nước ép - Sinh tố"] },
 ];
 
 // ============================================================
@@ -91,18 +91,18 @@ const COUNTER_OPTIONS = [
 // ============================================================
 
 function fmtDateTime(iso) {
-  if (!iso) return "â€”";
+  if (!iso) return "—";
   try {
     const d = new Date(iso);
-    if (isNaN(d.getTime())) return "â€”";
+    if (isNaN(d.getTime())) return "—";
     const dd = d.getDate().toString().padStart(2, "0");
     const mm = (d.getMonth() + 1).toString().padStart(2, "0");
     const yyyy = d.getFullYear();
     const hh = d.getHours().toString().padStart(2, "0");
     const mi = d.getMinutes().toString().padStart(2, "0");
-    return `${dd}/${mm}/${yyyy} â€¢ ${hh}:${mi}`;
+    return `${dd}/${mm}/${yyyy} Ѣ ${hh}:${mi}`;
   } catch {
-    return "â€”";
+    return "—";
   }
 }
 
@@ -130,9 +130,9 @@ function getRelativeDateLabel(iso) {
     const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return "HÃ´m nay";
-    if (diffDays === 1) return "HÃ´m qua";
-    if (diffDays < 7) return `${diffDays} ngÃ y trÆ°á»›c`;
+    if (diffDays === 0) return "Hôm nay";
+    if (diffDays === 1) return "Hôm qua";
+    if (diffDays < 7) return `${diffDays} ngày trước`;
     return "";
   } catch {
     return "";
@@ -144,17 +144,17 @@ function getOrderId(order) {
 }
 
 function getPickupPin(order) {
-  if (!order) return "â€”";
+  if (!order) return "—";
   if (order.pickup_pin) return order.pickup_pin;
   const code = order.code || "";
-  return code.slice(-2).toUpperCase() || "â€”";
+  return code.slice(-2).toUpperCase() || "—";
 }
 
 function getItemsSummary(order) {
   const items = order?.items || [];
   if (items.length === 0) return "";
   if (items.length === 1) return items[0].name || "";
-  return `${items[0].name} + ${items.length - 1} mÃ³n khÃ¡c`;
+  return `${items[0].name} + ${items.length - 1} món khác`;
 }
 
 function getTotalQty(order) {
@@ -263,7 +263,7 @@ export default function CustomerOrders({ user, onOpenSupport }) {
         ...item,
         id: itemId,
         menu_item_id: item.menu_item_id ?? itemId,
-        name: item.name || item.food_name || item.item_name || "MÃ³n Äƒn",
+        name: item.name || item.food_name || item.item_name || "Món ăn",
         price: Number(item.price ?? item.unit_price ?? 0) || 0,
         qty: Number(item.qty ?? item.quantity ?? 1) || 1
       };
@@ -320,7 +320,7 @@ export default function CustomerOrders({ user, onOpenSupport }) {
 
     try {
       const result = await api.orders.remind(orderId, { enabled });
-      if (!result?.ok) throw new Error("KhÃ´ng thá»ƒ cáº­p nháº­t nháº¯c háº¹n.");
+      if (!result?.ok) throw new Error("Không thể cập nhật nhắc hẹn.");
 
       const next = { ...current };
       if (enabled && result.active !== false) {
@@ -333,8 +333,8 @@ export default function CustomerOrders({ user, onOpenSupport }) {
       try { localStorage.setItem(reminderStorageKey, JSON.stringify(next)); } catch {}
       window.dispatchEvent(new CustomEvent("canteen-notifications-refresh"));
     } catch (e) {
-      console.error("KhÃ´ng thá»ƒ Ä‘áº·t nháº¯c Ä‘Æ¡n hÃ ng:", e);
-      window.alert(e?.message || "KhÃ´ng thá»ƒ Ä‘áº·t nháº¯c háº¹n. Vui lÃ²ng thá»­ láº¡i.");
+      console.error("Không thể đặt nhắc đơn hàng:", e);
+      window.alert(e?.message || "Không thể đặt nhắc hẹn. Vui lòng thử lại.");
     }
   }, [reminderStorageKey]);
 
@@ -342,7 +342,7 @@ export default function CustomerOrders({ user, onOpenSupport }) {
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // ðŸ”§ FIX: theo dÃµi tab visible Ä‘á»ƒ pause poll khi áº©n
+  // 🔧 FIX: theo dõi tab visible để pause poll khi ẩn
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
   );
@@ -381,7 +381,7 @@ export default function CustomerOrders({ user, onOpenSupport }) {
           if (
             reminderId &&
             pendingReminders[reminderId] &&
-            readyOrder.status === "Sáºµn sÃ ng nháº­n"
+            readyOrder.status === "Sẵn sàng nhận"
           ) {
             showOrderReadyNotice(readyOrder);
             delete pendingReminders[reminderId];
@@ -400,7 +400,7 @@ export default function CustomerOrders({ user, onOpenSupport }) {
         setOrders(sorted);
       } catch (e) {
         if (myReqId === reqIdRef.current && mountedRef.current) {
-          setError(e.message || t("KhÃ´ng táº£i Ä‘Æ°á»£c Ä‘Æ¡n hÃ ng"));
+          setError(e.message || t("Không tải được đơn hàng"));
         }
       } finally {
         if (myReqId === reqIdRef.current && mountedRef.current) {
@@ -414,8 +414,8 @@ export default function CustomerOrders({ user, onOpenSupport }) {
   );
 
   // ============================================================
-  // Polling â€” táº£i láº¡i danh sÃ¡ch Ä‘Æ¡n hÃ ng Ä‘á»‹nh ká»³
-  // ðŸ”§ FIX: pause khi tab áº©n (trÃ¡nh spam request khi user á»Ÿ tab khÃ¡c)
+  // Polling — tải lại danh sách đơn hàng định kỳ
+  // 🔧 FIX: pause khi tab ẩn (tránh spam request khi user ở tab khác)
   // ============================================================
   useEffect(() => {
     load(false);
@@ -427,18 +427,18 @@ export default function CustomerOrders({ user, onOpenSupport }) {
   }, [load, tabVisible]);
 
   // ============================================================
-  // ðŸ”§ FIX: láº¯ng nghe visibilitychange
-  //   - Khi tab customer bá»‹ áº©n â†’ pause poll
-  //   - Khi tab quay láº¡i visible â†’ fetch NGAY láº­p tá»©c (khÃ´ng chá» 15s)
-  //   ÄÃ¢y lÃ  cÆ¡ cháº¿ chÃ­nh giÃºp customer tháº¥y status má»›i
-  //   sau khi employee Ä‘á»•i status á»Ÿ tab khÃ¡c.
+  // 🔧 FIX: lắng nghe visibilitychange
+  //   - Khi tab customer bị ẩn → pause poll
+  //   - Khi tab quay lại visible → fetch NGAY lập tức (không chờ 15s)
+  //   Đây là cơ chế chính giúp customer thấy status mới
+  //   sau khi employee đổi status ở tab khác.
   // ============================================================
   useEffect(() => {
     const handler = () => {
       const visible = !document.hidden;
       setTabVisible(visible);
       if (visible) {
-        // Fetch ngay khi tab quay láº¡i
+        // Fetch ngay khi tab quay lại
         load(true);
       }
     };
@@ -462,7 +462,7 @@ export default function CustomerOrders({ user, onOpenSupport }) {
 
     for (const o of orders) {
       if (ACTIVE_STATUSES.includes(o.status)) active++;
-      if (o.status === "HoÃ n thÃ nh") {
+      if (o.status === "Hoàn thành") {
         completed++;
         totalSpent += Number(o.total) || 0;
         subsidy += Number(o.discount) || 0;
@@ -491,7 +491,7 @@ const activeCounterId = (() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     return orders.filter(
       (o) =>
-        o.status === "HoÃ n thÃ nh" &&
+        o.status === "Hoàn thành" &&
         new Date(o.created_at || 0).getTime() >= weekAgo
     ).length;
   }, [orders]);
@@ -500,13 +500,13 @@ const activeCounterId = (() => {
     const map = { all: orders.length };
     for (const o of orders) {
       const s = o.status;
-      if (s === "Äang chuáº©n bá»‹" || s === "ÄÃ£ xÃ¡c nháº­n" || s === "Chá» xÃ¡c nháº­n") {
+      if (s === "Đang chuẩn bị" || s === "Đã xác nhận" || s === "Chờ xác nhận") {
         map.preparing = (map.preparing || 0) + 1;
-      } else if (s === "Sáºµn sÃ ng nháº­n") {
+      } else if (s === "Sẵn sàng nhận") {
         map.ready = (map.ready || 0) + 1;
-      } else if (s === "HoÃ n thÃ nh") {
+      } else if (s === "Hoàn thành") {
         map.completed = (map.completed || 0) + 1;
-      } else if (s === "ÄÃ£ há»§y") {
+      } else if (s === "Đã hủy") {
         map.cancelled = (map.cancelled || 0) + 1;
       }
     }
@@ -559,7 +559,7 @@ const activeCounterId = (() => {
           <AlertCircle size={18} />
           <span>{error}</span>
           <button type="button" onClick={() => load(false)}>
-            <RefreshCw size={12} /> {t("Thá»­ láº¡i")}
+            <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
@@ -573,14 +573,14 @@ const activeCounterId = (() => {
           <div className="orders-header__right">
             <div className="orders-sync-badge">
               <span className="orders-sync-dot" />
-              <span>{t("Äá»“ng bá»™: Vá»«a xong")}</span>
+              <span>{t("Äá»“ng bộ: Vừa xong")}</span>
             </div>
             <button
               type="button"
               className="orders-refresh-btn"
               onClick={() => load(false)}
               disabled={refreshing}
-              title={t("LÃ m má»›i")}
+              title={t("Làm mới")}
             >
               <RefreshCw
                 size={18}
@@ -597,15 +597,15 @@ const activeCounterId = (() => {
             <Utensils size={24} />
           </div>
           <div className="orders-kpi-body">
-            <span className="orders-kpi-label">{t("ÄANG PHá»¤C Vá»¤")}</span>
+            <span className="orders-kpi-label">{t("ĐANG PHỤC VỤ")}</span>
             <div className="orders-kpi-value-row">
               <span className="orders-kpi-value">
                 {stats.active.toString().padStart(2, "0")}
               </span>
-              <span className="orders-kpi-unit">{t("Ä‘Æ¡n")}</span>
+              <span className="orders-kpi-unit">{t("đơn")}</span>
             </div>
             <span className="orders-kpi-sub">
-              {liveOrder?.counter_name || t("ChÆ°a cÃ³ Ä‘Æ¡n nÃ o")}
+              {liveOrder?.counter_name || t("Chưa có đơn nào")}
             </span>
           </div>
         </div>
@@ -616,16 +616,16 @@ const activeCounterId = (() => {
           </div>
           <div className="orders-kpi-body">
             <span className="orders-kpi-label">
-              {t("HOÃ€N THÃ€NH THÃNG NÃ€Y")}
+              {t("HOìN THìNH THÁNG NìY")}
             </span>
             <div className="orders-kpi-value-row">
               <span className="orders-kpi-value">{stats.completed}</span>
-              <span className="orders-kpi-unit">{t("suáº¥t Äƒn")}</span>
+              <span className="orders-kpi-unit">{t("suất ăn")}</span>
             </div>
             <span className="orders-kpi-sub orders-kpi-sub--green">
               {completed7dAgo > 0
-                ? `+${completed7dAgo} ${t("Ä‘Æ¡n trong 7 ngÃ y qua")}`
-                : t("ChÆ°a cÃ³ Ä‘Æ¡n trong tuáº§n nÃ y")}
+                ? `+${completed7dAgo} ${t("đơn trong 7 ngày qua")}`
+                : t("Chưa có đơn trong tuần này")}
             </span>
           </div>
         </div>
@@ -636,16 +636,16 @@ const activeCounterId = (() => {
           </div>
           <div className="orders-kpi-body">
             <span className="orders-kpi-label">
-              {t("TRá»¢ GIÃ SV TÃCH LÅ¨Y")}
+              {t("TRỢ GIÁ SV TÍCH LŨY")}
             </span>
             <div className="orders-kpi-value-row">
               <span className="orders-kpi-value">
                 {stats.subsidy.toLocaleString("vi-VN")}
               </span>
-              <span className="orders-kpi-unit">Ä‘</span>
+              <span className="orders-kpi-unit">đ</span>
             </div>
             <span className="orders-kpi-sub">
-              {t("Há»— trá»£ 10k/bá»¯a trÆ°a")}
+              {t("Hỗ trợ 10k/bữa trưa")}
             </span>
           </div>
         </div>
@@ -655,7 +655,7 @@ const activeCounterId = (() => {
             <Leaf size={24} />
           </div>
           <div className="orders-kpi-body">
-            <span className="orders-kpi-label">{t("ÄIá»‚M VWA GREEN")}</span>
+            <span className="orders-kpi-label">{t("ĐIỂM VWA GREEN")}</span>
             <div className="orders-kpi-value-row">
               <span className="orders-kpi-value orders-kpi-value--amber">
                 350
@@ -665,7 +665,7 @@ const activeCounterId = (() => {
               </span>
             </div>
             <span className="orders-kpi-sub">
-              {t("Äá»•i 01 nÆ°á»›c ngá»t miá»…n phÃ­")}
+              {t("Äá»•i 01 nước ngọt miễn phí")}
             </span>
           </div>
         </div>
@@ -677,7 +677,7 @@ const activeCounterId = (() => {
             <div className="orders-live-head-left">
               <span className="orders-live-pulse" />
               <h2 className="orders-live-title">
-                {t("ÄÆ¡n hÃ ng trá»±c tiáº¿p Ä‘ang cháº¿ biáº¿n")}
+                {t("Đơn hàng trực tiếp đang chế biến")}
               </h2>
             </div>
             <span className="orders-live-badge">
@@ -704,7 +704,7 @@ const activeCounterId = (() => {
         value={timeRange}
         onChange={(e) => setTimeRange(e.target.value)}
         className="orders-select"
-        aria-label={t("Lá»c theo thá»i gian")}
+        aria-label={t("Lọc theo thời gian")}
       >
         {TIME_RANGE_OPTIONS.map((opt) => (
           <option key={opt.id} value={opt.id}>
@@ -717,7 +717,7 @@ const activeCounterId = (() => {
         value={counterFilter}
         onChange={(e) => setCounterFilter(e.target.value)}
         className="orders-select"
-        aria-label={t("Lá»c theo quáº§y")}
+        aria-label={t("Lọc theo quầy")}
       >
         {COUNTER_OPTIONS.map((opt) => (
           <option key={opt.id} value={opt.id}>
@@ -732,7 +732,7 @@ const activeCounterId = (() => {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t("TÃ¬m theo mÃ£ Ä‘Æ¡n hoáº·c mÃ³n...")}
+          placeholder={t("Tìm theo mã đơn hoặc món...")}
           className="orders-search__input"
         />
       </div>
@@ -741,13 +741,13 @@ const activeCounterId = (() => {
         value={activeTab}
         onChange={(e) => setActiveTab(e.target.value)}
         className="orders-select orders-status-select"
-        aria-label={t("Lá»c theo tráº¡ng thÃ¡i Ä‘Æ¡n hÃ ng")}
+        aria-label={t("Lọc theo trạng thái đơn hàng")}
       >
-        <option value="all">{t("Táº¥t cáº£ Ä‘Æ¡n")}</option>
-        <option value="preparing">{t("Äang chuáº©n bá»‹")}</option>
-        <option value="ready">{t("Chá» nháº­n mÃ³n")}</option>
-        <option value="completed">{t("ÄÃ£ hoÃ n thÃ nh")}</option>
-        <option value="cancelled">{t("ÄÃ£ há»§y")}</option>
+        <option value="all">{t("Tất cả đơn")}</option>
+        <option value="preparing">{t("Đang chuẩn bị")}</option>
+        <option value="ready">{t("Chờ nhận món")}</option>
+        <option value="completed">{t("Đã hoàn thành")}</option>
+        <option value="cancelled">{t("Đã hủy")}</option>
       </select>
     </div>
   </div>
@@ -781,23 +781,23 @@ const activeCounterId = (() => {
             timeRange === "all" &&
             counterFilter === "all" &&
             !searchQuery
-              ? t("Báº¡n chÆ°a cÃ³ Ä‘Æ¡n hÃ ng nÃ o")
-              : t("KhÃ´ng cÃ³ Ä‘Æ¡n hÃ ng phÃ¹ há»£p vá»›i bá»™ lá»c")}
+              ? t("Bạn chưa có đơn hàng nào")
+              : t("Không có đơn hàng phù hợp với bộ lọc")}
           </h3>
           <p className="orders-empty__desc">
             {activeTab === "all" &&
             timeRange === "all" &&
             counterFilter === "all" &&
             !searchQuery
-              ? t("HÃ£y Ä‘áº·t mÃ³n Ä‘á»ƒ báº¯t Ä‘áº§u tráº£i nghiá»‡m")
-              : t("Thá»­ Ä‘á»•i bá»™ lá»c hoáº·c xem táº¥t cáº£ Ä‘Æ¡n hÃ ng.")}
+              ? t("Hãy đặt món để bắt đầu trải nghiệm")
+              : t("Thử đổi bộ lọc hoặc xem tất cả đơn hàng.")}
           </p>
           {activeTab === "all" &&
           timeRange === "all" &&
           counterFilter === "all" &&
           !searchQuery ? (
             <Link to="/customer/menu" className="orders-empty__btn">
-              <ShoppingBag size={15} /> {t("Äáº·t mÃ³n ngay")}
+              <ShoppingBag size={15} /> {t("Đặt món ngay")}
             </Link>
           ) : (
             <button
@@ -810,7 +810,7 @@ const activeCounterId = (() => {
                 setSearchQuery("");
               }}
             >
-              {t("XÃ³a táº¥t cáº£ bá»™ lá»c")}
+              {t("Xóa tất cả bộ lọc")}
             </button>
           )}
         </div>
@@ -837,13 +837,13 @@ const activeCounterId = (() => {
           {totalPages > 1 && (
             <div className="orders-pagination">
               <p className="orders-pagination__info">
-                {t("Hiá»ƒn thá»‹")}{" "}
+                {t("Hiển thị")}{" "}
                 <b>
                   {(page - 1) * PAGE_SIZE + 1} -{" "}
                   {Math.min(page * PAGE_SIZE, filtered.length)}
                 </b>{" "}
-                {t("trong tá»•ng sá»‘")} <b>{filtered.length}</b>{" "}
-                {t("Ä‘Æ¡n hÃ ng Ä‘Ã£ Ä‘áº·t")}
+                {t("trong tổng số")} <b>{filtered.length}</b>{" "}
+                {t("đơn hàng đã đặt")}
               </p>
 
               <div className="orders-pagination__controls">
@@ -852,7 +852,7 @@ const activeCounterId = (() => {
                   className="orders-page-btn"
                   disabled={page === 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  title={t("Trang trÆ°á»›c")}
+                  title={t("Trang trước")}
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -870,7 +870,7 @@ const activeCounterId = (() => {
                           color: "var(--text-light, #94a3b8)",
                         }}
                       >
-                        â€¦
+                        …
                       </span>
                     );
                   }
@@ -893,7 +893,7 @@ const activeCounterId = (() => {
                   className="orders-page-btn"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  title={t("Trang tiáº¿p")}
+                  title={t("Trang tiếp")}
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -908,12 +908,12 @@ const activeCounterId = (() => {
               </div>
               <div>
                 <h4 className="orders-banner__title">
-                  {t("VÄƒn hÃ³a láº¥y mÃ³n vÄƒn minh táº¡i Canteen VWA")}
+                  {t("Văn hóa lấy món văn minh tại Canteen VWA")}
                 </h4>
                 <p className="orders-banner__desc">
-                  {t("Khi há»‡ thá»‘ng bÃ¡o")}{" "}
-                  <b>"{t("Sáºµn sÃ ng nháº­n mÃ³n")}"</b>,{" "}
-                  {t("báº¡n hÃ£y di chuyá»ƒn Ä‘áº¿n mÃ n hÃ¬nh KDS táº¡i quáº§y tÆ°Æ¡ng á»©ng, xuáº¥t trÃ¬nh mÃ£ PIN sá»‘")}{" "}
+                  {t("Khi hệ thống báo")}{" "}
+                  <b>"{t("Sẵn sàng nhận món")}"</b>,{" "}
+                  {t("bạn hãy di chuyển đến màn hình KDS tại quầy tương ứng, xuất trình mã PIN số")}{" "}
                   <b>#{getPickupPin(liveOrder)}</b>{" "}
                 </p>
               </div>
@@ -925,7 +925,7 @@ const activeCounterId = (() => {
               style={{ border: 0, cursor: "pointer" }}
             >
               <Store size={16} />
-              {t("SÆ¡ Ä‘á»“ quáº§y Äƒn")}
+              {t("Sơ đồ quầy ăn")}
             </button>
           </div>
         </section>
@@ -948,7 +948,7 @@ const activeCounterId = (() => {
           <section
             role="dialog"
             aria-modal="true"
-            aria-label={t("SÆ¡ Ä‘á»“ quáº§y Äƒn")}
+            aria-label={t("Sơ đồ quầy ăn")}
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "min(100%, 980px)",
@@ -979,12 +979,12 @@ const activeCounterId = (() => {
     color: "#192D5B",
     textAlign: "center"
   }}>
-    {t("SÆ¡ Ä‘á»“ quáº§y Äƒn")}
+    {t("Sơ đồ quầy ăn")}
   </h3>
   <button
     type="button"
     onClick={() => setShowCounterMap(false)}
-    aria-label={t("ÄÃ³ng")}
+    aria-label={t("Đóng")}
     style={{
       position: "absolute",
       right: 0,
@@ -999,7 +999,7 @@ const activeCounterId = (() => {
       fontSize: 24,
       lineHeight: 1
     }}
-  >Ã—</button>
+  >×</button>
 </header>
 
             <div style={{
@@ -1012,7 +1012,7 @@ const activeCounterId = (() => {
               <svg
   viewBox="0 0 1200 760"
   role="img"
-  aria-label={t("SÆ¡ Ä‘á»“ máº·t báº±ng nhÃ  hÃ ng Canteen VWA")}
+  aria-label={t("Sơ đồ mặt bằng nhà hàng Canteen VWA")}
   style={{ display: "block", width: "100%", height: "auto", minWidth: 620 }}
 >
   <defs>
@@ -1047,10 +1047,10 @@ const activeCounterId = (() => {
   <path d="M401 69V89M411 69V89M421 69V89M401 79H421"
     fill="none" stroke="#2634D5" strokeWidth="2" strokeLinecap="round" />
   <text x="610" y="70" textAnchor="middle" fontSize="20" fontWeight="800" fill="#192D5B">
-    KHU Báº¾P
+    KHU BẾP
   </text>
   <text x="610" y="94" textAnchor="middle" fontSize="12" letterSpacing="1" fill="#657AA0">
-    CHáº¾ BIáº¾N Â· CHUáº¨N Bá»Š MÃ“N
+    CHẾ BIẾN · CHUẨN BỊ MÓN
   </text>
   <path d="M610 127V143" stroke="#a8b8c9" strokeWidth="2" strokeDasharray="4 4" />
 
@@ -1067,8 +1067,8 @@ const activeCounterId = (() => {
       stroke={activeCounterId === "Q2" ? "#2634D5" : "#D6E0F8"}
       strokeWidth={activeCounterId === "Q2" ? 3.5 : 1.3} />
     <rect x="59" y="174" width="344" height="7" rx="3.5" fill="#2634D5" />
-    <text x="80" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#3F5CA9">Q2 Â· QUáº¦Y 02</text>
-    <text x="231" y="232" textAnchor="middle" fontSize="20" fontWeight="800" fill="#182D5A">BÃºn, MÃ¬ &amp; BÃ¡nh mÃ¬</text>
+    <text x="80" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#3F5CA9">Q2 · QUẦY 02</text>
+    <text x="231" y="232" textAnchor="middle" fontSize="20" fontWeight="800" fill="#182D5A">Bún, Mì &amp; Bánh mì</text>
     <g transform="translate(231 263)">
       <ellipse cx="0" cy="5" rx="27" ry="7" fill="#dbe5ee" />
       <path d="M-22 -2Q0 7 22 -2L16 13Q0 23 -16 13Z"
@@ -1077,11 +1077,11 @@ const activeCounterId = (() => {
       <path d="M-11 -18L-1 -3M-3 -20L7 -4M5 -18L14 -3"
         fill="none" stroke="#a27b4f" strokeWidth="2.2" strokeLinecap="round" />
     </g>
-    <text x="231" y="298" textAnchor="middle" fontSize="11" fill="#72879d">MÃ“N NÆ¯á»šC Â· Äá»’ Ä‚N NHANH</text>
+    <text x="231" y="298" textAnchor="middle" fontSize="11" fill="#72879d">MÓN NƯỚC · Äá»’ ĂN NHANH</text>
     {activeCounterId === "Q2" && (
       <g>
         <rect x="278" y="187" width="109" height="20" rx="10" fill="#2634D5" />
-        <text x="332.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ÄÆ N Cá»¦A Báº N</text>
+        <text x="332.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ĐƠN CỦA BẠN</text>
       </g>
     )}
   </g>
@@ -1093,8 +1093,8 @@ const activeCounterId = (() => {
       stroke={activeCounterId === "Q1" ? "#2634D5" : "#D6E0F8"}
       strokeWidth={activeCounterId === "Q1" ? 3.5 : 1.3} />
     <rect x="428" y="174" width="344" height="7" rx="3.5" fill="#34d399" />
-    <text x="449" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#21835c">Q1 Â· QUáº¦Y 01</text>
-    <text x="600" y="232" textAnchor="middle" fontSize="20" fontWeight="800" fill="#182D5A">CÆ¡m &amp; Healthy</text>
+    <text x="449" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#21835c">Q1 · QUẦY 01</text>
+    <text x="600" y="232" textAnchor="middle" fontSize="20" fontWeight="800" fill="#182D5A">Cơm &amp; Healthy</text>
     <g transform="translate(600 263)">
       <ellipse cx="0" cy="7" rx="31" ry="14" fill="#e6eee9" stroke="#9cb5a5" strokeWidth="1.5" />
       <ellipse cx="0" cy="4" rx="25" ry="10" fill="#fff" stroke="#bdcfc4" strokeWidth="1.3" />
@@ -1103,11 +1103,11 @@ const activeCounterId = (() => {
       <circle cx="-16" cy="7" r="3.5" fill="#f59e0b" />
       <circle cx="5" cy="3" r="3" fill="#fb7185" />
     </g>
-    <text x="600" y="298" textAnchor="middle" fontSize="11" fill="#72879d">CÆ M PHáº¦N Â· MÃ“N HEALTHY</text>
+    <text x="600" y="298" textAnchor="middle" fontSize="11" fill="#72879d">CƠM PHẦN · MÓN HEALTHY</text>
     {activeCounterId === "Q1" && (
       <g>
         <rect x="647" y="187" width="109" height="20" rx="10" fill="#2634D5" />
-        <text x="701.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ÄÆ N Cá»¦A Báº N</text>
+        <text x="701.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ĐƠN CỦA BẠN</text>
       </g>
     )}
   </g>
@@ -1119,8 +1119,8 @@ const activeCounterId = (() => {
       stroke={activeCounterId === "Q3" ? "#2634D5" : "#D6E0F8"}
       strokeWidth={activeCounterId === "Q3" ? 3.5 : 1.3} />
     <rect x="797" y="174" width="344" height="7" rx="3.5" fill="#fb923c" />
-    <text x="818" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#b76524">Q3 Â· QUáº¦Y 03</text>
-    <text x="969" y="232" textAnchor="middle" fontSize="19" fontWeight="800" fill="#182D5A">Barista &amp; TrÃ¡ng miá»‡ng</text>
+    <text x="818" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#b76524">Q3 · QUẦY 03</text>
+    <text x="969" y="232" textAnchor="middle" fontSize="19" fontWeight="800" fill="#182D5A">Barista &amp; Tráng miệng</text>
     <g transform="translate(969 263)">
       <path d="M-17 -13H12V12Q12 17 7 17H-12Q-17 17 -17 12Z"
         fill="#DCE5FF" stroke="#6D8BFF" strokeWidth="1.5" />
@@ -1129,32 +1129,32 @@ const activeCounterId = (() => {
       <path d="M-12 -13Q-8 -19 -12 -24M-3 -13Q1 -19 -3 -24"
         fill="none" stroke="#a6b3cd" strokeWidth="1.7" strokeLinecap="round" />
     </g>
-    <text x="969" y="298" textAnchor="middle" fontSize="11" fill="#72879d">Äá»’ Uá»NG Â· BÃNH NGá»ŒT</text>
+    <text x="969" y="298" textAnchor="middle" fontSize="11" fill="#72879d">Äá»’ UỐNG · BÁNH NGỌT</text>
     {activeCounterId === "Q3" && (
       <g>
         <rect x="1016" y="187" width="109" height="20" rx="10" fill="#2634D5" />
-        <text x="1070.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ÄÆ N Cá»¦A Báº N</text>
+        <text x="1070.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ĐƠN CỦA BẠN</text>
       </g>
     )}
   </g>
 
   {/* ORDERING / PICKUP LINE */}
   <text x="65" y="344" fontSize="11" fontWeight="800" letterSpacing="1" fill="#687d94">
-    HÃ€NG CHá»œ PHá»¤C Vá»¤
+    HÀNG CHỜ PHỤC VỤ
   </text>
   <path d="M65 365H1134" stroke="#E2E9FF" strokeWidth="12" strokeLinecap="round" />
   <path d="M65 365H1134" stroke="#2878d0" strokeWidth="2.6"
     strokeDasharray="9 8" markerEnd="url(#vwa-restaurant-arrow)" />
   <rect x="428" y="349" width="344" height="32" rx="10" fill="#fff" stroke="#d7e2ed" />
   <text x="600" y="370" textAnchor="middle" fontSize="13" fontWeight="800" fill="#395776">
-    Gá»ŒI MÃ“N Â· NHáº¬N MÃ“N
+    GỌI MÓN · NHẬN MÓN
   </text>
 
   {/* DINING ROOM */}
   <rect x="43" y="405" width="1114" height="262" rx="16"
     fill="#fff5e7" stroke="#edd5b7" strokeWidth="1.5" />
   <text x="66" y="433" fontSize="13" fontWeight="800" letterSpacing="1" fill="#8b6235">
-    KHU Vá»°C NGá»’I Ä‚N
+    KHU VỰC NGỒI ĂN
   </text>
   <text x="1134" y="433" textAnchor="end" fontSize="11" letterSpacing=".8" fill="#9a8a76">
     DINING AREA
@@ -1218,7 +1218,7 @@ const activeCounterId = (() => {
     strokeDasharray="7 8" markerEnd="url(#vwa-restaurant-arrow)" />
   <rect x="438" y="535" width="324" height="26" rx="9" fill="#F7F9FF" stroke="#e0e8f0" />
   <text x="600" y="552" textAnchor="middle" fontSize="11" fontWeight="800" fill="#637d9a">
-    Lá»I ÄI CHÃNH
+    LỐI ĐI CHÍNH
   </text>
 
   {/* Additional tables */}
@@ -1250,12 +1250,12 @@ const activeCounterId = (() => {
   {/* ENTRY / EXIT */}
   <path d="M79 713V666" stroke="#2878d0" strokeWidth="3.5" markerEnd="url(#vwa-restaurant-arrow)" />
   <rect x="47" y="700" width="166" height="34" rx="10" fill="#E8EDFF" stroke="#cadcf5" />
-  <text x="130" y="721" textAnchor="middle" fontSize="12" fontWeight="800" fill="#2634D5">Lá»I VÃ€O Â· ENTRY</text>
+  <text x="130" y="721" textAnchor="middle" fontSize="12" fontWeight="800" fill="#2634D5">LỐI VìO · ENTRY</text>
 
   <path d="M1120 666V713" stroke="#71869c" strokeWidth="3.5" />
   <path d="M1113 704L1120 713L1127 704" fill="none" stroke="#71869c" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
   <rect x="987" y="700" width="166" height="34" rx="10" fill="#FFFFFF" stroke="#d6e0e8" />
-  <text x="1070" y="721" textAnchor="middle" fontSize="12" fontWeight="800" fill="#556b81">Lá»I RA Â· EXIT</text>
+  <text x="1070" y="721" textAnchor="middle" fontSize="12" fontWeight="800" fill="#556b81">LỐI RA · EXIT</text>
 </svg>
             </div>
 
@@ -1270,7 +1270,7 @@ const activeCounterId = (() => {
             }}>
               <Store size={17} style={{ flexShrink: 0, marginTop: 1 }} />
               <span>
-                {t("SÆ¡ Ä‘á»“ minh há»a dá»±a trÃªn ba quáº§y hiá»‡n cÃ³ trong há»‡ thá»‘ng. Vá»‹ trÃ­ máº·t báº±ng vÃ  lá»‘i Ä‘i cáº§n Ä‘Æ°á»£c Ä‘á»‘i chiáº¿u vá»›i bá»‘ trÃ­ thá»±c táº¿ táº¡i canteen.")}
+                {t("Sơ đồ minh họa dựa trên ba quầy hiện có trong hệ thống. Vị trí mặt bằng và lối đi cần được đối chiếu với bố trí thực tế tại canteen.")}
               </span>
             </footer>
 
@@ -1291,7 +1291,7 @@ const activeCounterId = (() => {
                 boxShadow: "0 5px 13px rgba(38,63,143,.2)"
               }}
             >
-              {t("ÄÃ³ng sÆ¡ Ä‘á»“")}
+              {t("Đóng sơ đồ")}
             </button>
           </section>
         </div>
@@ -1372,17 +1372,17 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
           )}
           <span className="orders-live-card__time">
             <Clock size={14} />
-            {t("Äáº·t lÃºc:")} {fmtDateTime(order.created_at)}
+            {t("Đặt lúc:")} {fmtDateTime(order.created_at)}
             {relativeLabel && (
               <span className="orders-live-card__time-label">
-                Â· {t(relativeLabel)}
+                · {t(relativeLabel)}
               </span>
             )}
           </span>
           {order.pickup_time && (
             <span className="orders-live-card__time orders-live-card__time--pickup">
               <Clock size={14} />
-              {t("Nháº­n:")} {order.pickup_time}
+              {t("Nhận:")} {order.pickup_time}
             </span>
           )}
         </div>
@@ -1390,7 +1390,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
         <div className="orders-live-card__pin-group">
           <div className="orders-live-card__pin-info">
             <span className="orders-live-card__pin-label">
-              {t("MÃ£ nháº­n táº¡i quáº§y")}
+              {t("Mã nhận tại quầy")}
             </span>
             <span className="orders-live-card__pin-value">#{pin}</span>
           </div>
@@ -1401,12 +1401,12 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
         <div className="orders-stepper__head">
           <span className="orders-stepper__status">
             <span className="orders-stepper__status-dot" />
-            {order.status === "Äang chuáº©n bá»‹"
-              ? t("Äáº§u báº¿p Ä‘ang thá»±c hiá»‡n â€¢ Dá»± kiáº¿n ra mÃ³n trong 3 phÃºt")
-              : `${t("Tráº¡ng thÃ¡i:")} ${t(order.status)}`}
+            {order.status === "Đang chuẩn bị"
+              ? t("Đầu bếp đang thực hiện Ѣ Dự kiến ra món trong 3 phút")
+              : `${t("Trạng thái:")} ${t(order.status)}`}
           </span>
           <span className="orders-stepper__step-count">
-            {t("BÆ°á»›c")} {stepIndex} / 4
+            {t("Bước")} {stepIndex} / 4
           </span>
         </div>
 
@@ -1437,14 +1437,14 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
                   )}
                   {step.subKey === "status" && isActive && (
                     <span className="orders-stepper__sub">
-                      {t("Äang chuáº©n bá»‹")}
+                      {t("Đang chuẩn bị")}
                     </span>
                   )}
                   {step.subKey === "note" && !isActive && !isDone && (
                     <span className="orders-stepper__sub">
                       {step.key === "ready"
-                        ? t("Chá» gá»i loa/mÃ n hÃ¬nh")
-                        : t("ÄÃ£ láº¥y khay")}
+                        ? t("Chờ gọi loa/màn hình")
+                        : t("Đã lấy khay")}
                     </span>
                   )}
                 </div>
@@ -1457,8 +1457,8 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
       <div className="orders-live-card__body">
         <div className="orders-live-card__items">
           <h3 className="orders-live-card__items-title">
-            {t("Danh sÃ¡ch mÃ³n Ä‘Ã£ gá»i")} (
-            {items.length.toString().padStart(2, "0")} {t("mÃ³n")})
+            {t("Danh sách món đã gọi")} (
+            {items.length.toString().padStart(2, "0")} {t("món")})
           </h3>
 
           {items.length === 0 ? (
@@ -1469,7 +1469,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
                 margin: 0,
               }}
             >
-              {t("ÄÆ¡n hÃ ng chÆ°a cÃ³ mÃ³n nÃ o")}
+              {t("Đơn hàng chưa có món nào")}
             </p>
           ) : (
             items.map((it, i) => (
@@ -1498,7 +1498,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
                     </span>
                     {it.note && (
                       <span className="orders-live-item__note">
-                        {t("Ghi chÃº:")} {it.note}
+                        {t("Ghi chú:")} {it.note}
                       </span>
                     )}
                   </div>
@@ -1510,7 +1510,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
 
         <div className="orders-live-card__summary">
           <div className="orders-summary-row">
-            <span className="orders-summary-label">{t("Tá»•ng giÃ¡ gá»‘c")}</span>
+            <span className="orders-summary-label">{t("Tổng giá gốc")}</span>
             <span className="orders-summary-value">
               {money(originalTotal)}
             </span>
@@ -1520,7 +1520,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
             <div className="orders-summary-row orders-summary-row--discount">
               <span className="orders-summary-label">
                 <Sparkles size={14} />
-                {t("Trá»£ giÃ¡ SV")}
+                {t("Trợ giá SV")}
               </span>
               <span className="orders-summary-value">
                 -{money(discount)}
@@ -1531,10 +1531,10 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
           <div className="orders-summary-final">
             <div>
               <span className="orders-summary-final-label">
-                {t("Thá»±c thanh toÃ¡n")}
+                {t("Thực thanh toán")}
               </span>
               <span className="orders-summary-final-sub">
-                <CheckCircle2 size={13} /> {t("ÄÃ£ trá»« qua Tháº» SV (SSO)")}
+                <CheckCircle2 size={13} /> {t("Đã trừ qua Thẻ SV (SSO)")}
               </span>
             </div>
             <span className="orders-summary-final-value">{money(total)}</span>
@@ -1547,7 +1547,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
               onClick={onView}
             >
               <Receipt size={15} />
-              {t("HÃ³a Ä‘Æ¡n")}
+              {t("Hóa đơn")}
             </button>
             <button
   type="button"
@@ -1555,17 +1555,17 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
   onClick={() => {
     const orderItems = Array.isArray(order?.items) ? order.items : [];
     const itemSummary = orderItems.slice(0, 5).map((item) => {
-      const name = item.name || item.food_name || item.item_name || "MÃ³n Äƒn";
+      const name = item.name || item.food_name || item.item_name || "Món ăn";
       const quantity = Number(item.qty ?? item.quantity ?? 1) || 1;
       return `${name} x${quantity}`;
     }).join(", ");
 
     const message = [
-      `Xin chÃ o nhÃ  hÃ ng, mÃ¬nh cáº§n há»— trá»£ sá»›m vá» Ä‘Æ¡n #${order?.code || order?.id || "Ä‘ang hiá»ƒn thá»‹"}.`,
-      `Tráº¡ng thÃ¡i: ${order?.status || "Ä‘ang xá»­ lÃ½"}.`,
-      `MÃ³n: ${itemSummary || "Vui lÃ²ng xem chi tiáº¿t Ä‘Æ¡n hÃ ng trÃªn há»‡ thá»‘ng"}.`,
-      `Tá»•ng thanh toÃ¡n: ${money(total)}.`,
-      "Nhá» nhÃ  hÃ ng kiá»ƒm tra Ä‘Æ¡n nÃ y vÃ  pháº£n há»“i giÃºp mÃ¬nh sá»›m nhÃ©."
+      `Xin chào nhà hàng, mình cần hỗ trợ sớm về đơn #${order?.code || order?.id || "đang hiển thị"}.`,
+      `Trạng thái: ${order?.status || "đang xử lý"}.`,
+      `Món: ${itemSummary || "Vui lòng xem chi tiết đơn hàng trên hệ thống"}.`,
+      `Tổng thanh toán: ${money(total)}.`,
+      "Nhờ nhà hàng kiểm tra đơn này và phản hồi giúp mình sớm nhé."
     ].join(" ");
 
     const supportDetail = {
@@ -1582,7 +1582,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
   }}
 >
   <Headset size={15} />
-  {t("Há»— trá»£")}
+  {t("Hỗ trợ")}
 </button>
             <button
               type="button"
@@ -1591,7 +1591,7 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
               onClick={() => onRemindOrder?.(order)}
             >
               <Bell size={15} />
-              {isReminderSet ? t("Há»§y bÃ¡o") : t("BÃ¡o tÃ´i")}
+              {isReminderSet ? t("Hủy báo") : t("Báo tôi")}
             </button>
           </div>
         </div>
@@ -1611,8 +1611,8 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
   const total = Number(order.total) || 0;
   const discount = Number(order.discount) || 0;
   const originalTotal = total + discount;
-  const isCancelled = order.status === "ÄÃ£ há»§y";
-  const isCompleted = order.status === "HoÃ n thÃ nh";
+  const isCancelled = order.status === "Đã hủy";
+  const isCompleted = order.status === "Hoàn thành";
   const relativeLabel = getRelativeDateLabel(order.created_at);
 
   return (
@@ -1631,7 +1631,7 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
           </span>
         </div>
         <span className="order-history-card__counter">
-          {order.counter_name || t("Quáº§y 01 (CÆ¡m trÆ°a)")}
+          {order.counter_name || t("Quầy 01 (Cơm trưa)")}
         </span>
       </div>
 
@@ -1654,7 +1654,7 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
                 isCancelled ? "strikethrough" : ""
               }`}
             >
-              {getItemsSummary(order) || t("ÄÆ¡n hÃ ng trá»‘ng")}
+              {getItemsSummary(order) || t("Đơn hàng trống")}
               {items.length > 1 && (
                 <span className="order-history-card__extra">
                   {" "}
@@ -1663,22 +1663,22 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
               )}
             </h4>
             <p className="order-history-card__desc">
-              {totalQty}x {t("Suáº¥t Äƒn")} â€¢{" "}
-              {firstItem?.category || t("CÆ¡m")}
+              {totalQty}x {t("Suất Ēn")} Ѣ{" "}
+              {firstItem?.category || t("Cơm")}
             </p>
 
             {isCompleted && order.rating && (
               <div className="order-history-card__rating">
                 <Sparkles size={12} color="#f59e0b" />
                 <b>{order.rating}</b>
-                <span>"{order.review || t("MÃ³n ngon, giao nhanh!")}"</span>
+                <span>"{order.review || t("Món ngon, giao nhanh!")}"</span>
               </div>
             )}
 
             {isCancelled && (
               <div className="order-history-card__refund">
                 <CheckCircle2 size={13} />
-                {t("ÄÃ£ hoÃ n 100% tiá»n vÃ o VÃ­ VWA Pay")}
+                {t("Đã hoàn 100% tiền vào Ví VWA Pay")}
               </div>
             )}
           </div>
@@ -1697,13 +1697,13 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
               </span>
               {discount > 0 && (
                 <span className="order-history-card__discount">
-                  -{money(discount)} {t("Trá»£ giÃ¡")}
+                  -{money(discount)} {t("Trợ giá")}
                 </span>
               )}
             </div>
             {isCancelled && (
               <span className="order-history-card__refund-note">
-                {t("ÄÃ£ hoÃ n táº¥t thá»§ tá»¥c hoÃ n tiá»n")}
+                {t("Đã hoàn tất thủ tục hoàn tiền")}
               </span>
             )}
           </div>
@@ -1714,7 +1714,7 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
               className="order-card-action"
               onClick={onView}
             >
-              {isCancelled ? t("Lá»‹ch sá»­ hoÃ n tiá»n") : t("Xem chi tiáº¿t")}
+              {isCancelled ? t("Lịch sử hoàn tiền") : t("Xem chi tiết")}
             </button>
             {!isCancelled && (
               <button
@@ -1723,7 +1723,7 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
                 onClick={() => onReorder?.(order)}
               >
                 <RefreshCw size={13} />
-                {t("Äáº·t láº¡i mÃ³n nÃ y")}
+                {t("Đặt lại món này")}
               </button>
             )}
           </div>
@@ -1739,14 +1739,14 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
 
 function StatusPill({ status, t }) {
   const configs = {
-    "Chá» xÃ¡c nháº­n":  { color: "#f59e0b", bg: "#fef3c7", Icon: Clock },
-    "ÄÃ£ xÃ¡c nháº­n":   { color: "#2634d5", bg: "#dbeafe", Icon: CheckCircle2 },
-    "Äang chuáº©n bá»‹": { color: "#8b5cf6", bg: "#ede9fe", Icon: ChefHat },
-    "Sáºµn sÃ ng nháº­n": { color: "#18a967", bg: "#d1fae5", Icon: ShoppingBag },
-    "HoÃ n thÃ nh":    { color: "#18a967", bg: "#d1fae5", Icon: CheckCircle2 },
-    "ÄÃ£ há»§y":        { color: "#ef4444", bg: "#fee2e2", Icon: XCircle },
+    "Chờ xác nhận":  { color: "#f59e0b", bg: "#fef3c7", Icon: Clock },
+    "Đã xác nhận":   { color: "#2634d5", bg: "#dbeafe", Icon: CheckCircle2 },
+    "Đang chuẩn bị": { color: "#8b5cf6", bg: "#ede9fe", Icon: ChefHat },
+    "Sẵn sàng nhận": { color: "#18a967", bg: "#d1fae5", Icon: ShoppingBag },
+    "Hoàn thành":    { color: "#18a967", bg: "#d1fae5", Icon: CheckCircle2 },
+    "Đã hủy":        { color: "#ef4444", bg: "#fee2e2", Icon: XCircle },
   };
-  const cfg = configs[status] || configs["Chá» xÃ¡c nháº­n"];
+  const cfg = configs[status] || configs["Chờ xác nhận"];
   const Icon = cfg.Icon;
 
   return (

@@ -1,4 +1,4 @@
-﻿// src/hooks/usePointsConfig.js
+// src/hooks/usePointsConfig.js
 // ============================================================
 // Hook dùng chung — cache config points toàn cục
 // ============================================================

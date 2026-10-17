@@ -1,9 +1,9 @@
-﻿// ============================================================
-// OWNERCUSTOMERS.JSX â€” Quáº£n lÃ½ khÃ¡ch hÃ ng + MÃ£ ngÃ nh (V4)
+// ============================================================
+// OWNERCUSTOMERS.JSX — Quản lý khách hàng + Mã ngành (V4)
 // ============================================================
 // V4 (2026-10):
-//   - âœ… DÃ¹ng api.school.* + api.users.* (thay vÃ¬ fetch trá»±c tiáº¿p)
-//   - Giá»¯ V3: Tab MÃ£ ngÃ nh, cá»™t MSSV, Set Ä‘iá»ƒm, Gá»¡ MSSV, filter ngÃ nh
+//   - ✅ Dùng api.school.* + api.users.* (thay vì fetch trực tiếp)
+//   - Giữ V3: Tab Mã ngành, cột MSSV, Set điểm, Gỡ MSSV, filter ngành
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
@@ -27,52 +27,52 @@ function normalize(s) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/Ä‘/g, "d")
+    .replace(/đ/g, "d")
     .trim();
 }
 
 function validatePhone(phone, t) {
   const p = String(phone || "").trim();
   if (!p) return null;
-  if (!/^0\d{9,10}$/.test(p)) return t("SÄT pháº£i báº¯t Ä‘áº§u báº±ng 0 vÃ  cÃ³ 10-11 chá»¯ sá»‘");
+  if (!/^0\d{9,10}$/.test(p)) return t("SĐT phải bắt đầu bằng 0 và có 10-11 chữ số");
   return null;
 }
 
-// âœ… Xáº¾P Háº NG THÃ€NH VIÃŠN THEO CHI TIÃŠU (VND)
+// ✅ XẾP HẠNG THÀNH VIÊN THEO CHI TIÊU (VND)
 function getMemberTier(totalSpent) {
   const t = Number(totalSpent) || 0;
-  if (t >= 4000000) return "Háº¡ng Kim cÆ°Æ¡ng";
-  if (t >= 2500000) return "Háº¡ng VÃ ng";
-  if (t >= 1000000) return "Háº¡ng Báº¡c";
-  return "ThÃ nh viÃªn má»›i";
+  if (t >= 4000000) return "Hạng Kim cương";
+  if (t >= 2500000) return "Hạng Vàng";
+  if (t >= 1000000) return "Hạng Bạc";
+  return "Thành viên mới";
 }
 
 const TIER_BADGE = {
-  "ThÃ nh viÃªn má»›i": { color: "#64748b", bg: "#f1f5f9", icon: "ðŸ‘¤" },
-  "Háº¡ng Báº¡c":       { color: "#475569", bg: "#e2e8f0", icon: "ðŸ¥ˆ" },
-  "Háº¡ng VÃ ng":      { color: "#f59e0b", bg: "#fef3c7", icon: "ðŸ†" },
-  "Háº¡ng Kim cÆ°Æ¡ng": { color: "#0EA5E9", bg: "#e0f2fe", icon: "ðŸ’Ž" },
+  "Thành viên mới": { color: "#64748b", bg: "#f1f5f9", icon: "👤" },
+  "Hạng Bạc":       { color: "#475569", bg: "#e2e8f0", icon: "🥈" },
+  "Hạng Vàng":      { color: "#f59e0b", bg: "#fef3c7", icon: "ðŸ†" },
+  "Hạng Kim cương": { color: "#0EA5E9", bg: "#e0f2fe", icon: "💎" },
 };
 
 const TIER_THRESHOLDS = [
-  { id: "all",             label: "Táº¥t cáº£ háº¡ng" },
-  { id: "ThÃ nh viÃªn má»›i",  label: "ThÃ nh viÃªn má»›i" },
-  { id: "Háº¡ng Báº¡c",        label: "Háº¡ng Báº¡c" },
-  { id: "Háº¡ng VÃ ng",       label: "Háº¡ng VÃ ng" },
-  { id: "Háº¡ng Kim cÆ°Æ¡ng",  label: "Háº¡ng Kim cÆ°Æ¡ng" },
+  { id: "all",             label: "Tất cả hạng" },
+  { id: "Thành viên mới",  label: "Thành viên mới" },
+  { id: "Hạng Bạc",        label: "Hạng Bạc" },
+  { id: "Hạng Vàng",       label: "Hạng Vàng" },
+  { id: "Hạng Kim cương",  label: "Hạng Kim cương" },
 ];
-// âœ… PHÃ‚N LOáº I KHÃCH HÃ€NG THEO EMAIL
+// ✅ PHÂN LOẠI KHÁCH HÀNG THEO EMAIL
 function getCustomerType(email) {
   const e = String(email || "").toLowerCase().trim();
-  if (e.endsWith("@vwa.edu.vn")) return "Giáº£ng viÃªn";
-  if (e.endsWith("@hpn.edu.vn")) return "Sinh viÃªn";
-  return "KhÃ¡ch";
+  if (e.endsWith("@vwa.edu.vn")) return "Giảng viên";
+  if (e.endsWith("@hpn.edu.vn")) return "Sinh viên";
+  return "Khách";
 }
 
 const TYPE_BADGE = {
-  "Giáº£ng viÃªn": { color: "#8b5cf6", bg: "#ede9fe", icon: "ðŸŽ“" },
-  "Sinh viÃªn":  { color: "#0EA5E9", bg: "#e0f2fe", icon: "ðŸŽ“" },
-  "KhÃ¡ch":      { color: "#f59e0b", bg: "#fef3c7", icon: "ðŸ‘¤" },
+  "Giảng viên": { color: "#8b5cf6", bg: "#ede9fe", icon: "🎓" },
+  "Sinh viên":  { color: "#0EA5E9", bg: "#e0f2fe", icon: "🎓" },
+  "Khách":      { color: "#f59e0b", bg: "#fef3c7", icon: "👤" },
 };
 
 // ============================================================
@@ -94,19 +94,19 @@ export default function OwnerCustomers() {
 
   const STATUS_FILTERS = useMemo(
     () => [
-      { id: "all",    label: t("Táº¥t cáº£") },
-      { id: "active", label: t("Hoáº¡t Ä‘á»™ng") },
-      { id: "locked", label: t("Bá»‹ khÃ³a") },
+      { id: "all",    label: t("Tất cả") },
+      { id: "active", label: t("Hoạt động") },
+      { id: "locked", label: t("Bị khóa") },
     ],
     [t]
   );
 
   const CUSTOMER_TYPE_FILTERS = useMemo(
     () => [
-      { id: "all",        label: t("Táº¥t cáº£ loáº¡i") },
-      { id: "Giáº£ng viÃªn", label: t("Giáº£ng viÃªn") },
-      { id: "Sinh viÃªn",  label: t("Sinh viÃªn")  },
-      { id: "KhÃ¡ch",      label: t("KhÃ¡ch")      },
+      { id: "all",        label: t("Tất cả loại") },
+      { id: "Giảng viên", label: t("Giảng viên") },
+      { id: "Sinh viên",  label: t("Sinh viên")  },
+      { id: "Khách",      label: t("Khách")      },
     ],
     [t]
   );
@@ -172,7 +172,7 @@ export default function OwnerCustomers() {
       const data = await api.users.list("CUSTOMER");
       setList(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e.message || t("KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch khÃ¡ch hÃ ng"));
+      setError(e.message || t("Không tải được danh sách khách hàng"));
       setList([]);
     } finally {
       setLoading(false);
@@ -181,7 +181,7 @@ export default function OwnerCustomers() {
 
   const loadOrders = useCallback(async () => {
     try {
-      const data = await api.orders.all("Táº¥t cáº£");
+      const data = await api.orders.all("Tất cả");
       setOrders(Array.isArray(data) ? data : []);
     } catch {
       setOrders([]);
@@ -197,7 +197,7 @@ export default function OwnerCustomers() {
       const res = await api.school.majorsMap();
       setMajorsMap(res && typeof res === "object" ? res : {});
     } catch (e) {
-      toast(e.message || t("KhÃ´ng táº£i Ä‘Æ°á»£c báº£ng mÃ£ ngÃ nh"), "error");
+      toast(e.message || t("Không tải được bảng mã ngành"), "error");
       setMajorsMap({});
     } finally {
       setMajorsLoading(false);
@@ -231,12 +231,12 @@ export default function OwnerCustomers() {
 
   // ---------- Stats ----------
   const statusCounts = useMemo(() => {
-    const active = list.filter((c) => (c.status || "Hoáº¡t Ä‘á»™ng") === "Hoáº¡t Ä‘á»™ng").length;
+    const active = list.filter((c) => (c.status || "Hoạt động") === "Hoạt động").length;
     const locked = list.length - active;
     return { all: list.length, active, locked };
   }, [list]);
 
-  // âœ… Äáº¿m sá»‘ lÆ°á»£ng theo phÃ¢n loáº¡i
+  // ✅ Đếm số lượng theo phân loại
   const typeCounts = useMemo(() => {
     const counts = { all: list.length };
     for (const c of list) {
@@ -246,11 +246,11 @@ export default function OwnerCustomers() {
     return counts;
   }, [list]);
 
-  // âœ… Map user_id â†’ tá»•ng chi tiÃªu (Ä‘Æ¡n HoÃ n thÃ nh)
+  // ✅ Map user_id → tổng chi tiêu (đơn Hoàn thành)
   const tierSpentMap = useMemo(() => {
     const map = {};
     for (const o of orders) {
-      if (o.status !== "HoÃ n thÃ nh") continue;
+      if (o.status !== "Hoàn thành") continue;
       const uid = o.user_id || o.customer_id;
       if (uid == null) continue;
       map[uid] = (map[uid] || 0) + (Number(o.total) || 0);
@@ -258,7 +258,7 @@ export default function OwnerCustomers() {
     return map;
   }, [orders]);
 
-  // âœ… Äáº¿m sá»‘ lÆ°á»£ng theo háº¡ng
+  // ✅ Đếm số lượng theo hạng
   const tierCounts = useMemo(() => {
     const counts = { all: list.length };
     for (const c of list) {
@@ -284,9 +284,9 @@ export default function OwnerCustomers() {
     let result = list;
 
     if (filterStatus === "active") {
-      result = result.filter((c) => (c.status || "Hoáº¡t Ä‘á»™ng") === "Hoáº¡t Ä‘á»™ng");
+      result = result.filter((c) => (c.status || "Hoạt động") === "Hoạt động");
     } else if (filterStatus === "locked") {
-      result = result.filter((c) => c.status === "Bá»‹ khÃ³a");
+      result = result.filter((c) => c.status === "Bị khóa");
     }
 
     if (filterFaculty !== "all") {
@@ -361,22 +361,22 @@ export default function OwnerCustomers() {
   // CUSTOMER HANDLERS
   // ============================================================
   const toggleLock = (c) => {
-    const newStatus = c.status === "Hoáº¡t Ä‘á»™ng" ? "Bá»‹ khÃ³a" : "Hoáº¡t Ä‘á»™ng";
-    const isLocking = newStatus === "Bá»‹ khÃ³a";
+    const newStatus = c.status === "Hoạt động" ? "Bị khóa" : "Hoạt động";
+    const isLocking = newStatus === "Bị khóa";
 
     setConfirm({
       title: isLocking
-        ? t("KhÃ³a tÃ i khoáº£n") + ` "${c.name}"?`
-        : t("Má»Ÿ khÃ³a tÃ i khoáº£n") + ` "${c.name}"?`,
+        ? t("Khóa tài khoản") + ` "${c.name}"?`
+        : t("Mở khóa tài khoản") + ` "${c.name}"?`,
       message: isLocking
-        ? t("KhÃ¡ch hÃ ng sáº½ khÃ´ng thá»ƒ Ä‘Äƒng nháº­p vÃ  Ä‘áº·t mÃ³n cho Ä‘áº¿n khi Ä‘Æ°á»£c má»Ÿ láº¡i.")
-        : t("KhÃ¡ch hÃ ng sáº½ cÃ³ thá»ƒ Ä‘Äƒng nháº­p vÃ  Ä‘áº·t mÃ³n trá»Ÿ láº¡i."),
-      confirmText: isLocking ? t("KhÃ³a tÃ i khoáº£n") : t("Má»Ÿ khÃ³a"),
-      cancelText: t("Há»§y"),
+        ? t("Khách hàng sẽ không thể đÄƒng nhập và đặt món cho đến khi được mở lại.")
+        : t("Khách hàng sẽ có thể đÄƒng nhập và đặt món trở lại."),
+      confirmText: isLocking ? t("Khóa tài khoản") : t("Mở khóa"),
+      cancelText: t("Hủy"),
       danger: isLocking,
       onConfirm: async () => {
         await api.users.update(c.id, { status: newStatus });
-        toast(isLocking ? t("ÄÃ£ khÃ³a tÃ i khoáº£n") : t("ÄÃ£ má»Ÿ khÃ³a tÃ i khoáº£n"), "success");
+        toast(isLocking ? t("Đã khóa tài khoản") : t("Đã mở khóa tài khoản"), "success");
         setConfirm(null);
         load();
       },
@@ -385,17 +385,17 @@ export default function OwnerCustomers() {
 
   const remove = (c) => {
     setConfirm({
-      title: t("XÃ³a tÃ i khoáº£n") + ` "${c.name}"?`,
+      title: t("Xóa tài khoản") + ` "${c.name}"?`,
       message:
-        t("HÃ nh Ä‘á»™ng nÃ y khÃ´ng thá»ƒ hoÃ n tÃ¡c. ToÃ n bá»™ dá»¯ liá»‡u liÃªn quan") +
+        t("Hành động này không thể hoàn tác. Toàn bộ dữ liệu liên quan") +
         " " +
-        t("(Ä‘Æ¡n hÃ ng, vÃ­, voucher, chat...) sáº½ bá»‹ xoÃ¡ vÄ©nh viá»…n."),
-      confirmText: t("XÃ³a vÄ©nh viá»…n"),
-      cancelText: t("Há»§y"),
+        t("(đơn hàng, ví, voucher, chat...) sẽ bị xoá vĩnh viễn."),
+      confirmText: t("Xóa vĩnh viễn"),
+      cancelText: t("Hủy"),
       danger: true,
       onConfirm: async () => {
         await api.users.remove(c.id);
-        toast(t("ÄÃ£ xÃ³a tÃ i khoáº£n"), "success");
+        toast(t("Đã xóa tài khoản"), "success");
         setConfirm(null);
         load();
       },
@@ -416,7 +416,7 @@ export default function OwnerCustomers() {
     const phone = f.get("phone")?.trim();
     const status = f.get("status");
 
-    if (!name) return setEditError(t("Vui lÃ²ng nháº­p há» tÃªn"));
+    if (!name) return setEditError(t("Vui lòng nhập họ tên"));
     const phoneErr = validatePhone(phone, t);
     if (phoneErr) return setEditError(phoneErr);
 
@@ -424,11 +424,11 @@ export default function OwnerCustomers() {
     setSaving(true);
     try {
       await api.users.update(editModal.id, { name, phone, status });
-      toast(t("ÄÃ£ cáº­p nháº­t thÃ´ng tin khÃ¡ch hÃ ng"), "success");
+      toast(t("Đã cập nhật thông tin khách hàng"), "success");
       setEditModal(null);
       load();
     } catch (e) {
-      setEditError(e.message || t("KhÃ´ng lÆ°u Ä‘Æ°á»£c"));
+      setEditError(e.message || t("Không lưu được"));
     } finally {
       setSaving(false);
     }
@@ -446,7 +446,7 @@ export default function OwnerCustomers() {
 
     const p = Number(pointsForm.points);
     if (!Number.isFinite(p) || p < 0) {
-      setPointsError(t("Äiá»ƒm pháº£i lÃ  sá»‘ >= 0"));
+      setPointsError(t("Điểm phải là số >= 0"));
       return;
     }
 
@@ -457,11 +457,11 @@ export default function OwnerCustomers() {
         reason: pointsForm.reason.trim(),
       });
 
-      toast(t("ÄÃ£ set Ä‘iá»ƒm thÃ nh cÃ´ng: {n} Ä‘iá»ƒm").replace("{n}", String(p)), "success");
+      toast(t("Đã set điểm thành công: {n} điểm").replace("{n}", String(p)), "success");
       setPointsModal(null);
       load();
     } catch (e) {
-      setPointsError(e.message || t("KhÃ´ng set Ä‘Æ°á»£c Ä‘iá»ƒm"));
+      setPointsError(e.message || t("Không set được điểm"));
     } finally {
       setPointsSaving(false);
     }
@@ -469,17 +469,17 @@ export default function OwnerCustomers() {
 
   const unlinkMssv = (c) => {
     setConfirm({
-      title: t("Gá»¡ liÃªn káº¿t MSSV") + ` "${c.name}"?`,
+      title: t("Gỡ liên kết MSSV") + ` "${c.name}"?`,
       message:
         t("MSSV") +
         ` ${c.student_code} ` +
-        t("sáº½ bá»‹ gá»¡ khá»i tÃ i khoáº£n nÃ y. KhÃ¡ch hÃ ng sáº½ máº¥t thÃ´ng tin ngÃ nh/khoa vÃ  cáº§n liÃªn káº¿t láº¡i tá»« Ä‘áº§u."),
-      confirmText: t("Gá»¡ liÃªn káº¿t"),
-      cancelText: t("Há»§y"),
+        t("sẽ bị gỡ khỏi tài khoản này. Khách hàng sẽ mất thông tin ngành/khoa và cần liên kết lại từ đầu."),
+      confirmText: t("Gỡ liên kết"),
+      cancelText: t("Hủy"),
       danger: true,
       onConfirm: async () => {
         await api.users.unlinkMssv(c.id);
-        toast(t("ÄÃ£ gá»¡ liÃªn káº¿t MSSV"), "success");
+        toast(t("Đã gỡ liên kết MSSV"), "success");
         setConfirm(null);
         load();
       },
@@ -501,7 +501,7 @@ export default function OwnerCustomers() {
       setVouchers(res?.vouchers || []);
       setVoucherStats(res?.stats || { total: 0, used: 0, available: 0, totalValue: 0 });
     } catch (e) {
-      toast(e.message || t("KhÃ´ng táº£i Ä‘Æ°á»£c vÃ­ voucher"), "error");
+      toast(e.message || t("Không tải được ví voucher"), "error");
     } finally {
       setLoadingVouchers(false);
     }
@@ -509,16 +509,16 @@ export default function OwnerCustomers() {
 
   const revokeVoucher = (v) => {
     setConfirm({
-      title: t("Thu há»“i voucher") + ` "${v.code}"?`,
+      title: t("Thu hồi voucher") + ` "${v.code}"?`,
       message:
-        t("Voucher trá»‹ giÃ¡") + ` ${fmtMoney(v.value)} ` +
-        t("sáº½ bá»‹ thu há»“i khá»i vÃ­ cá»§a khÃ¡ch hÃ ng vÃ  khÃ´ng thá»ƒ khÃ´i phá»¥c."),
-      confirmText: t("Thu há»“i"),
-      cancelText: t("Há»§y"),
+        t("Voucher trị giá") + ` ${fmtMoney(v.value)} ` +
+        t("sẽ bị thu hồi khỏi ví của khách hàng và không thể khôi phục."),
+      confirmText: t("Thu hồi"),
+      cancelText: t("Hủy"),
       danger: true,
       onConfirm: async () => {
         await api.vouchers.revoke(v.id);
-        toast(t("ÄÃ£ thu há»“i voucher"), "success");
+        toast(t("Đã thu hồi voucher"), "success");
         setConfirm(null);
         if (voucherModal) loadVouchers(voucherModal);
       },
@@ -528,7 +528,7 @@ export default function OwnerCustomers() {
   const copyCode = (v) => {
     navigator.clipboard.writeText(v.code);
     setCopiedId(v.id);
-    toast(t("ÄÃ£ sao chÃ©p mÃ£") + " " + v.code, "success");
+    toast(t("Đã sao chép mã") + " " + v.code, "success");
     setTimeout(() => setCopiedId(null), 1500);
   };
 
@@ -561,19 +561,19 @@ export default function OwnerCustomers() {
     const faculty = majorForm.faculty.trim();
     const code_full = majorForm.code_full.trim();
 
-    if (!code) return setMajorError(t("Vui lÃ²ng nháº­p mÃ£ ngÃ nh"));
-    if (!/^\d{3,4}$/.test(code)) return setMajorError(t("MÃ£ ngÃ nh pháº£i lÃ  3 hoáº·c 4 chá»¯ sá»‘"));
-    if (!name) return setMajorError(t("Vui lÃ²ng nháº­p tÃªn ngÃ nh"));
+    if (!code) return setMajorError(t("Vui lòng nhập mã ngành"));
+    if (!/^\d{3,4}$/.test(code)) return setMajorError(t("Mã ngành phải là 3 hoặc 4 chữ số"));
+    if (!name) return setMajorError(t("Vui lòng nhập tên ngành"));
 
     if (majorEditModal?.isNew && majorsMap[code]) {
-      return setMajorError(t("MÃ£ ngÃ nh nÃ y Ä‘Ã£ tá»“n táº¡i"));
+      return setMajorError(t("Mã ngành này đã tồn tại"));
     }
     if (
       !majorEditModal?.isNew &&
       code !== majorEditModal.originalCode &&
       majorsMap[code]
     ) {
-      return setMajorError(t("MÃ£ ngÃ nh nÃ y Ä‘Ã£ tá»“n táº¡i"));
+      return setMajorError(t("Mã ngành này đã tồn tại"));
     }
 
     setMajorSaving(true);
@@ -587,12 +587,12 @@ export default function OwnerCustomers() {
       const d = await api.school.updateMajorsMap(newMap);
       setMajorsMap(d.map || newMap);
       toast(
-        majorEditModal?.isNew ? t("ÄÃ£ thÃªm mÃ£ ngÃ nh") : t("ÄÃ£ cáº­p nháº­t mÃ£ ngÃ nh"),
+        majorEditModal?.isNew ? t("Đã thêm mã ngành") : t("Đã cập nhật mã ngành"),
         "success"
       );
       setMajorEditModal(null);
     } catch (e) {
-      setMajorError(e.message || t("KhÃ´ng lÆ°u Ä‘Æ°á»£c"));
+      setMajorError(e.message || t("Không lưu được"));
     } finally {
       setMajorSaving(false);
     }
@@ -600,12 +600,12 @@ export default function OwnerCustomers() {
 
   const deleteMajor = (code, info) => {
     setConfirm({
-      title: t("XoÃ¡ mÃ£ ngÃ nh") + ` "${code}"?`,
+      title: t("Xoá mã ngành") + ` "${code}"?`,
       message:
-        t("MÃ£ ngÃ nh") + ` "${info.name}" ` +
-        t("sáº½ bá»‹ xoÃ¡. Sinh viÃªn Ä‘Ã£ liÃªn káº¿t vá»›i mÃ£ nÃ y váº«n giá»¯ thÃ´ng tin cÅ©, nhÆ°ng sinh viÃªn má»›i sáº½ khÃ´ng tra cá»©u Ä‘Æ°á»£c."),
-      confirmText: t("XoÃ¡"),
-      cancelText: t("Há»§y"),
+        t("Mã ngành") + ` "${info.name}" ` +
+        t("sẽ bị xoá. Sinh viên đã liên kết với mã này vẫn giữ thông tin cũ, nhưng sinh viên mới sẽ không tra cứu được."),
+      confirmText: t("Xoá"),
+      cancelText: t("Hủy"),
       danger: true,
       onConfirm: async () => {
         const newMap = { ...majorsMap };
@@ -613,7 +613,7 @@ export default function OwnerCustomers() {
 
         const d = await api.school.updateMajorsMap(newMap);
         setMajorsMap(d.map || newMap);
-        toast(t("ÄÃ£ xoÃ¡ mÃ£ ngÃ nh"), "success");
+        toast(t("Đã xoá mã ngành"), "success");
         setConfirm(null);
       },
     });
@@ -621,15 +621,15 @@ export default function OwnerCustomers() {
 
   const resetMajors = () => {
     setConfirm({
-      title: t("KhÃ´i phá»¥c báº£ng mÃ£ ngÃ nh máº·c Ä‘á»‹nh?"),
-      message: t("ToÃ n bá»™ thay Ä‘á»•i cá»§a báº¡n sáº½ bá»‹ máº¥t vÃ  quay vá» báº£ng 10 mÃ£ ngÃ nh gá»‘c."),
-      confirmText: t("KhÃ´i phá»¥c"),
-      cancelText: t("Há»§y"),
+      title: t("Khôi phục bảng mã ngành mặc định?"),
+      message: t("Toàn bộ thay đổi của bạn sẽ bị mất và quay về bảng 10 mã ngành gốc."),
+      confirmText: t("Khôi phục"),
+      cancelText: t("Hủy"),
       danger: true,
       onConfirm: async () => {
         const d = await api.school.resetMajorsMap();
         setMajorsMap(d.map || {});
-        toast(t("ÄÃ£ khÃ´i phá»¥c báº£ng mÃ£ ngÃ nh máº·c Ä‘á»‹nh"), "success");
+        toast(t("Đã khôi phục bảng mã ngành mặc định"), "success");
         setConfirm(null);
       },
     });
@@ -639,15 +639,15 @@ export default function OwnerCustomers() {
   // UTILS
   // ============================================================
   const getInitials = (name) => (name || "?").slice(0, 2).toUpperCase();
-  const fmtNumber = (n) => typeof n === "number" ? n.toLocaleString("vi-VN") : n ?? "â€”";
-  const fmtMoney = (n) => fmtNumber(n) + "Ä‘";
+  const fmtNumber = (n) => typeof n === "number" ? n.toLocaleString("vi-VN") : n ?? "—";
+  const fmtMoney = (n) => fmtNumber(n) + "đ";
 
   const getVoucherSource = (v) => {
     if (v.claimed_from)
-      return { label: t("Nháº­n tá»« Æ¯Ä"), color: "#8b5cf6", bg: "#ede9fe", icon: Globe };
+      return { label: t("Nhận từ ƯĐ"), color: "#8b5cf6", bg: "#ede9fe", icon: Globe };
     if (v.points_used > 0)
-      return { label: t("Äá»•i Ä‘iá»ƒm"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
-    return { label: t("Admin táº·ng"), color: "#2634d5", bg: "#eef2ff", icon: UserIcon };
+      return { label: t("Äá»•i điểm"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
+    return { label: t("Admin tặng"), color: "#2634d5", bg: "#eef2ff", icon: UserIcon };
   };
 
   const visibleVouchers = useMemo(
@@ -693,7 +693,7 @@ export default function OwnerCustomers() {
             }}
           >
             <Users size={16} />
-            {t("KhÃ¡ch hÃ ng")}
+            {t("Khách hàng")}
             <span
               style={{
                 background: activeTab === "customers" ? "rgba(255,255,255,0.3)" : "var(--card-bg, #e2e8f0)",
@@ -731,7 +731,7 @@ export default function OwnerCustomers() {
             }}
           >
             <GraduationCap size={16} />
-            {t("MÃ£ ngÃ nh")}
+            {t("Mã ngành")}
             <span
               style={{
                 background: activeTab === "majors" ? "rgba(255,255,255,0.3)" : "var(--card-bg, #e2e8f0)",
@@ -758,7 +758,7 @@ export default function OwnerCustomers() {
         {activeTab === "customers" && (
           <>
             {/* ============================================================
-                Há»˜P 1: Search + Counter + Clear
+                HỘP 1: Search + Counter + Clear
                 ============================================================ */}
             <div
               style={{
@@ -790,7 +790,7 @@ export default function OwnerCustomers() {
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder={t("TÃ¬m theo tÃªn, email, MSSV, SÄT...")}
+                  placeholder={t("Tìm theo tên, email, MSSV, SĐT...")}
                   style={{
                     flex: 1,
                     border: 0,
@@ -813,7 +813,7 @@ export default function OwnerCustomers() {
                       display: "grid",
                       placeItems: "center",
                     }}
-                    aria-label={t("XÃ³a tÃ¬m kiáº¿m")}
+                    aria-label={t("Xóa tìm kiếm")}
                   >
                     <X size={14} />
                   </button>
@@ -837,7 +837,7 @@ export default function OwnerCustomers() {
                 <Users size={16} />
                 <b>{filtered.length}</b>
                 <span style={{ color: "var(--text-muted, #64748b)", fontWeight: 500 }}>
-                  {t("khÃ¡ch hÃ ng")}
+                  {t("khách hàng")}
                 </span>
               </div>
 
@@ -860,13 +860,13 @@ export default function OwnerCustomers() {
                   }}
                 >
                   <RotateCcw size={14} />
-                  {t("XÃ³a lá»c")}
+                  {t("Xóa lọc")}
                 </button>
               )}
             </div>
 
             {/* ============================================================
-                Há»˜P 2: 3 cá»¥m filter (Tráº¡ng thÃ¡i | PhÃ¢n loáº¡i | Háº¡ng)
+                HỘP 2: 3 cụm filter (Trạng thái | Phân loại | Hạng)
                 ============================================================ */}
             <div
               style={{
@@ -881,7 +881,7 @@ export default function OwnerCustomers() {
                 alignItems: "start",
               }}
             >
-              {/* Cá»¥m 1: Tráº¡ng thÃ¡i */}
+              {/* Cụm 1: Trạng thái */}
               <div>
                 <button
                   onClick={() => setOpenStatus((v) => !v)}
@@ -891,7 +891,7 @@ export default function OwnerCustomers() {
                     <Shield size={16} />
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", flex: 1 }}>
-                    {t("Tráº¡ng thÃ¡i")}
+                    {t("Trạng thái")}
                   </span>
                   <ChevronDown size={14} style={{ color: "var(--text-muted, #64748b)", transition: "transform 0.2s", transform: openStatus ? "rotate(180deg)" : "rotate(0deg)" }} />
                 </button>
@@ -917,7 +917,7 @@ export default function OwnerCustomers() {
                 )}
               </div>
 
-              {/* Cá»¥m 2: PhÃ¢n loáº¡i */}
+              {/* Cụm 2: Phân loại */}
               <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
                 <button
                   onClick={() => setOpenType((v) => !v)}
@@ -927,7 +927,7 @@ export default function OwnerCustomers() {
                     <UserRound size={16} />
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", flex: 1 }}>
-                    {t("PhÃ¢n loáº¡i")}
+                    {t("Phân loại")}
                   </span>
                   <ChevronDown size={14} style={{ color: "var(--text-muted, #64748b)", transition: "transform 0.2s", transform: openType ? "rotate(180deg)" : "rotate(0deg)" }} />
                 </button>
@@ -953,7 +953,7 @@ export default function OwnerCustomers() {
                 )}
               </div>
 
-              {/* Cá»¥m 3: Háº¡ng */}
+              {/* Cụm 3: Hạng */}
               <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
                 <button
                   onClick={() => setOpenTier((v) => !v)}
@@ -963,7 +963,7 @@ export default function OwnerCustomers() {
                     <Award size={16} />
                   </div>
                   <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)", flex: 1 }}>
-                    {t("Háº¡ng")}
+                    {t("Hạng")}
                   </span>
                   <ChevronDown size={14} style={{ color: "var(--text-muted, #64748b)", transition: "transform 0.2s", transform: openTier ? "rotate(180deg)" : "rotate(0deg)" }} />
                 </button>
@@ -1002,7 +1002,7 @@ export default function OwnerCustomers() {
                 <SkeletonTable
                   columns={9}
                   rows={5}
-                  headers={[t("ID"), t("KhÃ¡ch hÃ ng"), t("LiÃªn há»‡"), t("MSSV Â· NgÃ nh"), t("Äiá»ƒm"), t("Háº¡ng"), t("Loáº¡i"), t("Tráº¡ng thÃ¡i"), t("Thao tÃ¡c")]}
+                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("ĐiỒm"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
                 />
               )}
 
@@ -1018,7 +1018,7 @@ export default function OwnerCustomers() {
                   }}
                 >
                   <AlertCircle size={26} style={{ marginBottom: 10 }} />
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{t("KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u")}</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{t("Không tải được dữ liệu")}</div>
                   <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 12 }}>{error}</div>
                   <button
                     onClick={load}
@@ -1033,7 +1033,7 @@ export default function OwnerCustomers() {
                       fontSize: 13,
                     }}
                   >
-                    {t("Thá»­ láº¡i")}
+                    {t("Thử lại")}
                   </button>
                 </div>
               )}
@@ -1044,14 +1044,14 @@ export default function OwnerCustomers() {
                     <thead>
                       <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
                         <th style={thStyle}>{t("ID")}</th>
-                        <th style={thStyle}>{t("KhÃ¡ch hÃ ng")}</th>
-                        <th style={thStyle}>{t("LiÃªn há»‡")}</th>
-                        <th style={thStyle}>{t("MSSV Â· NgÃ nh")}</th>
-                        <th style={thStyle}>{t("Äiá»ƒm")}</th>
-                        <th style={thStyle}>{t("Háº¡ng")}</th>
-                        <th style={thStyle}>{t("Loáº¡i")}</th>
-                        <th style={thStyle}>{t("Tráº¡ng thÃ¡i")}</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tÃ¡c")}</th>
+                        <th style={thStyle}>{t("Khách hàng")}</th>
+                        <th style={thStyle}>{t("Liên hệ")}</th>
+                        <th style={thStyle}>{t("MSSV · Ngành")}</th>
+                        <th style={thStyle}>{t("ĐiỒm")}</th>
+                        <th style={thStyle}>{t("Hạng")}</th>
+                        <th style={thStyle}>{t("Loại")}</th>
+                        <th style={thStyle}>{t("Trạng thái")}</th>
+                        <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tác")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1089,7 +1089,7 @@ export default function OwnerCustomers() {
                                 </span>
                                 <span>
                                   <Phone size={12} style={{ display: "inline", marginRight: 4, verticalAlign: -2 }} />
-                                  {c.phone || "â€”"}
+                                  {c.phone || "—"}
                                 </span>
                               </div>
                             </td>
@@ -1097,7 +1097,7 @@ export default function OwnerCustomers() {
                             <td style={tdStyle}>
                               {hasMssv ? (
                                 <div
-                                  title={`MSSV: ${c.student_code}${c.major_name ? ` Â· ${c.major_name}` : ""}`}
+                                  title={`MSSV: ${c.student_code}${c.major_name ? ` · ${c.major_name}` : ""}`}
                                   style={{ display: "flex", flexDirection: "column", gap: 2 }}
                                 >
                                   <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 700, color: "#0c4a6e" }}>
@@ -1111,14 +1111,14 @@ export default function OwnerCustomers() {
                                 </div>
                               ) : (
                                 <span style={{ fontSize: 11, color: "var(--text-light, #94a3b8)", fontStyle: "italic" }}>
-                                  {t("ChÆ°a liÃªn káº¿t")}
+                                  {t("Chưa liên kết")}
                                 </span>
                               )}
                             </td>
 
                             <td style={tdStyle}>
                               <b style={{ color: "#f59e0b" }}>
-                                {fmtNumber(c.points || 0)} {t("Ä‘iá»ƒm")}
+                                {fmtNumber(c.points || 0)} {t("điểm")}
                               </b>
                             </td>
 
@@ -1131,36 +1131,36 @@ export default function OwnerCustomers() {
                             </td>
 
                             <td style={tdStyle}>
-                              <StatusBadge status={c.status || "Hoáº¡t Ä‘á»™ng"} t={t} />
+                              <StatusBadge status={c.status || "Hoạt động"} t={t} />
                             </td>
 
                             <td style={{ ...tdStyle, textAlign: "right" }}>
                               <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                                <IconButton onClick={() => loadVouchers(c)} title={t("VÃ­ voucher")} color="#8b5cf6" bg="#f5f3ff">
+                                <IconButton onClick={() => loadVouchers(c)} title={t("Ví voucher")} color="#8b5cf6" bg="#f5f3ff">
                                   <Ticket size={15} />
                                 </IconButton>
-                                <IconButton onClick={() => setDetail(c)} title={t("Xem chi tiáº¿t")}>
+                                <IconButton onClick={() => setDetail(c)} title={t("Xem chi tiết")}>
                                   <Eye size={15} />
                                 </IconButton>
-                                <IconButton onClick={() => openEdit(c)} title={t("Sá»­a")}>
+                                <IconButton onClick={() => openEdit(c)} title={t("Sửa")}>
                                   <Edit size={15} />
                                 </IconButton>
-                                <IconButton onClick={() => openPointsModal(c)} title={t("Set Ä‘iá»ƒm")} color="#f59e0b" bg="#fff4d8">
+                                <IconButton onClick={() => openPointsModal(c)} title={t("Set điểm")} color="#f59e0b" bg="#fff4d8">
                                   <Award size={15} />
                                 </IconButton>
                                 {hasMssv && (
-                                  <IconButton onClick={() => unlinkMssv(c)} title={t("Gá»¡ liÃªn káº¿t MSSV")} color="#dc2626" bg="#fef2f2">
+                                  <IconButton onClick={() => unlinkMssv(c)} title={t("Gỡ liên kết MSSV")} color="#dc2626" bg="#fef2f2">
                                     <Unlink size={15} />
                                   </IconButton>
                                 )}
                                 <IconButton
                                   onClick={() => toggleLock(c)}
-                                  title={c.status === "Hoáº¡t Ä‘á»™ng" ? t("KhÃ³a tÃ i khoáº£n") : t("Má»Ÿ khÃ³a")}
-                                  color={c.status === "Hoáº¡t Ä‘á»™ng" ? "#ef4444" : "#18a967"}
+                                  title={c.status === "Hoạt động" ? t("Khóa tài khoản") : t("Mở khóa")}
+                                  color={c.status === "Hoạt động" ? "#ef4444" : "#18a967"}
                                 >
-                                  {c.status === "Hoáº¡t Ä‘á»™ng" ? <Lock size={15} /> : <Unlock size={15} />}
+                                  {c.status === "Hoạt động" ? <Lock size={15} /> : <Unlock size={15} />}
                                 </IconButton>
-                                <IconButton onClick={() => remove(c)} title={t("XÃ³a")} color="#ef4444">
+                                <IconButton onClick={() => remove(c)} title={t("Xóa")} color="#ef4444">
                                   <Trash2 size={15} />
                                 </IconButton>
                               </div>
@@ -1175,8 +1175,8 @@ export default function OwnerCustomers() {
                             <Users size={36} style={{ opacity: 0.35, marginBottom: 10 }} />
                             <div>
                               {hasFilter
-                                ? t("KhÃ´ng cÃ³ khÃ¡ch hÃ ng nÃ o khá»›p bá»™ lá»c")
-                                : t("ChÆ°a cÃ³ khÃ¡ch hÃ ng nÃ o")}
+                                ? t("Không có khách hàng nào khớp bộ lọc")
+                                : t("Chưa có khách hàng nào")}
                             </div>
                           </td>
                         </tr>
@@ -1220,7 +1220,7 @@ export default function OwnerCustomers() {
                 <input
                   value={majorsQ}
                   onChange={(e) => setMajorsQ(e.target.value)}
-                  placeholder={t("TÃ¬m theo mÃ£, tÃªn ngÃ nh, khoa...")}
+                  placeholder={t("Tìm theo mã, tên ngành, khoa...")}
                   style={{
                     flex: 1,
                     border: 0,
@@ -1256,7 +1256,7 @@ export default function OwnerCustomers() {
                   gap: 6,
                 }}
               >
-                <Plus size={15} /> {t("ThÃªm mÃ£ ngÃ nh")}
+                <Plus size={15} /> {t("Thêm mã ngành")}
               </button>
 
               <button
@@ -1275,12 +1275,12 @@ export default function OwnerCustomers() {
                   gap: 6,
                 }}
               >
-                <RefreshCw size={15} /> {t("KhÃ´i phá»¥c máº·c Ä‘á»‹nh")}
+                <RefreshCw size={15} /> {t("Khôi phục mặc định")}
               </button>
 
               <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginLeft: "auto" }}>
                 <b style={{ color: "var(--text-primary, #172033)" }}>{filteredMajors.length}</b>{" "}
-                {t("mÃ£ ngÃ nh")}
+                {t("mã ngành")}
               </div>
             </div>
 
@@ -1295,18 +1295,18 @@ export default function OwnerCustomers() {
               {majorsLoading ? (
                 <div style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}>
                   <Loader2 size={24} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
-                  <div style={{ fontSize: 13 }}>{t("Äang táº£i báº£ng mÃ£ ngÃ nh...")}</div>
+                  <div style={{ fontSize: 13 }}>{t("Đang tải bảng mã ngành...")}</div>
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
-                        <th style={thStyle}>{t("MÃ£ ngÃ nh")}</th>
-                        <th style={thStyle}>{t("TÃªn ngÃ nh")}</th>
+                        <th style={thStyle}>{t("Mã ngành")}</th>
+                        <th style={thStyle}>{t("Tên ngành")}</th>
                         <th style={thStyle}>{t("Khoa")}</th>
-                        <th style={thStyle}>{t("MÃ£ Bá»™ GD")}</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tÃ¡c")}</th>
+                        <th style={thStyle}>{t("Mã Bộ GD")}</th>
+                        <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tác")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1330,20 +1330,20 @@ export default function OwnerCustomers() {
                             </span>
                           </td>
                           <td style={tdStyle}>
-                            <b style={{ fontSize: 13 }}>{info.name || "â€”"}</b>
+                            <b style={{ fontSize: 13 }}>{info.name || "—"}</b>
                           </td>
                           <td style={{ ...tdStyle, fontSize: 12, color: "var(--text-muted, #64748b)" }}>
-                            {info.faculty || "â€”"}
+                            {info.faculty || "—"}
                           </td>
                           <td style={{ ...tdStyle, fontSize: 12, color: "var(--text-muted, #64748b)", fontFamily: "ui-monospace, monospace" }}>
-                            {info.code_full || "â€”"}
+                            {info.code_full || "—"}
                           </td>
                           <td style={{ ...tdStyle, textAlign: "right" }}>
                             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                              <IconButton onClick={() => openEditMajor(code, info)} title={t("Sá»­a")}>
+                              <IconButton onClick={() => openEditMajor(code, info)} title={t("Sửa")}>
                                 <Edit size={15} />
                               </IconButton>
-                              <IconButton onClick={() => deleteMajor(code, info)} title={t("XoÃ¡")} color="#ef4444">
+                              <IconButton onClick={() => deleteMajor(code, info)} title={t("Xoá")} color="#ef4444">
                                 <Trash2 size={15} />
                               </IconButton>
                             </div>
@@ -1357,8 +1357,8 @@ export default function OwnerCustomers() {
                             <GraduationCap size={36} style={{ opacity: 0.35, marginBottom: 10 }} />
                             <div>
                               {majorsQ
-                                ? t("KhÃ´ng cÃ³ mÃ£ ngÃ nh nÃ o khá»›p tÃ¬m kiáº¿m")
-                                : t("Báº£ng mÃ£ ngÃ nh trá»‘ng")}
+                                ? t("Không có mã ngành nào khớp tìm kiếm")
+                                : t("Bảng mã ngành trống")}
                             </div>
                           </td>
                         </tr>
@@ -1372,7 +1372,7 @@ export default function OwnerCustomers() {
         )}
 
         {/* ============================================================
-            MODAL: CHI TIáº¾T KHÃCH HÃ€NG
+            MODAL: CHI TIẾT KHÁCH HÀNG
             ============================================================ */}
         {detail && (
           <Modal onClose={() => setDetail(null)} maxWidth={520}>
@@ -1391,42 +1391,42 @@ export default function OwnerCustomers() {
               <p style={{ color: "var(--text-muted, #64748b)", margin: 0, fontSize: 13 }}>{detail.email}</p>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 20, textAlign: "left" }}>
-                <InfoBlock label={t("MÃ£ KH")} value={`KH${detail.id}`} />
-                <InfoBlock label={t("SÄT")} value={detail.phone || "â€”"} />
-                <InfoBlock label={t("Äiá»ƒm tÃ­ch lÅ©y")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
-                <InfoBlock label={t("Tráº¡ng thÃ¡i")} value={detail.status || t("Hoáº¡t Ä‘á»™ng")} />
+                <InfoBlock label={t("Mã KH")} value={`KH${detail.id}`} />
+                <InfoBlock label={t("SĐT")} value={detail.phone || "—"} />
+                <InfoBlock label={t("ĐiỒm tích lũy")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
+                <InfoBlock label={t("Trạng thái")} value={detail.status || t("Hoạt động")} />
 
                 {detail.student_code ? (
                   <>
                     <InfoBlock label={t("MSSV")} value={detail.student_code} mono />
-                    <InfoBlock label={t("NgÃ nh há»c")} value={detail.major_name || "â€”"} />
-                    <InfoBlock label={t("Khoa")} value={detail.faculty || "â€”"} />
-                    <InfoBlock label={t("NÄƒm nháº­p há»c")} value={detail.year_in ? String(detail.year_in) : "â€”"} />
+                    <InfoBlock label={t("Ngành học")} value={detail.major_name || "—"} />
+                    <InfoBlock label={t("Khoa")} value={detail.faculty || "—"} />
+                    <InfoBlock label={t("NĒm nhập học")} value={detail.year_in ? String(detail.year_in) : "—"} />
                   </>
                 ) : (
                   <div style={{ gridColumn: "span 2" }}>
-                    <InfoBlock label={t("MSSV")} value={t("ChÆ°a liÃªn káº¿t")} />
+                    <InfoBlock label={t("MSSV")} value={t("Chưa liên kết")} />
                   </div>
                 )}
               </div>
 
               <button onClick={() => setDetail(null)} style={{ ...btnPrimaryStyle, marginTop: 16 }}>
-                {t("ÄÃ³ng")}
+                {t("Đóng")}
               </button>
             </div>
           </Modal>
         )}
 
         {/* ============================================================
-            MODAL: Sá»¬A KHÃCH HÃ€NG
+            MODAL: SỬA KHÁCH HÀNG
             ============================================================ */}
         {editModal && (
           <Modal onClose={() => !saving && setEditModal(null)} maxWidth={480}>
             <h3 style={{ marginTop: 0, marginBottom: 20, color: "var(--text-primary, #172033)" }}>
-              {t("Chá»‰nh sá»­a khÃ¡ch hÃ ng")}
+              {t("Chỉnh sửa khách hàng")}
             </h3>
             <form onSubmit={saveEdit}>
-              <label style={modalLabelStyle}>{t("Há» tÃªn")} *</label>
+              <label style={modalLabelStyle}>{t("Họ tên")} *</label>
               <input
                 name="name"
                 defaultValue={editModal.name}
@@ -1436,7 +1436,7 @@ export default function OwnerCustomers() {
                 onChange={() => editError && setEditError("")}
               />
 
-              <label style={modalLabelStyle}>{t("Sá»‘ Ä‘iá»‡n thoáº¡i")}</label>
+              <label style={modalLabelStyle}>{t("Số điện thoại")}</label>
               <input
                 name="phone"
                 defaultValue={editModal.phone || ""}
@@ -1451,20 +1451,20 @@ export default function OwnerCustomers() {
                 </div>
               )}
 
-              <label style={modalLabelStyle}>{t("Tráº¡ng thÃ¡i")}</label>
-              <select name="status" defaultValue={editModal.status || "Hoáº¡t Ä‘á»™ng"} style={modalInputStyle}>
-                <option>{t("Hoáº¡t Ä‘á»™ng")}</option>
-                <option>{t("Bá»‹ khÃ³a")}</option>
+              <label style={modalLabelStyle}>{t("Trạng thái")}</label>
+              <select name="status" defaultValue={editModal.status || "Hoạt động"} style={modalInputStyle}>
+                <option>{t("Hoạt động")}</option>
+                <option>{t("Bị khóa")}</option>
               </select>
 
               <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
                 <button type="button" onClick={() => setEditModal(null)} disabled={saving} style={btnCancelStyle}>
-                  {t("Há»§y")}
+                  {t("Hủy")}
                 </button>
                 <button type="submit" disabled={saving} style={btnPrimaryStyleLoading(saving)}>
                   {saving ? (
-                    <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Äang lÆ°u...")}</>
-                  ) : t("LÆ°u thay Ä‘á»•i")}
+                    <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang lưu...")}</>
+                  ) : t("Lưu thay đổi")}
                 </button>
               </div>
             </form>
@@ -1472,7 +1472,7 @@ export default function OwnerCustomers() {
         )}
 
         {/* ============================================================
-            MODAL: SET ÄIá»‚M
+            MODAL: SET ĐIỂM
             ============================================================ */}
         {pointsModal && (
           <Modal onClose={() => !pointsSaving && setPointsModal(null)} maxWidth={460}>
@@ -1482,22 +1482,22 @@ export default function OwnerCustomers() {
               </div>
               <div>
                 <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 16 }}>
-                  {t("Set Ä‘iá»ƒm cho khÃ¡ch hÃ ng")}
+                  {t("Set điểm cho khách hàng")}
                 </h3>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted, #64748b)" }}>
-                  {pointsModal.name} Â· {pointsModal.email}
+                  {pointsModal.name} · {pointsModal.email}
                 </p>
               </div>
             </div>
 
             <div style={{ background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}>{t("Äiá»ƒm hiá»‡n táº¡i")}:</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}>{t("Điểm hiện tại")}:</span>
               <b style={{ color: "#f59e0b", fontSize: 16 }}>
-                {fmtNumber(pointsModal.points || 0)} {t("Ä‘iá»ƒm")}
+                {fmtNumber(pointsModal.points || 0)} {t("điểm")}
               </b>
             </div>
 
-            <label style={modalLabelStyle}>{t("Äiá»ƒm má»›i")} *</label>
+            <label style={modalLabelStyle}>{t("Điểm mới")} *</label>
             <input
               type="number"
               min={0}
@@ -1511,7 +1511,7 @@ export default function OwnerCustomers() {
             {Number(pointsForm.points) !== Number(pointsModal.points || 0) && (
               <div style={{ fontSize: 12, fontWeight: 700, marginTop: -10, marginBottom: 12, color: Number(pointsForm.points) > Number(pointsModal.points || 0) ? "#18a967" : "#ef4444" }}>
                 ({Number(pointsForm.points) > Number(pointsModal.points || 0) ? "+" : ""}
-                {Number(pointsForm.points) - Number(pointsModal.points || 0)} {t("Ä‘iá»ƒm")})
+                {Number(pointsForm.points) - Number(pointsModal.points || 0)} {t("điểm")})
               </div>
             )}
 
@@ -1521,12 +1521,12 @@ export default function OwnerCustomers() {
               </div>
             )}
 
-            <label style={modalLabelStyle}>{t("LÃ½ do (tÃ¹y chá»n)")}</label>
+            <label style={modalLabelStyle}>{t("Lý do (tùy chọn)")}</label>
             <input
               type="text"
               value={pointsForm.reason}
               onChange={(e) => setPointsForm((f) => ({ ...f, reason: e.target.value }))}
-              placeholder={t("VD: ThÆ°á»Ÿng sinh viÃªn tÃ­ch cá»±c")}
+              placeholder={t("VD: Thưởng sinh viên tích cực")}
               style={modalInputStyle}
               disabled={pointsSaving}
               maxLength={200}
@@ -1534,13 +1534,13 @@ export default function OwnerCustomers() {
 
             <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
               <button type="button" onClick={() => setPointsModal(null)} disabled={pointsSaving} style={btnCancelStyle}>
-                {t("Há»§y")}
+                {t("Hủy")}
               </button>
               <button type="button" onClick={savePoints} disabled={pointsSaving} style={btnPrimaryStyleLoading(pointsSaving)}>
                 {pointsSaving ? (
-                  <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Äang lÆ°u...")}</>
+                  <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang lưu...")}</>
                 ) : (
-                  <><Award size={14} /> {t("LÆ°u Ä‘iá»ƒm")}</>
+                  <><Award size={14} /> {t("Lưu điểm")}</>
                 )}
               </button>
             </div>
@@ -1548,7 +1548,7 @@ export default function OwnerCustomers() {
         )}
 
         {/* ============================================================
-            MODAL: Sá»¬A / THÃŠM MÃƒ NGÃ€NH
+            MODAL: SỬA / THÊM MÃ NGÀNH
             ============================================================ */}
         {majorEditModal && (
           <Modal onClose={() => !majorSaving && setMajorEditModal(null)} maxWidth={520}>
@@ -1558,17 +1558,17 @@ export default function OwnerCustomers() {
               </div>
               <div>
                 <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 16 }}>
-                  {majorEditModal.isNew ? t("ThÃªm mÃ£ ngÃ nh má»›i") : t("Sá»­a mÃ£ ngÃ nh")}
+                  {majorEditModal.isNew ? t("Thêm mã ngành mới") : t("Sửa mã ngành")}
                 </h3>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted, #64748b)" }}>
                   {majorEditModal.isNew
-                    ? t("MÃ£ ngÃ nh dÃ¹ng Ä‘á»ƒ tra cá»©u thÃ´ng tin sinh viÃªn khi liÃªn káº¿t MSSV")
-                    : `${t("Äang sá»­a")} ${majorEditModal.originalCode}`}
+                    ? t("Mã ngành dùng để tra cứu thông tin sinh viên khi liên kết MSSV")
+                    : `${t("Đang sửa")} ${majorEditModal.originalCode}`}
                 </p>
               </div>
             </div>
 
-            <label style={modalLabelStyle}>{t("MÃ£ ngÃ nh")} * <span style={{ fontWeight: 400, color: "var(--text-light, #94a3b8)" }}>(3-4 chá»¯ sá»‘)</span></label>
+            <label style={modalLabelStyle}>{t("Mã ngành")} * <span style={{ fontWeight: 400, color: "var(--text-light, #94a3b8)" }}>(3-4 chữ số)</span></label>
             <input
               type="text"
               value={majorForm.code}
@@ -1585,16 +1585,16 @@ export default function OwnerCustomers() {
             />
             {!majorEditModal.isNew && (
               <div style={{ fontSize: 11, color: "var(--text-light, #94a3b8)", marginTop: -10, marginBottom: 10 }}>
-                {t("KhÃ´ng thá»ƒ Ä‘á»•i mÃ£ ngÃ nh sau khi Ä‘Ã£ táº¡o. XoÃ¡ vÃ  táº¡o má»›i náº¿u cáº§n.")}
+                {t("Không thể đổi mã ngành sau khi đã tạo. Xoá và tạo mới nếu cần.")}
               </div>
             )}
 
-            <label style={modalLabelStyle}>{t("TÃªn ngÃ nh")} *</label>
+            <label style={modalLabelStyle}>{t("Tên ngành")} *</label>
             <input
               type="text"
               value={majorForm.name}
               onChange={(e) => { setMajorForm((f) => ({ ...f, name: e.target.value })); if (majorError) setMajorError(""); }}
-              placeholder={t("VD: CÃ´ng nghá»‡ thÃ´ng tin / Thiáº¿t káº¿ Game")}
+              placeholder={t("VD: Công nghệ thông tin / Thiết kế Game")}
               style={modalInputStyle}
               disabled={majorSaving}
               maxLength={200}
@@ -1605,13 +1605,13 @@ export default function OwnerCustomers() {
               type="text"
               value={majorForm.faculty}
               onChange={(e) => setMajorForm((f) => ({ ...f, faculty: e.target.value }))}
-              placeholder={t("VD: Khoa CÃ´ng nghá»‡ ThÃ´ng tin & Truyá»n thÃ´ng")}
+              placeholder={t("VD: Khoa Công nghệ Thông tin & Truyền thông")}
               style={modalInputStyle}
               disabled={majorSaving}
               maxLength={200}
             />
 
-            <label style={modalLabelStyle}>{t("MÃ£ Bá»™ GD")}</label>
+            <label style={modalLabelStyle}>{t("Mã Bộ GD")}</label>
             <input
               type="text"
               value={majorForm.code_full}
@@ -1630,13 +1630,13 @@ export default function OwnerCustomers() {
 
             <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
               <button type="button" onClick={() => setMajorEditModal(null)} disabled={majorSaving} style={btnCancelStyle}>
-                {t("Há»§y")}
+                {t("Hủy")}
               </button>
               <button type="button" onClick={saveMajor} disabled={majorSaving} style={btnPrimaryStyleLoading(majorSaving)}>
                 {majorSaving ? (
-                  <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Äang lÆ°u...")}</>
+                  <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang lưu...")}</>
                 ) : (
-                  <><Save size={14} /> {majorEditModal.isNew ? t("ThÃªm") : t("LÆ°u")}</>
+                  <><Save size={14} /> {majorEditModal.isNew ? t("Thêm") : t("Lưu")}</>
                 )}
               </button>
             </div>
@@ -1644,7 +1644,7 @@ export default function OwnerCustomers() {
         )}
 
         {/* ============================================================
-            MODAL: VÃ VOUCHER
+            MODAL: VÍ VOUCHER
             ============================================================ */}
         {voucherModal && (
           <Modal onClose={() => setVoucherModal(null)} maxWidth={620}>
@@ -1655,29 +1655,29 @@ export default function OwnerCustomers() {
                 </div>
                 <div>
                   <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", display: "flex", alignItems: "center", gap: 6, fontSize: 16 }}>
-                    <Ticket size={18} style={{ color: "#8b5cf6" }} /> {t("VÃ­ voucher")}
+                    <Ticket size={18} style={{ color: "#8b5cf6" }} /> {t("Ví voucher")}
                   </h3>
                   <div style={{ fontSize: 12, color: "var(--text-light, #8993a3)", marginTop: 2 }}>
-                    <b style={{ color: "var(--text-primary, #172033)" }}>{voucherModal.name}</b> Â· {voucherModal.email}
+                    <b style={{ color: "var(--text-primary, #172033)" }}>{voucherModal.name}</b> · {voucherModal.email}
                   </div>
                 </div>
               </div>
-              <button onClick={() => setVoucherModal(null)} style={modalCloseStyle} aria-label={t("ÄÃ³ng")}>
+              <button onClick={() => setVoucherModal(null)} style={modalCloseStyle} aria-label={t("Đóng")}>
                 <X size={20} />
               </button>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-              <MiniStat label={t("Tá»”NG")} value={voucherStats.total} color="#2634d5" bg="#eef2ff" />
-              <MiniStat label={t("KHáº¢ Dá»¤NG")} value={voucherStats.available} color="#18a967" bg="#e8f9f1" />
-              <MiniStat label={t("ÄÃƒ DÃ™NG")} value={voucherStats.used} color="#ef4444" bg="#fee2e2" />
-              <MiniStat label={t("Tá»”NG GIÃ TRá»Š")} value={fmtMoney(voucherStats.totalValue || 0)} color="#f59e0b" bg="#fff4d8" smallValue />
+              <MiniStat label={t("TỔNG")} value={voucherStats.total} color="#2634d5" bg="#eef2ff" />
+              <MiniStat label={t("KHẢ DỤNG")} value={voucherStats.available} color="#18a967" bg="#e8f9f1" />
+              <MiniStat label={t("ÄÃƒ DÙNG")} value={voucherStats.used} color="#ef4444" bg="#fee2e2" />
+              <MiniStat label={t("TỔNG GIÁ TRỊ")} value={fmtMoney(voucherStats.totalValue || 0)} color="#f59e0b" bg="#fff4d8" smallValue />
             </div>
 
             <div style={{ display: "flex", gap: 4, marginBottom: 14, background: "var(--bg-tertiary, #f5f7fb)", padding: 4, borderRadius: 10 }}>
               {[
-                { id: "active", label: t("Kháº£ dá»¥ng"), count: voucherStats.available, color: "#18a967" },
-                { id: "used", label: t("ÄÃ£ dÃ¹ng"), count: voucherStats.used, color: "#ef4444" },
+                { id: "active", label: t("Khả dụng"), count: voucherStats.available, color: "#18a967" },
+                { id: "used", label: t("Đã dùng"), count: voucherStats.used, color: "#ef4444" },
               ].map((tab) => {
                 const isActive = voucherTab === tab.id;
                 return (
@@ -1709,13 +1709,13 @@ export default function OwnerCustomers() {
             {loadingVouchers ? (
               <div style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}>
                 <Loader2 size={24} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
-                <div style={{ fontSize: 13 }}>{t("Äang táº£i vÃ­ voucher...")}</div>
+                <div style={{ fontSize: 13 }}>{t("Đang tải ví voucher...")}</div>
               </div>
             ) : visibleVouchers.length === 0 ? (
               <div style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10 }}>
                 <Ticket size={40} style={{ opacity: 0.3, marginBottom: 8 }} />
                 <p style={{ margin: 0, fontSize: 13 }}>
-                  {voucherTab === "active" ? t("KhÃ¡ch chÆ°a cÃ³ voucher kháº£ dá»¥ng") : t("KhÃ¡ch chÆ°a dÃ¹ng voucher nÃ o")}
+                  {voucherTab === "active" ? t("Khách chưa có voucher khả dụng") : t("Khách chưa dùng voucher nào")}
                 </p>
               </div>
             ) : (
@@ -1754,12 +1754,12 @@ export default function OwnerCustomers() {
                           {fmtMoney(v.value)}
                         </div>
                         <span style={{ fontSize: 10, color: v.used ? "#ef4444" : "#18a967", fontWeight: 700 }}>
-                          {v.used ? t("ÄÃ£ dÃ¹ng") : t("Kháº£ dá»¥ng")}
+                          {v.used ? t("Đã dùng") : t("Khả dụng")}
                         </span>
                       </div>
 
                       {!v.used && (
-                        <button onClick={() => revokeVoucher(v)} title={t("Thu há»“i")} style={{ padding: 6, border: "1px solid #ef4444", borderRadius: 6, background: "var(--card-bg, #fff)", cursor: "pointer", color: "#ef4444", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                        <button onClick={() => revokeVoucher(v)} title={t("Thu hồi")} style={{ padding: 6, border: "1px solid #ef4444", borderRadius: 6, background: "var(--card-bg, #fff)", cursor: "pointer", color: "#ef4444", display: "grid", placeItems: "center", flexShrink: 0 }}>
                           <Ban size={14} />
                         </button>
                       )}
@@ -1770,7 +1770,7 @@ export default function OwnerCustomers() {
             )}
 
             <button onClick={() => setVoucherModal(null)} style={{ ...btnPrimaryStyle, marginTop: 16 }}>
-              {t("ÄÃ³ng")}
+              {t("Đóng")}
             </button>
           </Modal>
         )}
@@ -1799,7 +1799,7 @@ export default function OwnerCustomers() {
 // SUB-COMPONENTS
 // ============================================================
 function StatusBadge({ status, t }) {
-  const active = status === "Hoáº¡t Ä‘á»™ng";
+  const active = status === "Hoạt động";
   return (
     <span style={{ display: "inline-flex", padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: active ? "#e8f9f1" : "#fde8e8", color: active ? "#18a967" : "#ef4444", whiteSpace: "nowrap" }}>
       {t(status)}
@@ -1809,7 +1809,7 @@ function StatusBadge({ status, t }) {
 
 function MemberTierBadge({ spent }) {
   const tier = getMemberTier(spent);
-  const meta = TIER_BADGE[tier] || TIER_BADGE["ThÃ nh viÃªn má»›i"];
+  const meta = TIER_BADGE[tier] || TIER_BADGE["Thành viên mới"];
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: meta.bg, color: meta.color, whiteSpace: "nowrap" }}>
       {meta.icon} {tier}
@@ -1817,7 +1817,7 @@ function MemberTierBadge({ spent }) {
   );
 }
 function CustomerTypeBadge({ type }) {
-  const meta = TYPE_BADGE[type] || TYPE_BADGE["KhÃ¡ch"];
+  const meta = TYPE_BADGE[type] || TYPE_BADGE["Khách"];
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: meta.bg, color: meta.color, whiteSpace: "nowrap" }}>
       {meta.icon} {type}

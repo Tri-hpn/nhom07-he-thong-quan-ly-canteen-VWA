@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 
 // TODO: Implement OwnerShifts page
 export default function OwnerShifts() {

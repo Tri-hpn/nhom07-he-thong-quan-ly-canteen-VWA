@@ -1,8 +1,8 @@
 // ============================================================
-// CUSTOMERWALLET.JSX â€” VÃ­ Canteen VWA Pay (V2 - design má»›i)
+// CUSTOMERWALLET.JSX — Ví Canteen VWA Pay (V2 - design mới)
 // ============================================================
-// âœ… GIá»® NGUYÃŠN: logic, state, hooks, API calls, i18n
-// ðŸŽ¨ THAY Äá»”I: cáº¥u trÃºc JSX render theo design má»›i
+// ✅ GIỮ NGUYÊN: logic, state, hooks, API calls, i18n
+//  THAY Äá»”I: cấu trúc JSX render theo design mới
 // ============================================================
 
 import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
@@ -54,11 +54,11 @@ const EMPTY_WALLET = {
 // ============================================================
 
 function fmtDateTime(iso) {
-  if (!iso) return "â€”";
+  if (!iso) return "—";
   try {
     return new Date(iso).toLocaleString("vi-VN");
   } catch {
-    return "â€”";
+    return "—";
   }
 }
 
@@ -101,35 +101,35 @@ export default function CustomerWallet({ user }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showLinkBank, setShowLinkBank] = useState(false);
 
-  // QR countdown (design cÃ³ auto-refresh)
+  // QR countdown (design có auto-refresh)
   const [qrTimer, setQrTimer] = useState(60);
   const [autoSubsidy, setAutoSubsidy] = useState(true);
-  // Sá»‘ giao dá»‹ch Ä‘ang hiá»ƒn thá»‹ (nÃºt "Xem thÃªm lá»‹ch sá»­ cÅ© hÆ¡n")
+  // Số giao dịch đang hiển thị (nút "Xem thêm lịch sử cũ hơn")
   const [visibleTx, setVisibleTx] = useState(8);
 
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
 
-  // ---------- TX config (GIá»® NGUYÃŠN) ----------
+  // ---------- TX config (GIỮ NGUYÊN) ----------
   const TX_CONFIG = useMemo(
     () => ({
-      deposit:  { icon: ArrowDownCircle, color: "#18a967", bg: "#e8f9f1", label: t("Náº¡p tiá»n"),    sign: "+" },
-      withdraw: { icon: ArrowUpCircle,   color: "#f59e0b", bg: "#fef3c7", label: t("RÃºt tiá»n"),    sign: "âˆ’" },
-      payment:  { icon: ShoppingBag,     color: "#8b5cf6", bg: "#ede9fe", label: t("Thanh toÃ¡n"),  sign: "âˆ’" },
+      deposit:  { icon: ArrowDownCircle, color: "#18a967", bg: "#e8f9f1", label: t("Nạp tiền"),    sign: "+" },
+      withdraw: { icon: ArrowUpCircle,   color: "#f59e0b", bg: "#fef3c7", label: t("Rút tiền"),    sign: "−" },
+      payment:  { icon: ShoppingBag,     color: "#8b5cf6", bg: "#ede9fe", label: t("Thanh toán"),  sign: "−" },
     }),
     [t]
   );
 
   const STATUS_CONFIG = useMemo(
     () => ({
-      pending:  { label: t("Chá» duyá»‡t"), color: "#f59e0b", bg: "#fef3c7" },
-      approved: { label: t("ThÃ nh cÃ´ng"), color: "#18a967", bg: "#e8f9f1" },
-      rejected: { label: t("Tá»« chá»‘i"),    color: "#ef4444", bg: "#fee2e2" },
+      pending:  { label: t("Chờ duyệt"), color: "#f59e0b", bg: "#fef3c7" },
+      approved: { label: t("Thành công"), color: "#18a967", bg: "#e8f9f1" },
+      rejected: { label: t("Từ chối"),    color: "#ef4444", bg: "#fee2e2" },
     }),
     [t]
   );
 
-  // ---------- Load (GIá»® NGUYÃŠN) ----------
+  // ---------- Load (GIỮ NGUYÊN) ----------
   const loadAll = useCallback(async (silent = false) => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
@@ -152,7 +152,7 @@ export default function CustomerWallet({ user }) {
       if (st) setSettings(st);
     } catch (e) {
       if (myReqId === reqIdRef.current) {
-        setError(e.message || t("KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u vÃ­"));
+        setError(e.message || t("Không tải được dữ liệu ví"));
       }
     } finally {
       if (myReqId === reqIdRef.current) {
@@ -175,7 +175,7 @@ export default function CustomerWallet({ user }) {
     return () => clearInterval(timer);
   }, []);
 
-  // ---------- Derived (GIá»® NGUYÃŠN) ----------
+  // ---------- Derived (GIỮ NGUYÊN) ----------
   const filtered = useMemo(() => {
     let list = transactions;
     if (tab !== "all") {
@@ -225,14 +225,14 @@ export default function CustomerWallet({ user }) {
     const requestedAmount = Number(topupAmount);
     if (!Number.isFinite(requestedAmount) || requestedAmount < MIN_DEPOSIT) {
       toast(
-        t("Sá»‘ tiá»n náº¡p tá»‘i thiá»ƒu {value}").replace("{value}", money(MIN_DEPOSIT)),
+        t("Số tiền nạp tối thiểu {value}").replace("{value}", money(MIN_DEPOSIT)),
         "error"
       );
       return;
     }
 
     if (!Number.isInteger(requestedAmount)) {
-      toast(t("Sá»‘ tiá»n náº¡p pháº£i lÃ  sá»‘ nguyÃªn há»£p lá»‡."), "error");
+      toast(t("Số tiền nạp phải là số nguyên hợp lệ."), "error");
       return;
     }
 
@@ -242,7 +242,7 @@ export default function CustomerWallet({ user }) {
       Number(pendingTopupTx.amount) === requestedAmount
     ) {
       toast(
-        t("Chuyá»ƒn khoáº£n thÃ nh cÃ´ng. Äang chá» duyá»‡t"),
+        t("Chuyển khoản thành công. Đang chờ duyệt"),
         "info"
       );
       return;
@@ -258,20 +258,20 @@ export default function CustomerWallet({ user }) {
 
       const transaction = result?.transaction;
       if (!transaction) {
-        throw new Error(t("KhÃ´ng táº¡o Ä‘Æ°á»£c yÃªu cáº§u náº¡p tiá»n."));
+        throw new Error(t("Không tạo được yêu cầu nạp tiền."));
       }
 
       if (topupMethod === "CASH") {
         setPendingTopupTx(null);
-        toast(t("ÄÃ£ táº¡o yÃªu cáº§u náº¡p tiá»n máº·t. Vui lÃ²ng thanh toÃ¡n táº¡i quáº§y."), "success");
+        toast(t("Đã tạo yêu cầu nạp tiền mặt. Vui lòng thanh toán tại quầy."), "success");
         await handleSuccessModal();
       } else {
         setPendingTopupTx(transaction);
         setShowDeposit(true);
-        toast(t("Chuyá»ƒn khoáº£n thÃ nh cÃ´ng. Äang chá» duyá»‡t"), "info");
+        toast(t("Chuyển khoản thành công. Đang chờ duyệt"), "info");
       }
     } catch (error) {
-      toast(error?.message || t("KhÃ´ng táº¡o Ä‘Æ°á»£c yÃªu cáº§u náº¡p tiá»n"), "error");
+      toast(error?.message || t("Không tạo được yêu cầu nạp tiền"), "error");
     } finally {
       setTopupSubmitting(false);
     }
@@ -292,14 +292,14 @@ export default function CustomerWallet({ user }) {
 
     if (!Number.isFinite(requestedAmount) || requestedAmount < MIN_DEPOSIT) {
       toast(
-        t("Sá»‘ tiá»n náº¡p tá»‘i thiá»ƒu {value}").replace("{value}", money(MIN_DEPOSIT)),
+        t("Số tiền nạp tối thiểu {value}").replace("{value}", money(MIN_DEPOSIT)),
         "error"
       );
       return;
     }
 
     if (!Number.isInteger(requestedAmount)) {
-      toast(t("Sá»‘ tiá»n náº¡p pháº£i lÃ  sá»‘ nguyÃªn há»£p lá»‡."), "error");
+      toast(t("Số tiền nạp phải là số nguyên hợp lệ."), "error");
       return;
     }
 
@@ -322,14 +322,14 @@ export default function CustomerWallet({ user }) {
       const transaction = result?.transaction;
 
       if (!transaction?.code) {
-        throw new Error(t("KhÃ´ng táº¡o Ä‘Æ°á»£c yÃªu cáº§u náº¡p tiá»n."));
+        throw new Error(t("Không tạo được yêu cầu nạp tiền."));
       }
 
       setPendingTopupTx(transaction);
-      toast(t("MÃ£ QR náº¡p tiá»n Ä‘Ã£ sáºµn sÃ ng."), "success");
+      toast(t("Mã QR nạp tiền đã sẵn sàng."), "success");
     } catch (error) {
       toast(
-        error?.message || t("KhÃ´ng táº¡o Ä‘Æ°á»£c yÃªu cáº§u náº¡p tiá»n"),
+        error?.message || t("Không tạo được yêu cầu nạp tiền"),
         "error"
       );
     } finally {
@@ -343,10 +343,10 @@ export default function CustomerWallet({ user }) {
   ]);
   // TX tabs config
   const TABS = [
-    { id: "all",      label: t("Táº¥t cáº£") },
-    { id: "deposit",  label: t("Náº¡p tiá»n (+)") },
-    { id: "payment",  label: t("Thanh toÃ¡n mÃ³n (âˆ’)") },
-    { id: "withdraw", label: t("Trá»£ giÃ¡ & HoÃ n tiá»n") },
+    { id: "all",      label: t("Tất cả") },
+    { id: "deposit",  label: t("Nạp tiền (+)") },
+    { id: "payment",  label: t("Thanh toán món (−)") },
+    { id: "withdraw", label: t("Trợ giá & Hoàn tiền") },
   ];
 
   // ============================================================
@@ -361,7 +361,7 @@ export default function CustomerWallet({ user }) {
           <AlertCircle size={18} />
           <span>{error}</span>
           <button onClick={() => loadAll(false)}>
-            <RefreshCw size={12} /> {t("Thá»­ láº¡i")}
+            <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
       )}
@@ -375,10 +375,10 @@ export default function CustomerWallet({ user }) {
             {t("Canteen VWA")}
           </a>
           <ChevronRight size={14} className="wallet-breadcrumb__sep" />
-          <span>{t("TÃ i khoáº£n")}</span>
+          <span>{t("Tài khoản")}</span>
           <ChevronRight size={14} className="wallet-breadcrumb__sep" />
           <span className="wallet-breadcrumb__current">
-            {t("VÃ­ Canteen & Tháº» Sinh ViÃªn")}
+            {t("Ví Canteen & Thẻ Sinh Viên")}
           </span>
         </nav>
 
@@ -390,16 +390,16 @@ export default function CustomerWallet({ user }) {
             </div>
             <div className="wallet-header__info">
               <div className="wallet-header__name-row">
-                <b>{t("Tháº» SV")} â€¢ {t("Sinh viÃªn")}</b>
+                <b>{t("Thẻ SV")} Ѣ {t("Sinh viên")}</b>
                 <BadgeCheck size={16} className="wallet-header__verified" />
               </div>
               <div className="wallet-header__meta">
-                <span>MSSV: {user?.student_code || t("ChÆ°a liÃªn káº¿t")}</span>
+                <span>MSSV: {user?.student_code || t("Chưa liên kết")}</span>
                 <span className="wallet-header__dot" />
                 <span className="wallet-header__sso">
                   {user?.student_code
-                    ? t("ÄÃ£ xÃ¡c thá»±c SSO Há»c viá»‡n")
-                    : t("ChÆ°a liÃªn káº¿t MSSV")}
+                    ? t("Đã xác thực SSO Học viện")
+                    : t("Chưa liên kết MSSV")}
                 </span>
               </div>
             </div>
@@ -432,22 +432,22 @@ export default function CustomerWallet({ user }) {
               <div className="wallet-card-physical__chip-inner" />
             </div>
             <span className="wallet-card-physical__chip-label">
-              {t("THáºº SINH VIÃŠN ÄA NÄ‚NG")}
+              {t("THẺ SINH VIÊN ĐA NĂNG")}
             </span>
           </div>
 
           {/* Balance */}
           <div className="wallet-card-physical__balance">
             <span className="wallet-card-physical__balance-label">
-              {t("Sá» DÆ¯ VÃ KHáº¢ Dá»¤NG")}
+              {t("SỐ DƯ VÍ KHẢ DỤNG")}
             </span>
             <div className="wallet-card-physical__balance-value">
               {loading ? (
                 <Loader2 size={32} className="wallet-spin" />
               ) : (
                 <>
-                  {money(wallet.balance || 0).replace("Ä‘", "")}
-                  <span className="wallet-card-physical__balance-unit">Ä‘</span>
+                  {money(wallet.balance || 0).replace("đ", "")}
+                  <span className="wallet-card-physical__balance-unit">đ</span>
                 </>
               )}
             </div>
@@ -458,18 +458,18 @@ export default function CustomerWallet({ user }) {
             <div className="wallet-card-physical__holder">
               <div>
                 <span className="wallet-card-physical__holder-label">
-                  {t("Chá»§ tháº»")}
+                  {t("Chủ thẻ")}
                 </span>
-                <b>{String(user?.name || user?.full_name || "Sinh viÃªn").trim().toLocaleUpperCase("vi-VN")}</b>
+                <b>{String(user?.name || user?.full_name || "Sinh viên").trim().toLocaleUpperCase("vi-VN")}</b>
               </div>
               <div className="wallet-card-physical__holder-right">
                 <span className="wallet-card-physical__holder-label">
-                  {t("MSSV / MÃ£ tháº»")}
+                  {t("MSSV / Mã thẻ")}
                 </span>
                 <b>
                   {(user?.student_code || user?.student_id || user?.mssv)
-                    ? `â€¢â€¢â€¢â€¢ ${String(user.student_code || user.student_id || user.mssv).replace(/\D/g, "").slice(-4)}`
-                    : t("ChÆ°a liÃªn káº¿t MSSV")}
+                    ? `ѢѢѢѢ ${String(user.student_code || user.student_id || user.mssv).replace(/\D/g, "").slice(-4)}`
+                    : t("Chưa liên kết MSSV")}
                 </b>
               </div>
             </div>
@@ -480,7 +480,7 @@ export default function CustomerWallet({ user }) {
                 onClick={() => setShowDeposit(true)}
               >
                 <Plus size={16} />
-                {t("Náº¡p tiá»n")}
+                {t("Nạp tiền")}
               </button>
               <button
                 className="wallet-card-physical__action wallet-card-physical__action--ghost"
@@ -490,21 +490,21 @@ export default function CustomerWallet({ user }) {
                 }}
               >
                 <QrCode size={16} />
-                {t("MÃ£ QR quáº§y")}
+                {t("Mã QR quầy")}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Card 2: Trá»£ giÃ¡ SV Ká»³ II */}
+        {/* Card 2: Trợ giá SV Kỳ II */}
         <div className="wallet-subsidy-card">
           <div className="wallet-subsidy-card__head">
             <div>
               <span className="wallet-subsidy-card__tag">
-                {t("Quá»¹ Há»c ÄÆ°á»ng")}
+                {t("Quỹ Học Đường")}
               </span>
-              <h2>{t("Trá»£ GiÃ¡ Sinh ViÃªn Ká»³ II")}</h2>
-              <p>{t("NÄƒm há»c 2024 - 2025")}</p>
+              <h2>{t("Trợ Giá Sinh Viên Kỳ II")}</h2>
+              <p>{t("NĒm học 2024 - 2025")}</p>
             </div>
             <div className="wallet-subsidy-card__icon">
               <Wallet size={22} />
@@ -513,14 +513,14 @@ export default function CustomerWallet({ user }) {
 
           <div className="wallet-subsidy-card__quota">
             <div className="wallet-subsidy-card__quota-row">
-              <span>{t("Háº¡n má»©c trá»£ giÃ¡ cÃ²n láº¡i:")}</span>
+              <span>{t("Hạn mức trợ giá còn lại:")}</span>
               <b>{money(220000)}</b>
             </div>
             <div className="wallet-subsidy-card__quota-note">
               <Utensils size={14} />
               <span>
-                {t("TÆ°Æ¡ng Ä‘Æ°Æ¡ng")} <b>22 {t("suáº¥t Äƒn")}</b>{" "}
-                ({t("10.000Ä‘/suáº¥t há»c viá»‡n há»— trá»£")})
+                {t("Tương đương")} <b>22 {t("suất ăn")}</b>{" "}
+                ({t("10.000đ/suất học viện hỗ trợ")})
               </span>
             </div>
           </div>
@@ -528,7 +528,7 @@ export default function CustomerWallet({ user }) {
           <div className="wallet-subsidy-card__progress">
             <div className="wallet-subsidy-card__progress-row">
               <span>
-                {t("ÄÃ£ sá»­ dá»¥ng trong thÃ¡ng:")} <b>18/40 {t("suáº¥t")}</b>
+                {t("Đã sử dụng trong tháng:")} <b>18/40 {t("suất")}</b>
               </span>
               <b>45%</b>
             </div>
@@ -543,19 +543,19 @@ export default function CustomerWallet({ user }) {
           <div className="wallet-subsidy-card__info">
             <Zap size={16} />
             <p>
-              {t("Tá»± Ä‘á»™ng trá»«")}{" "}
-              <b>10.000Ä‘</b>{" "}
-              {t("cho má»—i pháº§n cÆ¡m trÆ°a/bÃºn phá»Ÿ tá»« 25.000Ä‘ trá»Ÿ lÃªn khi quÃ©t mÃ£ táº¡i quáº§y.")}
+              {t("Tự động trừ")}{" "}
+              <b>10.000đ</b>{" "}
+              {t("cho mỗi phần cơm trưa/bún phở từ 25.000đ trở lên khi quét mã tại quầy.")}
             </p>
           </div>
 
           <div className="wallet-subsidy-card__foot">
             <span>
               <RefreshCw size={14} />
-              {t("Chu ká»³ lÃ m má»›i: 01/04/2025")}
+              {t("Chu kỳ làm mới: 01/04/2025")}
             </span>
             <span className="wallet-subsidy-card__foot-link">
-              {t("Tá»± Ä‘á»™ng cá»™ng láº¡i")}
+              {t("Tự động cộng lại")}
             </span>
           </div>
         </div>
@@ -565,11 +565,11 @@ export default function CustomerWallet({ user }) {
           <div className="wallet-points-card__head">
             <div>
               <span className="wallet-points-card__tag">
-                {t("Sinh ThÃ¡i Há»c ÄÆ°á»ng")}
+                {t("Sinh Thái Học Đường")}
               </span>
               <h2>{t("VWA Green Points")}</h2>
               <p>
-                {t("TÃ­ch Ä‘iá»ƒm khi mang bÃ¬nh nÆ°á»›c / dÃ¹ng khay tÃ¡i cháº¿")}
+                {t("Tích điểm khi mang bình nước / dùng khay tái chế")}
               </p>
             </div>
             <div className="wallet-points-card__icon">
@@ -579,14 +579,14 @@ export default function CustomerWallet({ user }) {
 
           <div className="wallet-points-card__stats">
             <div className="wallet-points-card__stat">
-              <span>{t("Äiá»ƒm tÃ­ch lÅ©y")}</span>
+              <span>{t("ĐiỒm tích lũy")}</span>
               <b>{stats.points || 350}</b>
-              <small>{t("Äá»§ Ä‘á»•i 01 ly TrÃ  Sen")}</small>
+              <small>{t("Đủ đổi 01 ly Trà Sen")}</small>
             </div>
             <div className="wallet-points-card__stat">
-              <span>{t("ÄÃ£ tiáº¿t kiá»‡m ká»³ nÃ y")}</span>
+              <span>{t("Đã tiết kiệm kỳ này")}</span>
               <b>{money(580000)}</b>
-              <small>{t("Nhá» trá»£ giÃ¡ & voucher")}</small>
+              <small>{t("Nhờ trợ giá & voucher")}</small>
             </div>
           </div>
 
@@ -595,8 +595,8 @@ export default function CustomerWallet({ user }) {
               <Coffee size={22} />
             </div>
             <div>
-              <b>{t("Voucher Giáº£m 20.000Ä‘ Äá»“ Uá»‘ng")}</b>
-              <small>{t("Quy Ä‘á»•i ngay vá»›i")} {ptsCfg?.redeem?.min_points || 100} {t("Green Points")}</small>
+              <b>{t("Voucher Giảm 20.000đ Äá»“ Uống")}</b>
+              <small>{t("Quy đổi ngay với")} {ptsCfg?.redeem?.min_points || 100} {t("Green Points")}</small>
             </div>
           </div>
 
@@ -605,7 +605,7 @@ export default function CustomerWallet({ user }) {
             onClick={() => window.location.href = "/customer/promotions"}
           >
             <Plus size={16} />
-            {t("Äá»•i Ä‘iá»ƒm nháº­n quÃ  & voucher Æ°u Ä‘Ã£i")}
+            {t("Äá»•i điểm nhận quà & voucher ưu đãi")}
           </button>
         </div>
       </section>
@@ -620,20 +620,20 @@ export default function CustomerWallet({ user }) {
             <div>
               <h2>
                 <Plus size={22} />
-                {t("Náº¡p tiá»n nhanh vÃ o VÃ­ (Instant Top-up)")}
+                {t("Nạp tiền nhanh vào Ví (Instant Top-up)")}
               </h2>
               <p>
-                {t("Tiá»n náº¡p vÃ o vÃ­ Ä‘Æ°á»£c Ã¡p dá»¥ng ngay láº­p tá»©c táº¡i toÃ n bá»™ quáº§y dá»‹ch vá»¥ Canteen VWA")}
+                {t("Tiền nạp vào ví được áp dụng ngay lập tức tại toàn bộ quầy dịch vụ Canteen VWA")}
               </p>
             </div>
             <span className="wallet-topup__free-badge">
-              {t("Miá»…n phÃ­ 100%")}
+              {t("Miễn phí 100%")}
             </span>
           </div>
 
           {/* Preset amounts */}
           <div className="wallet-topup__presets">
-            <label>{t("Chá»n má»‡nh giÃ¡ náº¡p:")}</label>
+            <label>{t("Chọn mệnh giá nạp:")}</label>
             <div className="wallet-topup__preset-grid">
               {QUICK_DEPOSIT.map((a, i) => (
                 <button
@@ -642,7 +642,7 @@ export default function CustomerWallet({ user }) {
                   className={`wallet-preset-btn ${selectedTopupPreset === a ? "wallet-preset-btn--selected" : ""}`}
                   onClick={() => { setTopupAmount(a); setCustomTopupInput(""); setSelectedTopupPreset(a); setPendingTopupTx(null); }}
                 >
-                  <span>{a.toLocaleString("vi-VN")} Ä‘</span>
+                  <span>{a.toLocaleString("vi-VN")} đ</span>
                 </button>
               ))}
             </div>
@@ -663,21 +663,21 @@ export default function CustomerWallet({ user }) {
                   setPendingTopupTx(null);
                   setTopupAmount(digits ? Number(digits) : 0);
                 }}
-                placeholder={t("Hoáº·c nháº­p sá»‘ tiá»n tÃ¹y Ã½ (tá»‘i thiá»ƒu 10.000Ä‘)")}
+                placeholder={t("Hoặc nhập số tiền tùy ý (tối thiểu 10.000đ)")}
                 className="wallet-topup__custom-input"
               />
-              <span className="wallet-topup__custom-unit">VNÄ</span>
+              <span className="wallet-topup__custom-unit">VNĐ</span>
             </div>
           </div>
 
           {/* Method preview */}
           <div className="wallet-topup__method">
-            <label>{t("PhÆ°Æ¡ng thá»©c náº¡p tiá»n:")}</label>
+            <label>{t("Phương thức nạp tiền:")}</label>
 
             <div
               className="wallet-topup__method-options"
               role="radiogroup"
-              aria-label={t("PhÆ°Æ¡ng thá»©c náº¡p tiá»n")}
+              aria-label={t("Phương thức nạp tiền")}
             >
               {/* CASH FIRST */}
               <button
@@ -694,10 +694,10 @@ export default function CustomerWallet({ user }) {
                   </div>
                   <div>
                     <div className="wallet-topup__method-name">
-                      {t("Thanh toÃ¡n tiá»n máº·t táº¡i quáº§y")}
+                      {t("Thanh toán tiền mặt tại quầy")}
                     </div>
                     <div className="wallet-topup__method-desc">
-                      {t("Ná»™p tiá»n trá»±c tiáº¿p cho nhÃ¢n viÃªn. VÃ­ chá»‰ Ä‘Æ°á»£c cá»™ng sau khi xÃ¡c nháº­n.")}
+                      {t("Nộp tiền trực tiếp cho nhân viên. Ví chỉ được cộng sau khi xác nhận.")}
                     </div>
                   </div>
                 </div>
@@ -719,13 +719,13 @@ export default function CustomerWallet({ user }) {
                   </div>
                   <div>
                     <div className="wallet-topup__method-name">
-                      {t("Chuyá»ƒn khoáº£n VietQR PRO 24/7")}
+                      {t("Chuyển khoản VietQR PRO 24/7")}
                       <span className="wallet-topup__method-recommend">
-                        {t("KhuyÃªn dÃ¹ng")}
+                        {t("Khuyên dùng")}
                       </span>
                     </div>
                     <div className="wallet-topup__method-desc">
-                      {t("Cá»™ng tiá»n sau khi xÃ¡c nháº­n giao dá»‹ch VietQR.")}
+                      {t("Cộng tiền sau khi xác nhận giao dịch VietQR.")}
                     </div>
                   </div>
                 </div>
@@ -741,14 +741,14 @@ export default function CustomerWallet({ user }) {
                 {topupSubmitting ? (
                   <div className="wallet-topup__qr-inline-loading">
                     <Loader2 size={22} className="checkout-spin" />
-                    <span>{t("Äang táº¡o mÃ£ QR thanh toÃ¡n...")}</span>
+                    <span>{t("Đang tạo mã QR thanh toán...")}</span>
                   </div>
                 ) : (
                   <>
                     <div className="wallet-topup__qr-inline-head">
                       <div>
-                        <b>{t("QuÃ©t mÃ£ VietQR Ä‘á»ƒ náº¡p vÃ o vÃ­")}</b>
-                        <p>{t("Sá»­ dá»¥ng á»©ng dá»¥ng ngÃ¢n hÃ ng Ä‘á»ƒ quÃ©t mÃ£ bÃªn dÆ°á»›i.")}</p>
+                        <b>{t("Quét mã VietQR để nạp vào ví")}</b>
+                        <p>{t("Sử dụng ứng dụng ngân hàng để quét mã bên dưới.")}</p>
                       </div>
                       <strong>{money(pendingTopupTx.amount)}</strong>
                     </div>
@@ -757,16 +757,16 @@ export default function CustomerWallet({ user }) {
                       <img
                         className="wallet-topup__qr-inline-image"
                         src={`https://img.vietqr.io/image/${settings?.bank || "VCB"}-${settings.account}-compact2.png?amount=${pendingTopupTx.amount}&addInfo=${encodeURIComponent(pendingTopupTx.code)}&accountName=${encodeURIComponent(settings?.accountName || "CANTEEN VWA")}`}
-                        alt={t("MÃ£ QR náº¡p tiá»n VietQR")}
+                        alt={t("Mã QR nạp tiền VietQR")}
                       />
                     ) : (
                       <div className="wallet-topup__qr-inline-warning">
-                        {t("ChÆ°a cáº¥u hÃ¬nh tÃ i khoáº£n ngÃ¢n hÃ ng nháº­n tiá»n.")}
+                        {t("Chưa cấu hình tài khoản ngân hàng nhận tiền.")}
                       </div>
                     )}
 
                     <div className="wallet-topup__qr-inline-code">
-                      <span>{t("Ná»™i dung chuyá»ƒn khoáº£n")}</span>
+                      <span>{t("Nội dung chuyển khoản")}</span>
                       <code>{pendingTopupTx.code}</code>
                     </div>
 
@@ -777,7 +777,7 @@ export default function CustomerWallet({ user }) {
                     const qrImage = document.querySelector(".wallet-topup__qr-inline-image");
 
                     if (!qrImage?.src) {
-                      toast(t("KhÃ´ng tÃ¬m tháº¥y mÃ£ QR Ä‘á»ƒ lÆ°u."), "error");
+                      toast(t("Không tìm thấy mã QR để lưu."), "error");
                       return;
                     }
 
@@ -811,7 +811,7 @@ export default function CustomerWallet({ user }) {
 
                       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
 
-                      toast(t("LÆ°u thÃ nh cÃ´ng!"), "success");
+                      toast(t("Lưu thành công!"), "success");
                     } catch (error) {
                       const fallbackLink = document.createElement("a");
                       fallbackLink.href = qrImage.src;
@@ -822,14 +822,14 @@ export default function CustomerWallet({ user }) {
                       fallbackLink.remove();
 
                       toast(
-                        t("TrÃ¬nh duyá»‡t khÃ´ng cho táº£i trá»±c tiáº¿p. MÃ£ QR Ä‘Ã£ má»Ÿ á»Ÿ tab má»›i; hÃ£y nháº¥p pháº£i áº£nh vÃ  chá»n LÆ°u hÃ¬nh áº£nh thÃ nh."),
+                        t("Trình duyệt không cho tải trực tiếp. Mã QR đã mở ở tab mới; hãy nhấp phải ảnh và chọn Lưu hình ảnh thành."),
                         "info"
                       );
                     }
                   }}
                 >
-                  <span aria-hidden="true">â†“</span>
-                  {t("LÆ°u")}
+                  <span aria-hidden="true">↓</span>
+                  {t("Lưu")}
                 </button>
                   </>
                 )}
@@ -843,14 +843,14 @@ export default function CustomerWallet({ user }) {
           >
             {topupMethod === "CASH" ? <Banknote size={16} /> : <Lock size={16} />}
             {topupSubmitting
-              ? t("Äang táº¡o yÃªu cáº§u...")
+              ? t("Đang tạo yêu cầu...")
               : topupMethod === "CASH"
-                ? t("XÃ¡c nháº­n náº¡p tiá»n máº·t táº¡i quáº§y")
-                : t("XÃ¡c nháº­n chuyá»ƒn khoáº£n / Náº¡p tiá»n")}
+                ? t("Xác nhận nạp tiền mặt tại quầy")
+                : t("Xác nhận chuyỒn khoản / Nạp tiền")}
           </button>
           <p className="wallet-topup__secure">
             <Shield size={14} />
-            {t("Báº£o máº­t SSL 256-bit qua Cá»•ng thanh toÃ¡n Quá»‘c gia Napas & SSO Há»c viá»‡n")}
+            {t("Bảo mật SSL 256-bit qua Cổng thanh toán Quốc gia Napas & SSO Học viện")}
           </p>
         </div>
 
@@ -859,11 +859,11 @@ export default function CustomerWallet({ user }) {
           <div className="wallet-qr-pos__head">
             <div className="wallet-qr-pos__eyebrow">
               <QrCode size={14} />
-              {t("MÃƒ THANH TOÃN Táº I QUáº¦Y CANTEEN")}
+              {t("MÒ THANH TOÁN TẠI QUẦY CANTEEN")}
             </div>
-            <h2>{t("Dynamic QR Code 1-Cháº¡m")}</h2>
+            <h2>{t("Dynamic QR Code 1-Chạm")}</h2>
             <p>
-              {t("ÄÆ°a mÃ£ vÃ o Ä‘áº§u Ä‘á»c táº¡i Quáº§y 01, Quáº§y 02 hoáº·c Quáº§y nÆ°á»›c")}
+              {t("Đưa mã vào đầu Ä‘á»c tại Quầy 01, Quầy 02 hoặc Quầy nước")}
             </p>
           </div>
 
@@ -871,11 +871,11 @@ export default function CustomerWallet({ user }) {
             <div className="wallet-qr-pos__status">
               <span className="wallet-qr-pos__status-live">
                 <span className="wallet-qr-pos__dot" />
-                {t("Äang hoáº¡t Ä‘á»™ng")}
+                {t("Đang hoạt động")}
               </span>
               <span className="wallet-qr-pos__timer">
                 <Clock size={12} />
-                {t("Tá»± lÃ m má»›i sau:")} <b>{qrTimer}s</b>
+                {t("Tự làm mới sau:")} <b>{qrTimer}s</b>
               </span>
             </div>
 
@@ -939,7 +939,7 @@ export default function CustomerWallet({ user }) {
             {/* Backup PIN */}
             <div className="wallet-qr-pos__pin">
               <span className="wallet-qr-pos__pin-label">
-                {t("MÃ£ PIN dá»± phÃ²ng náº¿u camera quáº§y lá»—i:")}
+                {t("Mã PIN dự phòng nếu camera quầy lỗi:")}
               </span>
               <div className="wallet-qr-pos__pin-value">8826 - 4921</div>
             </div>
@@ -951,8 +951,8 @@ export default function CustomerWallet({ user }) {
               <div className="wallet-qr-pos__toggle-left">
                 <Sparkles size={18} />
                 <div>
-                  <b>{t("Tá»± Ä‘á»™ng Ã¡p dá»¥ng Trá»£ giÃ¡ SV")}</b>
-                  <span>{t("Trá»« ngay 10.000Ä‘ khi Ä‘á»§ Ä‘iá»u kiá»‡n Ä‘Æ¡n")}</span>
+                  <b>{t("Tự động áp dụng Trợ giá SV")}</b>
+                  <span>{t("Trừ ngay 10.000đ khi đủ điều kiện đơn")}</span>
                 </div>
               </div>
               <input
@@ -967,7 +967,7 @@ export default function CustomerWallet({ user }) {
               onClick={() => setQrTimer(60)}
             >
               <RefreshCw size={16} />
-              {t("LÃ m má»›i mÃ£ thanh toÃ¡n ngay")}
+              {t("Làm mới mã thanh toán ngay")}
             </button>
           </div>
         </div>
@@ -981,15 +981,15 @@ export default function CustomerWallet({ user }) {
           <div>
             <h2>
               <History size={22} />
-              {t("Lá»‹ch sá»­ giao dá»‹ch & Biáº¿n Ä‘á»™ng sá»‘ dÆ°")}
+              {t("Lịch sử giao dịch & Biến động số dư")}
             </h2>
             <p>
-              {t("Tra cá»©u chi tiáº¿t cÃ¡c láº§n thanh toÃ¡n, náº¡p tiá»n vÃ  tiá»n trá»£ giÃ¡ há»c viá»‡n")}
+              {t("Tra cứu chi tiết các lần thanh toán, nạp tiền và tiền trợ giá học viện")}
             </p>
           </div>
           <button className="wallet-history__export">
             <Download size={16} />
-            {t("Táº£i sao kÃª PDF / Excel")}
+            {t("Tải sao kê PDF / Excel")}
           </button>
         </div>
 
@@ -1014,7 +1014,7 @@ export default function CustomerWallet({ user }) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("TÃ¬m theo mÃ£ Ä‘Æ¡n, quáº§y...")}
+              placeholder={t("Tìm theo mã đơn, quầy...")}
             />
           </div>
         </div>
@@ -1031,11 +1031,11 @@ export default function CustomerWallet({ user }) {
         {!loading && filtered.length === 0 && (
           <div className="wallet-history__empty">
             <Wallet size={40} />
-            <b>{t("ChÆ°a cÃ³ giao dá»‹ch nÃ o")}</b>
+            <b>{t("Chưa có giao dịch nào")}</b>
             <p>
               {tab === "all"
-                ? t("Báº¯t Ä‘áº§u náº¡p tiá»n hoáº·c Ä‘áº·t mÃ³n Ä‘á»ƒ cÃ³ giao dá»‹ch Ä‘áº§u tiÃªn.")
-                : t("KhÃ´ng cÃ³ giao dá»‹ch loáº¡i nÃ y.")}
+                ? t("Bắt đầu nạp tiền hoặc đặt món để có giao dịch đầu tiên.")
+                : t("Không có giao dịch loại này.")}
             </p>
           </div>
         )}
@@ -1057,14 +1057,14 @@ export default function CustomerWallet({ user }) {
         {!loading && filtered.length > visibleTx && (
           <div className="wallet-history__more">
             <span>
-              {t("Hiá»ƒn thá»‹")} {Math.min(visibleTx, filtered.length)}{" "}
-              {t("trÃªn tá»•ng sá»‘")} {filtered.length} {t("giao dá»‹ch")}
+              {t("Hiển thị")} {Math.min(visibleTx, filtered.length)}{" "}
+              {t("trên tổng số")} {filtered.length} {t("giao dịch")}
             </span>
             <button
               type="button"
               onClick={() => setVisibleTx((n) => n + 8)}
             >
-              {t("Xem thÃªm lá»‹ch sá»­ cÅ© hÆ¡n")}
+              {t("Xem thêm lịch sử cũ hơn")}
             </button>
           </div>
         )}
@@ -1079,16 +1079,16 @@ export default function CustomerWallet({ user }) {
             <Shield size={26} />
           </div>
           <div>
-            <h3>{t("TiÃªu chuáº©n An toÃ n & Báº£o máº­t Há»c Ä‘Æ°á»ng")}</h3>
+            <h3>{t("Tiêu chuẩn An toàn & Bảo mật Học Ä‘Æ°á»ng")}</h3>
             <p>
-              {t("Chá»©ng chá»‰ báº£o máº­t thanh toÃ¡n tiÃªu chuáº©n quá»‘c táº¿ PCI-DSS Level 1. Há»‡ thá»‘ng tÃ­ch há»£p xÃ¡c thá»±c SSO an toÃ n cÃ¹ng cÆ¡ cháº¿ tá»± khÃ³a sá»‘ dÆ° khi máº¥t tháº» sinh viÃªn.")}
+              {t("Chứng chỉ bảo mật thanh toán tiêu chuẩn quốc tế PCI-DSS Level 1. Hệ thống tích hợp xác thực SSO an toàn cùng cơ chế tự khóa số dư khi mất thẻ sinh viên.")}
             </p>
           </div>
         </div>
         <div className="wallet-security__actions">
           <button className="wallet-security__btn wallet-security__btn--ghost">
             <Lock size={16} />
-            {t("KhÃ³a tháº» kháº©n cáº¥p")}
+            {t("Khóa thẻ khẩn cấp")}
           </button>
           <button
             type="button"
@@ -1104,7 +1104,7 @@ export default function CustomerWallet({ user }) {
       </section>
 
       {/* ============================================== */}
-      {/* MODALS (GIá»® NGUYÃŠN)                             */}
+      {/* MODALS (GIỮ NGUYÊN)                             */}
       {/* ============================================== */}
       {showDeposit && (
         <DepositModal
@@ -1160,11 +1160,11 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
     icon: Wallet,
     color: "#2563EB",
     bg: "#EFF6FF",
-    label: "â€”",
+    label: "—",
     sign: "",
   };
   const statusCfg = STATUS_CONFIG[tx.status] || {
-    label: "â€”",
+    label: "—",
     color: "#64748b",
     bg: "#f1f5f9",
   };
@@ -1194,12 +1194,12 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
           </div>
           <p className="wallet-tx-row__desc">
             {tx.note || tx.description || config.label}
-            {tx.created_at && ` â€¢ ${fmtDateTime(tx.created_at)}`}
+            {tx.created_at && ` Ѣ ${fmtDateTime(tx.created_at)}`}
           </p>
           {tx.discount > 0 && (
             <span className="wallet-tx-row__subsidy">
               <Sparkles size={12} />
-              {t("ÄÃ£ trá»« trá»£ giÃ¡ SV:")} -{money(tx.discount)}
+              {t("Đã trừ trợ giá SV:")} -{money(tx.discount)}
             </span>
           )}
         </div>
@@ -1212,12 +1212,12 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
           }`}
         >
           {config.sign}
-          {money(tx.amount || 0).replace("Ä‘", "")}{" "}
-          <span className="wallet-tx-row__amount-unit">Ä‘</span>
+          {money(tx.amount || 0).replace("đ", "")}{" "}
+          <span className="wallet-tx-row__amount-unit">đ</span>
         </div>
         {tx.balance_after !== undefined && (
           <div className="wallet-tx-row__balance">
-            {t("Sá»‘ dÆ° cuá»‘i:")} {money(tx.balance_after)}
+            {t("Số dư cuối:")} {money(tx.balance_after)}
           </div>
         )}
         <span
@@ -1233,7 +1233,7 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
 }
 
 // ============================================================
-// MODAL WRAPPER (GIá»® NGUYÃŠN)
+// MODAL WRAPPER (GIỮ NGUYÊN)
 // ============================================================
 
 function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
@@ -1265,7 +1265,7 @@ function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
 }
 
 // ============================================================
-// DEPOSIT MODAL (GIá»® NGUYÃŠN logic, Ä‘á»•i UI nháº¹)
+// DEPOSIT MODAL (GIỮ NGUYÊN logic, đổi UI nhẹ)
 // ============================================================
 
 function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", initialAmount = 100000, initialStep = 1, initialTx = null }) {
@@ -1283,7 +1283,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
     if (submitting) return;
     if (amount < MIN_DEPOSIT) {
       toast(
-        t("Sá»‘ tiá»n náº¡p tá»‘i thiá»ƒu {value}").replace("{value}", money(MIN_DEPOSIT)),
+        t("Số tiền nạp tối thiểu {value}").replace("{value}", money(MIN_DEPOSIT)),
         "error"
       );
       return;
@@ -1293,7 +1293,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
     try {
       const res = await api.wallet.deposit({ amount, method, note });
       setTx(res.transaction);
-      toast(t("ÄÃ£ táº¡o yÃªu cáº§u náº¡p tiá»n"), "success");
+      toast(t("Đã tạo yêu cầu nạp tiền"), "success");
 
       if (method === "CASH") {
         onSuccess();
@@ -1301,7 +1301,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
         setStep(2);
       }
     } catch (e) {
-      toast(e.message || t("KhÃ´ng táº¡o Ä‘Æ°á»£c yÃªu cáº§u náº¡p"), "error");
+      toast(e.message || t("Không tạo được yêu cầu nạp"), "error");
     } finally {
       setSubmitting(false);
     }
@@ -1318,9 +1318,9 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
       : null;
 
     return (
-      <Modal onClose={onClose} busy={busy} label={t("Náº¡p tiá»n qua VietQR")}>
+      <Modal onClose={onClose} busy={busy} label={t("Nạp tiền qua VietQR")}>
         <div className="wallet-modal__head">
-          <h3>{t("Náº¡p tiá»n qua VietQR")}</h3>
+          <h3>{t("Nạp tiền qua VietQR")}</h3>
           <button onClick={onClose} disabled={busy}>
             <X size={20} />
           </button>
@@ -1331,7 +1331,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
             <QrCode size={28} />
           </div>
           <p className="wallet-qr-modal__desc">
-            {t("QuÃ©t mÃ£ QR Ä‘á»ƒ chuyá»ƒn {amount} cho Ä‘Æ¡n {code}")
+            {t("Quét mã QR để chuyển {amount} cho đơn {code}")
               .replace("{amount}", money(tx.amount))
               .replace("{code}", tx.code)}
           </p>
@@ -1348,19 +1348,19 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
             </div>
           ) : (
             <div className="wallet-qr-modal__warning">
-              {t("ChÆ°a cáº¥u hÃ¬nh tÃ i khoáº£n nháº­n tiá»n")}
+              {t("Chưa cấu hình tài khoản nhận tiền")}
             </div>
           )}
 
           <div className="wallet-qr-modal__note">
             <AlertTriangle size={16} />
             <span>
-              {t("Vui lÃ²ng chuyá»ƒn Ä‘Ãºng sá»‘ tiá»n vÃ  ná»™i dung. YÃªu cáº§u sáº½ Ä‘Æ°á»£c admin duyá»‡t trong vÃ i phÃºt.")}
+              {t("Vui lòng chuyển đúng số tiền và nội dung. Yêu cầu sẽ được admin duyệt trong vài phút.")}
             </span>
           </div>
 
           <button className="wallet-modal__primary" onClick={onSuccess}>
-            {t("ÄÃ£ hiá»ƒu")}
+            {t("Đã hiỒu")}
           </button>
         </div>
       </Modal>
@@ -1369,18 +1369,18 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
 
   // STEP 1: Form
   return (
-    <Modal onClose={onClose} busy={busy} label={t("Náº¡p tiá»n")}>
+    <Modal onClose={onClose} busy={busy} label={t("Nạp tiền")}>
       <div className="wallet-modal__head">
         <h3>
           <Plus size={20} style={{ color: "#18a967" }} />
-          {t("Náº¡p tiá»n")}
+          {t("Nạp tiền")}
         </h3>
         <button onClick={onClose} disabled={busy}>
           <X size={20} />
         </button>
       </div>
 
-      <label className="wallet-modal__label">{t("Sá»‘ tiá»n")} *</label>
+      <label className="wallet-modal__label">{t("Số tiền")} *</label>
       <div className="wallet-modal__input-wrap">
         <input
           type="number"
@@ -1391,7 +1391,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
           disabled={busy}
           className="wallet-modal__input wallet-modal__input--amount"
         />
-        <span className="wallet-modal__input-suffix">Ä‘</span>
+        <span className="wallet-modal__input-suffix">đ</span>
       </div>
 
       <div className="wallet-modal__quick">
@@ -1405,12 +1405,12 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
               amount === a ? "active" : ""
             }`}
           >
-            {a.toLocaleString("vi-VN")}Ä‘
+            {a.toLocaleString("vi-VN")}đ
           </button>
         ))}
       </div>
 
-      <label className="wallet-modal__label">{t("PhÆ°Æ¡ng thá»©c náº¡p")}</label>
+      <label className="wallet-modal__label">{t("Phương thức nạp")}</label>
       <div className="wallet-modal__method-summary">
         <div className="wallet-modal__method-summary-icon">
           {method === "QR" ? <QrCode size={22} /> : <Banknote size={22} />}
@@ -1418,21 +1418,21 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
         <div className="wallet-modal__method-summary-content">
           <b>
             {method === "QR"
-              ? t("Chuyá»ƒn khoáº£n VietQR PRO 24/7")
-              : t("Thanh toÃ¡n tiá»n máº·t táº¡i quáº§y")}
+              ? t("Chuyển khoản VietQR PRO 24/7")
+              : t("Thanh toán tiền mặt tại quầy")}
           </b>
           <span>
             {method === "QR"
-              ? t("QuÃ©t mÃ£ vÃ  thá»±c hiá»‡n chuyá»ƒn khoáº£n theo hÆ°á»›ng dáº«n.")
-              : t("Ná»™p tiá»n trá»±c tiáº¿p cho nhÃ¢n viÃªn. YÃªu cáº§u sáº½ chá» xÃ¡c nháº­n.")}
+              ? t("Quét mã và thực hiện chuyển khoản theo hướng dẫn.")
+              : t("Nộp tiền trực tiếp cho nhân viên. Yêu cầu sẽ chờ xác nhận.")}
           </span>
         </div>
       </div>
-      <label className="wallet-modal__label">{t("Ghi chÃº")}</label>
+      <label className="wallet-modal__label">{t("Ghi chú")}</label>
       <input
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        placeholder={t("Ghi chÃº thÃªm (khÃ´ng báº¯t buá»™c)")}
+        placeholder={t("Ghi chú thêm (không bắt buộc)")}
         maxLength={200}
         disabled={busy}
         className="wallet-modal__input"
@@ -1440,7 +1440,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
 
       <div className="wallet-modal__actions">
         <button onClick={onClose} disabled={busy} className="wallet-modal__btn wallet-modal__btn--ghost">
-          {t("Há»§y")}
+          {t("Hủy")}
         </button>
         <button
           onClick={submit}
@@ -1450,10 +1450,10 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
           {submitting ? (
             <>
               <Loader2 size={14} className="wallet-spin" />
-              {t("Äang xá»­ lÃ½...")}
+              {t("Đang xử lý...")}
             </>
           ) : (
-            `${t("Náº¡p tiá»n")} ${amount.toLocaleString("vi-VN")}Ä‘`
+            `${t("Nạp tiền")} ${amount.toLocaleString("vi-VN")}đ`
           )}
         </button>
       </div>
@@ -1462,7 +1462,7 @@ function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", init
 }
 
 // ============================================================
-// WITHDRAW MODAL (GIá»® NGUYÃŠN logic)
+// WITHDRAW MODAL (GIỮ NGUYÊN logic)
 // ============================================================
 
 function WithdrawModal({ balance, bank, onClose, onSuccess }) {
@@ -1477,34 +1477,34 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
     if (submitting) return;
     if (amount < MIN_WITHDRAW) {
       toast(
-        t("Sá»‘ tiá»n rÃºt tá»‘i thiá»ƒu {value}").replace("{value}", money(MIN_WITHDRAW)),
+        t("Số tiền rút tối thiểu {value}").replace("{value}", money(MIN_WITHDRAW)),
         "error"
       );
       return;
     }
     if (amount > balance) {
-      toast(t("Sá»‘ dÆ° khÃ´ng Ä‘á»§"), "error");
+      toast(t("Số dư không đủ"), "error");
       return;
     }
 
     setSubmitting(true);
     try {
       await api.wallet.withdraw({ amount, note });
-      toast(t("ÄÃ£ gá»­i yÃªu cáº§u rÃºt tiá»n"), "success");
+      toast(t("Đã gửi yêu cầu rút tiền"), "success");
       onSuccess();
     } catch (e) {
-      toast(e.message || t("KhÃ´ng gá»­i Ä‘Æ°á»£c yÃªu cáº§u rÃºt"), "error");
+      toast(e.message || t("Không gửi được yêu cầu rút"), "error");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} busy={busy} label={t("RÃºt tiá»n")}>
+    <Modal onClose={onClose} busy={busy} label={t("Rút tiền")}>
       <div className="wallet-modal__head">
         <h3>
           <Minus size={20} style={{ color: "#f59e0b" }} />
-          {t("RÃºt tiá»n")}
+          {t("Rút tiền")}
         </h3>
         <button onClick={onClose} disabled={busy}>
           <X size={20} />
@@ -1512,10 +1512,10 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
       </div>
 
       <div className="wallet-modal__info">
-        <b>{t("Sá»‘ dÆ° kháº£ dá»¥ng")}:</b> {money(balance)}
+        <b>{t("Số dư khả dụng")}:</b> {money(balance)}
       </div>
 
-      <label className="wallet-modal__label">{t("Sá»‘ tiá»n")} *</label>
+      <label className="wallet-modal__label">{t("Số tiền")} *</label>
       <div className="wallet-modal__input-wrap">
         <input
           type="number"
@@ -1527,7 +1527,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
           disabled={busy}
           className="wallet-modal__input wallet-modal__input--amount"
         />
-        <span className="wallet-modal__input-suffix">Ä‘</span>
+        <span className="wallet-modal__input-suffix">đ</span>
       </div>
 
       <div className="wallet-modal__quick">
@@ -1541,7 +1541,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
               amount === a ? "active" : ""
             }`}
           >
-            {a.toLocaleString("vi-VN")}Ä‘
+            {a.toLocaleString("vi-VN")}đ
           </button>
         ))}
       </div>
@@ -1552,25 +1552,25 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
         disabled={busy}
         className="wallet-modal__all-btn"
       >
-        {t("RÃºt toÃ n bá»™")} {money(balance)}
+        {t("Rút toàn bộ")} {money(balance)}
       </button>
 
-      <label className="wallet-modal__label">{t("TÃ i khoáº£n nháº­n tiá»n")}</label>
+      <label className="wallet-modal__label">{t("Tài khoản nhận tiền")}</label>
       <div className="wallet-modal__bank-info">
         <div className="wallet-modal__bank-row">
           <Building2 size={14} />
           <b>{bank.name}</b>
         </div>
         <div className="wallet-modal__bank-acc">
-          {bank.account} Â· {bank.accountName}
+          {bank.account} · {bank.accountName}
         </div>
       </div>
 
-      <label className="wallet-modal__label">{t("Ghi chÃº")}</label>
+      <label className="wallet-modal__label">{t("Ghi chú")}</label>
       <input
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        placeholder={t("Ghi chÃº thÃªm (khÃ´ng báº¯t buá»™c)")}
+        placeholder={t("Ghi chú thêm (không bắt buộc)")}
         maxLength={200}
         disabled={busy}
         className="wallet-modal__input"
@@ -1578,7 +1578,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
 
       <div className="wallet-modal__actions">
         <button onClick={onClose} disabled={busy} className="wallet-modal__btn wallet-modal__btn--ghost">
-          {t("Há»§y")}
+          {t("Hủy")}
         </button>
         <button
           onClick={submit}
@@ -1588,10 +1588,10 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
           {submitting ? (
             <>
               <Loader2 size={14} className="wallet-spin" />
-              {t("Äang xá»­ lÃ½...")}
+              {t("Đang xử lý...")}
             </>
           ) : (
-            t("Gá»­i yÃªu cáº§u rÃºt tiá»n")
+            t("Gửi yêu cầu rút tiền")
           )}
         </button>
       </div>
@@ -1600,7 +1600,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
 }
 
 // ============================================================
-// LINK BANK MODAL (GIá»® NGUYÃŠN logic)
+// LINK BANK MODAL (GIỮ NGUYÊN logic)
 // ============================================================
 
 function LinkBankModal({ wallet, onClose, onSuccess }) {
@@ -1615,11 +1615,11 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
   const submit = async () => {
     if (submitting) return;
     if (!account.trim() || account.trim().length < 6) {
-      toast(t("Sá»‘ tÃ i khoáº£n khÃ´ng há»£p lá»‡"), "error");
+      toast(t("Số tài khoản không hợp lệ"), "error");
       return;
     }
     if (!accountName.trim()) {
-      toast(t("Vui lÃ²ng nháº­p tÃªn chá»§ tÃ i khoáº£n"), "error");
+      toast(t("Vui lòng nhập tên chủ tài khoản"), "error");
       return;
     }
 
@@ -1630,21 +1630,21 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
         bank_account: account.trim(),
         bank_account_name: accountName.trim().toUpperCase(),
       });
-      toast(t("ÄÃ£ liÃªn káº¿t ngÃ¢n hÃ ng"), "success");
+      toast(t("Đã liên kết ngân hàng"), "success");
       onSuccess();
     } catch (e) {
-      toast(e.message || t("KhÃ´ng liÃªn káº¿t Ä‘Æ°á»£c ngÃ¢n hÃ ng"), "error");
+      toast(e.message || t("Không liên kết được ngân hàng"), "error");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} busy={busy} label={t("LiÃªn káº¿t ngÃ¢n hÃ ng")}>
+    <Modal onClose={onClose} busy={busy} label={t("Liên kết ngân hàng")}>
       <div className="wallet-modal__head">
         <h3>
           <CreditCard size={20} style={{ color: "#2563EB" }} />
-          {t("LiÃªn káº¿t ngÃ¢n hÃ ng")}
+          {t("Liên kết ngân hàng")}
         </h3>
         <button onClick={onClose} disabled={busy}>
           <X size={20} />
@@ -1654,11 +1654,11 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
       <div className="wallet-modal__note">
         <AlertTriangle size={16} />
         <span>
-          {t("TÃ i khoáº£n nÃ y sáº½ dÃ¹ng Ä‘á»ƒ nháº­n tiá»n khi báº¡n rÃºt tá»« VÃ­ Canteen. HÃ£y kiá»ƒm tra ká»¹ trÆ°á»›c khi lÆ°u.")}
+          {t("Tài khoản này sẽ dùng để nhận tiền khi bạn rút từ Ví Canteen. Hãy kiểm tra kỹ trước khi lưu.")}
         </span>
       </div>
 
-      <label className="wallet-modal__label">{t("NgÃ¢n hÃ ng")} *</label>
+      <label className="wallet-modal__label">{t("Ngân hàng")} *</label>
       <select
         value={bankName}
         onChange={(e) => setBankName(e.target.value)}
@@ -1672,7 +1672,7 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
         ))}
       </select>
 
-      <label className="wallet-modal__label">{t("Sá»‘ tÃ i khoáº£n")} *</label>
+      <label className="wallet-modal__label">{t("Số tài khoản")} *</label>
       <input
         value={account}
         onChange={(e) => setAccount(e.target.value.replace(/[^0-9]/g, ""))}
@@ -1683,7 +1683,7 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
         className="wallet-modal__input wallet-modal__input--mono"
       />
 
-      <label className="wallet-modal__label">{t("TÃªn chá»§ tÃ i khoáº£n")} *</label>
+      <label className="wallet-modal__label">{t("Tên chủ tài khoản")} *</label>
       <input
         value={accountName}
         onChange={(e) => setAccountName(e.target.value)}
@@ -1696,7 +1696,7 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
 
       <div className="wallet-modal__actions">
         <button onClick={onClose} disabled={busy} className="wallet-modal__btn wallet-modal__btn--ghost">
-          {t("Há»§y")}
+          {t("Hủy")}
         </button>
         <button
           onClick={submit}
@@ -1708,10 +1708,10 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
           {submitting ? (
             <>
               <Loader2 size={14} className="wallet-spin" />
-              {t("Äang lÆ°u...")}
+              {t("Đang lưu...")}
             </>
           ) : (
-            t("LÆ°u tÃ i khoáº£n")
+            t("Lưu tài khoản")
           )}
         </button>
       </div>
