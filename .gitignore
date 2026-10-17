@@ -91,3 +91,7 @@ desktop.ini
 backfill-failed-*.json
 canteen-db.backup-*.json
 translate-cache.backup*
+
+src/lib/i18n/locales/_source.json
+
+src/lib/i18n/locales/en.js
