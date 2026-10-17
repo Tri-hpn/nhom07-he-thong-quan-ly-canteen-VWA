@@ -1,0 +1,231 @@
+﻿==================================================
+  BAO CAO KIEM TRA DU AN - 10/17/2026 10:14:56
+==================================================
+
+[1] DANH SACH TOAN BO FILE (bo node_modules, .git, dist)
+Tong so file: 169
+.env
+.env.example
+.env.local
+.gitignore
+autoTranslate.js
+canteen-db.json
+check-all.ps1
+check-db.mjs
+check-report.txt
+index.html
+Makefile
+menuImageStore.js
+package-lock.json
+package.json
+README.md
+server-json.js
+translate-cache.json
+vercel.json
+vite-plugin-i18n.mjs
+vite.config.js
+.backup\canteen-db_pre-backfill_2026-10-10.json
+.backup\canteen-db_pre-backfill_2026-10-12.json
+.backup\canteen-db_pre-backfill_2026-10-13.json
+.github\CODEOWNERS
+.github\pull_request_template.md
+.github\workflows\ci.yml
+.vercel\README.txt
+.vercel\repo.json
+.vscode\launch.json
+api\index.js
+docs\acceptance-criteria.md
+docs\README.md
+docs\test-cases.md
+docs\user-flows.md
+middleware\rateLimit.js
+middleware\sanitize.js
+public\bot-avatar.svg
+public\icon.svg
+public\manifest.json
+public\shrink-menu-images.html
+public\shrink-menu-images.js
+scripts\.translate-config.json
+scripts\auto-translate-locales.mjs
+scripts\auto-translate-ui.mjs
+scripts\backfill-from-mongo.mjs
+scripts\check-i18n-duplicate.mjs
+scripts\check-locale-coverage.mjs
+scripts\cleanup-db.mjs
+scripts\cleanup-i18n-source.mjs
+scripts\fix-i18n-duplicate.mjs
+scripts\fix-imports.mjs
+scripts\fix-mojibake-v2.mjs
+scripts\free-dev-ports.mjs
+scripts\i18n-cleanup-sync.mjs
+scripts\i18n-diagnostic.mjs
+scripts\i18n-report.mjs
+scripts\migrate-translate-db.mjs
+scripts\split.mjs
+scripts\translate-cache.json
+scripts\translate-one-lang.mjs
+scripts\lib\google-translate.mjs
+scripts\lib\locale-utils.mjs
+src\api-tests.http
+src\api.js
+src\App.jsx
+src\bannerSlides.js
+src\main.jsx
+src\styles-admin.css
+src\styles-customer.css
+src\styles-employee.css
+src\styles-sky.css
+src\styles.css
+src\components\AdminChatControls.jsx
+src\components\BannerCarousel.jsx
+src\components\BottomNav.jsx
+src\components\CardHoverEffect.jsx
+src\components\ChatBot.jsx
+src\components\ChatBotWidget.jsx
+src\components\ConfirmDialog.jsx
+src\components\CustomerOrderDetail.jsx
+src\components\Effects.jsx
+src\components\ErrorBoundary.jsx
+src\components\FoodDetailModal.jsx
+src\components\Footer.jsx
+src\components\ImageUploader.jsx
+src\components\Inventory86List.jsx
+src\components\KDSTicket.jsx
+src\components\Layout.jsx
+src\components\LoginIllustration.jsx
+src\components\LogoVWA.jsx
+src\components\NotificationBell.jsx
+src\components\PaymentModal.jsx
+src\components\ProtectedRoute.jsx
+src\components\ReviewSection.jsx
+src\components\SettingsModal.jsx
+src\components\ShiftChecklist.jsx
+src\components\Sidebar.jsx
+src\components\Skeleton.jsx
+src\components\StaffKPICard.jsx
+src\components\StarRating.jsx
+src\components\StudentCodeInput.jsx
+src\components\TelemetryDock.jsx
+src\components\Topbar.jsx
+src\components\ToppingSelector.jsx
+src\components\UI.jsx
+src\components\VoiceCallButton.jsx
+src\components\settings\AppearancePanel.jsx
+src\components\settings\index.js
+src\components\settings\LanguagePanel.jsx
+src\components\settings\NotificationsPanel.jsx
+src\components\settings\SecurityPanel.jsx
+src\components\settings\settings.css
+src\components\settings\SettingsList.jsx
+src\components\settings\WalletPanel.jsx
+src\contexts\AuthContext.jsx
+src\hooks\useCrossTabSync.js
+src\hooks\useI18n.js
+src\hooks\usePointsConfig.js
+src\hooks\useSettings.js
+src\hooks\useVoiceAnnouncer.js
+src\lib\datetime.js
+src\lib\i18n.js
+src\lib\orderEvents.js
+src\lib\pointsEngine.js
+src\lib\i18n\index.js
+src\lib\i18n\locales\en.json
+src\lib\i18n\locales\ja.json
+src\lib\i18n\locales\ko.json
+src\lib\i18n\locales\vi.json
+src\lib\i18n\locales\zh.json
+src\lib\i18n\locales\_source.json
+src\pages\ForcePasswordChange.jsx
+src\pages\ForgotPassword.jsx
+src\pages\Login.jsx
+src\pages\OAuthCallback.jsx
+src\pages\PaymentResult.jsx
+src\pages\Register.jsx
+src\pages\StaffProfile.jsx
+src\pages\customer\CustomerCart.jsx
+src\pages\customer\CustomerChat.jsx
+src\pages\customer\CustomerCheckout.jsx
+src\pages\customer\CustomerHome.jsx
+src\pages\customer\CustomerMenu.jsx
+src\pages\customer\CustomerOrders.jsx
+src\pages\customer\CustomerProfile.jsx
+src\pages\customer\CustomerPromotions.jsx
+src\pages\customer\CustomerSuccess.jsx
+src\pages\customer\CustomerWallet.jsx
+src\pages\customer\PublicOrderQr.jsx
+src\pages\employee\EmployeeChat.jsx
+src\pages\employee\EmployeeHome.jsx
+src\pages\employee\EmployeeMenu.jsx
+src\pages\employee\EmployeeOrders.jsx
+src\pages\employee\EmployeeShifts.jsx
+src\pages\owner\OwnerAttendance.jsx
+src\pages\owner\OwnerBackup.jsx
+src\pages\owner\OwnerChat.jsx
+src\pages\owner\OwnerCustomers.jsx
+src\pages\owner\OwnerDashboard.jsx
+src\pages\owner\OwnerEmployees.jsx
+src\pages\owner\OwnerFinance.jsx
+src\pages\owner\OwnerInventory.jsx
+src\pages\owner\OwnerMenu.jsx
+src\pages\owner\OwnerOrders.jsx
+src\pages\owner\OwnerPermissions.jsx
+src\pages\owner\OwnerPriceHistory.jsx
+src\pages\owner\OwnerSettings.jsx
+src\pages\owner\OwnerVouchers.jsx
+src\pages\owner\OwnerWallet.jsx
+
+[2] THONG KE FILE THEO LOAI
+  .jsx       : 81
+  .mjs       : 21
+  .js        : 21
+  .json      : 19
+  .css       : 6
+  .md        : 6
+  .html      : 2
+  .svg       : 2
+             : 2
+  .txt       : 2
+  .http      : 1
+  .example   : 1
+  .env       : 1
+  .local     : 1
+  .ps1       : 1
+  .gitignore : 1
+  .yml       : 1
+
+[3] KIEM TRA CU PHAP TOAN BO FILE CODE
+So file code can kiem tra: 102
+[SKIP] ESLint chua cai
+
+[4] KIEM TRA IMPORT SAI
+[X] rateLimit.js : import './middleware/rateLimit.js' KHONG TIM THAY
+[X] sanitize.js : import './middleware/sanitize.js' KHONG TIM THAY
+[X] ErrorBoundary.jsx : import './components/ErrorBoundary' KHONG TIM THAY
+[X] OwnerEmployees.jsx : import './OwnerShifts' KHONG TIM THAY
+
+[5] TIM FILE THIEU EXPORT
+[!] public\shrink-menu-images.js : KHONG CO EXPORT
+
+[6] KIEM TRA NGOAC LECH
+[!] src\pages\customer\CustomerProfile.jsx : {} = 367/367 , () = 397/399
+
+[7] XOA CACHE VITE
+[OK] Da xoa node_modules\.vite
+
+[8] CHAY DEV SERVER (BAT LOI TRANSFORM)
+Dang chay npm run dev trong 20 giay de bat loi...
+
+[OK] Dev server khoi dong OK
+
+==================================================
+  TOM TAT KET QUA
+==================================================
+Tong file         : 169
+File code         : 102
+Import sai        : 4
+File thieu export : 1
+Ngoac lech        : 1
+Log dev server    : dev-error.log
+Bao cao day du    : check-report.txt
+
+>> Mo file 'dev-error.log' va 'check-report.txt' de xem chi tiet loi.
