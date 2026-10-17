@@ -281,34 +281,17 @@ export default function FoodDetailModal({
       return;
     }
 
-    const key = buildKey();
-    const existing = cart?.[key];
-    const currentQty = Number(existing?.qty) || 0;
-
-    if (currentQty + qty > maxQty) {
-      toast(
-        `${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`,
-        "error"
-      );
+    if (qty > maxQty) {
+      toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
       return;
     }
 
+    // Truyen rieng mon mua ngay, khong thay doi gio hang.
+    const buyNowItem = buildCartEntry(qty);
 
-    setCart((c) => {
-      const e = c[key];
-      const newQty = (Number(e?.qty) || 0) + qty;
-      return {
-        ...c,
-        [key]: buildCartEntry(newQty),
-      };
-    });
-
-    // 🔧 C2: KHÔNG gọi onUpdateStock nữa.
-    
     onClose?.();
-    navigate("/customer/checkout");
+    navigate("/customer/checkout", { state: { buyNowItem } });
   };
-
   // ---------- Qty handlers ----------
   const handleQtyMinus = () => setQty((q) => Math.max(1, q - 1));
 

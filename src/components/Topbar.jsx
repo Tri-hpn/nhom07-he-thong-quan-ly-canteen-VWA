@@ -127,6 +127,16 @@ export default function CustomerTopbar({
     const timer = setInterval(readNotifications, 30000);
     return () => clearInterval(timer);
   }, [readNotifications]);
+  useEffect(() => {
+    const refreshNotifications = () => {
+      readNotifications();
+    };
+
+    window.addEventListener("canteen-notifications-refresh", refreshNotifications);
+    return () => {
+      window.removeEventListener("canteen-notifications-refresh", refreshNotifications);
+    };
+  }, [readNotifications]);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {

@@ -1266,3 +1266,17 @@ html.dark-mode .settings-form__input {
   from { transform: translateY(100%); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+/* CUSTOMER SETTINGS CENTER FIX */
+@media (max-width: 640px) {
+  .customer-topbar .settings-overlay {
+    display: grid !important;
+    place-items: center !important;
+    padding: 12px !important;
+  }
+
+  .customer-topbar .settings-modal {
+    margin: auto !important;
+    border-radius: 20px !important;
+    max-height: 92vh !important;
+  }
+}
