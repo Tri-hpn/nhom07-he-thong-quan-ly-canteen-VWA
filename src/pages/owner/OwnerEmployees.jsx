@@ -17,6 +17,9 @@
 //
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
 // 🔧 FIX #89: t() truyền vars thay vì .replace("{password}", ...)
+// 🔧 FIX: Xóa hoàn toàn import + tab OwnerShifts (file đã bị xóa
+//         trong commit cfd02140, route /owner/shifts đã redirect
+//         sang /owner/attendance)
 // ============================================================
 
 import { SkeletonList } from "../../components/Skeleton";
@@ -32,7 +35,7 @@ import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useI18n } from "../../hooks/useI18n";
-import OwnerShifts from "./OwnerShifts";
+// ❌ ĐÃ XÓA: import OwnerShifts from "./OwnerShifts";
 
 // ============================================================
 // CONSTANTS
@@ -2017,62 +2020,14 @@ function Modal({ children, onClose, maxWidth = 480 }) {
 }
 
 // ============================================================
-// WRAPPER: OwnerEmployees — gộp Nhân viên + Ca làm & chấm công
+// WRAPPER: OwnerEmployees
 // ============================================================
+// 🔧 FIX: Xóa hoàn toàn tab "Ca làm & chấm công" — route
+//         /owner/shifts đã redirect sang /owner/attendance trong App.jsx.
+//         Tab này không còn cần thiết vì OwnerShifts.jsx đã bị xóa.
 
 export default function OwnerEmployees() {
-  const { t } = useI18n();
-  const [tab, setTab] = useState("employees");
-
-  return (
-    <div>
-      <div
-        style={{
-          marginBottom: 20,
-          background: "var(--card-bg, #fff)",
-          border: "1px solid var(--border-color, #e7ebf0)",
-          borderRadius: 12,
-          padding: 12,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <label
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: "var(--text-muted, #475569)",
-          }}
-        >
-          {t("Mục:")}
-        </label>
-        <select
-          value={tab}
-          onChange={(e) => setTab(e.target.value)}
-          style={{
-            flex: 1,
-            maxWidth: 400,
-            padding: "10px 14px",
-            border: "1px solid var(--border-color, #e5e9ef)",
-            borderRadius: 8,
-            background: "var(--bg-secondary, #fff)",
-            color: "var(--text-primary, #172033)",
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: "pointer",
-            outline: "none",
-          }}
-        >
-          <option value="employees">{t("Nhân viên")}</option>
-          <option value="shifts">{t("Ca làm & chấm công")}</option>
-        </select>
-      </div>
-
-      {tab === "employees" && <OwnerEmployeesInner />}
-      {tab === "shifts" && <OwnerShifts />}
-    </div>
-  );
+  return <OwnerEmployeesInner />;
 }
 
 // ============================================================

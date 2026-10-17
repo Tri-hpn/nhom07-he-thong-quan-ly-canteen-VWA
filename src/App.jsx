@@ -64,12 +64,10 @@ import OwnerCustomers from "./pages/owner/OwnerCustomers";
 import OwnerMenu from "./pages/owner/OwnerMenu";
 import OwnerPriceHistory from "./pages/owner/OwnerPriceHistory";
 import OwnerInventory from "./pages/owner/OwnerInventory";
-import OwnerReports from "./pages/owner/OwnerReports";
 import OwnerPermissions from "./pages/owner/OwnerPermissions";
 import OwnerBackup from "./pages/owner/OwnerBackup";
 import OwnerWallet from "./pages/owner/OwnerWallet";
 import OwnerVouchers from "./pages/owner/OwnerVouchers";
-import OwnerShifts from "./pages/owner/OwnerShifts";
 import OwnerOrders from "./pages/owner/OwnerOrders";
 import OwnerFinance from "./pages/owner/OwnerFinance";
 import OwnerSettings from "./pages/owner/OwnerSettings";
@@ -552,11 +550,10 @@ export default function App() {
             element={wrap("Kho hàng", "Nguyên liệu", <OwnerInventory />)}
           />
 
-                    <Route
+          {/* ✅ /owner/reports đã được gộp vào /owner/finance */}
+          <Route
             path="/owner/reports"
             element={<Navigate to="/owner/finance" replace />}
-          />
-            )}
           />
 
           <Route
