@@ -66,10 +66,10 @@
    ============================================================ */
 
 .admin-shell .main {
-  margin-left: 250px !important;
-  width: calc(100% - 250px) !important;
+  margin-left: 0 !important;
+  width: 100% !important;
+  flex: 1 !important;
   background: var(--st-canvas) !important;
-  padding-top: 0 !important;
 }
 
 .admin-main-content {
