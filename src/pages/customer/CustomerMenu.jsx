@@ -1,9 +1,9 @@
+﻿// ============================================================
+// CUSTOMERMENU.JSX â€” Thá»±c Ä‘Æ¡n (V3 - Ä‘á»“ng bá»™ card vá»›i trang chá»§)
 // ============================================================
-// CUSTOMERMENU.JSX — Thực đơn (V3 - đồng bộ card với trang chủ)
-// ============================================================
-// ✅ SOURCE-TEXT I18N
-// ✅ Card món: ảnh vuông 96px + info + nút Thêm (giống HomeFoodCard)
-// ✅ Layout: grid 2 cột có header full-width — 2 cột không lệch
+// âœ… SOURCE-TEXT I18N
+// âœ… Card mÃ³n: áº£nh vuÃ´ng 96px + info + nÃºt ThÃªm (giá»‘ng HomeFoodCard)
+// âœ… Layout: grid 2 cá»™t cÃ³ header full-width â€” 2 cá»™t khÃ´ng lá»‡ch
 // ============================================================
 
 import { SkeletonCard } from "../../components/Skeleton";
@@ -25,54 +25,54 @@ import ChatBotWidget from "../../components/ChatBotWidget";
 // CONSTANTS
 // ============================================================
 
-const ALL_CATEGORY = "Tất cả";
+const ALL_CATEGORY = "Táº¥t cáº£";
 const PAGE_SIZE = 15;
 
 const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=70";
 
 const CATEGORY_ICONS = {
-  "Bữa sáng": "🌅", "Bữa trưa": "🍚", "Bữa tối": "🌙", "Món chay": "🥗",
-  "Đồ uống": "🥤", "Đồ ăn nhanh": "🍔", "Tráng miệng": "🍰",
+  "Bá»¯a sÃ¡ng": "ðŸŒ…", "Bá»¯a trÆ°a": "ðŸš", "Bá»¯a tá»‘i": "ðŸŒ™", "MÃ³n chay": "ðŸ¥—",
+  "Äá»“ uá»‘ng": "ðŸ¥¤", "Äá»“ Äƒn nhanh": "ðŸ”", "TrÃ¡ng miá»‡ng": "ðŸ°",
 };
 
 const CATEGORY_LABEL_TRANSLATIONS = {
-  "Bữa sáng": "Breakfast",
-  "Bữa trưa": "Lunch",
-  "Bữa tối": "Dinner",
-  "Đồ ăn nhanh": "Fast Food",
-  "Món chay": "Vegetarian",
-  "Đồ uống": "Drink",
-  "Tráng miệng": "Dessert",
-  "Món mặn": "Savory",
+  "Bá»¯a sÃ¡ng": "Breakfast",
+  "Bá»¯a trÆ°a": "Lunch",
+  "Bá»¯a tá»‘i": "Dinner",
+  "Äá»“ Äƒn nhanh": "Fast Food",
+  "MÃ³n chay": "Vegetarian",
+  "Äá»“ uá»‘ng": "Drink",
+  "TrÃ¡ng miá»‡ng": "Dessert",
+  "MÃ³n máº·n": "Savory",
 };
 
-const FAST_CATEGORIES = ["Đồ ăn nhanh"];
-const HEALTHY_CATEGORIES = ["Món chay", "Đồ chay"];
-const COOL_CATEGORIES = ["Đồ uống", "Nước ép - Sinh tố", "Coffee & Tea"];
+const FAST_CATEGORIES = ["Äá»“ Äƒn nhanh"];
+const HEALTHY_CATEGORIES = ["MÃ³n chay", "Äá»“ chay"];
+const COOL_CATEGORIES = ["Äá»“ uá»‘ng", "NÆ°á»›c Ã©p - Sinh tá»‘", "Coffee & Tea"];
 const FAST_PREP_MINUTES = 10;
 
 const PRIORITY_FILTERS = [
-  { key: "fast", icon: "⚡", label: "Phục vụ nhanh" },
-  { key: "healthy", icon: "🥗", label: "Lành mạnh" },
-  { key: "cool", icon: "❄️", label: "Mát lạnh" },
-  { key: "noSpicy", icon: "🌶️", label: "Không cay" },
+  { key: "fast", icon: "âš¡", label: "Phá»¥c vá»¥ nhanh" },
+  { key: "healthy", icon: "ðŸ¥—", label: "LÃ nh máº¡nh" },
+  { key: "cool", icon: "â„ï¸", label: "MÃ¡t láº¡nh" },
+  { key: "noSpicy", icon: "ðŸŒ¶ï¸", label: "KhÃ´ng cay" },
 ];
 
 const CALORIE_RANGES = [
-  { value: "all", label: "Tất cả" },
+  { value: "all", label: "Táº¥t cáº£" },
   { value: "under-400", label: "< 400 kcal" },
   { value: "400-650", label: "400 - 650 kcal" },
   { value: "over-650", label: "> 650 kcal" },
 ];
 
 const SORT_OPTIONS = [
-  { value: "all", label: "Tất cả" },
-  { value: "popular", label: "Bán chạy nhất" },
-  { value: "discount", label: "Đang giảm giá" },
-  { value: "price-asc", label: "Giá thấp → cao" },
-  { value: "price-desc", label: "Giá cao → thấp" },
-  { value: "fastest", label: "Nhanh nhất" },
+  { value: "all", label: "Táº¥t cáº£" },
+  { value: "popular", label: "BÃ¡n cháº¡y nháº¥t" },
+  { value: "discount", label: "Äang giáº£m giÃ¡" },
+  { value: "price-asc", label: "GiÃ¡ tháº¥p â†’ cao" },
+  { value: "price-desc", label: "GiÃ¡ cao â†’ tháº¥p" },
+  { value: "fastest", label: "Nhanh nháº¥t" },
 ];
 
 function translateCategory(name, t) {
@@ -129,7 +129,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
         setItems(rawList.filter((m) => m.active));
         setCategories(Array.isArray(catRes) ? catRes : []);
       } catch (e) {
-        if (!silent) setError(e.message || t("Không tải được thực đơn"));
+        if (!silent) setError(e.message || t("KhÃ´ng táº£i Ä‘Æ°á»£c thá»±c Ä‘Æ¡n"));
       } finally {
         setLoading(false);
       }
@@ -176,7 +176,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
     if (fromApi.length === 0 && items.length > 0) {
       const groups = {};
       items.forEach((m) => {
-        const c = m.category || "Khác";
+        const c = m.category || "KhÃ¡c";
         groups[c] = (groups[c] || 0) + 1;
       });
       return Object.entries(groups).map(([name, count]) => ({
@@ -336,7 +336,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
     const quantity = Math.max(1, Number(requestedQty) || 1);
 
     if (!id || available <= 0) {
-      toast(t("Hết hàng"), "error");
+      toast(t("Háº¿t hÃ ng"), "error");
       return;
     }
 
@@ -344,7 +344,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
     const currentQty = Number(cart?.[key]?.qty) || 0;
 
     if (currentQty + quantity > available) {
-      toast(`${t("Chỉ còn")} ${Math.max(0, available - currentQty)} ${t("phần")}`, "error");
+      toast(`${t("Chá»‰ cÃ²n")} ${Math.max(0, available - currentQty)} ${t("pháº§n")}`, "error");
       return;
     }
 
@@ -370,14 +370,13 @@ export default function CustomerMenu({ cart, setCart, user }) {
     navigate("/customer/checkout");
   };
 
-
   const openBuyModal = (item) => {
     setMode("buy");
     setSelected(item);
   };
 
   // ============================================================
-  // RENDER FOOD CARD — dùng layout giống HomeFoodCard
+  // RENDER FOOD CARD â€” dÃ¹ng layout giá»‘ng HomeFoodCard
   // ============================================================
 
   const renderFoodCard = (m) => {
@@ -408,7 +407,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
             />
             {isHot && (
               <span className="menu-food-card__badge--inline">
-                🔥 {t("Best Seller")}
+                ðŸ”¥ {t("Best Seller")}
               </span>
             )}
           </div>
@@ -416,12 +415,12 @@ export default function CustomerMenu({ cart, setCart, user }) {
 
             <h4 className="menu-food-card__name-sq">{tData(m, "name")}</h4>
             <p className="menu-food-card__desc-sq">
-              {m.description || t("Món ăn ngon tại Canteen VWA")}
+              {m.description || t("MÃ³n Äƒn ngon táº¡i Canteen VWA")}
             </p>
             <div className="menu-food-card__meta-row">
-              <span>⭐ {rating}</span>
+              <span>â­ {rating}</span>
 
-              <span>⏱ {prepTime} {t("phút")}</span>
+              <span>â± {prepTime} {t("phÃºt")}</span>
             </div>
             <div className="menu-food-card__price-row-sq">
               <span className="menu-food-card__price-sq">{money(m.price)}</span>
@@ -438,13 +437,13 @@ export default function CustomerMenu({ cart, setCart, user }) {
           >
             <button
               onClick={() => setQty(id, -1)}
-              aria-label={t("Giảm")}
+              aria-label={t("Giáº£m")}
               disabled={qty <= 1}
             >
-              −
+              âˆ’
             </button>
             <span>{qty}</span>
-            <button onClick={() => setQty(id, 1)} aria-label={t("Tăng")}>
+            <button onClick={() => setQty(id, 1)} aria-label={t("TÄƒng")}>
               +
             </button>
           </div>
@@ -456,13 +455,13 @@ export default function CustomerMenu({ cart, setCart, user }) {
             >
               <button
                 onClick={() => setQty(id, -1)}
-                aria-label={t("Giảm")}
+                aria-label={t("Giáº£m")}
                 disabled={qty <= 1}
               >
-                −
+                âˆ’
               </button>
               <span>{qty}</span>
-              <button onClick={() => setQty(id, 1)} aria-label={t("Tăng")}>
+              <button onClick={() => setQty(id, 1)} aria-label={t("TÄƒng")}>
                 +
               </button>
             </div>
@@ -476,7 +475,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
               disabled={isOutOfStock}
             >
               <ShoppingCart size={15} />
-              {t("Thêm")}
+              {t("ThÃªm")}
             </button>
 <button
   type="button"
@@ -496,7 +495,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
       );
     }
 
-    // Grid mode — layout giống HomeFoodCard
+    // Grid mode â€” layout giá»‘ng HomeFoodCard
     return (
       <div
         key={id}
@@ -517,7 +516,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
             />
             {isHot && (
               <span className="menu-food-card__badge--inline">
-                🔥 {t("Best Seller")}
+                ðŸ”¥ {t("Best Seller")}
               </span>
             )}
             {hasDiscount && !isHot && (
@@ -527,7 +526,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
             )}
             {isOutOfStock && (
               <span className="menu-food-card__badge--inline menu-food-card__badge--out">
-                {t("Hết hàng")}
+                {t("Háº¿t hÃ ng")}
               </span>
             )}
           </div>
@@ -552,16 +551,16 @@ export default function CustomerMenu({ cart, setCart, user }) {
               <button
                 type="button"
                 onClick={() => setQty(id, -1)}
-                aria-label={t("Giảm")}
+                aria-label={t("Giáº£m")}
                 disabled={qty <= 1}
               >
-                −
+                âˆ’
               </button>
               <span>{qty}</span>
               <button
                 type="button"
                 onClick={() => setQty(id, 1)}
-                aria-label={t("Tăng")}
+                aria-label={t("TÄƒng")}
               >
                 +
               </button>
@@ -574,7 +573,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
             <Star size={11} fill="#F59E0B" color="#F59E0B" /> {rating}
           </span>
 
-          <span>⏱ {prepTime} {t("phút")}</span>
+          <span>â± {prepTime} {t("phÃºt")}</span>
 
           <div className="menu-food-card__button-group">
 <button
@@ -586,7 +585,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
             disabled={isOutOfStock}
           >
             <ShoppingCart size={15} />
-            {t("Thêm")}
+            {t("ThÃªm")}
           </button>
 <button
   type="button"
@@ -603,7 +602,6 @@ export default function CustomerMenu({ cart, setCart, user }) {
 </div>
         </div>
 
-
       </div>
     );
   };
@@ -619,7 +617,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
           <AlertCircle size={18} />
           <span>{error}</span>
           <button onClick={() => load(false)}>
-            <RefreshCw size={12} /> {t("Thử lại")}
+            <RefreshCw size={12} /> {t("Thá»­ láº¡i")}
           </button>
         </div>
       )}
@@ -638,7 +636,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
                       <path d="m18.5 21 1.6 1.6 3.2-3.3" stroke="#ffffff" strokeWidth="1.5" />
                     </g>
                   )}
-                </svg> {t("BỘ LỌC TÌM KIẾM")}
+                </svg> {t("Bá»˜ Lá»ŒC TÃŒM KIáº¾M")}
               </label>
               <div className="menu-v3-search__wrap">
                 <Search size={16} className="menu-v3-search__icon" />
@@ -647,7 +645,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t("Gà áp chảo, phở bò, mì...")}
+                  placeholder={t("GÃ  Ã¡p cháº£o, phá»Ÿ bÃ², mÃ¬...")}
                   className="menu-v3-search__input"
                 />
                 <SlidersHorizontal size={14} className="menu-v3-search__filter-icon" />
@@ -656,9 +654,9 @@ export default function CustomerMenu({ cart, setCart, user }) {
 
             <div className="menu-v3-group">
               <div className="menu-v3-group__head">
-                <h2>{t("Danh mục món")}</h2>
+                <h2>{t("Danh má»¥c mÃ³n")}</h2>
                 <span className="menu-v3-group__count">
-                  {categoryList.length} {t("nhóm")}
+                  {categoryList.length} {t("nhÃ³m")}
                 </span>
               </div>
               <div className="menu-v3-checks">
@@ -689,7 +687,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
 
             <div className="menu-v3-group">
               <div className="menu-v3-group__head">
-                <h2>{t("Khoảng giá (VNĐ)")}</h2>
+                <h2>{t("Khoáº£ng giÃ¡ (VNÄ)")}</h2>
                 <span className="menu-v3-group__range">
                   {money(priceRange.min)} - {money(priceRange.max)}
                 </span>
@@ -708,7 +706,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
                   </div>
                   <input
                     type="range"
-                    aria-label="Giá tối thiểu"
+                    aria-label="GiÃ¡ tá»‘i thiá»ƒu"
                     className="menu-v3-price-slider__range menu-v3-price-slider__range--min"
                     min={priceBounds.min}
                     max={Math.max(priceBounds.min, priceRange.max - 1000)}
@@ -726,7 +724,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
                   />
                   <input
                     type="range"
-                    aria-label="Giá tối đa"
+                    aria-label="GiÃ¡ tá»‘i Ä‘a"
                     className="menu-v3-price-slider__range menu-v3-price-slider__range--max"
                     min={Math.min(priceBounds.max, priceRange.min + 1000)}
                     max={priceBounds.max}
@@ -751,7 +749,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
             </div>
 
             <div className="menu-v3-group">
-              <h2>{t("Tiêu chí ưu tiên")}</h2>
+              <h2>{t("TiÃªu chÃ­ Æ°u tiÃªn")}</h2>
               <div className="menu-v3-checks">
                 {PRIORITY_FILTERS.map((p) => (
                   <label
@@ -772,27 +770,23 @@ export default function CustomerMenu({ cart, setCart, user }) {
               </div>
             </div>
 
-
-
             <button className="menu-v3-reset" onClick={resetAllFilters}>
               <RotateCcw size={14} />
-              {t("Đặt lại tất cả bộ lọc")}
+              {t("Äáº·t láº¡i táº¥t cáº£ bá»™ lá»c")}
             </button>
           </div>
-
-
 
           <div className="menu-v3-sidebar__badges">
           <div className="menu-v3-badge">
             <Zap size={16} />
             <span>
-              {t("Tốc độ ra món TB:")} <b>6.8 {t("phút")}</b>
+              {t("Tá»‘c Ä‘á»™ ra mÃ³n TB:")} <b>6.8 {t("phÃºt")}</b>
             </span>
           </div>
           <div className="menu-v3-badge">
             <Shield size={16} />
             <span>
-              {t("Đảm bảo VSATTP:")} <b>{t("Chuẩn A+")}</b>
+              {t("Äáº£m báº£o VSATTP:")} <b>{t("Chuáº©n A+")}</b>
             </span>
           </div>
         </div>
@@ -801,15 +795,15 @@ export default function CustomerMenu({ cart, setCart, user }) {
         <main className="menu-v3-main">
           <div className="menu-v3-filter-bar">
             <div className="menu-v3-filter-bar__left">
-              <span>{t("Hiển thị")}</span>
-              <b>{filtered.length} {t("món ăn")}</b>
-              <span>{t("sẵn sàng phục vụ")}</span>
+              <span>{t("Hiá»ƒn thá»‹")}</span>
+              <b>{filtered.length} {t("mÃ³n Äƒn")}</b>
+              <span>{t("sáºµn sÃ ng phá»¥c vá»¥")}</span>
               <Sparkles size={14} color="#2563EB" />
             </div>
 
             <div className="menu-v3-filter-bar__right">
               <div className="menu-v3-sort">
-                <span>{t("Sắp xếp:")}</span>
+                <span>{t("Sáº¯p xáº¿p:")}</span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
@@ -826,14 +820,14 @@ export default function CustomerMenu({ cart, setCart, user }) {
                 <button
                   className={viewMode === "grid" ? "active" : ""}
                   onClick={() => setViewMode("grid")}
-                  aria-label={t("Lưới")}
+                  aria-label={t("LÆ°á»›i")}
                 >
                   <Grid3x3 size={16} />
                 </button>
                 <button
                   className={viewMode === "list" ? "active" : ""}
                   onClick={() => setViewMode("list")}
-                  aria-label={t("Danh sách")}
+                  aria-label={t("Danh sÃ¡ch")}
                 >
                   <List size={16} />
                 </button>
@@ -851,11 +845,11 @@ export default function CustomerMenu({ cart, setCart, user }) {
 
           {!loading && filtered.length === 0 && (
             <div className="menu-v3-empty">
-              <div className="menu-v3-empty__icon">🍽️</div>
-              <h3>{t("Không tìm thấy món nào")}</h3>
-              <p>{t("Thử điều chỉnh bộ lọc hoặc xóa từ khóa tìm kiếm.")}</p>
+              <div className="menu-v3-empty__icon">ðŸ½ï¸</div>
+              <h3>{t("KhÃ´ng tÃ¬m tháº¥y mÃ³n nÃ o")}</h3>
+              <p>{t("Thá»­ Ä‘iá»u chá»‰nh bá»™ lá»c hoáº·c xÃ³a tá»« khÃ³a tÃ¬m kiáº¿m.")}</p>
               <button onClick={resetAllFilters}>
-                {t("Đặt lại bộ lọc")}
+                {t("Äáº·t láº¡i bá»™ lá»c")}
               </button>
             </div>
           )}
@@ -879,7 +873,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
       disabled={page === 1}
     >
       <ChevronLeft size={18} />
-      <span>{t("Quay lại")}</span>
+      <span>{t("Quay láº¡i")}</span>
     </button>
 
     <div className="menu-v3-page-indicator">
@@ -901,7 +895,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
       }}
       disabled={page >= totalPages}
     >
-      <span>{t("Tiếp tục")}</span>
+      <span>{t("Tiáº¿p tá»¥c")}</span>
       <ChevronRight size={18} />
     </button>
   </div>

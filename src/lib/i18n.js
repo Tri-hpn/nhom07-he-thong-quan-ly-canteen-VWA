@@ -1,12 +1,12 @@
-// ============================================================
-// i18n.js — Hệ thống đa ngôn ngữ (V6 - FINAL)
+﻿// ============================================================
+// i18n.js â€” Há»‡ thá»‘ng Ä‘a ngÃ´n ngá»¯ (V6 - FINAL)
 // ============================================================
 // V5 (2026-10) - FINAL:
-//   - 🔧 FIX L11: getCoverage() — chỉ cần v !== "" là "đã dịch"
-//   - 🔧 FIX L17: import.meta.hot.dispose() cleanup listener
+//   - ðŸ”§ FIX L11: getCoverage() â€” chá»‰ cáº§n v !== "" lÃ  "Ä‘Ã£ dá»‹ch"
+//   - ðŸ”§ FIX L17: import.meta.hot.dispose() cleanup listener
 // V6 (2026-10):
-//   - 🔧 FIX H5: getCoverage bỏ điều kiện `v !== k` (trùng với
-//     comment L11 nói fix nhưng code cũ vẫn chưa fix)
+//   - ðŸ”§ FIX H5: getCoverage bá» Ä‘iá»u kiá»‡n `v !== k` (trÃ¹ng vá»›i
+//     comment L11 nÃ³i fix nhÆ°ng code cÅ© váº«n chÆ°a fix)
 // ============================================================
 
 import vi from "./i18n/locales/vi.json";
@@ -46,7 +46,7 @@ export function getLocale() {
 
 export function setLocale(locale) {
   if (!LOCALES[locale]) {
-    console.warn(`[i18n] Locale "${locale}" không tồn tại`);
+    console.warn(`[i18n] Locale "${locale}" khÃ´ng tá»“n táº¡i`);
     return;
   }
   if (currentLocale === locale) return;
@@ -105,8 +105,8 @@ export function getCoverage(locale = currentLocale) {
 
   for (const k of viKeys) {
     const v = dict[k];
-    // ✅ FIX H5: bản dịch trùng VI (tên riêng, thương hiệu) vẫn là "đã dịch".
-    // Chỉ coi là "missing" khi value rỗng/null/undefined.
+    // âœ… FIX H5: báº£n dá»‹ch trÃ¹ng VI (tÃªn riÃªng, thÆ°Æ¡ng hiá»‡u) váº«n lÃ  "Ä‘Ã£ dá»‹ch".
+    // Chá»‰ coi lÃ  "missing" khi value rá»—ng/null/undefined.
     if (v !== undefined && v !== null && v !== "") {
       translated++;
     } else {
@@ -134,13 +134,13 @@ export function initI18n() {
   return Promise.resolve();
 }
 
-// ---------- SYNC với settings + đa tab ----------
+// ---------- SYNC vá»›i settings + Ä‘a tab ----------
 if (typeof window !== "undefined") {
   const onLanguageChange = (e) => {
     const newLang = e?.detail?.lang;
     if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
-    console.log("[i18n] Sync từ settings:", newLang);
+
     setLocale(newLang);
   };
 
@@ -149,7 +149,7 @@ if (typeof window !== "undefined") {
     const newLang = e.newValue;
     if (!newLang || !LOCALES[newLang]) return;
     if (newLang === currentLocale) return;
-    console.log("[i18n] Sync từ tab khác:", newLang);
+
     setLocale(newLang);
   };
 

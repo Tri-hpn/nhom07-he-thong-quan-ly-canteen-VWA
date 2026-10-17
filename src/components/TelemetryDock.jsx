@@ -3,6 +3,7 @@
 // ============================================================
 // 🔧 FIX #69: clock dùng Intl.DateTimeFormat cố định (24h, VN timezone)
 //             thay vì toLocaleTimeString (khác nhau giữa các browser)
+// 🔧 V8: Nhận prop `devices` để hiển thị trạng thái thật
 // ============================================================
 
 import { useEffect, useState } from "react";
