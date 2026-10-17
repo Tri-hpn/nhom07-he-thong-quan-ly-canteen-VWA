@@ -4929,3 +4929,125 @@ aside > div:first-child,
   background: #cbd5e1;
   border-radius: 4px;
 }
+
+/* ============================================================
+   PHẦN 45: UNIVERSAL RESPONSIVE — TỰ ĐỘNG CĂN CHỈNH MỌI THIẾT BỊ
+   ============================================================ */
+
+/* 45.1. Typography Co Giãn (Fluid Typography) */
+h1 { font-size: clamp(20px, 3.5vw, 28px) !important; line-height: 1.25; }
+h2 { font-size: clamp(18px, 2.5vw, 24px) !important; line-height: 1.3; }
+h3 { font-size: clamp(16px, 2vw, 20px) !important; line-height: 1.35; }
+p, span, div { word-break: break-word; }
+
+/* 45.2. Grid Tự Động (KPI, Dashboard, Thẻ Thông Tin) */
+/* Áp dụng cho: .staff-kpi-grid, .stats-grid-4, .dashboard-2col, .grid-auto */
+.grid-auto, .staff-kpi-grid, .stats-grid-4, .dashboard-2col {
+  display: grid !important;
+  gap: var(--gap-fluid) !important;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+  align-items: stretch !important;
+}
+
+/* 45.3. Chat Workspace (Admin & Employee) */
+.chat-workspace-grid {
+  display: grid !important;
+  grid-template-columns: 320px minmax(0, 1fr) 340px !important;
+  gap: 16px !important;
+  height: calc(100vh - 140px) !important;
+}
+@media (max-width: 1400px) {
+  .chat-workspace-grid { grid-template-columns: 280px minmax(0, 1fr) 300px !important; }
+}
+@media (max-width: 1200px) {
+  .chat-workspace-grid { grid-template-columns: 280px minmax(0, 1fr) !important; }
+  .chat-context { display: none !important; } /* Ẩn panel phải trên tablet */
+}
+@media (max-width: 900px) {
+  .chat-workspace-grid { grid-template-columns: 1fr !important; height: auto !important; }
+  .chat-conv { display: none !important; } /* Ẩn danh sách, chỉ hiện chat trên mobile */
+  .chat-conv.active { display: flex !important; }
+}
+
+/* 45.4. Bảng Biểu (Tables) - Tự động cuộn ngang */
+.table-responsive, 
+div[style*="overflowX: auto"],
+div[style*="overflow-x: auto"] {
+  width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e9ef);
+}
+table {
+  min-width: 600px; /* Ép bảng rộng ra để cuộn thay vì bóp méo chữ */
+}
+
+/* 45.5. Modals & Popups */
+.modal-content, .dialog-content, .food-detail-content {
+  width: min(100% - 32px, 600px) !important;
+  max-height: calc(100vh - 40px) !important;
+  overflow-y: auto !important;
+}
+
+/* 45.6. Forms & Toolbars (Tự động xuống dòng) */
+form > div, 
+.toolbar, 
+.filter-bar,
+.action-bar {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+}
+form input, form select, form textarea {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* 45.7. Ẩn/Hiện phần tử theo thiết bị */
+.hide-desktop { display: none !important; }
+.hide-tablet { display: none !important; }
+.hide-mobile { display: none !important; }
+
+@media (max-width: 1200px) {
+  .hide-desktop { display: block !important; }
+  .hide-tablet { display: none !important; }
+}
+@media (max-width: 768px) {
+  .hide-desktop { display: block !important; }
+  .hide-tablet { display: block !important; }
+  .hide-mobile { display: none !important; }
+}
+
+/* 45.8. Đảm bảo các Flex Item không bị tràn */
+.flex-1 { flex: 1 1 0% !important; min-width: 0 !important; }
+.flex-shrink-0 { flex-shrink: 0 !important; }
+
+/* 45.9. Nút bấm trên Mobile (Touch Target) */
+@media (max-width: 768px) {
+  button, .btn, .primary-btn, .outline-btn {
+    min-height: 44px !important;
+    padding: 10px 16px !important;
+  }
+}
+
+/* 45.10. Fix cứng Layout Admin/Employee trên Mobile */
+@media (max-width: 1024px) {
+  .app-shell { flex-direction: column !important; }
+  .main { margin-left: 0 !important; width: 100% !important; height: auto !important; }
+  .sidebar { position: fixed !important; height: 100vh !important; z-index: 9999 !important; }
+  .page-content { padding: 16px !important; }
+}
+/* ============================================================
+   PHẦN 46: BO GÓC LOGO TOÀN CỤC
+   ============================================================ */
+.brand-mark, 
+.topbar-logo-img, 
+.v8-brand-mark, 
+.v8-form-logo-mark, 
+.footer-logo {
+  border-radius: 50% !important; /* Bo tròn hoàn toàn (hình tròn) */
+  /* Nếu bạn chỉ muốn bo góc mềm (không tròn hoàn toàn), hãy dùng:
+     border-radius: 16px !important; */
+  overflow: hidden !important;
+}

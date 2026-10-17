@@ -1,10 +1,8 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V11 - FINAL)
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V12 - FINAL)
 // ============================================================
-// V11 (2026-10):
-//   - ✅ Đồng nhất giao diện Employee giống Admin.
-//   - ✅ Thêm Role Chip cho cả 2 bên.
-//   - ✅ XOÁ HOÀN TOÀN khối thông tin User ở cuối Sidebar.
+// V12 (2026-10):
+//   - ✅ Cập nhật lại menu EMPLOYEE: Đơn hàng, Thực đơn và kho, Ca làm việc, Chat và hỗ trợ.
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -67,7 +65,7 @@ const MENU_CONFIG = {
           ["price",        "Lịch sử giá",         "/owner/price-history"],
           ["inventory",    "Kho hàng",            "/owner/inventory"],
           ["vouchers",     "Voucher",             "/owner/vouchers"],
-          ["finance",      "Báo cáo tài chính", "/owner/finance"],
+          ["finance",      "Báo cáo tài chính",   "/owner/finance"],
           ["wallet_admin", "Ví",                  "/owner/wallet"],
           ["employees",    "Quản lý nhân viên",   "/owner/employees"],
           ["customers",    "Khách hàng",          "/owner/customers"],
@@ -84,10 +82,10 @@ const MENU_CONFIG = {
         label: null,
         items: [
           ["dashboard",   "Tổng quan ca làm việc", "/employee"],
-          ["kds_kanban",  "Bàn làm việc (Kanban)", "/employee/orders", { badge: "kds_kanban" }],
-          ["kds_menu",    "Thực đơn & Kho",        "/employee/menu"],
+          ["orders",      "Đơn hàng",              "/employee/orders", { badge: "kds_kanban" }],
+          ["kds_menu",    "Thực đơn và kho",       "/employee/menu"],
           ["kds_history", "Ca làm việc",           "/employee/shifts"],
-          ["kds_alerts",  "Thông báo khẩn",        "/employee/chat"],
+          ["chat",        "Chat và hỗ trợ",        "/employee/chat"],
         ],
       },
     ],
@@ -421,8 +419,6 @@ export default function Sidebar({ role, onLogout, user }) {
             </div>
           ))}
         </nav>
-
-        {/* Đã xoá hoàn toàn khối thông tin User ở đây */}
       </aside>
     </>
   );

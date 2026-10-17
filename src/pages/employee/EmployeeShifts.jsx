@@ -7,22 +7,14 @@
 //   - Nhật ký ca: timeline check-in/out hôm nay
 //   - Kíp trực hôm nay: đồng nghiệp
 //   - Lịch sử chấm công gần nhất
-// 🔧 FIX #84: clock dùng Intl.DateTimeFormat cố định (VN, 24h)
-//             cho cả time + date — output ổn định giữa các browser
-// 🔧 V2: Nút "In phiếu giao ca" → mở modal preview chuẩn (đồng nhất
-//         với EmployeeHome V7). Dữ liệu lấy real ca thật:
-//         - Ca: ưu tiên todayAtt.shift → currentShift.id → todayShifts[0]
-//         - Chấm công: check-in/out/hours/status từ todayAtt
-//         - Phiếu gồm: Header + Thông tin ca + Chấm công + Ghi chú
-//           + Chữ ký + Footer (KHÔNG có doanh thu/đơn hàng — vì trang
-//           này không load orders)
+//   - ✅ V3: Thêm block "Công Việc Được Giao" + Hiển thị Quầy được phân
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Sunrise, Sun, Clock, LogIn, CalendarDays, TrendingUp, AlertTriangle,
   RefreshCw, Loader2, Printer, History, Users, BadgeCheck, Timer,
-  CalendarX, Store, PlusCircle, Save, X, ClipboardList,
+  CalendarX, Store, PlusCircle, Save, X, ClipboardList, CheckSquare, Check,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
@@ -44,7 +36,6 @@ const CLOCK_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
-// 🔧 FIX #84: formatter cố định cho ngày hiển thị (thứ, dd/mm/yyyy)
 const CLOCK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
   weekday: "long",
@@ -53,7 +44,6 @@ const CLOCK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-// 🔧 V2: formatter cho phiếu giao ca
 const PRINT_DATETIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
   timeZone: "Asia/Ho_Chi_Minh",
   day: "2-digit",
@@ -104,10 +94,6 @@ const STATUS_VARIANT = {
   "Vắng mặt": "danger",
 };
 
-// ============================================================
-// HELPERS
-// ============================================================
-
 function getTodayStr() {
   const d = new Date();
   const y = d.getFullYear();
@@ -148,7 +134,6 @@ function pillVariant(status) {
   return STATUS_VARIANT[status] || "neutral";
 }
 
-// 🔧 V2: sinh mã phiếu giao ca — SHIFT-YYYYMMDD-XX
 function genShiftCode(now = new Date(), suffix = "A") {
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -156,24 +141,18 @@ function genShiftCode(now = new Date(), suffix = "A") {
   return `SHIFT-${y}${m}${d}-${suffix}`;
 }
 
-// 🔧 V2: map shift id ("Ca sáng") → { title, time }
 function getShiftInfoById(id) {
   const s = SHIFTS.find((x) => x.id === id);
   if (s) return { title: s.label, time: s.time };
   return { title: "Ngoài giờ", time: "--:-- - --:--" };
 }
 
-// 🔧 V2: format giờ làm (giờ) → "Xh Ym"
 function fmtHours(hours) {
   if (!hours || hours <= 0) return "0.0h";
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
-
-// ============================================================
-// MAIN
-// ============================================================
 
 export default function EmployeeShifts() {
   const { t } = useI18n();
@@ -184,6 +163,11 @@ export default function EmployeeShifts() {
   const [upcoming, setUpcoming] = useState([]);
   const [team, setTeam] = useState([]);
   const [todayAtt, setTodayAtt] = useState(null);
+  
+  // ✅ State cho Tasks
+  const [tasks, setTasks] = useState([]);
+  const [togglingTaskId, setTogglingTaskId] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -197,7 +181,6 @@ export default function EmployeeShifts() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [selectedShift, setSelectedShift] = useState(null);
 
-  // 🔧 V2: Modal phiếu giao ca
   const [showHandover, setShowHandover] = useState(false);
 
   // ---- CLOCK ----
@@ -226,9 +209,10 @@ export default function EmployeeShifts() {
         api.shifts.mine(),
         api.attendance.all({ from: todayStr, to: todayStr }),
         api.attendance.today(),
+        api.tasks.me(), // ✅ Load tasks
       ]);
 
-      const [meRes, todayRes, mineRes, teamRes, attRes] = results;
+      const [meRes, todayRes, mineRes, teamRes, attRes, tasksRes] = results;
 
       if (meRes.status === "fulfilled") {
         setMe(Array.isArray(meRes.value) ? meRes.value : []);
@@ -244,6 +228,9 @@ export default function EmployeeShifts() {
       }
       if (attRes.status === "fulfilled") {
         setTodayAtt(attRes.value || null);
+      }
+      if (tasksRes.status === "fulfilled") {
+        setTasks(Array.isArray(tasksRes.value) ? tasksRes.value : []);
       }
       if (results.every((r) => r.status === "rejected")) {
         setError(t("Không tải được lịch sử ca. Vui lòng thử lại."));
@@ -323,20 +310,24 @@ export default function EmployeeShifts() {
     [minutes]
   );
 
+  // ✅ Cập nhật hiển thị ca làm + quầy do admin phân
   const shiftLabel = useMemo(() => {
-    const names = todayShifts.map((s) => s.shift);
-    if (names.length === 0) return t("Chưa được phân ca hôm nay");
-    return names.join(" • ");
+    if (todayShifts.length === 0) return t("Chưa được phân ca hôm nay");
+    
+    // Map từng ca và kèm thông tin quầy (nếu có)
+    return todayShifts.map((s) => {
+      const station = s.station ? ` (${s.station})` : "";
+      return `${s.shift}${station}`;
+    }).join(" • ");
   }, [todayShifts, t]);
 
-  // 🔧 FIX #84: dùng formatter cố định VN, 24h
   const clockLabel = CLOCK_TIME_FORMATTER.format(clock);
   const clockDateLabel = CLOCK_DATE_FORMATTER.format(clock);
 
-  // ============================================================
-  // 🔧 V2: DỮ LIỆU CHO PHIẾU GIAO CA — CA THẬT
-  // ============================================================
-  // Ưu tiên: todayAtt.shift → currentShift.id → todayShifts[0].shift → "Ngoài giờ"
+  // ✅ Computed cho Tasks
+  const pendingTasks = useMemo(() => tasks.filter((tk) => tk.status === "pending"), [tasks]);
+  const doneTasks = useMemo(() => tasks.filter((tk) => tk.status === "done"), [tasks]);
+
   const handoverShiftId = useMemo(() => {
     if (todayAtt?.shift) return todayAtt.shift;
     if (currentShift?.id) return currentShift.id;
@@ -367,7 +358,6 @@ export default function EmployeeShifts() {
   const handoverStaffCode =
     user?.employeeCode || user?.code || "NV-2024-08";
 
-  // Trạng thái chấm công cho phiếu
   const handoverAttStatus = todayAtt?.checkIn
     ? todayAtt?.checkOut
       ? t("Đã hoàn thành ca")
@@ -416,21 +406,31 @@ export default function EmployeeShifts() {
     }
   };
 
-  // 🔧 V2: Mở modal phiếu giao ca
-  const handleOpenHandover = useCallback(() => {
-    setShowHandover(true);
-  }, []);
+  // ✅ Hàm xử lý Toggle Task
+  const handleToggleTask = useCallback(async (task) => {
+    const id = task.id;
+    if (togglingTaskId) return;
+    setTogglingTaskId(id);
+    setTasks((prev) =>
+      prev.map((tk) => tk.id === id ? {
+        ...tk, status: tk.status === "done" ? "pending" : "done",
+        completed_at: tk.status === "done" ? null : new Date().toISOString(),
+      } : tk)
+    );
+    try {
+      await api.tasks.complete(id);
+      toast(task.status === "done" ? t("Đã mở lại công việc") : t("Đã đánh dấu hoàn thành!"), "success");
+    } catch (e) {
+      setTasks((prev) => prev.map((tk) => (tk.id === id ? task : tk)));
+      toast(e.message || t("Không cập nhật được"), "error");
+    } finally {
+      setTogglingTaskId(null);
+    }
+  }, [togglingTaskId, t]);
 
-  const handleCloseHandover = useCallback(() => {
-    setShowHandover(false);
-  }, []);
-
-  const handlePrintHandover = useCallback(() => {
-    // Đợi DOM render xong modal rồi mới in
-    setTimeout(() => {
-      window.print();
-    }, 100);
-  }, []);
+  const handleOpenHandover = useCallback(() => setShowHandover(true), []);
+  const handleCloseHandover = useCallback(() => setShowHandover(false), []);
+  const handlePrintHandover = useCallback(() => setTimeout(() => window.print(), 100), []);
 
   // ---- RENDER ----
   if (loading) {
@@ -465,7 +465,6 @@ export default function EmployeeShifts() {
               </span>
               <span className="staff-hero__chip-sep">•</span>
               <span className="staff-hero__chip staff-hero__chip--neutral">
-                {/* 🔧 FIX #84: dùng clockDateLabel thay toLocaleDateString */}
                 {clockDateLabel}
               </span>
               {currentShift && (
@@ -485,10 +484,7 @@ export default function EmployeeShifts() {
 
             <div className="staff-hero__meta">
               <div className="staff-hero__meta-item">
-                <BadgeCheck
-                  size={16}
-                  style={{ color: "var(--st-primary-container)" }}
-                />
+                <BadgeCheck size={16} style={{ color: "var(--st-primary-container)" }} />
                 <span>
                   {t("Nhân viên:")} <b>{user?.name || "—"}</b>
                 </span>
@@ -497,58 +493,34 @@ export default function EmployeeShifts() {
               <div className="staff-hero__meta-item">
                 <Store size={16} />
                 <span>
-                  {t("Mã NV:")}{" "}
-                  <b>{user?.employeeCode || "NV-2024-08"}</b>
+                  {t("Mã NV:")} <b>{user?.employeeCode || "NV-2024-08"}</b>
                 </span>
               </div>
               <span className="staff-hero__meta-sep" />
-              <div
-                className="staff-hero__meta-item"
-                style={{ fontVariantNumeric: "tabular-nums" }}
-              >
+              <div className="staff-hero__meta-item" style={{ fontVariantNumeric: "tabular-nums" }}>
                 <Timer size={16} style={{ color: "var(--st-info)" }} />
                 <span>
-                  {t("Giờ làm hôm nay:")}{" "}
-                  <b>{kpi.hours.toFixed(1)}h</b>
+                  {t("Giờ làm hôm nay:")} <b>{kpi.hours.toFixed(1)}h</b>
                 </span>
               </div>
             </div>
           </div>
 
           <div className="shifthist-clockbox">
-            {/* 🔧 FIX #84: dùng clockLabel từ formatter cố định */}
             <div className="shifthist-clockbox__time">{clockLabel}</div>
             <span className="shifthist-clockbox__sub">
               {t("Tự động cập nhật mỗi 30 giây")}
             </span>
             <div className="staff-hero__actions">
-              <button
-                type="button"
-                className="staff-hero__action"
-                onClick={() => load(false)}
-                disabled={refreshing}
-              >
-                {refreshing ? (
-                  <Loader2 size={18} className="shifthist-spin" />
-                ) : (
-                  <RefreshCw size={18} />
-                )}
+              <button type="button" className="staff-hero__action" onClick={() => load(false)} disabled={refreshing}>
+                {refreshing ? <Loader2 size={18} className="shifthist-spin" /> : <RefreshCw size={18} />}
                 <span>{t("Làm mới")}</span>
               </button>
-              <button
-                type="button"
-                className="staff-hero__action staff-hero__action--primary"
-                onClick={() => setShowRegister(true)}
-              >
+              <button type="button" className="staff-hero__action staff-hero__action--primary" onClick={() => setShowRegister(true)}>
                 <PlusCircle size={18} />
                 <span>{t("Đăng ký ca")}</span>
               </button>
-              {/* 🔧 V2: Mở modal phiếu giao ca thay vì window.print() */}
-              <button
-                type="button"
-                className="staff-hero__action"
-                onClick={handleOpenHandover}
-              >
+              <button type="button" className="staff-hero__action" onClick={handleOpenHandover}>
                 <Printer size={18} />
                 <span>{t("In phiếu giao ca")}</span>
               </button>
@@ -566,47 +538,29 @@ export default function EmployeeShifts() {
           unit={t("ca")}
           legendRows={[{ label: t("Danh sách ca:"), value: shiftLabel }]}
         />
-
         <StaffKPICard
           icon={<LogIn size={22} />}
           label={t("Đã chấm công")}
           value={`${kpi.checkedIn}/${kpi.total}`}
           colorVariant="success"
-          progressSegments={[
-            {
-              pct: kpi.total ? (kpi.checkedIn / kpi.total) * 100 : 0,
-              variant: "success",
-            },
-          ]}
+          progressSegments={[{ pct: kpi.total ? (kpi.checkedIn / kpi.total) * 100 : 0, variant: "success" }]}
         />
-
         <StaffKPICard
           icon={<TrendingUp size={22} />}
           label={t("Giờ làm hôm nay")}
           value={kpi.hours.toFixed(1)}
           unit={t("giờ")}
           colorVariant="primary"
-          progressSegments={[
-            { pct: Math.min(100, (kpi.hours / 6) * 100), variant: "primary" },
-          ]}
+          progressSegments={[{ pct: Math.min(100, (kpi.hours / 6) * 100), variant: "primary" }]}
           legendRows={[{ label: t("Chuẩn 1 ca:"), value: "6.0h" }]}
         />
-
         <StaffKPICard
           icon={<Clock size={22} />}
           label={t("Đi muộn hôm nay")}
           value={kpi.late}
           unit={t("lần")}
           colorVariant="tertiary"
-          badge={
-            kpi.late === 0
-              ? {
-                  icon: <BadgeCheck size={12} />,
-                  text: t("Đúng giờ toàn ca"),
-                  variant: "success",
-                }
-              : null
-          }
+          badge={kpi.late === 0 ? { icon: <BadgeCheck size={12} />, text: t("Đúng giờ toàn ca"), variant: "success" } : null}
         />
       </div>
 
@@ -626,7 +580,6 @@ export default function EmployeeShifts() {
           </span>
         </div>
 
-        {/* Status rows */}
         <div className="shift-checkin-rows">
           <div className="shift-checkin-row">
             <span>{t("Check-in")}</span>
@@ -646,7 +599,6 @@ export default function EmployeeShifts() {
           </div>
         </div>
 
-        {/* Shift picker — chỉ khi chưa check-in */}
         {!todayAtt?.checkIn && todayShifts.length > 0 && (
           <div className="shift-checkin-picker">
             <span className="shift-checkin-picker__label">
@@ -669,15 +621,9 @@ export default function EmployeeShifts() {
                       background: active ? shift.color + "15" : undefined,
                     }}
                   >
-                    <Icon
-                      size={18}
-                      style={{ color: active ? shift.color : undefined }}
-                    />
-                    <span
-                      className="shift-picker-btn__label"
-                      style={{ color: active ? shift.color : undefined }}
-                    >
-                      {shift.label}
+                    <Icon size={18} style={{ color: active ? shift.color : undefined }} />
+                    <span className="shift-picker-btn__label" style={{ color: active ? shift.color : undefined }}>
+                      {shift.label} {s.station ? `(${s.station})` : ""}
                     </span>
                     <span className="shift-picker-btn__time">{shift.time}</span>
                   </button>
@@ -687,41 +633,24 @@ export default function EmployeeShifts() {
           </div>
         )}
 
-        {/* Empty state */}
         {!todayAtt?.checkIn && todayShifts.length === 0 && (
           <div className="shift-checkin-empty">
             <AlertTriangle size={24} style={{ color: "#f59e0b" }} />
             <b>{t("Chưa có ca được duyệt hôm nay")}</b>
-            <span>
-              {t("Vui lòng liên hệ admin để được phân ca trước khi check-in.")}
-            </span>
+            <span>{t("Vui lòng liên hệ admin để được phân ca trước khi check-in.")}</span>
           </div>
         )}
 
-        {/* Action buttons */}
         <div className="shift-checkin-actions">
           <button
             type="button"
             className="shift-checkin-btn shift-checkin-btn--success"
             onClick={handleCheckIn}
-            disabled={
-              !!todayAtt?.checkIn ||
-              checkingIn ||
-              checkingOut ||
-              todayShifts.length === 0
-            }
+            disabled={!!todayAtt?.checkIn || checkingIn || checkingOut || todayShifts.length === 0}
           >
-            {checkingIn ? (
-              <Loader2 size={16} className="shifthist-spin" />
-            ) : (
-              <LogIn size={16} />
-            )}
+            {checkingIn ? <Loader2 size={16} className="shifthist-spin" /> : <LogIn size={16} />}
             <span>
-              {todayAtt?.checkIn
-                ? t("Đã check-in")
-                : checkingIn
-                ? t("Đang xử lý...")
-                : t("Check-in")}
+              {todayAtt?.checkIn ? t("Đã check-in") : checkingIn ? t("Đang xử lý...") : t("Check-in")}
             </span>
           </button>
 
@@ -729,24 +658,11 @@ export default function EmployeeShifts() {
             type="button"
             className="shift-checkin-btn shift-checkin-btn--warning"
             onClick={handleCheckOut}
-            disabled={
-              !todayAtt?.checkIn ||
-              !!todayAtt?.checkOut ||
-              checkingIn ||
-              checkingOut
-            }
+            disabled={!todayAtt?.checkIn || !!todayAtt?.checkOut || checkingIn || checkingOut}
           >
-            {checkingOut ? (
-              <Loader2 size={16} className="shifthist-spin" />
-            ) : (
-              <LogIn size={16} style={{ transform: "rotate(180deg)" }} />
-            )}
+            {checkingOut ? <Loader2 size={16} className="shifthist-spin" /> : <LogIn size={16} style={{ transform: "rotate(180deg)" }} />}
             <span>
-              {todayAtt?.checkOut
-                ? t("Đã check-out")
-                : checkingOut
-                ? t("Đang xử lý...")
-                : t("Check-out")}
+              {todayAtt?.checkOut ? t("Đã check-out") : checkingOut ? t("Đang xử lý...") : t("Check-out")}
             </span>
           </button>
         </div>
@@ -779,21 +695,12 @@ export default function EmployeeShifts() {
                   {timeline.map((ev) => (
                     <div key={ev.key} className="shifthist-event">
                       <div className="shifthist-event__rail">
-                        <span
-                          className={
-                            "shifthist-event__dot" +
-                            (ev.type === "out"
-                              ? " shifthist-event__dot--out"
-                              : "")
-                          }
-                        />
+                        <span className={"shifthist-event__dot" + (ev.type === "out" ? " shifthist-event__dot--out" : "")} />
                         <span className="shifthist-event__line" />
                       </div>
                       <div className="shifthist-event__body">
                         <div className="shifthist-event__title">
-                          {ev.type === "in"
-                            ? `${t("Check-in")} — ${ev.shift}`
-                            : `${t("Check-out")} — ${ev.shift}`}
+                          {ev.type === "in" ? `${t("Check-in")} — ${ev.shift}` : `${t("Check-out")} — ${ev.shift}`}
                         </div>
                         <div className="shifthist-event__meta">
                           {fmtTime(ev.at)}
@@ -827,32 +734,21 @@ export default function EmployeeShifts() {
               ) : (
                 <div className="shifthist-team">
                   {team.map((m) => (
-                    <div
-                      key={`${m.id}-${m.shift}`}
-                      className="shifthist-member"
-                    >
+                    <div key={`${m.id}-${m.shift}`} className="shifthist-member">
                       <span className="shifthist-member__avatar">
                         {getInitials(m.employee_name)}
                       </span>
                       <div style={{ minWidth: 0 }}>
                         <div className="shifthist-member__name">
                           {m.employee_name}
-                          {user && String(m.employee_id) === String(user.id)
-                            ? ` (${t("Bạn")})`
-                            : ""}
+                          {user && String(m.employee_id) === String(user.id) ? ` (${t("Bạn")})` : ""}
                         </div>
                         <div className="shifthist-member__meta">
                           {m.shift} • {t("vào")} {fmtTime(m.checkIn)}
-                          {m.checkOut
-                            ? ` • ${t("ra")} ${fmtTime(m.checkOut)}`
-                            : ""}
+                          {m.checkOut ? ` • ${t("ra")} ${fmtTime(m.checkOut)}` : ""}
                         </div>
                       </div>
-                      <span
-                        className={`shifthist-pill shifthist-pill--${pillVariant(
-                          m.status
-                        )} shifthist-member__status`}
-                      >
+                      <span className={`shifthist-pill shifthist-pill--${pillVariant(m.status)} shifthist-member__status`}>
                         {t(m.status || "—")}
                       </span>
                     </div>
@@ -863,6 +759,74 @@ export default function EmployeeShifts() {
           </div>
         </div>
       </div>
+
+      {/* ============ CÔNG VIỆC ĐƯỢC GIAO (MỚI THÊM) ============ */}
+      <section className="tasks-card">
+        <div className="tasks-card__head">
+          <div className="tasks-card__head-left">
+            <ClipboardList size={20} className="tasks-card__head-icon" />
+            <div>
+              <h3 className="tasks-card__title">{t("Công Việc Được Giao")}</h3>
+              <span className="tasks-card__sub">
+                {pendingTasks.length > 0
+                  ? `${pendingTasks.length} ${t("việc chưa hoàn thành")} · ${doneTasks.length} ${t("đã xong")}`
+                  : doneTasks.length > 0
+                  ? `${t("Đã hoàn thành tất cả")} ${doneTasks.length} ${t("việc")}`
+                  : t("Không có công việc nào")}
+              </span>
+            </div>
+          </div>
+          {pendingTasks.length > 0 && (
+            <span className="tasks-card__badge">{doneTasks.length}/{tasks.length} {t("việc")}</span>
+          )}
+        </div>
+
+        <div className="tasks-card__body">
+          {tasks.length === 0 ? (
+            <div className="tasks-card__empty">
+              <CheckSquare size={40} style={{ opacity: 0.3 }} />
+              <div>{t("Chưa có công việc nào được giao")}</div>
+            </div>
+          ) : (
+            <div className="tasks-card__list">
+              {[...tasks]
+                .sort((a, b) => {
+                  if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
+                  const order = { urgent: 0, high: 1, normal: 2, low: 3 };
+                  return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+                })
+                .map((task) => {
+                  const isDone = task.status === "done";
+                  const isToggling = togglingTaskId === task.id;
+                  const prioColor = task.priority === "urgent" ? "#ef4444" : task.priority === "high" ? "#f59e0b" : "var(--st-primary-container)";
+                  return (
+                    <div key={task.id} className={`tasks-row ${isDone ? "tasks-row--done" : ""}`}>
+                      <button type="button" className={`tasks-row__check ${isDone ? "tasks-row__check--done" : ""}`} onClick={() => handleToggleTask(task)} disabled={isToggling} aria-label={isDone ? t("Bỏ đánh dấu hoàn thành") : t("Đánh dấu hoàn thành")}>
+                        {isToggling ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : isDone ? <Check size={14} /> : null}
+                      </button>
+                      <div className="tasks-row__content">
+                        <div className="tasks-row__title-row">
+                          <b className={`tasks-row__title ${isDone ? "tasks-row__title--done" : ""}`}>{task.title}</b>
+                          {task.priority !== "normal" && (
+                            <span className="tasks-row__priority" style={{ color: prioColor, borderColor: prioColor }}>
+                              {task.priority === "urgent" ? t("Khẩn") : task.priority === "high" ? t("Cao") : t("Thấp")}
+                            </span>
+                          )}
+                        </div>
+                        {task.description && <p className="tasks-row__desc">{task.description}</p>}
+                        <div className="tasks-row__meta">
+                          {task.shift && <span className="tasks-row__meta-item"><Timer size={11} />{task.shift}</span>}
+                          {task.due_date && <span className="tasks-row__meta-item">{t("Hạn:")} {task.due_date}</span>}
+                          {task.assigned_by_name && <span className="tasks-row__meta-item">{t("Giao bởi")}: {task.assigned_by_name}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* ============ LỊCH SỬ GẦN NHẤT ============ */}
       <div className="shifthist-card">
@@ -897,19 +861,13 @@ export default function EmployeeShifts() {
               <tbody>
                 {recent.map((a) => (
                   <tr key={a.id}>
-                    <td>
-                      <b>{a.date}</b>
-                    </td>
+                    <td><b>{a.date}</b></td>
                     <td>{a.shift || "—"}</td>
                     <td>{fmtTime(a.checkIn)}</td>
                     <td>{fmtTime(a.checkOut)}</td>
                     <td>{a.hours ? `${a.hours}h` : "—"}</td>
                     <td>
-                      <span
-                        className={`shifthist-pill shifthist-pill--${pillVariant(
-                          a.status
-                        )}`}
-                      >
+                      <span className={`shifthist-pill shifthist-pill--${pillVariant(a.status)}`}>
                         {t(a.status || "—")}
                       </span>
                     </td>
@@ -941,38 +899,25 @@ export default function EmployeeShifts() {
         />
       )}
 
-      {/* ============ 🔧 V2: MODAL PHIẾU GIAO CA ============ */}
+      {/* ============ MODAL PHIẾU GIAO CA ============ */}
       {showHandover && (
         <div className="handover-overlay" role="dialog" aria-modal="true">
           <div className="handover-modal">
-            {/* Toolbar (không in) */}
             <div className="handover-modal__toolbar no-print">
               <h3 className="handover-modal__toolbar-title">
                 {t("Xem trước phiếu giao ca")}
               </h3>
               <div className="handover-modal__toolbar-actions">
-                <button
-                  type="button"
-                  className="handover-modal__btn handover-modal__btn--ghost"
-                  onClick={handleCloseHandover}
-                >
-                  <X size={16} />
-                  <span>{t("Đóng")}</span>
+                <button type="button" className="handover-modal__btn handover-modal__btn--ghost" onClick={handleCloseHandover}>
+                  <X size={16} /><span>{t("Đóng")}</span>
                 </button>
-                <button
-                  type="button"
-                  className="handover-modal__btn handover-modal__btn--primary"
-                  onClick={handlePrintHandover}
-                >
-                  <Printer size={16} />
-                  <span>{t("In phiếu")}</span>
+                <button type="button" className="handover-modal__btn handover-modal__btn--primary" onClick={handlePrintHandover}>
+                  <Printer size={16} /><span>{t("In phiếu")}</span>
                 </button>
               </div>
             </div>
 
-            {/* Phiếu giao ca — vùng in */}
             <div className="handover-sheet" id="handover-print-area">
-              {/* Header */}
               <div className="handover-sheet__header">
                 <div className="handover-sheet__logo">
                   <img src="/icon.svg" alt="Canteen VWA" width={48} height={48} style={{ display: "block" }} />
@@ -982,59 +927,37 @@ export default function EmployeeShifts() {
                   </div>
                 </div>
                 <div className="handover-sheet__title-wrap">
-                  <h1 className="handover-sheet__title">
-                    PHIẾU GIAO CA
-                  </h1>
-                  <span className="handover-sheet__subtitle">
-                    Shift Handover Report
-                  </span>
+                  <h1 className="handover-sheet__title">PHIẾU GIAO CA</h1>
+                  <span className="handover-sheet__subtitle">Shift Handover Report</span>
                 </div>
                 <div className="handover-sheet__meta-right">
-                  <div>
-                    <b>{t("Mã phiếu:")}</b> {handoverShiftCode}
-                  </div>
-                  <div>
-                    <b>{t("Ngày:")}</b> {handoverPrintDate}
-                  </div>
-                  <div>
-                    <b>{t("Giờ in:")}</b> {handoverPrintTimeOnly}
-                  </div>
+                  <div><b>{t("Mã phiếu:")}</b> {handoverShiftCode}</div>
+                  <div><b>{t("Ngày:")}</b> {handoverPrintDate}</div>
+                  <div><b>{t("Giờ in:")}</b> {handoverPrintTimeOnly}</div>
                 </div>
               </div>
 
-              {/* Thông tin ca */}
               <div className="handover-sheet__section">
-                <div className="handover-sheet__section-title">
-                  {t("THÔNG TIN CA")}
-                </div>
+                <div className="handover-sheet__section-title">{t("THÔNG TIN CA")}</div>
                 <div className="handover-sheet__grid">
                   <div className="handover-sheet__row">
-                    <span className="handover-sheet__label">
-                      {t("Ca làm việc:")}
-                    </span>
+                    <span className="handover-sheet__label">{t("Ca làm việc:")}</span>
                     <span className="handover-sheet__value">
                       {t(handoverShiftInfo.title)} ({handoverShiftInfo.time})
                     </span>
                   </div>
                   <div className="handover-sheet__row">
-                    <span className="handover-sheet__label">
-                      {t("Nhân viên:")}
-                    </span>
+                    <span className="handover-sheet__label">{t("Nhân viên:")}</span>
                     <span className="handover-sheet__value">
-                      {handoverStaffName}
-                      {handoverStaffCode ? ` (${handoverStaffCode})` : ""}
+                      {handoverStaffName}{handoverStaffCode ? ` (${handoverStaffCode})` : ""}
                     </span>
                   </div>
                   <div className="handover-sheet__row">
-                    <span className="handover-sheet__label">
-                      {t("Ngày làm việc:")}
-                    </span>
+                    <span className="handover-sheet__label">{t("Ngày làm việc:")}</span>
                     <span className="handover-sheet__value">{today}</span>
                   </div>
                   <div className="handover-sheet__row">
-                    <span className="handover-sheet__label">
-                      {t("Ca được phân:")}
-                    </span>
+                    <span className="handover-sheet__label">{t("Ca được phân:")}</span>
                     <span className="handover-sheet__value">
                       {todayShifts.length > 0 ? shiftLabel : "—"}
                     </span>
@@ -1042,52 +965,21 @@ export default function EmployeeShifts() {
                 </div>
               </div>
 
-              {/* CHẤM CÔNG — mục riêng của trang này */}
               <div className="handover-sheet__section">
-                <div className="handover-sheet__section-title">
-                  {t("CHẤM CÔNG")}
-                </div>
+                <div className="handover-sheet__section-title">{t("CHẤM CÔNG")}</div>
                 <table className="handover-sheet__table">
                   <tbody>
-                    <tr>
-                      <td>{t("Check-in")}</td>
-                      <td className="handover-sheet__num">
-                        {todayAtt?.checkIn ? fmtTime(todayAtt.checkIn) : "—"}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>{t("Check-out")}</td>
-                      <td className="handover-sheet__num">
-                        {todayAtt?.checkOut ? fmtTime(todayAtt.checkOut) : "—"}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>{t("Giờ làm hôm nay")}</td>
-                      <td className="handover-sheet__num handover-sheet__num--big">
-                        {todayAtt?.hours ? fmtHours(todayAtt.hours) : "0.0h"}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>{t("Ca đang chấm")}</td>
-                      <td className="handover-sheet__num">
-                        {todayAtt?.shift || "—"}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>{t("Trạng thái")}</td>
-                      <td className="handover-sheet__num">
-                        {handoverAttStatus}
-                      </td>
-                    </tr>
+                    <tr><td>{t("Check-in")}</td><td className="handover-sheet__num">{todayAtt?.checkIn ? fmtTime(todayAtt.checkIn) : "—"}</td></tr>
+                    <tr><td>{t("Check-out")}</td><td className="handover-sheet__num">{todayAtt?.checkOut ? fmtTime(todayAtt.checkOut) : "—"}</td></tr>
+                    <tr><td>{t("Giờ làm hôm nay")}</td><td className="handover-sheet__num handover-sheet__num--big">{todayAtt?.hours ? fmtHours(todayAtt.hours) : "0.0h"}</td></tr>
+                    <tr><td>{t("Ca đang chấm")}</td><td className="handover-sheet__num">{todayAtt?.shift || "—"}</td></tr>
+                    <tr><td>{t("Trạng thái")}</td><td className="handover-sheet__num">{handoverAttStatus}</td></tr>
                   </tbody>
                 </table>
               </div>
 
-              {/* Ghi chú */}
               <div className="handover-sheet__section">
-                <div className="handover-sheet__section-title">
-                  {t("GHI CHÚ")}
-                </div>
+                <div className="handover-sheet__section-title">{t("GHI CHÚ")}</div>
                 <div className="handover-sheet__note-box">
                   <div className="handover-sheet__note-line" />
                   <div className="handover-sheet__note-line" />
@@ -1095,36 +987,27 @@ export default function EmployeeShifts() {
                 </div>
               </div>
 
-              {/* Chữ ký */}
               <div className="handover-sheet__signatures">
                 <div className="handover-sheet__sign">
-                  <b>{t("Người giao ca")}</b>
-                  <span>({t("Ký, ghi rõ họ tên")})</span>
+                  <b>{t("Người giao ca")}</b><span>({t("Ký, ghi rõ họ tên")})</span>
                   <div className="handover-sheet__sign-space" />
-                  <div className="handover-sheet__sign-name">
-                    {handoverStaffName}
-                  </div>
+                  <div className="handover-sheet__sign-name">{handoverStaffName}</div>
                 </div>
                 <div className="handover-sheet__sign">
-                  <b>{t("Người nhận ca")}</b>
-                  <span>({t("Ký, ghi rõ họ tên")})</span>
+                  <b>{t("Người nhận ca")}</b><span>({t("Ký, ghi rõ họ tên")})</span>
                   <div className="handover-sheet__sign-space" />
                   <div className="handover-sheet__sign-name">&nbsp;</div>
                 </div>
               </div>
 
-              {/* Footer */}
               <div className="handover-sheet__footer">
-                {t(
-                  "Phiếu được tạo tự động bởi hệ thống Canteen VWA — {time}"
-                ).replace("{time}", handoverPrintTime)}
+                {t("Phiếu được tạo tự động bởi hệ thống Canteen VWA — {time}").replace("{time}", handoverPrintTime)}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 🔧 V2: CSS — modal phiếu giao ca + @media print (copy từ EmployeeHome V7) */}
       <style>{`
         /* ---------- Modal overlay ---------- */
         .handover-overlay {
@@ -1227,20 +1110,6 @@ export default function EmployeeShifts() {
           display: flex;
           align-items: center;
           gap: 10px;
-        }
-
-        .handover-sheet__logo-mark {
-          width: 44px;
-          height: 44px;
-          border-radius: 8px;
-          background: #004ac6;
-          color: #fff;
-          display: grid;
-          place-items: center;
-          font-family: "Plus Jakarta Sans", sans-serif;
-          font-weight: 800;
-          font-size: 14px;
-          letter-spacing: 0.02em;
         }
 
         .handover-sheet__logo-text {
@@ -1367,35 +1236,6 @@ export default function EmployeeShifts() {
           color: #004ac6;
         }
 
-        .handover-sheet__table--list th {
-          text-align: left;
-          padding: 6px 8px;
-          background: #f3f4f6;
-          font-family: "Plus Jakarta Sans", sans-serif;
-          font-size: 11px;
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-          color: #374151;
-          border-bottom: 1px solid #d1d5db;
-        }
-
-        .handover-sheet__th-num {
-          text-align: right !important;
-        }
-
-        .handover-sheet__table--list td {
-          padding: 5px 8px;
-          border-bottom: 1px solid #f3f4f6;
-        }
-
-        .handover-sheet__more-note {
-          margin-top: 6px;
-          font-size: 11.5px;
-          color: #6b7280;
-          font-style: italic;
-        }
-
         .handover-sheet__note-box {
           padding: 4px 0;
           display: flex;
@@ -1459,15 +1299,10 @@ export default function EmployeeShifts() {
           color: #9ca3af;
         }
 
-        /* ---------- @media print — chỉ in tờ phiếu ---------- */
+        /* ---------- @media print ---------- */
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #handover-print-area,
-          #handover-print-area * {
-            visibility: visible !important;
-          }
+          body * { visibility: hidden !important; }
+          #handover-print-area, #handover-print-area * { visibility: visible !important; }
           #handover-print-area {
             position: absolute !important;
             left: 0 !important;
@@ -1478,9 +1313,7 @@ export default function EmployeeShifts() {
             border-radius: 0 !important;
             padding: 20px 24px !important;
           }
-          .no-print {
-            display: none !important;
-          }
+          .no-print { display: none !important; }
           .handover-overlay {
             position: static !important;
             background: #fff !important;
@@ -1493,10 +1326,7 @@ export default function EmployeeShifts() {
             box-shadow: none !important;
             border-radius: 0 !important;
           }
-          @page {
-            size: A4;
-            margin: 12mm;
-          }
+          @page { size: A4; margin: 12mm; }
         }
       `}</style>
     </div>
@@ -1504,9 +1334,8 @@ export default function EmployeeShifts() {
 }
 
 // ============================================================
-// REGISTER MODAL (copy từ EmployeeCheckInOut.jsx)
+// REGISTER MODAL
 // ============================================================
-
 function getNextWeekDays() {
   const d = new Date();
   const day = d.getDay();
