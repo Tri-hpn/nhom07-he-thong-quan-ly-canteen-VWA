@@ -63,7 +63,6 @@ import OwnerCustomers from "./pages/owner/OwnerCustomers";
 import OwnerMenu from "./pages/owner/OwnerMenu";
 import OwnerPriceHistory from "./pages/owner/OwnerPriceHistory";
 import OwnerInventory from "./pages/owner/OwnerInventory";
-import OwnerPermissions from "./pages/owner/OwnerPermissions";
 import OwnerBackup from "./pages/owner/OwnerBackup";
 import OwnerWallet from "./pages/owner/OwnerWallet";
 import OwnerVouchers from "./pages/owner/OwnerVouchers";
@@ -558,14 +557,6 @@ export default function App() {
             element={<Navigate to="/owner/finance" replace />}
           />
 
-          <Route
-            path="/owner/permissions"
-            element={wrap(
-              "Phân quyền",
-              "Phân quyền chi tiết cho từng user",
-              <OwnerPermissions />
-            )}
-          />
 
           <Route
             path="/owner/orders"

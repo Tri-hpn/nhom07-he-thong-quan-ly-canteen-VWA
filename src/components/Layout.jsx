@@ -44,7 +44,7 @@ const PAGE_HEADINGS = [
   },
   {
     path: "/employee/orders",
-    title: "Đơn hàng",
+    title: "Quản lý đơn hàng",
     subtitle: "Xử lý đơn khách",
   },
   {
@@ -54,7 +54,7 @@ const PAGE_HEADINGS = [
   },
   {
     path: "/employee/menu",
-    title: "Thực đơn",
+    title: "Quản lý thực đơn",
     subtitle: "Xem tình trạng món",
   },
   {
@@ -106,18 +106,13 @@ const PAGE_HEADINGS = [
   },
   {
     path: "/owner/inventory",
-    title: "Kho hàng",
+    title: "Quản lý kho hàng",
     subtitle: "Nguyên liệu",
   },
   {
     path: "/owner/reports",
     title: "Báo cáo",
     subtitle: "Doanh thu & thống kê",
-  },
-  {
-    path: "/owner/permissions",
-    title: "Phân quyền",
-    subtitle: "Phân quyền chi tiết cho từng user",
   },
   {
     path: "/owner/orders",
