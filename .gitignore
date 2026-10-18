@@ -106,3 +106,6 @@ check-report.txt
 check-all.ps1
 canteen-db-splitter.mjs
 check-db.mjs
+
+backups/
+tree-clean.txt
