@@ -26,7 +26,7 @@ const EXCLUDE_PARTS = [
 ];
 
 const AUTO_TRANSLATE_DELAY_MS = 3000;
-const AUTO_TRANSLATE_ENABLED = true;
+const AUTO_TRANSLATE_ENABLED = false;
 
 function walk(dir, files = []) {
   if (!fs.existsSync(dir)) return files;

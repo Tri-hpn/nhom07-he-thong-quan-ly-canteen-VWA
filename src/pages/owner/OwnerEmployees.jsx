@@ -35,6 +35,7 @@ import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useI18n } from "../../hooks/useI18n";
+import EmployeePermissionsModal from '../../components/EmployeePermissionsModal';
 // ❌ ĐÃ XÓA: import OwnerShifts from "./OwnerShifts";
 
 // ============================================================
@@ -1223,7 +1224,7 @@ function OwnerEmployeesInner() {
                 <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
                   <button
                     type="button"
-                    onClick={switchToView}
+                    onClick={() => setDetailModal(null)}
                     disabled={saving}
                     style={{ ...btnCancelStyle, flex: 1 }}
                   >

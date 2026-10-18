@@ -70,7 +70,6 @@ const MENU_CONFIG = {
           ["employees",    "Quản lý nhân viên",   "/owner/employees"],
           ["customers",    "Quản lý khách hàng",          "/owner/customers"],
           ["chat",         "Chat & Hỗ trợ",       "/owner/chat", { badge: "chat" }],
-          ["permissions",  "Phân quyền",          "/owner/permissions"],
           ["backup",       "Backup dữ liệu",      "/owner/backup"],
         ],
       },
