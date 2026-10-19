@@ -1663,92 +1663,66 @@ function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
       </div>
 
       <form onSubmit={submit} autoComplete="off">
-        <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#18a967", marginBottom: 10 }}>
+                                                                <div style={{ padding: 16, background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, marginBottom: 16, border: "1px solid var(--border-color, #e2e8f0)" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#18a967", marginBottom: 16, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
             📥 {t("TÍCH ĐIỂM")}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={labelStyle}>{t("Mỗi (VNĐ)")}</label>
-              <input
-                type="number" min="0" step="1000"
-                value={earn.rate_amount}
-                onChange={(e) => setEarnField("rate_amount", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary, #64748b)", marginBottom: 6, textAlign: "left" }}>{t("Mỗi (VNĐ)")}</div>
+              <input type="number" min="0" step="1000" value={earn.rate_amount} onChange={(e) => setEarnField("rate_amount", e.target.value)} style={{...inputStyle, width: "100%"}} disabled={saving} />
             </div>
-            <div>
-              <label style={labelStyle}>{t("= Số điểm")}</label>
-              <input
-                type="number" min="0"
-                value={earn.rate_points}
-                onChange={(e) => setEarnField("rate_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary, #64748b)", marginBottom: 6, textAlign: "left" }}>{t("= Số điểm")}</div>
+              <input type="number" min="0" value={earn.rate_points} onChange={(e) => setEarnField("rate_points", e.target.value)} style={{...inputStyle, width: "100%"}} disabled={saving} />
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-            <input
-              type="checkbox"
-              checked={!!earn.green_enabled}
-              onChange={(e) => setEarnField("green_enabled", e.target.checked)}
-              disabled={saving} id="green-enabled"
-            />
-            <label htmlFor="green-enabled" style={{ fontSize: 13, fontWeight: 600 }}>
-              🌱 {t("Bật Sống Xanh Học Đường")}
-            </label>
-          </div>
-          {earn.green_enabled && (
-            <div style={{ marginTop: 8 }}>
-              <label style={labelStyle}>{t("Số điểm Sống Xanh / lần")}</label>
-              <input
-                type="number" min="0"
-                value={earn.green_points}
-                onChange={(e) => setEarnField("green_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16, background: "#fff", borderRadius: 8, border: "1px solid var(--border-color, #e2e8f0)", width: "100%", boxSizing: "border-box" }}>
+            
+            {/* KHỐI SỐNG XANH */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%" }}>
+              <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: 8, width: "100%" }}>
+                <input type="checkbox" checked={!!earn.green_enabled} onChange={(e) => setEarnField("green_enabled", e.target.checked)} disabled={saving} style={{ width: 16, height: 16, accentColor: "#18a967", cursor: "pointer", margin: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary, #172033)" }}>🌱 {t("Bật Sống Xanh Học Đường")}</span>
+              </div>
+              
+              {earn.green_enabled && (
+                <div style={{ marginTop: 12, width: "100%", paddingLeft: 24 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%", marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary, #64748b)", marginBottom: 6, textAlign: "left" }}>{t("Số điểm Sống Xanh / lần")}</div>
+                    <input type="number" min="0" value={earn.green_points} onChange={(e) => setEarnField("green_points", e.target.value)} style={{...inputStyle, width: "100%"}} disabled={saving} />
+                  </div>
+                  
+                  <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: 8, width: "100%" }}>
+                    <input type="checkbox" checked={!!earn.green_require_approval} onChange={(e) => setEarnField("green_require_approval", e.target.checked)} disabled={saving} style={{ width: 16, height: 16, accentColor: "#18a967", cursor: "pointer", margin: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary, #172033)" }}>🛡️ {t("Yêu cầu nhân viên duyệt Sống Xanh")}</span>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
 
-          {earn.green_enabled && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-              <input
-                type="checkbox"
-                checked={!!earn.green_require_approval}
-                onChange={(e) => setEarnField("green_require_approval", e.target.checked)}
-                disabled={saving}
-                id="green-approval"
-              />
-              <label htmlFor="green-approval" style={{ fontSize: 13, fontWeight: 600 }}>
-                🛡️ {t("Yêu cầu nhân viên duyệt Sống Xanh")}
-              </label>
-            </div>
-          )}
+            <div style={{ borderTop: "1px dashed var(--border-color, #e2e8f0)", width: "100%", margin: "4px 0" }} />
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-            <input
-              type="checkbox"
-              checked={!!earn.review_enabled}
-              onChange={(e) => setEarnField("review_enabled", e.target.checked)}
-              disabled={saving} id="review-enabled"
-            />
-            <label htmlFor="review-enabled" style={{ fontSize: 13, fontWeight: 600 }}>
-              ⭐ {t("Bật thưởng Đánh giá món")}
-            </label>
-          </div>
-          {earn.review_enabled && (
-            <div style={{ marginTop: 8 }}>
-              <label style={labelStyle}>{t("Số điểm Đánh giá / lần")}</label>
-              <input
-                type="number" min="0"
-                value={earn.review_points}
-                onChange={(e) => setEarnField("review_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
+            {/* KHỐI ĐÁNH GIÁ MÓN */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%" }}>
+              <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: 8, width: "100%" }}>
+                <input type="checkbox" checked={!!earn.review_enabled} onChange={(e) => setEarnField("review_enabled", e.target.checked)} disabled={saving} style={{ width: 16, height: 16, accentColor: "#18a967", cursor: "pointer", margin: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary, #172033)" }}>⭐ {t("Bật thưởng Đánh giá món")}</span>
+              </div>
+              
+              {earn.review_enabled && (
+                <div style={{ marginTop: 12, width: "100%", paddingLeft: 24 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary, #64748b)", marginBottom: 6, textAlign: "left" }}>{t("Số điểm Đánh giá / lần")}</div>
+                    <input type="number" min="0" value={earn.review_points} onChange={(e) => setEarnField("review_points", e.target.value)} style={{...inputStyle, width: "100%"}} disabled={saving} />
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+
+          </div>
         </div>
 
         <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>

@@ -60,17 +60,16 @@ const MENU_CONFIG = {
         label: null,
         items: [
           ["dashboard",    "Tổng quan",           "/owner"],
-          ["orders_admin", "Đơn hàng",            "/owner/orders"],
-          ["menu",         "Thực đơn",            "/owner/menu"],
+          ["orders_admin", "Quản lý đơn hàng",            "/owner/orders"],
+          ["menu",         "Quản lý thực đơn",            "/owner/menu"],
           ["price",        "Lịch sử giá",         "/owner/price-history"],
-          ["inventory",    "Kho hàng",            "/owner/inventory"],
-          ["vouchers",     "Voucher",             "/owner/vouchers"],
+          ["inventory",    "Quản lý kho hàng",            "/owner/inventory"],
+          ["vouchers",     "Quản lý voucher",             "/owner/vouchers"],
           ["finance",      "Báo cáo tài chính",   "/owner/finance"],
-          ["wallet_admin", "Ví",                  "/owner/wallet"],
+          ["wallet_admin", "Quản lý ví",                  "/owner/wallet"],
           ["employees",    "Quản lý nhân viên",   "/owner/employees"],
-          ["customers",    "Khách hàng",          "/owner/customers"],
+          ["customers",    "Quản lý khách hàng",          "/owner/customers"],
           ["chat",         "Chat & Hỗ trợ",       "/owner/chat", { badge: "chat" }],
-          ["permissions",  "Phân quyền",          "/owner/permissions"],
           ["backup",       "Backup dữ liệu",      "/owner/backup"],
         ],
       },
@@ -82,7 +81,7 @@ const MENU_CONFIG = {
         label: null,
         items: [
           ["dashboard",   "Tổng quan ca làm việc", "/employee"],
-          ["orders",      "Đơn hàng",              "/employee/orders", { badge: "kds_kanban" }],
+          ["orders",      "Quản lý đơn hàng",              "/employee/orders", { badge: "kds_kanban" }],
           ["kds_menu",    "Thực đơn và kho",       "/employee/menu"],
           ["kds_history", "Ca làm việc",           "/employee/shifts"],
           ["chat",        "Chat và hỗ trợ",        "/employee/chat"],
@@ -96,9 +95,9 @@ const MENU_CONFIG = {
         label: null,
         items: [
           ["dashboard",  "Trang chủ",             "/customer"],
-          ["menu",       "Thực đơn",              "/customer/menu"],
-          ["orders",     "Đơn hàng",              "/customer/orders"],
-          ["wallet",     "Ví",                    "/customer/wallet"],
+          ["menu",       "Quản lý thực đơn",              "/customer/menu"],
+          ["orders",     "Quản lý đơn hàng",              "/customer/orders"],
+          ["wallet",     "Quản lý ví",                    "/customer/wallet"],
           ["promotions", "Khuyến mãi & Ưu đãi",   "/customer/promotions"],
           ["chat",       "Chat hỗ trợ",           "/customer/chat"],
           ["profile",    "Hồ sơ",                 "/customer/profile"],
@@ -374,7 +373,7 @@ export default function Sidebar({ role, onLogout, user }) {
 
         {/* Role chip đồng bộ cho cả 3 role */}
         <div className="role-chip">
-          {role === "ADMIN" ? t("Quản trị viên") : role === "EMPLOYEE" ? t("Nhân viên") : t("Khách hàng")}
+          {role === "ADMIN" ? t("Quản trị viên") : role === "EMPLOYEE" ? t("Nhân viên") : t("Quản lý khách hàng")}
         </div>
 
         <nav>
