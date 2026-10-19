@@ -62,7 +62,6 @@ const MENU_CONFIG = {
           ["dashboard",    "Tổng quan",           "/owner"],
           ["orders_admin", "Quản lý đơn hàng",            "/owner/orders"],
           ["menu",         "Quản lý thực đơn",            "/owner/menu"],
-          ["price",        "Lịch sử giá",         "/owner/price-history"],
           ["inventory",    "Quản lý kho hàng",            "/owner/inventory"],
           ["vouchers",     "Quản lý voucher",             "/owner/vouchers"],
           ["finance",      "Báo cáo tài chính",   "/owner/finance"],

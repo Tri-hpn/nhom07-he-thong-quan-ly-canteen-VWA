@@ -22,7 +22,7 @@ import {
   Plus, Minus, Search, Pencil, Trash2, FolderPlus, Folder, X, Save,
   Loader2, AlertCircle, UtensilsCrossed, EyeOff, Eye, Star, Clock,
   Sunrise, Sun, Sunset, RotateCcw, Edit, CheckCircle2, Package, Ban,
-  Power, ChevronLeft, ChevronRight, Flame,
+  Power, ChevronLeft, ChevronRight, Flame, History,
   ChevronDown } from "lucide-react";
 import { SkeletonTable } from "../../components/Skeleton";
 import { api } from "../../api";
@@ -30,6 +30,7 @@ import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import ImageUploader from "../../components/ImageUploader";
+import PriceHistoryModal from "../../components/PriceHistoryModal";
 
 // ✅ i18n hook
 import { useI18n } from "../../hooks/useI18n";
@@ -113,6 +114,7 @@ export default function OwnerMenu() {
 
   // ---------- Item modal ----------
   const [modal, setModal] = useState(null);
+  const [historyModalItem, setHistoryModalItem] = useState(null);
   const [image, setImage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -1251,6 +1253,7 @@ export default function OwnerMenu() {
                   onAdjustStock={(delta) => handleAdjustStock(m, delta)}
                   onEdit={() => openItemModal(m)}
                   onDelete={() => removeItem(m)}
+                  onViewHistory={() => setHistoryModalItem(m)}
                   t={t}
                   tData={tData}
                 />
@@ -1299,6 +1302,13 @@ export default function OwnerMenu() {
           </>
         )}
         {/* ============ CATEGORY MODAL ============ */}
+        {historyModalItem && (
+          <PriceHistoryModal
+            item={historyModalItem}
+            onClose={() => setHistoryModalItem(null)}
+          />
+        )}
+
         {showCatModal && (
           <Modal
             onClose={() => !catLoading && setShowCatModal(false)}
@@ -1619,7 +1629,7 @@ export default function OwnerMenu() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                   gap: 12,
                   marginBottom: 8,
                 }}
@@ -1738,7 +1748,7 @@ export default function OwnerMenu() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2, 1fr)",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                   gap: 12,
                   marginBottom: 8,
                 }}
@@ -1792,11 +1802,13 @@ export default function OwnerMenu() {
                     key={c.key}
                     style={{
                       display: "flex",
+                      flexShrink: 0,
                       alignItems: "center",
                       gap: 8,
                       padding: "8px 12px",
                       borderRadius: 10,
                       fontSize: 12.5,
+                      whiteSpace: "nowrap",
                       cursor: saving ? "not-allowed" : "pointer",
                       background: nutrition[c.key]
                         ? "rgba(16, 185, 129, 0.12)"
@@ -1878,6 +1890,7 @@ export default function OwnerMenu() {
               <label
                 style={{
                   display: "flex",
+                  flexShrink: 0,
                   alignItems: "center",
                   gap: 10,
                   padding: 12,
@@ -2025,6 +2038,7 @@ function AdminMenuCardRow({
   onAdjustStock,
   onEdit,
   onDelete,
+  onViewHistory,
   t,
   tData,
 }) {
@@ -2284,6 +2298,15 @@ function AdminMenuCardRow({
             <button
               type="button"
               className="admin-menu-card__icon-btn"
+              onClick={onViewHistory}
+              title={t("Lịch sử giá")}
+              aria-label={t("Lịch sử giá")}
+            >
+              <History size={14} />
+            </button>
+            <button
+              type="button"
+              className="admin-menu-card__icon-btn"
               onClick={onEdit}
               disabled={isProcessing}
               title={t("Sửa món")}
@@ -2393,11 +2416,10 @@ function Modal({ children, onClose, maxWidth = 480 }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
+        background: "rgba(0,0,0,0.6)",
+        display: "block",
         zIndex: MODAL_Z,
-        padding: 20,
+        padding: "40px 16px",
         overflowY: "auto",
       }}
     >
@@ -2405,12 +2427,13 @@ function Modal({ children, onClose, maxWidth = 480 }) {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--card-bg, #fff)",
-          borderRadius: 14,
+          borderRadius: 16,
           padding: 24,
           width: "100%",
-          maxWidth,
-          maxHeight: "90vh",
-          overflowY: "auto",
+          maxWidth: maxWidth,
+          margin: "0 auto",
+          boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+          position: "relative",
         }}
       >
         {children}
@@ -2418,7 +2441,6 @@ function Modal({ children, onClose, maxWidth = 480 }) {
     </div>
   );
 }
-
 // ============================================================
 // STYLE CONSTANTS
 // ============================================================
