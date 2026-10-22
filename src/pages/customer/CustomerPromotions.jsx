@@ -40,7 +40,7 @@ const EARN_METHODS = [
     key: "eat",
     icon: Utensils,
     color: "#2563EB",
-    title: "Ăn tại Căng tin",
+    title: "Hoàn thành đơn hàng",
     badge: "Hoàn 1%",
     desc: "Mỗi 10.000 đ thanh toán tại quầy hoặc ứng dụng nhận ngay 1 VWA Point tự động.",
     cta: "Quét mã SV khi nhận món",
@@ -55,6 +55,14 @@ const EARN_METHODS = [
     cta: "Chung tay giảm đồ nhựa",
   },
   {
+      id: "subsidy",
+      icon: "🎓",
+      title: "Trợ giá sinh viên",
+      desc: "Ưu đãi giảm giá đặc biệt dành riêng cho sinh viên VWA.",
+      points: 100,
+      active: true,
+    },
+    {
     key: "review",
     icon: Star,
     color: "#0051B1",

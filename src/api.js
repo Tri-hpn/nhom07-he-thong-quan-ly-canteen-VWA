@@ -347,6 +347,7 @@ export const api = {
   },
 
   points: {
+    history: () => req("/points/history"),
     me:           ()     => req("/points/me"),
     redeem:       (data) => req("/points/redeem", { method: "POST", body: JSON.stringify(data) }),
     config:       ()     => req("/points/config"),
