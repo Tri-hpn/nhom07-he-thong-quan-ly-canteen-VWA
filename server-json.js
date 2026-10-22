@@ -396,7 +396,12 @@ function buildSeedData() {
       { id: 2, name: "Trần Văn Trí", email: "nhanvien@vwa.vn", password: SEED_PASSWORD_HASH, role: "EMPLOYEE", status: "Hoạt động", phone: "", points: 50, chat_enabled: true, created_at: "2025-01-01T00:00:00.000Z" },
       { id: 3, name: "Trần Văn Trí", email: "sinhvien@vwa.vn", password: SEED_PASSWORD_HASH, role: "CUSTOMER", status: "Hoạt động", phone: "", points: 1959, created_at: "2025-01-01T00:00:00.000Z" },
     ],
-    menu_items: [], categories: [], sizes: [], toppings: [], orders: [], inventory: [],
+    sizes: [
+      { id: "S", name: "Nhỏ", extra_price: 0 },
+      { id: "M", name: "Vừa", extra_price: 5000 },
+      { id: "L", name: "Lớn", extra_price: 10000 },
+    ],
+    menu_items: [], categories: [], toppings: [], orders: [], inventory: [],
     notifications: [], vouchers: [], reviews: [], messages: [], attendances: [], imports: [],
     price_history: [], shifts: [], wallets: [], wallet_transactions: [], tasks: [], points_history: [],
     chat_transfer_requests: [], eco_rewards: [], orderReminders: [],
@@ -538,7 +543,7 @@ function loadDB() {
 // SAVE DB — UPSERT, KHÔNG DELETE + INSERT
 // ============================================================
 let saveQueue = Promise.resolve();
-const UNIQUE_KEY_BY_COLL = { wallets: "user_id" };
+const UNIQUE_KEY_BY_COLL = { wallets: "user_id", inventory: "code" };
 
 async function _writeCollection(db, key, value) {
   const coll = db.collection(key);
@@ -2206,6 +2211,18 @@ app.post("/api/wallet/pay", auth(), async (req, res) => {
 // ============================================================
 // CHAT SYSTEM
 // ============================================================
+function cleanupExpiredChatMessages(db) {
+  if (!db || !Array.isArray(db.messages) || db.messages.length === 0) return false;
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const initial = db.messages.length;
+  db.messages = db.messages.filter((m) => {
+    if (!m || !m.created_at) return false;
+    const t = new Date(m.created_at).getTime();
+    return !isNaN(t) && t >= cutoff;
+  });
+  return db.messages.length !== initial;
+}
+
 function ensureChatSchema(db) {
   if (!db) return false;
   let changed = false;
@@ -2216,6 +2233,7 @@ function ensureChatSchema(db) {
   }
   if (!Array.isArray(db.chat_transfer_requests)) { db.chat_transfer_requests = []; changed = true; }
   if (!db.chat_conversations) { db.chat_conversations = {}; changed = true; }
+  if (cleanupExpiredChatMessages(db)) changed = true;
   return changed;
 }
 function getAdminAssignedUserIds(db) {
@@ -2441,7 +2459,17 @@ app.post("/api/orders/:id/reminder", auth(), async (req, res) => {
 });
 
 app.get("/api/toppings", (req, res) => { const db = loadDB(); const { category } = req.query; let list = db.toppings || []; if (category) list = list.filter(t => t.applies_to?.includes(category)); res.json(list); });
-app.get("/api/sizes", (req, res) => { res.json(loadDB().sizes || [ { id: "S", name: "Nhỏ", extra_price: 0 }, { id: "M", name: "Vừa", extra_price: 5000 }, { id: "L", name: "Lớn", extra_price: 10000 } ]); });
+app.get("/api/sizes", (req, res) => {
+  const db = loadDB();
+  const list = Array.isArray(db.sizes) && db.sizes.length > 0
+    ? db.sizes
+    : [
+        { id: "S", name: "Nhỏ", extra_price: 0 },
+        { id: "M", name: "Vừa", extra_price: 5000 },
+        { id: "L", name: "Lớn", extra_price: 10000 },
+      ];
+  res.json(list);
+});
 
 app.get("/api/stats", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   const db = loadDB(); const today = getLocalDateStr();
