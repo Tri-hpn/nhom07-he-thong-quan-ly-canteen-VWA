@@ -542,7 +542,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
       setGreenBusyId(id);
       try {
         const res = await api.orders.approveGreen(id);
-        toast(`${t("Đã duyệt Sống Xanh")} + ${res.bonus} ${t("điểm")}`, "success");
+        toast(`${t("Đã duyệt Sống Xanh")} + ${res.bonus} ${t("Xu")}`, "success");
         emitOrderUpdated();
         await load(true);
       } catch (e) {
