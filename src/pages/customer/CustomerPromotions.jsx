@@ -2,7 +2,7 @@
 // CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V4 - FINAL + i18n)
 // ============================================================
 // 🔧 FIX:
-//   - M16: Tab reward filter thật
+//   - FIX CRASH: Đổi emoji string trong EARN_METHODS thành Lucide Icon
 //   - F1: Filter fallback dựa vào value
 //   - F3: affordableOnly ưu tiên user chưa có điểm
 //   - F4: Không refetch khi đổi ngôn ngữ
@@ -47,6 +47,15 @@ const EARN_METHODS = [
     cta: "Xem hạn mức và quyền lợi trợ giá",
   },
   {
+    key: "subsidy",
+    icon: Award, // 🔧 Đã sửa: Dùng Icon thay vì emoji string
+    color: "#F59E0B", // 🔧 Đã sửa: Thêm màu
+    title: "Trợ giá sinh viên",
+    badge: "Học kỳ II",
+    desc: "Ưu đãi giảm giá đặc biệt dành riêng cho sinh viên VWA.",
+    cta: "Xem hạn mức trợ giá",
+  },
+  {
     key: "eco",
     icon: Leaf,
     color: "#1D4ED8",
@@ -56,14 +65,6 @@ const EARN_METHODS = [
     cta: "Chung tay giảm đồ nhựa",
   },
   {
-      id: "subsidy",
-      icon: "🎓",
-      title: "Trợ giá sinh viên",
-      desc: "Ưu đãi giảm giá đặc biệt dành riêng cho sinh viên VWA.",
-      points: 100,
-      active: true,
-    },
-    {
     key: "review",
     icon: Star,
     color: "#0051B1",
@@ -75,14 +76,7 @@ const EARN_METHODS = [
 ];
 
 // ============================================================
-// 🔧 F1 + F5: REWARD_TABS với filter rõ ràng
-// ============================================================
-// Logic phân loại:
-//   1. Nếu code chứa prefix rõ ràng (COMBO, GIFT, FOOD, DRINK, ECO, GREEN) → vào tab tương ứng.
-//   2. Nếu không có prefix:
-//      - value >= 10000 → tab Voucher (giảm tiền)
-//      - value < 10000 → tab Food (quà nhỏ)
-//   3. Tab "Voucher" = catch-all cho voucher KHÔNG khớp tab nào khác.
+// REWARD_TABS với filter rõ ràng
 // ============================================================
 
 function getCodeUpper(v) {
@@ -112,7 +106,6 @@ const REWARD_TABS = [
   {
     id: "voucher",
     label: "Voucher Giảm Tiền Trực Tiếp",
-    // 🔧 F5: Voucher = KHÔNG match các tab khác
     filter: (v) => {
       const code = getCodeUpper(v);
       if (isComboCode(code) || isEcoCode(code) || isFoodCode(code)) return false;
@@ -125,7 +118,6 @@ const REWARD_TABS = [
     filter: (v) => {
       const code = getCodeUpper(v);
       if (isFoodCode(code)) return true;
-      //  F1: Fallback — value nhỏ thường là món/quà
       if (isComboCode(code) || isEcoCode(code)) return false;
       const val = getValue(v);
       return val > 0 && val < 10000;
@@ -212,7 +204,7 @@ export default function CustomerPromotions() {
   const [showStudentSubsidyModal, setShowStudentSubsidyModal] = useState(false);
   const [autoSubsidyRenew, setAutoSubsidyRenew] = useState(true);
   const [selectedPickupOrderCode, setSelectedPickupOrderCode] = useState("");
-const [showEcoModal, setShowEcoModal] = useState(false);
+  const [showEcoModal, setShowEcoModal] = useState(false);
   const [ecoOrderId, setEcoOrderId] = useState("");
   const [ecoMethod, setEcoMethod] = useState("bottle");
   const [ecoSubmitting, setEcoSubmitting] = useState(false);
@@ -241,9 +233,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // ============================================================
-  // Track mount
-  // ============================================================
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -252,10 +241,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     };
   }, []);
 
-  // ============================================================
-  // LOAD
-  // 🔧 F4: Không phụ thuộc `t` để tránh refetch khi đổi ngôn ngữ
-  // ============================================================
   const loadAll = useCallback(
     async (silent = false) => {
       if (inFlightRef.current) return;
@@ -282,9 +267,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
         setOrderStatsLoaded(Array.isArray(ordersRes));
       } catch (e) {
         if (mountedRef.current && !silent) {
-          setError(
-            e.message || "Không tải được dữ liệu khuyến mãi"
-          );
+          setError(e.message || "Không tải được dữ liệu khuyến mãi");
         }
       } finally {
         if (mountedRef.current) {
@@ -300,16 +283,14 @@ const [showEcoModal, setShowEcoModal] = useState(false);
   useEffect(() => {
     loadAll(false);
   }, [loadAll]);
-// ============================================================
-  // DERIVED
-  // ============================================================
+
   const { active, used } = useMemo(() => {
     return {
       active: vouchers.filter((v) => !v.used),
       used: vouchers.filter((v) => v.used),
     };
   }, [vouchers]);
-  // Thong ke tu lich su don hang va voucher da su dung
+
   const promoStats = useMemo(() => {
     const validOrders = customerOrders.filter((order) => {
       const status = String(order.status || "")
@@ -325,7 +306,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
       return code && discount > 0 ? sum + discount : sum;
     }, 0);
 
-    // Chi dem voucher ECO/GREEN da duoc su dung, khong dem voucher chua dung
     const ecoUses = used.filter((voucher) =>
       voucher.used && isEcoCode(getCodeUpper(voucher))
     ).length;
@@ -356,9 +336,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     [pickupOrders, selectedPickupOrderCode]
   );
 
-  /**
-   *  M16 + F3: Lọc theo tab reward + tab active/used.
-   */
   const list = useMemo(() => {
     const source = tab === "active" ? active : used;
 
@@ -367,7 +344,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
 
     let result = source.filter(filterFn);
 
-    // 🔧 F3: affordableOnly — nếu user chưa có điểm, hiện hết
     if (affordableOnly && points > 0) {
       result = result.filter((v) => {
         const usedPoints = Number(v.points_used) || 0;
@@ -386,7 +362,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
   }, [publicVouchers, rewardTab]);
   const canRedeem = points >= redeemPoints && redeemPoints >= MIN_REDEEM;
 
-  // Tier
   const tier = useMemo(() => {
     if (points >= 1000) {
       return { name: t("Bạch Kim"), short: t("Platinum"), next: 1500 };
@@ -402,9 +377,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
 
   const tierProgress = Math.min(100, (points / tier.next) * 100);
 
-  // ============================================================
-  // HANDLERS
-  // ============================================================
   const scrollToSection = useCallback((id) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -495,9 +467,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     return () => window.removeEventListener("keydown", handler);
   }, [openedGroup]);
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
     <div className="customer-promo-v2">
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
@@ -690,10 +659,11 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                       cursor: "pointer",
                     }}
                     onClick={async () => {
-                      if (m.key === "eat") {
-      setShowStudentSubsidyModal(true);
-      return;
-    }
+                      // 🔧 Sửa logic: Cả "eat" và "subsidy" đều mở modal Trợ giá
+                      if (m.key === "eat" || m.key === "subsidy") {
+                        setShowStudentSubsidyModal(true);
+                        return;
+                      }
 
                       if (m.key === "eco") { setShowEcoModal(true); return; }
 

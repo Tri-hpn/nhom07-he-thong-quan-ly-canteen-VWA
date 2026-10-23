@@ -9,7 +9,7 @@ import {
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
 
-const MAX_SIZE = 2 * 1024 * 1024;
+const MAX_SIZE = 100 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
@@ -329,7 +329,7 @@ export default function ImageUploader({
               style={{
                 width: "100%",
                 maxHeight: 260,
-                objectFit: "cover",
+                objectFit: "contain",
                 borderRadius: 10,
                 display: "block",
               }}
