@@ -1,12 +1,12 @@
 // ============================================================
 // useVoiceAnnouncer.js — Hook quản lý giọng đọc TTS
 // ============================================================
-// V1 (2026-10): Quản lý speechSynthesis API
-// V2 (2026-10):
-//   - 🔧 FIX L14: tách startTimerRef (delay khởi tạo) và
-//     repeatTimerRef (auto-repeat) — trước đây dùng chung 1 ref
-//     nên stop() chỉ clear được 1 trong 2, gây đọc lặp ngoài ý muốn.
-//   - stop() clear cả 2 timer.
+// V3 (2026-10):
+//   - 🔧 FIX: recursive speak() dùng speakRef — tránh dùng closure
+//     cũ (pickVoice stale khi voices cập nhật async).
+//   - 🔧 FIX: dùng chung 1 AudioContext (module-level) thay vì tạo
+//     mới mỗi lần playChime (Chrome giới hạn 6 context).
+//   - Giữ fix L14: tách startTimerRef / repeatTimerRef.
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -24,27 +24,18 @@ const DEFAULT_CONFIG = {
   lang: "vi-VN",
 };
 
-// ============================================================
-// HELPERS
-// ============================================================
-
+// ---------- Helpers ----------
 function loadConfig() {
   try {
     const raw = localStorage.getItem(LS_VOICE_CONFIG);
     if (!raw) return DEFAULT_CONFIG;
     const parsed = JSON.parse(raw);
     return { ...DEFAULT_CONFIG, ...parsed };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
+  } catch { return DEFAULT_CONFIG; }
 }
-
 function saveConfig(cfg) {
-  try {
-    localStorage.setItem(LS_VOICE_CONFIG, JSON.stringify(cfg));
-  } catch {}
+  try { localStorage.setItem(LS_VOICE_CONFIG, JSON.stringify(cfg)); } catch {}
 }
-
 function isSpeechSupported() {
   return (
     typeof window !== "undefined" &&
@@ -53,14 +44,26 @@ function isSpeechSupported() {
   );
 }
 
+// 🔧 Dùng chung 1 AudioContext cho mọi lần chime
+let sharedAudioCtx = null;
+function getAudioContext() {
+  if (typeof window === "undefined") return null;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+    try { sharedAudioCtx = new AC(); } catch { return null; }
+  }
+  return sharedAudioCtx;
+}
+
 function playChime() {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    // Autoplay policy: cần resume nếu suspended
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
 
-    const ctx = new AudioContext();
     const now = ctx.currentTime;
-
     const notes = [
       { freq: 1046.5, time: 0 },
       { freq: 1318.5, time: 0.18 },
@@ -69,31 +72,22 @@ function playChime() {
     notes.forEach(({ freq, time }) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-
       osc.type = "sine";
       osc.frequency.value = freq;
-
       gain.gain.setValueAtTime(0.0001, now + time);
       gain.gain.exponentialRampToValueAtTime(0.3, now + time + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + time + 0.35);
-
       osc.connect(gain);
       gain.connect(ctx.destination);
-
       osc.start(now + time);
       osc.stop(now + time + 0.4);
     });
-
-    setTimeout(() => ctx.close().catch(() => {}), 1000);
   } catch (e) {
     console.warn("[Voice] Chime error:", e.message);
   }
 }
 
-// ============================================================
-// MAIN HOOK
-// ============================================================
-
+// ---------- Main hook ----------
 export function useVoiceAnnouncer() {
   const [config, setConfigState] = useState(loadConfig);
   const [voices, setVoices] = useState([]);
@@ -101,59 +95,44 @@ export function useVoiceAnnouncer() {
   const [supported] = useState(isSpeechSupported);
 
   const configRef = useRef(config);
-  // 🔧 FIX L14: tách 2 timer
-  const startTimerRef = useRef(null);   // delay trước khi bắt đầu đọc (chờ chuông)
-  const repeatTimerRef = useRef(null);  // auto-repeat sau khi đọc xong
+  const startTimerRef = useRef(null);
+  const repeatTimerRef = useRef(null);
   const utteranceRef = useRef(null);
+  // 🔧 Ref cho speak để đệ quy an toàn
+  const speakRef = useRef(null);
 
-  useEffect(() => {
-    configRef.current = config;
-  }, [config]);
+  useEffect(() => { configRef.current = config; }, [config]);
 
-  // ---------- Load voices ----------
+  // Load voices
   useEffect(() => {
     if (!supported) return;
-
     const loadVoices = () => {
-      const list = window.speechSynthesis.getVoices() || [];
-      setVoices(list);
+      try { setVoices(window.speechSynthesis.getVoices() || []); } catch {}
     };
-
     loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-
+    try { window.speechSynthesis.onvoiceschanged = loadVoices; } catch {}
     return () => {
-      try {
-        window.speechSynthesis.onvoiceschanged = null;
-      } catch {}
+      try { window.speechSynthesis.onvoiceschanged = null; } catch {}
     };
   }, [supported]);
 
-  // ---------- Chọn voice phù hợp ----------
   const pickVoice = useCallback(() => {
     if (!voices.length) return null;
-
     const cfg = configRef.current;
-
     if (cfg.voiceName) {
       const found = voices.find((v) => v.name === cfg.voiceName);
       if (found) return found;
     }
-
     const viVoices = voices.filter((v) =>
       String(v.lang || "").toLowerCase().startsWith("vi")
     );
     if (viVoices.length) {
-      const female = viVoices.find((v) =>
-        /linh|hoai|female|nu/i.test(v.name)
-      );
+      const female = viVoices.find((v) => /linh|hoai|female|nu/i.test(v.name));
       return female || viVoices[0];
     }
-
     return voices[0];
   }, [voices]);
 
-  // 🔧 FIX L14: clear cả 2 timer
   const cancelTimers = useCallback(() => {
     if (startTimerRef.current) {
       clearTimeout(startTimerRef.current);
@@ -165,43 +144,29 @@ export function useVoiceAnnouncer() {
     }
   }, []);
 
-  // ---------- Cancel all ----------
   const stop = useCallback(() => {
     if (!supported) return;
     cancelTimers();
-    try {
-      window.speechSynthesis.cancel();
-    } catch {}
+    try { window.speechSynthesis.cancel(); } catch {}
     setSpeaking(false);
   }, [supported, cancelTimers]);
 
-  // ---------- Speak core ----------
   const speak = useCallback(
     (text, { repeat = true } = {}) => {
       if (!supported || !text) return;
       if (!configRef.current.enabled) return;
 
-      // Clear timer cũ trước khi bắt đầu
       cancelTimers();
-
-      try {
-        window.speechSynthesis.cancel();
-      } catch {}
+      try { window.speechSynthesis.cancel(); } catch {}
 
       const cfg = configRef.current;
-
-      if (cfg.chime) {
-        playChime();
-      }
-
+      if (cfg.chime) playChime();
       const delay = cfg.chime ? 480 : 0;
 
-      // 🔧 FIX L14: dùng startTimerRef riêng
       startTimerRef.current = setTimeout(() => {
         startTimerRef.current = null;
 
         const utter = new SpeechSynthesisUtterance(text);
-
         utter.lang = cfg.lang || "vi-VN";
         utter.rate = Math.max(0.1, Math.min(2, cfg.rate || 0.9));
         utter.pitch = Math.max(0, Math.min(2, cfg.pitch || 1));
@@ -213,13 +178,12 @@ export function useVoiceAnnouncer() {
         utter.onstart = () => setSpeaking(true);
         utter.onend = () => {
           setSpeaking(false);
-
           const after = Number(cfg.repeatAfter) || 0;
           if (repeat && after > 0) {
-            // 🔧 FIX L14: dùng repeatTimerRef riêng
             repeatTimerRef.current = setTimeout(() => {
               repeatTimerRef.current = null;
-              speak(text, { repeat: true });
+              // 🔧 FIX: dùng speakRef — luôn là speak mới nhất
+              if (speakRef.current) speakRef.current(text, { repeat: true });
             }, after * 1000);
           }
         };
@@ -240,13 +204,12 @@ export function useVoiceAnnouncer() {
     [supported, pickVoice, cancelTimers]
   );
 
-  // ---------- Update config ----------
+  // 🔧 Cập nhật ref mỗi khi speak thay đổi
+  useEffect(() => { speakRef.current = speak; }, [speak]);
+
   const setConfig = useCallback((updater) => {
     setConfigState((prev) => {
-      const next =
-        typeof updater === "function"
-          ? updater(prev)
-          : { ...prev, ...updater };
+      const next = typeof updater === "function" ? updater(prev) : { ...prev, ...updater };
       saveConfig(next);
       return next;
     });
@@ -257,13 +220,11 @@ export function useVoiceAnnouncer() {
     saveConfig(DEFAULT_CONFIG);
   }, []);
 
-  // ---------- Cleanup on unmount ----------
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       cancelTimers();
-      try {
-        window.speechSynthesis.cancel();
-      } catch {}
+      try { window.speechSynthesis.cancel(); } catch {}
     };
   }, [cancelTimers]);
 
