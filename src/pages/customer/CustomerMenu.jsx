@@ -1,9 +1,10 @@
 // ============================================================
-// CUSTOMERMENU.JSX — Thực đơn (V3 - đồng bộ card với trang chủ)
+// CUSTOMERMENU.JSX — Thực đơn (V4 - STICKY SIDEBAR + SCROLL GRID)
 // ============================================================
 // ✅ SOURCE-TEXT I18N
 // ✅ Card món: ảnh vuông 96px + info + nút Thêm (giống HomeFoodCard)
 // ✅ Layout: grid 2 cột có header full-width — 2 cột không lệch
+// ✅ V4: Bộ lọc trái + Sắp xếp đứng im, chỉ vùng món cuộn
 // ============================================================
 
 import { SkeletonCard } from "../../components/Skeleton";
@@ -56,7 +57,7 @@ const PRIORITY_FILTERS = [
   { key: "fast", icon: "⚡", label: "Phục vụ nhanh" },
   { key: "healthy", icon: "🥗", label: "Lành mạnh" },
   { key: "cool", icon: "❄️", label: "Mát lạnh" },
-  { key: "noSpicy", icon: "", label: "Không cay" },
+  { key: "noSpicy", icon: "", label: "Không cay" },
 ];
 
 const CALORIE_RANGES = [
@@ -88,6 +89,14 @@ function translateCategory(name, t) {
 export default function CustomerMenu({ cart, setCart, user }) {
   const { t, tData } = useI18n();
   const navigate = useNavigate();
+
+  // ✅ V4: Thêm class để CSS áp dụng layout cố định sidebar + scrollable grid
+  useEffect(() => {
+    document.body.classList.add("menu-v3-active");
+    return () => {
+      document.body.classList.remove("menu-v3-active");
+    };
+  }, []);
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -845,7 +854,7 @@ export default function CustomerMenu({ cart, setCart, user }) {
 
           {!loading && filtered.length === 0 && (
             <div className="menu-v3-empty">
-              <div className="menu-v3-empty__icon"></div>
+              <div className="menu-v3-empty__icon"></div>
               <h3>{t("Không tìm thấy món nào")}</h3>
               <p>{t("Thử điều chỉnh bộ lọc hoặc xóa từ khóa tìm kiếm.")}</p>
               <button onClick={resetAllFilters}>

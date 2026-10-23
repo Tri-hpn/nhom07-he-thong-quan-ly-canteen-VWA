@@ -219,7 +219,7 @@ export default function SettingsModal({
                 role={role}
                 onSelectPanel={setCurrentPanel}
                 onOpenProfile={handleOpenProfile}
-                onLogout={handleLogoutRequest}
+                onLogout={role === "CUSTOMER" ? onLogout : handleLogoutRequest}
               />
             )}
           </div>
@@ -248,7 +248,7 @@ export default function SettingsModal({
 
       {/* LOGOUT CONFIRM */}
       <ConfirmDialog
-        open={confirmLogout}
+        open={role !== "CUSTOMER" && confirmLogout}
         icon={LogoutIcon}
         title={t("Đăng xuất khỏi Canteen VWA?")}
         message={t(

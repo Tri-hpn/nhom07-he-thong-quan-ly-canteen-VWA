@@ -1,10 +1,11 @@
 // ============================================================
 // useCrossTabSync.js — Sync state giữa các tab qua localStorage
 // ============================================================
-// V2 (2026-10):
-//   - 🔧 FIX L15: guard SSR — không crash khi
-//     `typeof window === "undefined"` (Next.js / pre-render).
-//   - Giữ nguyên BUG-01 fix: defaultValue qua ref, functional set.
+// V3 (2026-10):
+//   - 🔧 FIX: bỏ side-effect localStorage khỏi updater của setValue
+//     (StrictMode gọi updater 2 lần → ghi 2 lần). Chuyển sang
+//     useEffect persist, có skip flag cho lần mount + storage event.
+//   - Giữ guard SSR + defaultValue ổn định qua ref.
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -23,16 +24,19 @@ function readInitial(key, fallback) {
 }
 
 export function useCrossTabSync(key, defaultValue = null) {
-  // 🔧 BUG-01: giữ defaultValue ổn định qua ref — tránh effect re-run
-  // mỗi render khi caller truyền `[]` hoặc `{}` literal.
+  // Giữ defaultValue ổn định qua ref — tránh effect re-run khi caller
+  // truyền `[]` hoặc `{}` literal mỗi render.
   const defaultRef = useRef(defaultValue);
   useEffect(() => {
     defaultRef.current = defaultValue;
   }, [defaultValue]);
 
-  const [value, setValue] = useState(() =>
-    readInitial(key, defaultRef.current)
-  );
+  const [value, setValue] = useState(() => readInitial(key, defaultRef.current));
+
+  // Cờ: bỏ qua persist ngay sau mount (value đã có trong localStorage)
+  const didMountRef = useRef(false);
+  // Cờ: bỏ qua persist ngay sau khi nhận storage event (tránh echo)
+  const skipPersistRef = useRef(false);
 
   // Sync khi tab khác đổi localStorage
   useEffect(() => {
@@ -40,14 +44,14 @@ export function useCrossTabSync(key, defaultValue = null) {
 
     const handler = (e) => {
       if (e.key !== key) return;
+      let next;
       try {
-        const next = e.newValue
-          ? JSON.parse(e.newValue)
-          : defaultRef.current;
-        setValue(next);
+        next = e.newValue ? JSON.parse(e.newValue) : defaultRef.current;
       } catch {
-        setValue(defaultRef.current);
+        next = defaultRef.current;
       }
+      skipPersistRef.current = true;
+      setValue(next);
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
@@ -58,9 +62,8 @@ export function useCrossTabSync(key, defaultValue = null) {
     if (!isBrowser) return;
 
     const reset = () => {
-      try {
-        localStorage.removeItem(key);
-      } catch {}
+      try { localStorage.removeItem(key); } catch {}
+      skipPersistRef.current = true; // không cần ghi lại default
       setValue(defaultRef.current);
     };
     window.addEventListener("auth-expired", reset);
@@ -71,27 +74,35 @@ export function useCrossTabSync(key, defaultValue = null) {
     };
   }, [key]);
 
-  // 🔧 BUG-01: set dùng functional update — KHÔNG phụ thuộc `value`
-  const set = useCallback(
-    (next) => {
-      setValue((prev) => {
-        const v = typeof next === "function" ? next(prev) : next;
-        if (isBrowser) {
-          try {
-            if (v === null || v === undefined) {
-              localStorage.removeItem(key);
-            } else {
-              localStorage.setItem(key, JSON.stringify(v));
-            }
-          } catch (err) {
-            console.error("[useCrossTabSync] " + key + ":", err);
-          }
-        }
-        return v;
-      });
-    },
-    [key]
-  );
+  // 🔧 FIX: persist bằng useEffect — không nằm trong updater
+  useEffect(() => {
+    if (!isBrowser) return;
+
+    // Lần mount đầu: value đã đọc từ localStorage rồi → skip
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    // Vừa nhận storage event / reset → skip để tránh echo
+    if (skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
+
+    try {
+      if (value === null || value === undefined) {
+        localStorage.removeItem(key);
+      } else {
+        localStorage.setItem(key, JSON.stringify(value));
+      }
+    } catch (err) {
+      console.error("[useCrossTabSync] " + key + ":", err);
+    }
+  }, [key, value]);
+
+  const set = useCallback((next) => {
+    setValue((prev) => (typeof next === "function" ? next(prev) : next));
+  }, []);
 
   return [value, set];
 }

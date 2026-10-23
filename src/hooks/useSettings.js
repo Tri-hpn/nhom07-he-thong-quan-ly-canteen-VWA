@@ -1,22 +1,15 @@
 // ============================================================
-// USESETTINGS.JS — Hook quản lý cài đặt người dùng (V2 - FINAL)
+// USESETTINGS.JS — Hook quản lý cài đặt người dùng (V3 - FINAL)
 // ============================================================
-// V1: Quản lý tập trung theme / language / fontSize / dietary /
-//     notiPrefs / mealSlots + apply vào DOM + persist localStorage.
-//
-// V2 (2026-10):
-//   - 🔧 FIX L13: bỏ `Object.values(LS_KEYS).forEach(safeRemoveItem)`
-//     trong resetAll. Lý do: các useEffect persist theo dõi state
-//     sẽ chạy lại ngay sau khi setState và ghi lại localStorage,
-//     nên removeItem là thừa và gây race condition.
-//     resetAll chỉ cần setState về DEFAULT — các effect sẽ tự ghi.
+// V3 (2026-10):
+//   - 🔧 FIX: listen "language-change" để sync state khi cùng tab
+//     có ai gọi setLang() từ i18n (storage event chỉ fire tab khác).
+//   - 🔧 Pattern cleanup theme an toàn (array cleanup).
+//   - Giữ fix L13: resetAll không removeItem — các effect persist
+//     tự ghi lại DEFAULT.
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
 
 export const LS_KEYS = {
   THEME: "vwa_theme",
@@ -54,24 +47,13 @@ const VALID_THEMES = ["light", "dark", "auto"];
 const VALID_LANGS = ["vi", "en", "ja", "ko", "zh"];
 const VALID_FONT_SIZES = [1, 2, 3];
 
-// ============================================================
-// HELPERS
-// ============================================================
-
+// ---------- Helpers ----------
 function safeGetItem(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  try { return localStorage.getItem(key); } catch { return null; }
 }
-
 function safeSetItem(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
+  try { localStorage.setItem(key, value); } catch {}
 }
-
 function readLocalJson(key, fallback) {
   try {
     const raw = safeGetItem(key);
@@ -81,85 +63,56 @@ function readLocalJson(key, fallback) {
       return { ...fallback, ...parsed };
     }
     return parsed;
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 }
-
 function writeLocalJson(key, value) {
-  try {
-    safeSetItem(key, JSON.stringify(value));
-  } catch {}
+  try { safeSetItem(key, JSON.stringify(value)); } catch {}
 }
-
 function readTheme() {
   if (typeof window === "undefined") return "light";
   const saved = safeGetItem(LS_KEYS.THEME);
-  if (VALID_THEMES.includes(saved)) return saved;
-  return "light";
+  return VALID_THEMES.includes(saved) ? saved : "light";
 }
-
 function readLanguage() {
   if (typeof window === "undefined") return "vi";
   const saved = safeGetItem(LS_KEYS.LANG);
-  if (VALID_LANGS.includes(saved)) return saved;
-  return "vi";
+  return VALID_LANGS.includes(saved) ? saved : "vi";
 }
-
 function readFontSize() {
   if (typeof window === "undefined") return 1;
-  const raw = safeGetItem(LS_KEYS.FONT_SIZE);
-  const n = parseInt(raw || "1", 10);
+  const n = parseInt(safeGetItem(LS_KEYS.FONT_SIZE) || "1", 10);
   return VALID_FONT_SIZES.includes(n) ? n : 1;
 }
 
-// ============================================================
-// MAIN HOOK
-// ============================================================
-
+// ---------- Main hook ----------
 export function useSettings() {
   const [theme, setThemeState] = useState(readTheme);
   const [language, setLanguageState] = useState(readLanguage);
   const [fontSize, setFontSizeState] = useState(readFontSize);
 
-  const [dietary, setDietaryState] = useState(() =>
-    readLocalJson(LS_KEYS.DIETARY, DEFAULT_DIETARY)
-  );
-  const [notiPrefs, setNotiPrefsState] = useState(() =>
-    readLocalJson(LS_KEYS.NOTI_PREFS, DEFAULT_NOTI_PREFS)
-  );
-  const [mealSlots, setMealSlotsState] = useState(() =>
-    readLocalJson(LS_KEYS.MEAL_SLOTS, DEFAULT_MEAL_SLOTS)
-  );
+  const [dietary, setDietaryState] = useState(() => readLocalJson(LS_KEYS.DIETARY, DEFAULT_DIETARY));
+  const [notiPrefs, setNotiPrefsState] = useState(() => readLocalJson(LS_KEYS.NOTI_PREFS, DEFAULT_NOTI_PREFS));
+  const [mealSlots, setMealSlotsState] = useState(() => readLocalJson(LS_KEYS.MEAL_SLOTS, DEFAULT_MEAL_SLOTS));
 
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
+    return () => { mountedRef.current = false; };
   }, []);
 
-  // ============================================================
-  // APPLY THEME → DOM + localStorage + event
-  // ============================================================
+  // Apply theme → DOM + localStorage + event
   useEffect(() => {
     if (typeof document === "undefined") return;
 
     const applyTheme = () => {
       safeSetItem(LS_KEYS.THEME, theme);
       document.documentElement.classList.remove("dark-mode");
-
       if (theme === "dark") {
         document.documentElement.classList.add("dark-mode");
       } else if (theme === "auto") {
         try {
-          const prefersDark = window.matchMedia(
-            "(prefers-color-scheme: dark)"
-          ).matches;
-          if (prefersDark) {
-            document.documentElement.classList.add("dark-mode");
-          }
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (prefersDark) document.documentElement.classList.add("dark-mode");
         } catch {}
       }
     };
@@ -167,80 +120,70 @@ export function useSettings() {
     applyTheme();
 
     try {
-      window.dispatchEvent(
-        new CustomEvent("theme-change", { detail: { theme } })
-      );
+      window.dispatchEvent(new CustomEvent("theme-change", { detail: { theme } }));
     } catch {}
 
+    // 🔧 Cleanup array pattern
+    const cleanups = [];
     if (theme === "auto") {
       try {
         const mq = window.matchMedia("(prefers-color-scheme: dark)");
         const handler = () => applyTheme();
         if (mq.addEventListener) {
           mq.addEventListener("change", handler);
-          return () => mq.removeEventListener("change", handler);
+          cleanups.push(() => mq.removeEventListener("change", handler));
         } else if (mq.addListener) {
           mq.addListener(handler);
-          return () => mq.removeListener(handler);
+          cleanups.push(() => mq.removeListener(handler));
         }
       } catch {}
     }
+    return () => cleanups.forEach((fn) => { try { fn(); } catch {} });
   }, [theme]);
 
-  // ============================================================
-  // APPLY FONT SCALE → CSS variable
-  // ============================================================
+  // Apply font scale
   useEffect(() => {
     if (typeof document === "undefined") return;
     try {
       safeSetItem(LS_KEYS.FONT_SIZE, String(fontSize));
       const scale = 1 + (fontSize - 1) * 0.12;
-      document.documentElement.style.setProperty(
-        "--app-font-scale",
-        String(scale)
-      );
+      document.documentElement.style.setProperty("--app-font-scale", String(scale));
     } catch {}
   }, [fontSize]);
 
-  // ============================================================
-  // APPLY LANGUAGE → dispatch event
-  // ============================================================
+  // Apply language → dispatch event
   useEffect(() => {
     safeSetItem(LS_KEYS.LANG, language);
     try {
-      window.dispatchEvent(
-        new CustomEvent("language-change", { detail: { lang: language } })
-      );
+      window.dispatchEvent(new CustomEvent("language-change", { detail: { lang: language } }));
     } catch {}
   }, [language]);
 
-  // ============================================================
-  // PERSIST DIETARY / NOTI / MEAL
-  // ============================================================
+  // 🔧 FIX: listen "language-change" để same-tab sync khi ai đó
+  // gọi setLang() từ i18n (storage event chỉ fire ở tab khác).
   useEffect(() => {
-    writeLocalJson(LS_KEYS.DIETARY, dietary);
-  }, [dietary]);
+    if (typeof window === "undefined") return;
+    const onLang = (e) => {
+      const next = e?.detail?.lang;
+      if (!next || !VALID_LANGS.includes(next)) return;
+      setLanguageState((prev) => (prev === next ? prev : next));
+    };
+    window.addEventListener("language-change", onLang);
+    return () => window.removeEventListener("language-change", onLang);
+  }, []);
 
-  useEffect(() => {
-    writeLocalJson(LS_KEYS.NOTI_PREFS, notiPrefs);
-  }, [notiPrefs]);
+  // Persist dietary / noti / meal
+  useEffect(() => { writeLocalJson(LS_KEYS.DIETARY, dietary); }, [dietary]);
+  useEffect(() => { writeLocalJson(LS_KEYS.NOTI_PREFS, notiPrefs); }, [notiPrefs]);
+  useEffect(() => { writeLocalJson(LS_KEYS.MEAL_SLOTS, mealSlots); }, [mealSlots]);
 
-  useEffect(() => {
-    writeLocalJson(LS_KEYS.MEAL_SLOTS, mealSlots);
-  }, [mealSlots]);
-
-  // ============================================================
-  // LISTEN storage (tab khác đổi) — sync ngược
-  // ============================================================
+  // Listen storage (tab khác đổi)
   useEffect(() => {
     const handler = (e) => {
       if (!mountedRef.current) return;
       if (e.key === LS_KEYS.THEME && VALID_THEMES.includes(e.newValue)) {
         setThemeState(e.newValue);
-      } else if (
-        e.key === LS_KEYS.LANG &&
-        VALID_LANGS.includes(e.newValue)
-      ) {
+      } else if (e.key === LS_KEYS.LANG && VALID_LANGS.includes(e.newValue)) {
         setLanguageState(e.newValue);
       } else if (e.key === LS_KEYS.FONT_SIZE) {
         const n = parseInt(e.newValue || "1", 10);
@@ -248,61 +191,44 @@ export function useSettings() {
       } else if (e.key === LS_KEYS.DIETARY) {
         setDietaryState(readLocalJson(LS_KEYS.DIETARY, DEFAULT_DIETARY));
       } else if (e.key === LS_KEYS.NOTI_PREFS) {
-        setNotiPrefsState(
-          readLocalJson(LS_KEYS.NOTI_PREFS, DEFAULT_NOTI_PREFS)
-        );
+        setNotiPrefsState(readLocalJson(LS_KEYS.NOTI_PREFS, DEFAULT_NOTI_PREFS));
       } else if (e.key === LS_KEYS.MEAL_SLOTS) {
-        setMealSlotsState(
-          readLocalJson(LS_KEYS.MEAL_SLOTS, DEFAULT_MEAL_SLOTS)
-        );
+        setMealSlotsState(readLocalJson(LS_KEYS.MEAL_SLOTS, DEFAULT_MEAL_SLOTS));
       }
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
   }, []);
 
-  // ============================================================
-  // SETTERS
-  // ============================================================
+  // Setters
   const setTheme = useCallback((value) => {
     if (!VALID_THEMES.includes(value)) return;
     setThemeState(value);
   }, []);
-
   const setLanguage = useCallback((value) => {
     if (!VALID_LANGS.includes(value)) return;
     setLanguageState(value);
   }, []);
-
   const setFontSize = useCallback((value) => {
     const n = parseInt(value, 10);
     if (!VALID_FONT_SIZES.includes(n)) return;
     setFontSizeState(n);
   }, []);
-
   const toggleDietary = useCallback((key) => {
     setDietaryState((d) => ({ ...d, [key]: !d[key] }));
   }, []);
-
   const toggleNotiPref = useCallback((key) => {
     setNotiPrefsState((p) => ({ ...p, [key]: !p[key] }));
   }, []);
-
   const toggleMealSlot = useCallback((key) => {
     setMealSlotsState((s) => ({ ...s, [key]: !s[key] }));
   }, []);
-
   const setNotifyBefore = useCallback((minutes) => {
     const n = parseInt(minutes, 10);
     if (isNaN(n) || n < 0) return;
     setMealSlotsState((s) => ({ ...s, notifyBefore: n }));
   }, []);
 
-  /**
-   * 🔧 FIX L13: reset state về DEFAULT.
-   * KHÔNG gọi safeRemoveItem nữa — các useEffect persist theo dõi
-   * state sẽ tự ghi lại giá trị DEFAULT ngay sau render kế tiếp.
-   */
   const resetAll = useCallback(() => {
     setThemeState("light");
     setLanguageState("vi");
@@ -312,41 +238,17 @@ export function useSettings() {
     setMealSlotsState({ ...DEFAULT_MEAL_SLOTS });
   }, []);
 
-  // ============================================================
-  // RETURN
-  // ============================================================
   return useMemo(
     () => ({
-      theme,
-      language,
-      fontSize,
-      dietary,
-      notiPrefs,
-      mealSlots,
-
-      setTheme,
-      setLanguage,
-      setFontSize,
-      toggleDietary,
-      toggleNotiPref,
-      toggleMealSlot,
-      setNotifyBefore,
+      theme, language, fontSize, dietary, notiPrefs, mealSlots,
+      setTheme, setLanguage, setFontSize,
+      toggleDietary, toggleNotiPref, toggleMealSlot, setNotifyBefore,
       resetAll,
     }),
     [
-      theme,
-      language,
-      fontSize,
-      dietary,
-      notiPrefs,
-      mealSlots,
-      setTheme,
-      setLanguage,
-      setFontSize,
-      toggleDietary,
-      toggleNotiPref,
-      toggleMealSlot,
-      setNotifyBefore,
+      theme, language, fontSize, dietary, notiPrefs, mealSlots,
+      setTheme, setLanguage, setFontSize,
+      toggleDietary, toggleNotiPref, toggleMealSlot, setNotifyBefore,
       resetAll,
     ]
   );
