@@ -1,19 +1,28 @@
 // ============================================================
 // RATE LIMIT — Chống brute force login (in-memory)
-// ============================================================
-// Cách dùng:
-//   import { rateLimit } from "./middleware/rateLimit.js";
-//   app.post("/api/auth/login", rateLimit({ windowMs: 60_000, max: 5 }), handler);
-//
-// ⚠️ Lưu ý: in-memory → không share giữa các instance.
-//    Trên production nên dùng Redis.
+// V2 (2026-10):
+//   - ✅ Fallback IP extraction (x-forwarded-for → socket.remoteAddress)
+//   - ✅ Cần app.set("trust proxy", 1) ở server để req.ip đúng sau proxy
 // ============================================================
 
 const buckets = new Map();
 
-export function rateLimit({ windowMs = 60_000, max = 10, key = (req) => req.ip } = {}) {
+function getClientIp(req) {
+  // Sau khi app.set("trust proxy", 1), req.ip đã là IP thật.
+  // Nhưng phòng khi trust proxy chưa set, thử thêm header.
+  if (req.ip) return req.ip;
+  const xff = req.headers?.["x-forwarded-for"];
+  if (xff) {
+    const first = String(xff).split(",")[0].trim();
+    if (first) return first;
+  }
+  return req.socket?.remoteAddress || "unknown";
+}
+
+export function rateLimit({ windowMs = 60_000, max = 10, key } = {}) {
+  const keyFn = key || getClientIp;
   return (req, res, next) => {
-    const k = key(req);
+    const k = keyFn(req);
     const now = Date.now();
 
     let bucket = buckets.get(k);
@@ -37,10 +46,13 @@ export function rateLimit({ windowMs = 60_000, max = 10, key = (req) => req.ip }
   };
 }
 
-// Dọn bucket cũ mỗi 5 phút
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of buckets.entries()) {
-    if (now > v.resetAt) buckets.delete(k);
-  }
-}, 5 * 60 * 1000).unref?.();
+// Dọn bucket cũ mỗi 5 phút — chỉ chạy trên server (tránh leak khi import nhầm client)
+if (typeof process !== "undefined" && process.versions?.node) {
+  const timer = setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of buckets.entries()) {
+      if (now > v.resetAt) buckets.delete(k);
+    }
+  }, 5 * 60 * 1000);
+  if (timer && typeof timer.unref === "function") timer.unref();
+}
