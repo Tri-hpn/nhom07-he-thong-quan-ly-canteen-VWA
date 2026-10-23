@@ -9,12 +9,13 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import {Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings, History, Zap} from "lucide-react";
+import {Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings, History, Zap, Info } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import RulesModal from "../../components/RulesModal";
 
 // ============================================================
 // CONSTANTS
@@ -123,6 +124,7 @@ export default function OwnerVouchers() {
   // ---------- UI ----------
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const [formValue, setFormValue] = useState("");
   const [formIsFlashSale, setFormIsFlashSale] = useState(false);
   const [publishDate, setPublishDate] = useState(new Date().toISOString().slice(0, 10));
@@ -1345,6 +1347,7 @@ export default function OwnerVouchers() {
           to   { transform: rotate(360deg); }
         }
       `}</style>
+      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1396,6 +1399,7 @@ function Stat({ label, value, color, icon }) {
         </span>
       </div>
       <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
+      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1461,6 +1465,7 @@ function Modal({ children, onClose, maxWidth = 500, zIndex = MODAL_Z }) {
       >
         {children}
       </div>
+      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1507,6 +1512,7 @@ function ErrorBox({ message, onRetry, t }) {
           {t("Thử lại")}
         </button>
       )}
+      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1595,7 +1601,10 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         </div>
         
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={() => setHistoryModal(true)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f5f7fb)", color: "var(--text-primary, #172033)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+          <button type="button" onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6, marginRight: 8 }}>
+              <Info size={16} /> Quy tắc Xu
+            </button>
+            <button type="button" onClick={() => setHistoryModal(true)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f5f7fb)", color: "var(--text-primary, #172033)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
             <History size={16} /> Lịch sử
           </button>
           
@@ -1735,6 +1744,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
           <ConfigHistoryTable t={t} key={historyRefreshKey} />
         </Modal>
       )}
+      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1788,6 +1798,7 @@ function ConfigHistoryTable({ t }) {
           ))}
         </tbody>
       </table>
+      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
