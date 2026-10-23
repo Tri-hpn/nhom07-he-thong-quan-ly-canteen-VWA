@@ -5,11 +5,10 @@
 //  THAY ĐỔI: cấu trúc JSX render theo design mới
 // ============================================================
 
-import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
+import {Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Wallet, Plus, Minus, Link as LinkIcon, CreditCard, QrCode, Banknote, Clock, CheckCircle2, ArrowDownCircle, ArrowUpCircle, ShoppingBag, X, Building2, History, AlertTriangle, Loader2, AlertCircle, RefreshCw, Home, ChevronRight, BadgeCheck, Shield, Zap, Utensils, ArrowDown, ArrowUp, RotateCcw, Download, Lock, Headset, Search, Coffee, Soup, Store, Sandwich, Sparkles,
-} from "lucide-react";
+  Wallet, Plus, Minus, Link as LinkIcon, CreditCard, QrCode, Banknote, Clock, CheckCircle2, ArrowDownCircle, ArrowUpCircle, ShoppingBag, X, Building2, History, AlertTriangle, Loader2, AlertCircle, RefreshCw, Home, ChevronRight, BadgeCheck, Shield, Zap, Utensils, ArrowDown, ArrowUp, RotateCcw, Download, Lock, Headset, Search, Coffee, Soup, Store, Sandwich, Sparkles, Eye, EyeOff } from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
@@ -85,6 +84,7 @@ export default function CustomerWallet({ user }) {
   const [points, setPoints] = useState(0); 
 
   const [loading, setLoading] = useState(true);
+  const [showSensitiveInfo, setShowSensitiveInfo] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
@@ -369,250 +369,53 @@ export default function CustomerWallet({ user }) {
       {/* ============================================== */}
       {/* 1. BREADCRUMB + HEADER                          */}
       {/* ============================================== */}
-      <section className="wallet-header">
-        <nav className="wallet-breadcrumb">
-          <a href="/customer/home" className="wallet-breadcrumb__link">
-            {t("Canteen VWA")}
-          </a>
-          <ChevronRight size={14} className="wallet-breadcrumb__sep" />
-          <span>{t("Tài khoản")}</span>
-          <ChevronRight size={14} className="wallet-breadcrumb__sep" />
-          <span className="wallet-breadcrumb__current">
-            {t("Ví Canteen & Thẻ Sinh Viên")}
-          </span>
-        </nav>
-
-        <div className="wallet-header__row">
-          <div className="wallet-header__left" aria-hidden="true" style={{ flex: "1 1 auto", minWidth: 0 }} />
-          <div className="wallet-header__card">
-            <div className="wallet-header__icon">
-              <BadgeCheck size={22} />
-            </div>
-            <div className="wallet-header__info">
-              <div className="wallet-header__name-row">
-                <b>{t("Thẻ SV")} Ѣ {t("Sinh viên")}</b>
-                <BadgeCheck size={16} className="wallet-header__verified" />
-              </div>
-              <div className="wallet-header__meta">
-                <span>MSSV: {user?.student_code || t("Chưa liên kết")}</span>
-                <span className="wallet-header__dot" />
-                <span className="wallet-header__sso">
-                  {user?.student_code
-                    ? t("Đã xác thực SSO Học viện")
-                    : t("Chưa liên kết MSSV")}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+            {/* 1. HEADER */}
+      <section className="wallet-header" style={{ display: 'none' }}>
       </section>
 
-      {/* ============================================== */}
-      {/* 2. 3-COLUMN BENTO (Card + Subsidy + Points)    */}
-      {/* ============================================== */}
-      <section className="wallet-bento">
-        {/* Card 1: VWA Smart Pay */}
-        <div className="wallet-card-physical">
-          <div className="wallet-card-physical__glow-1" />
-          <div className="wallet-card-physical__glow-2" />
+      {/* 2. CARD */}
+      <section className="wallet-bento" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+        <div className="vwa-card-final">
+          <div className="vwa-card-final__bg"></div>
+          
+          <div className="vwa-card-final__top-right">
+            <div className="vwa-card-final__logo">
+              <Wallet size={18} />
+              <b>VWA SMART PAY</b>
+            </div>
+          </div>
 
-          <div className="wallet-card-physical__top">
-            <div className="wallet-card-physical__brand">
-              <div className="wallet-card-physical__brand-icon">
-                <Wallet size={18} />
+          <div className="vwa-card-final__center">
+            <div className="vwa-card-final__title">
+              <h2>VWA STUDENT CARD</h2>
+              <p>by VWA & Canteen</p>
+            </div>
+          </div>
+
+          <div className="vwa-card-final__bottom-info">
+            <div className="vwa-card-final__balance">
+              <span>SỐ DƯ KHẢ DỤNG</span>
+              <b>
+                {loading ? <Loader2 size={24} className="wallet-spin" /> : money(wallet.balance || 0)}
+              </b>
+            </div>
+
+            <div className="vwa-card-final__holder">
+              <div className="vwa-card-final__holder-item">
+                <span>CHỦ THẺ</span>
+                <b>{String(user?.name || user?.full_name || "CHUA C?P NH?T").trim().toLocaleUpperCase("vi-VN")}</b>
               </div>
-              <b>{t("VWA Smart Pay")}</b>
-            </div>
-            <Wallet size={26} style={{ opacity: 0.8 }} />
-          </div>
-
-          {/* Chip */}
-          <div className="wallet-card-physical__chip-row">
-            <div className="wallet-card-physical__chip">
-              <div className="wallet-card-physical__chip-inner" />
-            </div>
-            <span className="wallet-card-physical__chip-label">
-              {t("THẺ SINH VIÊN ĐA NĂNG")}
-            </span>
-          </div>
-
-          {/* Balance */}
-          <div className="wallet-card-physical__balance">
-            <span className="wallet-card-physical__balance-label">
-              {t("SỐ DƯ VÍ KHẢ DỤNG")}
-            </span>
-            <div className="wallet-card-physical__balance-value">
-              {loading ? (
-                <Loader2 size={32} className="wallet-spin" />
-              ) : (
-                <>
-                  {money(wallet.balance || 0).replace("đ", "")}
-                  <span className="wallet-card-physical__balance-unit">đ</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom: cardholder + actions */}
-          <div className="wallet-card-physical__bottom">
-            <div className="wallet-card-physical__holder">
-              <div>
-                <span className="wallet-card-physical__holder-label">
-                  {t("Chủ thẻ")}
-                </span>
-                <b>{String(user?.name || user?.full_name || "Sinh viên").trim().toLocaleUpperCase("vi-VN")}</b>
-              </div>
-              <div className="wallet-card-physical__holder-right">
-                <span className="wallet-card-physical__holder-label">
-                  {t("MSSV / Mã thẻ")}
-                </span>
+              <div className="vwa-card-final__holder-item" style={{ textAlign: 'right' }}>
+                <span>MÃ THẺ (MSSV)</span>
                 <b>
-                  {(user?.student_code || user?.student_id || user?.mssv)
-                    ? `ѢѢѢѢ ${String(user.student_code || user.student_id || user.mssv).replace(/\D/g, "").slice(-4)}`
-                    : t("Chưa liên kết MSSV")}
+                  {user?.student_code || user?.student_id || user?.mssv || "CHUA C?P NH?T"}
                 </b>
               </div>
             </div>
-
-            <div className="wallet-card-physical__actions">
-              <button
-                className="wallet-card-physical__action wallet-card-physical__action--solid"
-                onClick={() => setShowDeposit(true)}
-              >
-                <Plus size={16} />
-                {t("Nạp tiền")}
-              </button>
-              <button
-                className="wallet-card-physical__action wallet-card-physical__action--ghost"
-                onClick={() => {
-                  const el = document.getElementById("qr-pos-card");
-                  el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                }}
-              >
-                <QrCode size={16} />
-                {t("Mã QR quầy")}
-              </button>
-            </div>
           </div>
-        </div>
-
-        {/* Card 2: Trợ giá SV Kỳ II */}
-        <div className="wallet-subsidy-card">
-          <div className="wallet-subsidy-card__head">
-            <div>
-              <span className="wallet-subsidy-card__tag">
-                {t("Quỹ Học Đường")}
-              </span>
-              <h2>{t("Trợ Giá Sinh Viên Kỳ II")}</h2>
-              <p>{t("Năm học 2024 - 2025")}</p>
-            </div>
-            <div className="wallet-subsidy-card__icon">
-              <Wallet size={22} />
-            </div>
-          </div>
-
-          <div className="wallet-subsidy-card__quota">
-            <div className="wallet-subsidy-card__quota-row">
-              <span>{t("Hạn mức trợ giá còn lại:")}</span>
-              <b>{money(220000)}</b>
-            </div>
-            <div className="wallet-subsidy-card__quota-note">
-              <Utensils size={14} />
-              <span>
-                {t("Tương đương")} <b>22 {t("suất ăn")}</b>{" "}
-                ({t("10.000đ/suất học viện hỗ trợ")})
-              </span>
-            </div>
-          </div>
-
-          <div className="wallet-subsidy-card__progress">
-            <div className="wallet-subsidy-card__progress-row">
-              <span>
-                {t("Đã sử dụng trong tháng:")} <b>18/40 {t("suất")}</b>
-              </span>
-              <b>45%</b>
-            </div>
-            <div className="wallet-subsidy-card__bar">
-              <div
-                className="wallet-subsidy-card__fill"
-                style={{ width: "45%" }}
-              />
-            </div>
-          </div>
-
-          <div className="wallet-subsidy-card__info">
-            <Zap size={16} />
-            <p>
-              {t("Tự động trừ")}{" "}
-              <b>10.000đ</b>{" "}
-              {t("cho mỗi phần cơm trưa/bún phở từ 25.000đ trở lên khi quét mã tại quầy.")}
-            </p>
-          </div>
-
-          <div className="wallet-subsidy-card__foot">
-            <span>
-              <RefreshCw size={14} />
-              {t("Chu kỳ làm mới: 01/04/2025")}
-            </span>
-            <span className="wallet-subsidy-card__foot-link">
-              {t("Tự động cộng lại")}
-            </span>
-          </div>
-        </div>
-
-        {/* Card 3: VWA Green Points */}
-        <div className="wallet-points-card">
-          <div className="wallet-points-card__head">
-            <div>
-              <span className="wallet-points-card__tag">
-                {t("Sinh Thái Học Đường")}
-              </span>
-              <h2>{t("VWA Green Points")}</h2>
-              <p>
-                {t("Tích điểm khi mang bình nước / dùng khay tái chế")}
-              </p>
-            </div>
-            <div className="wallet-points-card__icon">
-              <Sparkles size={22} />
-            </div>
-          </div>
-
-          <div className="wallet-points-card__stats">
-            <div className="wallet-points-card__stat">
-              <span>{t("Điểm tích lũy")}</span>
-              <b>{stats.points || 350}</b>
-              <small>{t("Đủ đổi 01 ly Trà Sen")}</small>
-            </div>
-            <div className="wallet-points-card__stat">
-              <span>{t("Đã tiết kiệm kỳ này")}</span>
-              <b>{money(580000)}</b>
-              <small>{t("Nhờ trợ giá & voucher")}</small>
-            </div>
-          </div>
-
-          <div className="wallet-points-card__reward">
-            <div className="wallet-points-card__reward-icon">
-              <Coffee size={22} />
-            </div>
-            <div>
-              <b>{t("Voucher Giảm 20.000đ Đồ Uống")}</b>
-              <small>{t("Quy đổi ngay với")} {ptsCfg?.redeem?.min_points || 100} {t("Green Points")}</small>
-            </div>
-          </div>
-
-          <button
-            className="wallet-points-card__cta"
-            onClick={() => window.location.href = "/customer/promotions"}
-          >
-            <Plus size={16} />
-            {t("Đổi điểm nhận quà & voucher ưu đãi")}
-          </button>
         </div>
       </section>
 
-      {/* ============================================== */}
-      {/* 3. ACTION CENTER (Top-up + QR)                  */}
-      {/* ============================================== */}
       <section className="wallet-action-grid">
         {/* LEFT: Top-up */}
         <div className="wallet-topup" id="topup-container">
@@ -846,7 +649,7 @@ export default function CustomerWallet({ user }) {
               ? t("Đang tạo yêu cầu...")
               : topupMethod === "CASH"
                 ? t("Xác nhận nạp tiền mặt tại quầy")
-                : t("Xác nhận chuyỒn khoản / Nạp tiền")}
+                : t("Xác nhận chuyển khoản / Nạp tiền")}
           </button>
           <p className="wallet-topup__secure">
             <Shield size={14} />
@@ -1194,7 +997,7 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
           </div>
           <p className="wallet-tx-row__desc">
             {tx.note || tx.description || config.label}
-            {tx.created_at && ` Ѣ ${fmtDateTime(tx.created_at)}`}
+            {tx.created_at && ` • ${fmtDateTime(tx.created_at)}`}
           </p>
           {tx.discount > 0 && (
             <span className="wallet-tx-row__subsidy">

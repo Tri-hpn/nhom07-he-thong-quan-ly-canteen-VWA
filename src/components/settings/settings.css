@@ -1280,3 +1280,20 @@ html.dark-mode .settings-form__input {
     max-height: 92vh !important;
   }
 }
+/* FIX: Center Settings modal */
+.settings-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+}
+
+.settings-overlay > .settings-modal {
+  position: relative !important;
+  margin: auto !important;
+  flex-shrink: 0;
+  max-height: calc(100vh - 32px) !important;
+}

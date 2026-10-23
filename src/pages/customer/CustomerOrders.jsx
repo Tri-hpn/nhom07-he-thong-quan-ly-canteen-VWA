@@ -35,7 +35,7 @@ const FALLBACK_IMG =
   encodeURIComponent(
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
       <rect fill='#f5f7fb' width='100' height='100'/>
-      <text x='50' y='58' font-size='40' text-anchor='middle'></text>
+      <text x='50' y='58' font-size='40' text-anchor='middle'>🍲</text>
     </svg>`
   );
 
@@ -100,7 +100,7 @@ function fmtDateTime(iso) {
     const yyyy = d.getFullYear();
     const hh = d.getHours().toString().padStart(2, "0");
     const mi = d.getMinutes().toString().padStart(2, "0");
-    return `${dd}/${mm}/${yyyy} Ѣ ${hh}:${mi}`;
+    return `${dd}/${mm}/${yyyy} • ${hh}:${mi}`;
   } catch {
     return "—";
   }
@@ -1009,254 +1009,17 @@ const activeCounterId = (() => {
               background: "#fdfefe",
               boxShadow: "0 5px 18px rgba(25,55,85,.05)"
             }}>
-              <svg
-  viewBox="0 0 1200 760"
-  role="img"
-  aria-label={t("Sơ đồ mặt bằng nhà hàng Canteen VWA")}
-  style={{ display: "block", width: "100%", height: "auto", minWidth: 620 }}
->
-  <defs>
-    <pattern id="vwa-restaurant-floor" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M32 0H0V32" fill="none" stroke="#EAF0FF" strokeWidth="1" />
-    </pattern>
-    <linearGradient id="vwa-restaurant-kitchen" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stopColor="#E7EDFF" />
-      <stop offset="100%" stopColor="#D8E3FF" />
-    </linearGradient>
-    <linearGradient id="vwa-restaurant-counter" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#ffffff" />
-      <stop offset="100%" stopColor="#f4f7fa" />
-    </linearGradient>
-    <marker id="vwa-restaurant-arrow" viewBox="0 0 10 10" refX="8" refY="5"
-      markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0 0L10 5L0 10Z" fill="#2878d0" />
-    </marker>
-  </defs>
-
-  {/* FLOOR */}
-  <rect width="1200" height="760" rx="20" fill="#F7F9FF" />
-  <rect width="1200" height="760" rx="20" fill="url(#vwa-restaurant-floor)" />
-  <rect x="20" y="20" width="1160" height="720" rx="19"
-    fill="none" stroke="#C9D6F2" strokeWidth="2" />
-
-  {/* KITCHEN */}
-  <rect x="370" y="38" width="460" height="88" rx="13"
-    fill="url(#vwa-restaurant-kitchen)" stroke="#A8B9E8" strokeWidth="1.5" />
-  <rect x="390" y="58" width="42" height="42" rx="9"
-    fill="#fff" stroke="#D7E0F4" />
-  <path d="M401 69V89M411 69V89M421 69V89M401 79H421"
-    fill="none" stroke="#2634D5" strokeWidth="2" strokeLinecap="round" />
-  <text x="610" y="70" textAnchor="middle" fontSize="20" fontWeight="800" fill="#192D5B">
-    KHU BẾP
-  </text>
-  <text x="610" y="94" textAnchor="middle" fontSize="12" letterSpacing="1" fill="#657AA0">
-    CHẾ BIẾN · CHUẨN BỊ MÓN
-  </text>
-  <path d="M610 127V143" stroke="#a8b8c9" strokeWidth="2" strokeDasharray="4 4" />
-
-  {/* SERVICE COUNTER WALL */}
-  <rect x="43" y="145" width="1114" height="177" rx="17"
-    fill="#E3E9FF" stroke="#C8D7F4" strokeWidth="1.5" />
-  <rect x="56" y="156" width="1088" height="13" rx="6"
-    fill="#CCD9F5" />
-
-  {/* Q2 COUNTER */}
-  <g>
-    <rect x="59" y="174" width="344" height="135" rx="10"
-      fill={activeCounterId === "Q2" ? "#E8EDFF" : "url(#vwa-restaurant-counter)"}
-      stroke={activeCounterId === "Q2" ? "#2634D5" : "#D6E0F8"}
-      strokeWidth={activeCounterId === "Q2" ? 3.5 : 1.3} />
-    <rect x="59" y="174" width="344" height="7" rx="3.5" fill="#2634D5" />
-    <text x="80" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#3F5CA9">Q2 · QUẦY 02</text>
-    <text x="231" y="232" textAnchor="middle" fontSize="20" fontWeight="800" fill="#182D5A">Bún, Mì &amp; Bánh mì</text>
-    <g transform="translate(231 263)">
-      <ellipse cx="0" cy="5" rx="27" ry="7" fill="#dbe5ee" />
-      <path d="M-22 -2Q0 7 22 -2L16 13Q0 23 -16 13Z"
-        fill="#2634D5" stroke="#2563eb" strokeWidth="1.5" />
-      <path d="M-22 -2Q0 4 22 -2" fill="none" stroke="#2563eb" strokeWidth="2" />
-      <path d="M-11 -18L-1 -3M-3 -20L7 -4M5 -18L14 -3"
-        fill="none" stroke="#a27b4f" strokeWidth="2.2" strokeLinecap="round" />
-    </g>
-    <text x="231" y="298" textAnchor="middle" fontSize="11" fill="#72879d">MÓN NƯỚC · ĐỒ ĂN NHANH</text>
-    {activeCounterId === "Q2" && (
-      <g>
-        <rect x="278" y="187" width="109" height="20" rx="10" fill="#2634D5" />
-        <text x="332.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ĐƠN CỦA BẠN</text>
-      </g>
-    )}
-  </g>
-
-  {/* Q1 COUNTER */}
-  <g>
-    <rect x="428" y="174" width="344" height="135" rx="10"
-      fill={activeCounterId === "Q1" ? "#E8EDFF" : "url(#vwa-restaurant-counter)"}
-      stroke={activeCounterId === "Q1" ? "#2634D5" : "#D6E0F8"}
-      strokeWidth={activeCounterId === "Q1" ? 3.5 : 1.3} />
-    <rect x="428" y="174" width="344" height="7" rx="3.5" fill="#34d399" />
-    <text x="449" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#21835c">Q1 · QUẦY 01</text>
-    <text x="600" y="232" textAnchor="middle" fontSize="20" fontWeight="800" fill="#182D5A">Cơm &amp; Healthy</text>
-    <g transform="translate(600 263)">
-      <ellipse cx="0" cy="7" rx="31" ry="14" fill="#e6eee9" stroke="#9cb5a5" strokeWidth="1.5" />
-      <ellipse cx="0" cy="4" rx="25" ry="10" fill="#fff" stroke="#bdcfc4" strokeWidth="1.3" />
-      <ellipse cx="-7" cy="2" rx="11" ry="6" fill="#fff" stroke="#c6d5cb" strokeWidth="1" />
-      <path d="M5 -2L18 -7L25 0L17 7L6 6Z" fill="#22c55e" />
-      <circle cx="-16" cy="7" r="3.5" fill="#f59e0b" />
-      <circle cx="5" cy="3" r="3" fill="#fb7185" />
-    </g>
-    <text x="600" y="298" textAnchor="middle" fontSize="11" fill="#72879d">CƠM PHẦN · MÓN HEALTHY</text>
-    {activeCounterId === "Q1" && (
-      <g>
-        <rect x="647" y="187" width="109" height="20" rx="10" fill="#2634D5" />
-        <text x="701.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ĐƠN CỦA BẠN</text>
-      </g>
-    )}
-  </g>
-
-  {/* Q3 COUNTER */}
-  <g>
-    <rect x="797" y="174" width="344" height="135" rx="10"
-      fill={activeCounterId === "Q3" ? "#E8EDFF" : "url(#vwa-restaurant-counter)"}
-      stroke={activeCounterId === "Q3" ? "#2634D5" : "#D6E0F8"}
-      strokeWidth={activeCounterId === "Q3" ? 3.5 : 1.3} />
-    <rect x="797" y="174" width="344" height="7" rx="3.5" fill="#fb923c" />
-    <text x="818" y="201" fontSize="11" fontWeight="800" letterSpacing="1" fill="#b76524">Q3 · QUẦY 03</text>
-    <text x="969" y="232" textAnchor="middle" fontSize="19" fontWeight="800" fill="#182D5A">Barista &amp; Tráng miệng</text>
-    <g transform="translate(969 263)">
-      <path d="M-17 -13H12V12Q12 17 7 17H-12Q-17 17 -17 12Z"
-        fill="#DCE5FF" stroke="#6D8BFF" strokeWidth="1.5" />
-      <path d="M12 -8H18Q28 -8 24 3Q22 8 12 8"
-        fill="none" stroke="#6D8BFF" strokeWidth="2.2" />
-      <path d="M-12 -13Q-8 -19 -12 -24M-3 -13Q1 -19 -3 -24"
-        fill="none" stroke="#a6b3cd" strokeWidth="1.7" strokeLinecap="round" />
-    </g>
-    <text x="969" y="298" textAnchor="middle" fontSize="11" fill="#72879d">ĐỒ UỐNG · BÁNH NGỌT</text>
-    {activeCounterId === "Q3" && (
-      <g>
-        <rect x="1016" y="187" width="109" height="20" rx="10" fill="#2634D5" />
-        <text x="1070.5" y="201" textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">ĐƠN CỦA BẠN</text>
-      </g>
-    )}
-  </g>
-
-  {/* ORDERING / PICKUP LINE */}
-  <text x="65" y="344" fontSize="11" fontWeight="800" letterSpacing="1" fill="#687d94">
-    HÀNG CHỜ PHỤC VỤ
-  </text>
-  <path d="M65 365H1134" stroke="#E2E9FF" strokeWidth="12" strokeLinecap="round" />
-  <path d="M65 365H1134" stroke="#2878d0" strokeWidth="2.6"
-    strokeDasharray="9 8" markerEnd="url(#vwa-restaurant-arrow)" />
-  <rect x="428" y="349" width="344" height="32" rx="10" fill="#fff" stroke="#d7e2ed" />
-  <text x="600" y="370" textAnchor="middle" fontSize="13" fontWeight="800" fill="#395776">
-    GỌI MÓN · NHẬN MÓN
-  </text>
-
-  {/* DINING ROOM */}
-  <rect x="43" y="405" width="1114" height="262" rx="16"
-    fill="#fff5e7" stroke="#edd5b7" strokeWidth="1.5" />
-  <text x="66" y="433" fontSize="13" fontWeight="800" letterSpacing="1" fill="#8b6235">
-    KHU VỰC NGỒI ĂN
-  </text>
-  <text x="1134" y="433" textAnchor="end" fontSize="11" letterSpacing=".8" fill="#9a8a76">
-    DINING AREA
-  </text>
-
-  {/* TABLE 1 */}
-  <g>
-    <rect x="121" y="456" width="150" height="47" rx="8" fill="#DFE7FF" />
-    <rect x="126" y="450" width="140" height="47" rx="7" fill="#ffffff" stroke="#BAC9F0" strokeWidth="1.5" />
-    <rect x="137" y="461" width="118" height="25" rx="4" fill="#FFFFFF" />
-    <circle cx="144" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="204" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="250" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="144" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="204" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="250" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-  </g>
-
-  {/* TABLE 2 */}
-  <g>
-    <rect x="380" y="456" width="150" height="47" rx="8" fill="#DFE7FF" />
-    <rect x="385" y="450" width="140" height="47" rx="7" fill="#ffffff" stroke="#BAC9F0" strokeWidth="1.5" />
-    <rect x="396" y="461" width="118" height="25" rx="4" fill="#FFFFFF" />
-    <circle cx="403" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="463" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="509" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="403" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="463" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="509" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-  </g>
-
-  {/* TABLE 3 */}
-  <g>
-    <rect x="639" y="456" width="150" height="47" rx="8" fill="#DFE7FF" />
-    <rect x="644" y="450" width="140" height="47" rx="7" fill="#ffffff" stroke="#BAC9F0" strokeWidth="1.5" />
-    <rect x="655" y="461" width="118" height="25" rx="4" fill="#FFFFFF" />
-    <circle cx="662" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="722" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="768" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="662" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="722" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="768" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-  </g>
-
-  {/* TABLE 4 */}
-  <g>
-    <rect x="898" y="456" width="150" height="47" rx="8" fill="#DFE7FF" />
-    <rect x="903" y="450" width="140" height="47" rx="7" fill="#ffffff" stroke="#BAC9F0" strokeWidth="1.5" />
-    <rect x="914" y="461" width="118" height="25" rx="4" fill="#FFFFFF" />
-    <circle cx="921" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="981" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="1027" cy="442" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="921" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="981" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="1027" cy="506" r="9" fill="#E3E9FF" stroke="#A6B8E8" />
-  </g>
-
-  {/* CENTRAL AISLE */}
-  <path d="M72 548H1127" stroke="#ffe9c8" strokeWidth="11" strokeLinecap="round" />
-  <path d="M72 548H1127" stroke="#2634D5" strokeWidth="1.7"
-    strokeDasharray="7 8" markerEnd="url(#vwa-restaurant-arrow)" />
-  <rect x="438" y="535" width="324" height="26" rx="9" fill="#F7F9FF" stroke="#e0e8f0" />
-  <text x="600" y="552" textAnchor="middle" fontSize="11" fontWeight="800" fill="#637d9a">
-    LỐI ĐI CHÍNH
-  </text>
-
-  {/* Additional tables */}
-  <g>
-    <rect x="205" y="579" width="125" height="36" rx="7" fill="#fff" stroke="#BAC9F0" strokeWidth="1.5" />
-    <rect x="221" y="589" width="93" height="16" rx="4" fill="#FFFFFF" />
-    <circle cx="220" cy="572" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="280" cy="572" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="220" cy="622" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="280" cy="622" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-  </g>
-  <g>
-    <rect x="536" y="579" width="125" height="36" rx="7" fill="#fff" stroke="#BAC9F0" strokeWidth="1.5" />
-    <rect x="552" y="589" width="93" height="16" rx="4" fill="#FFFFFF" />
-    <circle cx="551" cy="572" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="611" cy="572" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="551" cy="622" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="611" cy="622" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-  </g>
-  <g>
-    <rect x="867" y="579" width="125" height="36" rx="7" fill="#fff" stroke="#BAC9F0" strokeWidth="1.5" />
-    <rect x="883" y="589" width="93" height="16" rx="4" fill="#FFFFFF" />
-    <circle cx="882" cy="572" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="942" cy="572" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="882" cy="622" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-    <circle cx="942" cy="622" r="7" fill="#E3E9FF" stroke="#A6B8E8" />
-  </g>
-
-  {/* ENTRY / EXIT */}
-  <path d="M79 713V666" stroke="#2878d0" strokeWidth="3.5" markerEnd="url(#vwa-restaurant-arrow)" />
-  <rect x="47" y="700" width="166" height="34" rx="10" fill="#E8EDFF" stroke="#cadcf5" />
-  <text x="130" y="721" textAnchor="middle" fontSize="12" fontWeight="800" fill="#2634D5">LỐI VìO · ENTRY</text>
-
-  <path d="M1120 666V713" stroke="#71869c" strokeWidth="3.5" />
-  <path d="M1113 704L1120 713L1127 704" fill="none" stroke="#71869c" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-  <rect x="987" y="700" width="166" height="34" rx="10" fill="#FFFFFF" stroke="#d6e0e8" />
-  <text x="1070" y="721" textAnchor="middle" fontSize="12" fontWeight="800" fill="#556b81">LỐI RA · EXIT</text>
-</svg>
+              <img
+  src="/canteen-layout.jpg"
+  alt="Sơ đồ quầy ăn Canteen VWA"
+  style={{
+    display: "block",
+    width: "100%",
+    maxWidth: "100%",
+    height: "auto",
+    objectFit: "contain"
+  }}
+/>
             </div>
 
             <footer style={{
@@ -1663,7 +1426,7 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
               )}
             </h4>
             <p className="order-history-card__desc">
-              {totalQty}x {t("suất ăn")} Ѣ{" "}
+              {totalQty}x {t("suất ăn")} •{" "}
               {firstItem?.category || t("Cơm")}
             </p>
 
