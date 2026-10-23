@@ -654,9 +654,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
             return (
               <div key={m.key} className="promo-earn-card">
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
+      
     </div>
                 <div
                   className="promo-earn-card__icon"
@@ -794,9 +792,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
           return (
             <div key={v.id} className="promo-public-card">
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
+      
     </div>
               <div className="promo-public-card__value">
                 {money(v.value)}
@@ -916,9 +912,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                       }`}
                     >
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
+      
     </div>
                       <div className="promo-wallet-card__top">
                         <div className="promo-wallet-card__icon">
@@ -1044,9 +1038,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                       key={`${item.code || "history"}-${item.date || index}-${index}`}
                     >
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
+      
     </div>
                       <div
                         className={`promo-point-history-icon ${isRedeem ? "down" : "up"}`}
@@ -1733,9 +1725,7 @@ function ActivityRow({
   return (
     <div className={`promo-activity-row ${highlight ? "highlight" : ""}`}>
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
+      
     </div>
       <div className="promo-activity-row__date">
         <b>{date}</b>
@@ -1776,9 +1766,7 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
       className="promo-modal-overlay"
     >
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
+      
     </div>
       <div onClick={(e) => e.stopPropagation()} className="promo-modal">
         <div className="promo-modal__head">
@@ -1805,9 +1793,7 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
                 className={`promo-modal__item ${vUsed ? "used" : ""}`}
               >
     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
+      
     </div>
                 <div className="promo-modal__item-info">
                   <b>{v.code}</b>

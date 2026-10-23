@@ -2858,7 +2858,7 @@ app.get("/api/settings", auth(), (req, res) => { const db = loadDB(); ensureChat
 app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.settings) db.settings = {};
-    const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points"];
+    const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "rate_desc", "green_desc", "review_desc", "subsidy_desc"];
     allowed.forEach(k => {
       if (req.body[k] === undefined) return;
       if (k === "timeSlots") {
