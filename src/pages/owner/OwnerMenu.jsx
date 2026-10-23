@@ -127,6 +127,14 @@ export default function OwnerMenu() {
 
   // ---------- Signature checkbox state ----------
   const [isSignature, setIsSignature] = useState(false);
+  const [allowedToppings, setAllowedToppings] = useState([]);
+  const [isToppingModalOpen, setIsToppingModalOpen] = useState(false);
+  const [toppingForm, setToppingForm] = useState({ name: "", price: "", applies_to: [] });
+  const [allToppings, setAllToppings] = useState([]);
+  
+  useEffect(() => {
+    api.toppings.list().then(data => setAllToppings(data || [])).catch(console.error);
+  }, []);
 
   // ---------- Dinh dưỡng ----------
   const [nutrition, setNutrition] = useState({
@@ -357,6 +365,7 @@ export default function OwnerMenu() {
   // ---------- Item modal handlers ----------
 
   const openItemModal = (item = null) => {
+    setAllowedToppings(item?.allowed_toppings || []);
     setImage(item?.image || "");
     setModal(item || {});
   };
@@ -440,6 +449,7 @@ export default function OwnerMenu() {
       is_cool: nutrition.is_cool,
       is_healthy: nutrition.is_healthy,
       is_spicy: nutrition.is_spicy,
+      allowed_toppings: allowedToppings,
     };
 
     setSaving(true);
@@ -1063,7 +1073,10 @@ export default function OwnerMenu() {
                     })}
                   </div>
                 </div>
-              );
+              
+      
+    
+);
             })}
             </>
           )}
@@ -1801,13 +1814,13 @@ export default function OwnerMenu() {
                   <label
                     key={c.key}
                     style={{
-                      display: "flex",
+                      display: "inline-flex",
                       flexShrink: 0,
                       alignItems: "center",
                       gap: 8,
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      fontSize: 12.5,
+                      padding: "6px 12px",
+                      borderRadius: 20,
+                      fontSize: 13,
                       whiteSpace: "nowrap",
                       cursor: saving ? "not-allowed" : "pointer",
                       background: nutrition[c.key]
@@ -1819,6 +1832,13 @@ export default function OwnerMenu() {
                       transition: "all 0.2s",
                     }}
                   >
+                    {/* 1. Chữ */}
+                    <span style={{ fontWeight: 600, color: "var(--text-primary, #172033)" }}>
+                      {c.label}
+                    </span>
+                    {/* 2. Icon */}
+                    <span style={{ fontSize: 14 }}>{c.icon}</span>
+                    {/* 3. Ô vuông tích (Ép hiển thị rõ ràng) */}
                     <input
                       type="checkbox"
                       checked={!!nutrition[c.key]}
@@ -1829,14 +1849,13 @@ export default function OwnerMenu() {
                       style={{
                         width: 16,
                         height: 16,
+                        margin: 0,
                         accentColor: "#10b981",
                         cursor: "inherit",
-                        flexShrink: 0,
+                        display: "inline-block",
+                        appearance: "auto"
                       }}
                     />
-                    <b style={{ color: "var(--text-primary, #172033)", fontWeight: 600 }}>
-                      {c.icon} {c.label}
-                    </b>
                   </label>
                 ))}
               </div>
@@ -1865,11 +1884,19 @@ export default function OwnerMenu() {
                 disabled={saving}
               />
 
-              <ImageUploader
+              <div style={{ width: "100%", maxWidth: 400, marginBottom: 16 }}>
+<div style={{ width: "100%", maxWidth: 400, maxHeight: 250, overflow: "hidden", marginBottom: 16, borderRadius: 8, alignSelf: "flex-start" }}>
+<div style={{ width: "100%", maxWidth: 400, marginBottom: 16, alignSelf: "flex-start" }}>
+<div style={{ width: "100%", maxWidth: 400, marginBottom: 16, alignSelf: "flex-start" }}>
+<ImageUploader
                 value={image}
                 onChange={setImage}
-                label="Ảnh món ăn (JPEG/PNG, tối đa 2MB)"
+                label="Ảnh món ăn (JPEG/PNG, tối đa 100MB)"
               />
+</div>
+</div>
+</div>
+</div>
 
               {!image && (
                 <>
@@ -1889,22 +1916,14 @@ export default function OwnerMenu() {
               {/* ✅ CHECKBOX SIGNATURE */}
               <label
                 style={{
-                  display: "flex",
-                  flexShrink: 0,
+                  display: "inline-flex",
+                  flexDirection: "row-reverse",
                   alignItems: "center",
+                  justifyContent: "flex-end",
                   gap: 10,
-                  padding: 12,
-                  marginTop: 14,
-                  marginBottom: 8,
-                  background: isSignature
-                    ? "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))"
-                    : "var(--bg-tertiary, #f8fafc)",
-                  border: isSignature
-                    ? "1px solid rgba(245, 158, 11, 0.4)"
-                    : "1px solid var(--border-color, #e5e9ef)",
-                  borderRadius: 10,
+                  marginTop: 16,
+                  marginBottom: 16,
                   cursor: saving ? "not-allowed" : "pointer",
-                  transition: "all 0.2s",
                 }}
               >
                 <input
@@ -1915,40 +1934,67 @@ export default function OwnerMenu() {
                   style={{
                     width: 18,
                     height: 18,
+                    margin: 0,
                     accentColor: "#f59e0b",
-                    cursor: saving ? "not-allowed" : "pointer",
-                    flexShrink: 0,
+                    cursor: "inherit",
+                    flexShrink: 0
                   }}
                 />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <b
-                    style={{
-                      fontSize: 13,
-                      color: "var(--text-primary, #172033)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                    }}
-                  >
-                    <Star
-                      size={14}
-                      fill={isSignature ? "#f59e0b" : "none"}
-                      color="#f59e0b"
-                    />
-                    Món Signature
-                  </b>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-muted, #64748b)",
-                      display: "block",
-                      marginTop: 2,
-                    }}
-                  >
-                    Hiển thị ở section "Món Signature" trên trang chủ khách hàng
-                  </span>
-                </div>
+                <span style={{ fontSize: 14, fontWeight: 600, color: isSignature ? "#f59e0b" : "var(--text-primary, #172033)", whiteSpace: "nowrap" }}>
+                  ⭐ Món Signature <span style={{ fontWeight: 400, fontSize: 13, color: "var(--text-muted, #64748b)" }}>(Hiển thị nổi bật ở trang chủ)</span>
+                </span>
               </label>
+              {/* CHỌN TOPPING VÀ THÊM MỚI */}
+              <div style={{ marginTop: 20, padding: 16, background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e5e9ef)", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary, #172033)" }}>
+                  🍩 Topping áp dụng cho món này
+                </div>
+                
+                {allToppings.length > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {allToppings.map((tp) => (
+                      <label key={tp.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border-color, #e5e9ef)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                        <input
+                          type="checkbox"
+                          checked={allowedToppings.includes(tp.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setAllowedToppings([...allowedToppings, tp.id]);
+                            else setAllowedToppings(allowedToppings.filter((id) => id !== tp.id));
+                          }}
+                          style={{ width: 16, height: 16, accentColor: "#10b981", cursor: "pointer" }}
+                        />
+                        {tp.name} (+{new Intl.NumberFormat('vi-VN').format(tp.price)}đ)
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)" }}>Chưa có topping nào trong hệ thống.</div>
+                )}
+
+                <div style={{ marginTop: 8, paddingTop: 12, borderTop: "1px dashed var(--border-color, #e5e9ef)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input type="text" id="new-tp-name" placeholder="Tên topping mới..." style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 150 }} />
+                  <input type="number" id="new-tp-price" placeholder="Giá (VNĐ)" style={{ ...inputStyle, marginBottom: 0, width: 120 }} />
+                  <button type="button" onClick={async () => {
+                    const name = document.getElementById("new-tp-name").value;
+                    const price = document.getElementById("new-tp-price").value;
+                    if (!name || !price) return toast("Vui lòng nhập đủ Tên và Giá", "error");
+                    try {
+                      const res = await api.toppings.create({ name, price: Number(price), applies_to: [] });
+                      if (res) {
+                        toast("Đã thêm Topping", "success");
+                        document.getElementById("new-tp-name").value = "";
+                        document.getElementById("new-tp-price").value = "";
+                        const updatedData = await api.toppings.list();
+                        setAllToppings(updatedData || []);
+                      } else {
+                        toast("Lỗi khi thêm Topping", "error");
+                      }
+                    } catch(e) { toast("Lỗi mạng", "error"); }
+                  }} style={{ ...btnPrimaryStyle, width: "auto", marginBottom: 0, padding: "0 16px", height: 42 }}>
+                    + Thêm
+                  </button>
+                </div>
+              </div>
 
               <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
                 <button
