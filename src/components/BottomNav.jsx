@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import { api, getToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
-import ConfirmDialog, { LogoutIcon } from "./ConfirmDialog";
 
 const CART_KEY = "canteen_cart";
 const ORDERS_SEEN_KEY = "orders_last_seen";
@@ -76,9 +75,6 @@ export default function BottomNav({ onLogout }) {
   const [orderCount, setOrderCount] = useState(0);
   const [showMore, setShowMore] = useState(false);
   const { t } = useI18n();
-
-  const [confirmLogout, setConfirmLogout] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
@@ -210,30 +206,9 @@ export default function BottomNav({ onLogout }) {
 
   const openLogoutConfirm = () => {
     setShowMore(false);
-    setConfirmLogout(true);
+    onLogout?.();
   };
 
-  const performLogout = () => {
-    setLoggingOut(true);
-    try {
-      localStorage.removeItem(ORDERS_SEEN_KEY);
-      localStorage.removeItem("canteen_cart_selected");
-    } catch {}
-
-    document.body.style.overflow = "";
-    document.body.classList.remove("has-bottom-nav");
-    document.body.classList.remove("mobile-open");
-
-    if (onLogout) {
-      onLogout();
-    } else {
-      try {
-        localStorage.removeItem("token");
-        sessionStorage.removeItem("token");
-      } catch {}
-      navigate("/");
-    }
-  };
 
   const handleMoreToggle = () => setShowMore((s) => !s);
 
@@ -353,20 +328,7 @@ export default function BottomNav({ onLogout }) {
         </button>
       </nav>
 
-      <ConfirmDialog
-        open={confirmLogout}
-        icon={LogoutIcon}
-        title={t("Đăng xuất khỏi Canteen VWA?")}
-        message={t(
-          "Giỏ hàng hiện tại sẽ bị xoá. Bạn sẽ cần đăng nhập lại để tiếp tục."
-        )}
-        confirmText={t("Đăng xuất")}
-        cancelText={t("Ở lại")}
-        danger
-        loading={loggingOut}
-        onConfirm={performLogout}
-        onClose={() => !loggingOut && setConfirmLogout(false)}
-      />
+
     </>
   );
 }
