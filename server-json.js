@@ -1926,54 +1926,46 @@ app.post("/api/reviews", auth(), async (req, res) => {
 // ============================================================
 app.get("/api/points/config", auth(), (req, res) => { try { res.json(getPointsConfig(loadDB())); } catch (e) { res.status(500).json({ message: e.message }); } });
 app.get("/api/points/history", auth(["ADMIN"]), (req, res) => { try { const db = loadDB(); res.json((db.points_config_history || []).sort((a,b) => b.id - a.id)); } catch (e) { res.status(500).json({ message: e.message }); } });
-app.put("/api/points/config", auth(["ADMIN"]), async (req, res) => {
-  try {
-    const db = loadDB();
-    const { earn, redeem } = req.body || {};
-    const current = getPointsConfig(db);
-    const next = mergeConfig({ earn: { ...current.earn, ...(earn || {}) }, redeem: { ...current.redeem, ...(redeem || {}) } });
-    if (Number(next.earn.rate_amount) <= 0) return res.status(400).json({ message: "rate_amount phải > 0" });
-    if (Number(next.earn.rate_points) < 0) return res.status(400).json({ message: "rate_points không được âm" });
-    if (Number(next.earn.green_points) < 0) return res.status(400).json({ message: "green_points không được âm" });
-    if (Number(next.earn.review_points) < 0) return res.status(400).json({ message: "review_points không được âm" });
-    if (Number(next.redeem.rate_points) <= 0) return res.status(400).json({ message: "redeem rate_points phải > 0" });
-    if (Number(next.redeem.rate_value) <= 0) return res.status(400).json({ message: "redeem rate_value phải > 0" });
-    if (Number(next.redeem.min_points) < 1) return res.status(400).json({ message: "min_points phải >= 1" });
-    if (Number(next.redeem.max_unused_vouchers) < 1) return res.status(400).json({ message: "max_unused_vouchers phải >= 1" });
-    if (!Array.isArray(next.redeem.tiers) || next.redeem.tiers.length === 0) return res.status(400).json({ message: "Cần ít nhất 1 mốc voucher" });
-    for (const tr of next.redeem.tiers) {
-      if (!Number.isFinite(Number(tr.points)) || Number(tr.points) <= 0) return res.status(400).json({ message: "Mốc điểm không hợp lệ" });
-      if (!Number.isFinite(Number(tr.value)) || Number(tr.value) <= 0) return res.status(400).json({ message: "Giá trị mốc không hợp lệ" });
-    }
-    next.redeem.tiers.sort((a, b) => Number(a.points) - Number(b.points));
-    next.updated_at = new Date().toISOString();
-    if (!db.points_config_history) db.points_config_history = [];
-    const changes = [];
-    const oldE = current.earn;
-    const newE = next.earn;
-    if (oldE.rate_points !== newE.rate_points) changes.push({ field: "Ăn tại Căng tin", old: oldE.rate_points, new: newE.rate_points });
-    if (oldE.green_enabled !== newE.green_enabled) changes.push({ field: "Bật Sống Xanh", old: oldE.green_enabled, new: newE.green_enabled, isBool: true });
-    else if (newE.green_enabled && oldE.green_points !== newE.green_points) changes.push({ field: "Sống Xanh", old: oldE.green_points, new: newE.green_points });
-    if (oldE.review_enabled !== newE.review_enabled) changes.push({ field: "Bật Đánh giá", old: oldE.review_enabled, new: newE.review_enabled, isBool: true });
-    else if (newE.review_enabled && oldE.review_points !== newE.review_points) changes.push({ field: "Đánh giá", old: oldE.review_points, new: newE.review_points });
-    if (JSON.stringify(oldE.custom_programs || []) !== JSON.stringify(newE.custom_programs || [])) changes.push({ field: "Chương trình tùy chỉnh", old: "Đã thay đổi", new: "Đã thay đổi" });
-
-    if (changes.length > 0) {
-      const historyId = Math.max(0, ...db.points_config_history.map(h => h.id)) + 1;
-      db.points_config_history.push({
-        id: historyId,
-        updated_at: new Date().toISOString(),
-        updated_by: req.user.name,
-        changes: changes
-      });
-    }
-    db.points_config = next;
-    await saveDBOrThrow(db);
-    res.json({ ok: true, config: next });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
+app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
+      try {
+        const db = loadDB();
+        const nextConfig = req.body;
+        const oldConfig = db.points_config || {};
+        
+        if (!db.settings) db.settings = {};
+        if (!db.settings.rules_history) db.settings.rules_history = [];
+        
+        const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
+        
+        if (oldConfig.earn && nextConfig.earn) {
+          Object.keys(ruleLabels).forEach(k => {
+            if (nextConfig.earn[k] !== undefined && Number(oldConfig.earn[k] || 0) !== Number(nextConfig.earn[k])) {
+              db.settings.rules_history.push({
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                time: new Date().toISOString(),
+                rule: ruleLabels[k],
+                old_value: oldConfig.earn[k] || 0,
+                new_value: nextConfig.earn[k],
+                changed_by: req.user.name || "Admin"
+              });
+            }
+          });
+        }
+        
+        db.points_config = nextConfig;
+        saveDB(db);
+        res.json({ ok: true, config: nextConfig });
+      } catch (e) {
+        res.status(500).json({ message: e.message });
+      }
+    });
 app.post("/api/points/preview", auth(), (req, res) => {
   try { const db = loadDB(); const cfg = getPointsConfig(db); const total = Number(req.body?.total) || 0; const isGreen = !!req.body?.isGreen; const base = calcEarnPoints(total, cfg); const green = isGreen ? calcGreenBonus(cfg) : 0; res.json({ base, green, total: base + green }); } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.get("/api/points/history", auth(), (req, res) => {
+  const db = loadDB();
+  res.json(db.settings?.rules_history || []);
 });
 
 app.get("/api/points/me", auth(), (req, res) => {
@@ -2858,22 +2850,31 @@ app.get("/api/settings", auth(), (req, res) => { const db = loadDB(); ensureChat
 app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.settings) db.settings = {};
-    const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "rate_desc", "green_desc", "review_desc", "subsidy_desc"];
+    const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "custom_programs", "rate_desc", "green_desc", "review_desc", "subsidy_desc"];
+    const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
+    if (!db.settings.rules_history) db.settings.rules_history = [];
+    
     allowed.forEach(k => {
-      if (req.body[k] === undefined) return;
-      if (k === "timeSlots") {
-        const arr = req.body[k]; if (!Array.isArray(arr)) return res.status(400).json({ message: "timeSlots phải là mảng" });
-        const validated = [];
-        for (const s of arr) { if (!s || typeof s !== "object") continue; if (typeof s.id !== "string" || !s.id.trim()) continue; if (typeof s.start !== "string" || !/^\d{2}:\d{2}$/.test(s.start)) continue; if (typeof s.end !== "string" || !/^\d{2}:\d{2}$/.test(s.end)) continue; validated.push({ id: s.id.trim().slice(0, 20), start: s.start, end: s.end, enabled: s.enabled !== false, note: String(s.note || "").slice(0, 100).trim() }); }
-        if (validated.length === 0) return res.status(400).json({ message: "timeSlots không hợp lệ" });
-        db.settings[k] = validated; return;
+      if (req.body[k] !== undefined) {
+        if (ruleLabels[k] && Number(db.settings[k] || 0) !== Number(req.body[k])) {
+          db.settings.rules_history.push({
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            time: new Date().toISOString(),
+            rule: ruleLabels[k],
+            old_value: db.settings[k] || 0,
+            new_value: req.body[k],
+            changed_by: req.user.name || "Admin"
+          });
+        }
+        db.settings[k] = req.body[k];
       }
-      db.settings[k] = req.body[k];
     });
-    await saveDBOrThrow(db); res.json({ ok: true, settings: db.settings });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+    saveDB(db);
+    res.json({ ok: true, settings: db.settings });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
-
 app.get("/api/time-slots", (req, res) => { try { const db = loadDB(); const slots = getTimeSlots(db); res.json([...slots].sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")))); } catch (e) { res.status(500).json({ message: e.message }); } });
 app.patch("/api/time-slots/:id", auth(["ADMIN"]), async (req, res) => {
   try {
