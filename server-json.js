@@ -2459,6 +2459,24 @@ app.post("/api/orders/:id/reminder", auth(), async (req, res) => {
 });
 
 app.get("/api/toppings", (req, res) => { const db = loadDB(); const { category } = req.query; let list = db.toppings || []; if (category) list = list.filter(t => t.applies_to?.includes(category)); res.json(list); });
+
+app.post("/api/toppings", (req, res) => {
+  const db = loadDB();
+  const newTopping = { ...req.body, id: Date.now() };
+  db.toppings = db.toppings || [];
+  db.toppings.push(newTopping);
+  saveDB(db);
+  res.json(newTopping);
+});
+
+app.delete("/api/toppings/:id", (req, res) => {
+  const db = loadDB();
+  const id = req.params.id;
+  db.toppings = (db.toppings || []).filter(t => String(t.id) !== String(id));
+  saveDB(db);
+  res.json({ success: true });
+});
+
 app.get("/api/sizes", (req, res) => {
   const db = loadDB();
   const list = Array.isArray(db.sizes) && db.sizes.length > 0

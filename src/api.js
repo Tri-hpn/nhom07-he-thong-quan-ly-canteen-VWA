@@ -425,6 +425,7 @@ export const api = {
   toppings: {
     list: (category) =>
       req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`),
+    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }),
   },
   sizes:      { list: () => req("/sizes") },
   categories: {
