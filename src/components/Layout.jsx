@@ -339,9 +339,9 @@ export default function Layout({
       </main>
 
       {/* ============ BOTTOM NAV — Chỉ cho CUSTOMER mobile ============ */}
-      {isCustomer && <BottomNav onLogout={onLogout} />}
+      {isCustomer && <BottomNav onLogout={openLogoutConfirm} />}
 
-      {/* ============ LOGOUT CONFIRM ============ */}
+      {/* ============ LOGOUT CONFIRM — CUSTOMER / EMPLOYEE / ADMIN ============ */}
       <ConfirmDialog
         open={showLogoutConfirm}
         icon={LogoutIcon}

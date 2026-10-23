@@ -4256,6 +4256,16 @@
   text-transform: uppercase;
   color: var(--c-text-muted);
 }
+.menu-v3-group > h2,
+.menu-v3-group__head > h2 {
+  font-family: var(--c-font-head) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+  color: var(--c-text-muted) !important;
+  margin: 0 !important;
+}
 .menu-v3-search__wrap {
   display: flex;
   align-items: center;
@@ -4291,17 +4301,50 @@
   justify-content: space-between;
   gap: 8px;
 }
-.menu-v3-group > h2,
-.menu-v3-group__head h2 {
-  margin: 0;
-  font-family: var(--c-font-head);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--c-text);
+
+.customer-menu-v3 .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 0 12px 0 !important;
+  padding: 0 !important;
+}
+
+.customer-menu-v3 .menu-v3-price-slider {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.customer-menu-v3 .menu-v3-price-slider__control {
+  width: 100% !important;
+  height: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.customer-menu-v3 .menu-v3-price-slider__track {
+  left: 7px !important;
+  right: 7px !important;
+  width: calc(100% - 14px) !important;
+}
+
+.customer-menu-v3 .menu-v3-price-slider__range {
+  left: 0 !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+.customer-menu-v3 .menu-v3-price-slider__labels {
+  width: 100% !important;
+  margin: 8px 0 0 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  font-size: 11px !important;
 }
 .menu-v3-group__count,
 .menu-v3-group__range {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--c-text-light);
 }
@@ -12381,106 +12424,46 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
 .customer-menu-v3 .menu-v3-price-slider__range:focus-visible::-webkit-slider-thumb {
   box-shadow: 0 0 0 4px rgba(37, 99, 235, .18);
 }
-/* PRICE RANGE: ALIGN TITLE AND EXTEND SLIDER TO SIDEBAR EDGES */
+/* 1. Khung chứa Tiêu đề & Khoảng giá */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head {
-  width: calc(100% + 80px) !important;
-  max-width: none !important;
-  margin-left: -40px !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-  box-sizing: border-box !important;
-  transform: none !important;
-}
-
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) .menu-v3-price-slider {
-  width: calc(100% + 80px) !important;
-  max-width: none !important;
-  margin-left: -40px !important;
-  margin-right: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 0 12px 0 !important;
   padding: 0 !important;
   box-sizing: border-box !important;
-  overflow: visible !important;
-}
-
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) .menu-v3-price-slider__control {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  box-sizing: border-box !important;
-}
-
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) .menu-v3-price-slider__labels {
-  width: 100% !important;
-  display: flex !important;
-  justify-content: space-between !important;
-  box-sizing: border-box !important;
-}
-/* ALIGN PRICE TITLE WITH PRIORITY TITLE */
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head > h2 {
-  position: relative !important;
-  left: -19px !important;
   transform: none !important;
-}
-/* PRICE SLIDER: 0.5CM SIDEBAR INSET */
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__control {
-  width: calc(100% + 40px) !important;
-  max-width: none !important;
-  margin-left: -20px !important;
-  margin-right: 0 !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-}
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels {
-  width: calc(100% + 40px) !important;
-  max-width: none !important;
-  margin-left: -20px !important;
-  box-sizing: border-box !important;
   display: flex !important;
   justify-content: space-between !important;
+  align-items: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
 }
-/* FINAL PRICE SLIDER ALIGNMENT */
+
+/* Tiêu đề "Khoảng giá (VNĐ)" */
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head > h2 {
+  position: static !important;
+  left: auto !important;
+  transform: none !important;
+  white-space: nowrap !important;
+  margin: 0 !important;
+}
+
+/* Số tiền hiển thị bên phải (0đ - 500.000đ) */
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group__range {
+  white-space: nowrap !important;
+  font-size: 11px !important;
+}
+
+/* Khung chứa thanh trượt */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider {
-  width: calc(100% + 42px) !important;
-  max-width: none !important;
-  margin-left: -20px !important;
-  margin-right: 0 !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-}
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__control {
   width: 100% !important;
   max-width: 100% !important;
   margin: 0 !important;
-  box-sizing: border-box !important;
-}
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__control .menu-v3-price-slider__track {
-  left: 14px !important;
-  right: 14px !important;
-}
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__range {
-  left: 7px !important;
-  width: calc(100% - 14px) !important;
-}
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels {
-  width: calc(100% - 28px) !important;
-  max-width: none !important;
-  margin-left: 14px !important;
-  margin-right: 14px !important;
-  padding: 0 !important;
-  display: flex !important;
-  justify-content: space-between !important;
-  box-sizing: border-box !important;
-}
-/* FINAL: EQUAL 0.5CM INSET ON BOTH SIDES OF PRICE SLIDER */
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider {
-  width: calc(100% + 26px) !important;
-  max-width: none !important;
-  margin-left: -12px !important;
-  margin-right: 0 !important;
   padding: 0 !important;
   box-sizing: border-box !important;
-  overflow: visible !important;
+  transform: none !important;
 }
+
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__control {
   width: 100% !important;
   max-width: 100% !important;
@@ -12490,31 +12473,44 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   box-sizing: border-box !important;
   overflow: visible !important;
 }
+
+/* Thanh kéo màu xám (Track) */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__control .menu-v3-price-slider__track {
   left: 7px !important;
   right: 7px !important;
+  width: calc(100% - 14px) !important;
+  margin: 0 !important;
+  position: absolute !important;
+  top: 7px !important;
+  height: 4px !important;
 }
+
+/* Thanh kéo màu xanh (Range) */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__range {
   left: 0 !important;
   width: 100% !important;
   max-width: 100% !important;
-}
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels {
-  width: calc(100% - 14px) !important;
-  max-width: none !important;
-  margin: 4px 7px 0 !important;
+  margin: 0 !important;
   padding: 0 !important;
+  position: absolute !important;
+}
+
+/* Nhãn giá dưới thanh trượt (0đ và 500.000đ) */
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 6px 0 0 !important;
+  padding: 0 2px !important;
   display: flex !important;
   justify-content: space-between !important;
   box-sizing: border-box !important;
+  transform: none !important;
 }
-/* ALIGN MIN PRICE LABEL WITH OUTER END OF BLUE SLIDER */
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels > span:first-child {
-  transform: translateX(-6px) !important;
-}
-/* Fine-tune 0đ label alignment */
-.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels > span:first-child {
-  transform: translateX(-9px) !important;
+
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels > span {
+  transform: none !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
 }
 /* MENU CARD BUY BUTTON */
 .customer-menu-v3 .menu-food-card__button-group {
@@ -14998,4 +14994,1630 @@ html.dark-mode .wallet-preset-btn--selected span {
   display: flex !important;
   align-items: center !important;
 }
-/* END CUSTOMER WALLET SAVE BUTTON AND TOAST ALIGNMENT */
+/* ============================================================
+   CUSTOMER MENU V5 - STICKY SIDEBAR (NO SCROLLBAR) + SCROLL GRID
+   - Bộ lọc đứng im, ẩn thanh cuộn nhưng vẫn lướt được.
+   - Danh sách món có thanh cuộn riêng.
+   ============================================================ */
+
+/* 1. Ép page-content thành app-like layout khi ở trang Menu */
+body.menu-v3-active .page-content {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding-top: 16px !important; /* Khoảng trống dưới Topbar */
+  padding-bottom: 0 !important;
+}
+
+/* 2. Khung chính: lấp đầy page-content */
+.customer-menu-v3 {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  gap: 16px !important;
+  padding: 0 !important;
+  margin-top: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* 3. Layout 2 cột */
+.customer-menu-v3 > .menu-v3-layout {
+  flex: 1 !important;
+  display: grid !important;
+  grid-template-columns: 280px minmax(0, 1fr) !important;
+  column-gap: 20px !important;
+  align-items: stretch !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  margin-top: 0 !important;
+}
+
+/* ============================================================
+   4. SIDEBAR TRÁI: Lướt được nhưng ẨN THANH CUỘN
+   ============================================================ */
+.customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar {
+  height: 100% !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 10px !important;
+  align-self: stretch !important;
+  transform: none !important;
+  position: static !important;
+  margin-top: 0 !important;
+
+  /* Ẩn thanh cuộn */
+  scrollbar-width: none !important; /* Firefox */
+  -ms-overflow-style: none !important; /* IE 10+ */
+}
+.customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar::-webkit-scrollbar {
+  display: none !important; /* Chrome, Safari, Edge */
+}
+
+/* 5. Cột phải (main): flex column */
+.customer-menu-v3 > .menu-v3-layout > .menu-v3-main {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  gap: 12px !important;
+}
+
+/* 6. Thanh sắp xếp: cố định trên cùng */
+.customer-menu-v3 .menu-v3-filter-bar {
+  flex-shrink: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+  position: relative !important;
+  z-index: 10 !important;
+  background: var(--c-surface-page, #FAF8FF) !important;
+  padding-top: 4px !important;
+}
+
+/* ============================================================
+   7. VÙNG DANH SÁCH MÓN: CÓ THANH CUỘN RIÊNG
+   ============================================================ */
+.customer-menu-v3 .menu-v3-results-wrap {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  min-height: 0 !important;
+  padding-right: 10px !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+.customer-menu-v3 .menu-v3-results-wrap::-webkit-scrollbar {
+  width: 8px;
+}
+.customer-menu-v3 .menu-v3-results-wrap::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.customer-menu-v3 .menu-v3-results-wrap::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 8. Mobile: trả về layout cuộn bình thường */
+@media (max-width: 1024px) {
+  body.menu-v3-active .page-content {
+    overflow-y: auto !important;
+    display: block !important;
+    padding-top: 14px !important;
+  }
+  .customer-menu-v3 {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .customer-menu-v3 > .menu-v3-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar {
+    height: auto !important;
+    overflow: visible !important;
+    max-width: 100% !important;
+    padding-right: 0 !important;
+  }
+  .customer-menu-v3 > .menu-v3-layout > .menu-v3-main {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .customer-menu-v3 .menu-v3-results-wrap {
+    overflow: visible !important;
+    padding-right: 0 !important;
+  }
+}
+/* 1. Xóa bỏ MỌI lề âm, transform của các khối cha (Danh mục, Tiêu chí) */
+.customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar > .menu-v3-sidebar__card .menu-v3-group,
+.customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar > .menu-v3-sidebar__card .menu-v3-group__head {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  transform: none !important;
+  width: 100% !important;
+}
+
+/* 2. Ép TẤT CẢ các thẻ h2 về đúng lề trái gốc, cấm kéo lệch */
+.customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar > .menu-v3-sidebar__card h2 {
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  position: static !important;
+  left: auto !important;
+  flex-shrink: 0 !important; /* Cấm co chữ lại */
+  white-space: nowrap !important; /* Cấm rớt dòng */
+}
+
+/* 3. Khung chứa "Khoảng giá" dàn ngang, không cho phép rớt dòng */
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important; /* Chống xê dịch khi kéo slider */
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+/* 4. Số tiền bên phải luôn cố định, không đẩy chữ "Khoảng giá" đi đâu cả */
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head > .menu-v3-group__range {
+  margin-left: auto !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL STYLE
+   ============================================================ */
+.wallet-card-physical--prudential {
+  background: linear-gradient(135deg, #0b1b36 0%, #122e5c 100%) !important;
+  border-radius: 20px !important;
+  padding: 24px !important;
+  color: #fff !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 260px !important;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
+  box-sizing: border-box;
+}
+
+/* Hi?u ?ng v�n s�ng m? g�c tr�i */
+.wallet-card-physical--prudential::before {
+  content: "";
+  position: absolute;
+  top: -50%; left: -20%;
+  width: 150%; height: 200%;
+  background: radial-gradient(ellipse at 0% 50%, rgba(255,255,255,0.08) 0%, transparent 50%),
+              radial-gradient(ellipse at 10% 30%, rgba(255,255,255,0.05) 0%, transparent 40%);
+  border-radius: 50%;
+  transform: rotate(-15deg);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wallet-card-physical--prudential > * {
+  position: relative;
+  z-index: 1;
+}
+
+.wallet-card-physical--prudential__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wallet-card-physical--prudential__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--c-font-head), sans-serif;
+  letter-spacing: 1px;
+  font-size: 14px;
+}
+
+.wallet-card-physical--prudential__center {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 20px 0;
+}
+
+.wallet-card-physical--prudential__logo h2 {
+  font-family: "Times New Roman", serif !important;
+  font-size: 38px !important;
+  font-weight: 700 !important;
+  color: #D4AF37 !important; /* M�u v�ng kim */
+  margin: 0 !important;
+  line-height: 1 !important;
+  letter-spacing: 3px !important;
+}
+
+.wallet-card-physical--prudential__logo p {
+  margin: 4px 0 0 !important;
+  font-size: 12px !important;
+  color: #A0AEC0 !important;
+  letter-spacing: 1px !important;
+}
+
+.wallet-card-physical--prudential__tag {
+  background: linear-gradient(90deg, #A88A5B, #D4AF37) !important;
+  color: #fff !important;
+  padding: 6px 16px !important;
+  border-radius: 20px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  box-shadow: 0 4px 10px rgba(212,175,55,0.3) !important;
+}
+
+.wallet-card-physical--prudential__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wallet-card-physical--prudential__info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.wallet-card-physical--prudential__info span {
+  display: block;
+  font-size: 10px;
+  color: #A0AEC0;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+
+.wallet-card-physical--prudential__info b {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  font-family: var(--c-font-head), sans-serif;
+  justify-content: flex-end;
+}
+
+.wallet-card-physical--prudential__info > div:first-child b {
+  justify-content: flex-start;
+}
+
+.wallet-card-physical--prudential__info > div:last-child b {
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.wallet-card-physical--prudential__info small {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.wallet-card-physical--prudential__actions {
+  display: flex;
+  gap: 12px;
+}
+
+.wallet-card-physical--prudential__actions button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.wallet-card-physical--prudential__actions button:first-child {
+  background: #fff;
+  color: #0b1b36;
+}
+
+.wallet-card-physical--prudential__actions button:first-child:hover {
+  background: #f1f5f9;
+}
+
+.wallet-card-physical--prudential__actions button:last-child {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  backdrop-filter: blur(5px);
+}
+
+.wallet-card-physical--prudential__actions button:last-child:hover {
+  background: rgba(255,255,255,0.25);
+}
+
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL ICONIC STYLE
+   ============================================================ */
+.card-prudential {
+  background-color: #0d2a4d;
+  background-image: 
+    radial-gradient(circle at 0% 50%, rgba(255,255,255,0.1) 0%, transparent 60%),
+    radial-gradient(circle at 10% 80%, rgba(255,255,255,0.05) 0%, transparent 50%),
+    linear-gradient(135deg, #0a1f3a 0%, #0e3060 100%);
+  border-radius: 20px;
+  padding: 24px 30px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 260px;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+  box-sizing: border-box;
+  font-family: var(--c-font-body), sans-serif;
+}
+
+/* Hi?u ?ng v�n s�ng m? (gi? l?p b?ng pseudo-element) */
+.card-prudential__bg {
+  position: absolute;
+  top: -50%;
+  left: -20%;
+  width: 150%;
+  height: 200%;
+  background: 
+    radial-gradient(ellipse at 20% 50%, rgba(255, 255, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 30% 70%, rgba(255, 255, 255, 0.04) 0%, transparent 40%);
+  border-radius: 40%;
+  transform: rotate(-15deg);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.card-prudential > * {
+  position: relative;
+  z-index: 1;
+}
+
+.card-prudential__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-prudential__logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--c-font-head), sans-serif;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.card-prudential__middle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 15px 0;
+}
+
+.card-prudential__title h2 {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 44px !important;
+  font-weight: 700 !important;
+  color: #d4af37 !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  letter-spacing: 4px !important;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+}
+
+.card-prudential__title p {
+  margin: 4px 0 0 !important;
+  font-size: 14px !important;
+  color: #fff !important;
+  letter-spacing: 1px !important;
+  font-family: var(--c-font-head), sans-serif;
+}
+
+.card-prudential__tag {
+  background: linear-gradient(90deg, #8b6f3e 0%, #b89555 100%);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  white-space: nowrap;
+}
+
+.card-prudential__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  font-family: var(--c-font-head), sans-serif;
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+.card-prudential__sep {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 300;
+}
+
+@media (max-width: 640px) {
+  .card-prudential__title h2 { font-size: 32px !important; }
+  .card-prudential__tag { font-size: 9px; padding: 6px 12px; }
+  .card-prudential__bottom { font-size: 13px; gap: 10px; }
+}
+
+/* V�n s�ng SVG cho th? VWA */
+.card-prudential__bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 20px;
+  /* V? c�c du?ng cong SVG t?o hi?u ?ng l?a */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='none'%3E%3Cg stroke='%23ffffff' fill='none' stroke-linecap='round'%3E%3Cpath d='M-50,500 C150,450 50,200 250,50 S450,50 600,-50' stroke-width='2' opacity='0.15' filter='blur(1px)'/%3E%3Cpath d='M-50,480 C120,400 80,150 220,30 S420,20 550,-50' stroke-width='1' opacity='0.3'/%3E%3Cpath d='M-50,520 C180,480 100,250 300,100 S500,100 650,-50' stroke-width='4' opacity='0.05' filter='blur(3px)'/%3E%3Cpath d='M-50,430 C100,350 40,120 180,10 S350,10 480,-50' stroke-width='1.5' opacity='0.2'/%3E%3Cpath d='M-50,400 C90,320 30,100 150,-10 S300,-10 400,-50' stroke-width='3' opacity='0.08' filter='blur(2px)'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: bottom left;
+}
+
+/* V�n s�ng SVG l?a xo�y cho th? VWA */
+.card-prudential__bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 20px;
+  opacity: 0.8;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23ffffff' stroke-linecap='round'%3E%3C!-- Nh�m du?ng cong d?m --%3E%3Cpath d='M-100,600 Q150,300 100,-100 T500,-100' stroke-width='1.5' opacity='0.4'/%3E%3Cpath d='M-80,580 Q170,320 120,-80 T520,-80' stroke-width='3' opacity='0.2' filter='blur(1px)'/%3E%3Cpath d='M-120,550 Q130,280 80,-120 T480,-120' stroke-width='0.8' opacity='0.6'/%3E%3C!-- Nh�m du?ng cong m? t?o chi?u s�u --%3E%3Cpath d='M-50,650 Q200,350 150,-50 T550,-50' stroke-width='6' opacity='0.1' filter='blur(3px)'/%3E%3Cpath d='M-150,500 Q100,250 50,-150 T450,-150' stroke-width='4' opacity='0.15' filter='blur(2px)'/%3E%3C!-- C�c n�t m?nh xo�y xung quanh --%3E%3Cpath d='M0,400 C200,200 100,0 300,0' stroke-width='1' opacity='0.3'/%3E%3Cpath d='M-20,420 C180,220 80,20 280,20' stroke-width='0.5' opacity='0.5'/%3E%3Cpath d='M-40,380 C160,180 60,-20 260,-20' stroke-width='2' opacity='0.15'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center left;
+  background-repeat: no-repeat;
+}
+
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL ICONIC STYLE (V2)
+   ============================================================ */
+.card-prudential {
+  /* M�u xanh Navy s�ng hon, chu?n m�u Prudential */
+  background: radial-gradient(circle at 80% 20%, #1a4282 0%, #0a2540 80%) !important;
+  border-radius: 20px !important;
+  padding: 24px 30px !important;
+  color: #fff !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 260px !important;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
+  box-sizing: border-box !important;
+  font-family: var(--c-font-body), sans-serif !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* Nh�ng ?nh SVG v�n l?a */
+.card-prudential__bg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml,%0A%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%201000%20600%27%20preserveAspectRatio%3D%27none%27%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%27silk-gold%27%20x1%3D%270%25%27%20y1%3D%27100%25%27%20x2%3D%27100%25%27%20y2%3D%270%25%27%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%270%25%27%20stop-color%3D%27%2523ffffff%27%20stop-opacity%3D%270%27%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2730%25%27%20stop-color%3D%27%2523fceabb%27%20stop-opacity%3D%270.6%27%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2750%25%27%20stop-color%3D%27%2523f8b500%27%20stop-opacity%3D%270.2%27%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2770%25%27%20stop-color%3D%27%2523ffffff%27%20stop-opacity%3D%270.8%27%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%27100%25%27%20stop-color%3D%27%2523ffffff%27%20stop-opacity%3D%270%27%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%27silk-white%27%20x1%3D%270%25%27%20y1%3D%27100%25%27%20x2%3D%2760%25%27%20y2%3D%270%25%27%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%270%25%27%20stop-color%3D%27%2523ffffff%27%20stop-opacity%3D%270%27%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%2740%25%27%20stop-color%3D%27%2523ffffff%27%20stop-opacity%3D%270.5%27%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%27100%25%27%20stop-color%3D%27%2523ffffff%27%20stop-opacity%3D%270%27%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Cg%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%3E%0A%20%20%20%20%3C!--%20L%3Fp%20l%3Fa%20n%3Fn%20m%3F%20--%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-100%2C700%20C%20150%2C550%20250%2C300%20100%2C100%20C%200%2C-50%20200%2C-100%20400%2C-100%27%20stroke%3D%27url(%2523silk-white)%27%20stroke-width%3D%278%27%20filter%3D%27blur(4px)%27%2F%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-100%2C650%20C%20200%2C500%20300%2C250%20150%2C50%20C%2050%2C-100%20250%2C-150%20450%2C-100%27%20stroke%3D%27url(%2523silk-gold)%27%20stroke-width%3D%2712%27%20filter%3D%27blur(6px)%27%2F%3E%0A%20%20%20%20%0A%20%20%20%20%3C!--%20L%3Fp%20l%3Fa%20s%3Fc%20n%EF%BF%BDt%20(C%EF%BF%BDc%20s%3Fi%20dan%20xen)%20--%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-50%2C600%20C%20180%2C450%20280%2C200%20130%2C0%20C%2030%2C-150%20230%2C-200%20430%2C-150%27%20stroke%3D%27url(%2523silk-white)%27%20stroke-width%3D%272%27%2F%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-60%2C590%20C%20170%2C440%20270%2C190%20120%2C-10%20C%2020%2C-160%20220%2C-210%20420%2C-160%27%20stroke%3D%27url(%2523silk-white)%27%20stroke-width%3D%271.5%27%2F%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-70%2C580%20C%20160%2C430%20260%2C180%20110%2C-20%20C%2010%2C-170%20210%2C-220%20410%2C-170%27%20stroke%3D%27url(%2523silk-gold)%27%20stroke-width%3D%273%27%2F%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-80%2C570%20C%20150%2C420%20250%2C170%20100%2C-30%20C%200%2C-180%20200%2C-230%20400%2C-180%27%20stroke%3D%27url(%2523silk-white)%27%20stroke-width%3D%271%27%2F%3E%0A%20%20%20%20%0A%20%20%20%20%3C!--%20Nh%3Fng%20s%3Fi%20to%20v%EF%BF%BDt%20l%EF%BF%BDn%20g%EF%BF%BDc%20ph%3Fi%20--%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-100%2C500%20C%20200%2C400%20400%2C150%20350%2C-50%20C%20300%2C-150%20600%2C-200%20900%2C-150%27%20stroke%3D%27url(%2523silk-white)%27%20stroke-width%3D%272%27%20opacity%3D%270.7%27%2F%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-120%2C480%20C%20180%2C380%20380%2C130%20330%2C-70%20C%20280%2C-170%20580%2C-220%20880%2C-170%27%20stroke%3D%27url(%2523silk-gold)%27%20stroke-width%3D%271.5%27%20opacity%3D%270.5%27%2F%3E%0A%20%20%20%20%0A%20%20%20%20%3C!--%20C%EF%BF%BDc%20s%3Fi%20ph%3F%20dan%20ch%EF%BF%BDo%20--%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-50%2C650%20C%20250%2C550%20350%2C300%20200%2C100%20C%20100%2C-50%20300%2C-100%20500%2C-50%27%20stroke%3D%27url(%2523silk-white)%27%20stroke-width%3D%271%27%20opacity%3D%270.4%27%2F%3E%0A%20%20%20%20%3Cpath%20d%3D%27M-30%2C400%20C%20100%2C300%20150%2C100%2050%2C-50%20C%200%2C-100%20150%2C-150%20300%2C-100%27%20stroke%3D%27url(%2523silk-gold)%27%20stroke-width%3D%272%27%20opacity%3D%270.3%27%2F%3E%0A%20%20%3C%2Fg%3E%0A%3C%2Fsvg%3E") !important;
+  background-size: 120% 120% !important;
+  background-position: bottom left !important;
+  background-repeat: no-repeat !important;
+}
+
+.card-prudential > * {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.card-prudential__top {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+.card-prudential__logo {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 13px !important;
+  letter-spacing: 1.5px !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.card-prudential__middle {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin: 15px 0 !important;
+}
+
+/* Ch? VWA PAY m�u v�ng gradient */
+.card-prudential__title h2 {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 44px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  letter-spacing: 5px !important;
+  text-shadow: 0px 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+.card-prudential__title p {
+  margin: 6px 0 0 !important;
+  font-size: 14px !important;
+  color: #fff !important;
+  letter-spacing: 1px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  opacity: 0.9 !important;
+}
+
+/* D?i bang TH? SINH VI�N */
+.card-prudential__tag {
+  background: linear-gradient(90deg, #a87f42 0%, #d4af37 100%) !important;
+  color: #fff !important;
+  padding: 8px 20px !important;
+  border-radius: 20px 4px 20px 4px !important; /* Bo g�c ch�o ki?u Prudential */
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  box-shadow: 0 4px 15px rgba(212,175,55,0.3) !important;
+  white-space: nowrap !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+}
+
+.card-prudential__bottom {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 16px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 16px !important;
+  letter-spacing: 2px !important;
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+}
+
+.card-prudential__sep {
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-weight: 300 !important;
+}
+
+@media (max-width: 640px) {
+  .card-prudential__title h2 { font-size: 32px !important; }
+  .card-prudential__tag { font-size: 9px !important; padding: 6px 12px !important; }
+  .card-prudential__bottom { font-size: 13px !important; gap: 10px !important; }
+}
+
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL ICONIC STYLE (FINAL)
+   ============================================================ */
+.card-prudential {
+  background: radial-gradient(circle at 80% 20%, #1a4282 0%, #0a2540 80%) !important;
+  border-radius: 20px !important;
+  padding: 24px 30px !important;
+  color: #fff !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 260px !important;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
+  box-sizing: border-box !important;
+  font-family: var(--c-font-body), sans-serif !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* Th? ch?a v�n s�ng l?a */
+.card-prudential__bg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAwIDYwMCIgcHJlc2VydmVBc3BlY3RSYXRpbz0ibm9uZSI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdvbGQiIHgxPSIwJSIgeTE9IjEwMCUiIHgyPSIxMDAlIiB5Mj0iMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIzMCUiIHN0b3AtY29sb3I9IiNmY2VhYmIiIHN0b3Atb3BhY2l0eT0iMC44Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjZjhiNTAwIiBzdG9wLW9wYWNpdHk9IjAuNCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjcwJSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwLjkiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9IndoaXRlIiB4MT0iMCUiIHkxPSIxMDAlIiB4Mj0iNjAlIiB5Mj0iMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI0MCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMC43Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8ZyBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgPHBhdGggZD0iTS0xMDAsNzAwIEMgMTUwLDU1MCAyNTAsMzAwIDEwMCwxMDAgQyAwLC01MCAyMDAsLTEwMCA0MDAsLTEwMCIgc3Ryb2tlPSJ1cmwoI3doaXRlKSIgc3Ryb2tlLXdpZHRoPSIxMCIgZmlsdGVyPSJibHVyKDZweCkiLz4KICAgIDxwYXRoIGQ9Ik0tMTAwLDY1MCBDIDIwMCw1MDAgMzAwLDI1MCAxNTAsNTAgQyA1MCwtMTAwIDI1MCwtMTUwIDQ1MCwtMTAwIiBzdHJva2U9InVybCgjZ29sZCkiIHN0cm9rZS13aWR0aD0iMTUiIGZpbHRlcj0iYmx1cig4cHgpIi8+CiAgICA8cGF0aCBkPSJNLTUwLDYwMCBDIDE4MCw0NTAgMjgwLDIwMCAxMzAsMCBDIDMwLC0xNTAgMjMwLC0yMDAgNDMwLC0xNTAiIHN0cm9rZT0idXJsKCN3aGl0ZSkiIHN0cm9rZS13aWR0aD0iMyIvPgogICAgPHBhdGggZD0iTS02MCw1OTAgQyAxNzAsNDQwIDI3MCwxOTAgMTIwLC0xMCBDIDIwLC0xNjAgMjIwLC0yMTAgNDIwLC0xNjAiIHN0cm9rZT0idXJsKCN3aGl0ZSkiIHN0cm9rZS13aWR0aD0iMiIvPgogICAgPHBhdGggZD0iTS03MCw1ODAgQyAxNjAsNDMwIDI2MCwxODAgMTEwLC0yMCBDIDEwLC0xNzAgMjEwLC0yMjAgNDEwLC0xNzAiIHN0cm9rZT0idXJsKCNnb2xkKSIgc3Ryb2tlLXdpZHRoPSI1Ii8+CiAgICA8cGF0aCBkPSJNLTgwLDU3MCBDIDE1MCw0MjAgMjUwLDE3MCAxMDAsLTMwIEMgMCwtMTgwIDIwMCwtMjMwIDQwMCwtMTgwIiBzdHJva2U9InVybCgjd2hpdGUpIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogICAgPHBhdGggZD0iTS0xMDAsNTAwIEMgMjAwLDQwMCA0MDAsMTUwIDM1MCwtNTAgQyAzMDAsLTE1MCA2MDAsLTIwMCA5MDAsLTE1MCIgc3Ryb2tlPSJ1cmwoI3doaXRlKSIgc3Ryb2tlLXdpZHRoPSI0IiBvcGFjaXR5PSIwLjkiLz4KICAgIDxwYXRoIGQ9Ik0tMTIwLDQ4MCBDIDE4MCwzODAgMzgwLDEzMCAzMzAsLTcwIEMgMjgwLC0xNzAgNTgwLC0yMjAgODgwLC0xNzAiIHN0cm9rZT0idXJsKCNnb2xkKSIgc3Ryb2tlLXdpZHRoPSIyIiBvcGFjaXR5PSIwLjgiLz4KICAgIDxwYXRoIGQ9Ik0tNTAsNjUwIEMgMjUwLDU1MCAzNTAsMzAwIDIwMCwxMDAgQyAxMDAsLTUwIDMwMCwtMTAwIDUwMCwtNTAiIHN0cm9rZT0idXJsKCN3aGl0ZSkiIHN0cm9rZS13aWR0aD0iMiIgb3BhY2l0eT0iMC44Ii8+CiAgICA8cGF0aCBkPSJNLTMwLDQwMCBDIDEwMCwzMDAgMTUwLDEwMCA1MCwtNTAgQyAwLC0xMDAgMTUwLC0xNTAgMzAwLC0xMDAiIHN0cm9rZT0idXJsKCNnb2xkKSIgc3Ryb2tlLXdpZHRoPSI0IiBvcGFjaXR5PSIwLjYiLz4KICA8L2c+Cjwvc3ZnPg==") !important;
+  background-size: 120% 120% !important;
+  background-position: bottom left !important;
+  background-repeat: no-repeat !important;
+  opacity: 0.9 !important;
+}
+
+/* Ch? �p d?ng z-index cho c�c ph?n t? con, TR? th? __bg */
+.card-prudential > *:not(.card-prudential__bg) {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.card-prudential__top {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+.card-prudential__logo {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 13px !important;
+  letter-spacing: 1.5px !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.card-prudential__middle {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin: 15px 0 !important;
+}
+
+.card-prudential__title h2 {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 44px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  letter-spacing: 5px !important;
+  text-shadow: 0px 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+.card-prudential__title p {
+  margin: 6px 0 0 !important;
+  font-size: 14px !important;
+  color: #fff !important;
+  letter-spacing: 1px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  opacity: 0.9 !important;
+}
+
+.card-prudential__tag {
+  background: linear-gradient(90deg, #a87f42 0%, #d4af37 100%) !important;
+  color: #fff !important;
+  padding: 8px 20px !important;
+  border-radius: 20px 4px 20px 4px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  box-shadow: 0 4px 15px rgba(212,175,55,0.3) !important;
+  white-space: nowrap !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+}
+
+.card-prudential__bottom {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 16px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 16px !important;
+  letter-spacing: 2px !important;
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+}
+
+.card-prudential__sep {
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-weight: 300 !important;
+}
+
+@media (max-width: 640px) {
+  .card-prudential__title h2 { font-size: 32px !important; }
+  .card-prudential__tag { font-size: 9px !important; padding: 6px 12px !important; }
+  .card-prudential__bottom { font-size: 13px !important; gap: 10px !important; }
+}
+
+/* Th? ch?a v�n s�ng l?a */
+.card-prudential__bg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAwIDYwMCIgcHJlc2VydmVBc3BlY3RSYXRpbz0ibm9uZSI+CiAgPGRlZnM+CiAgICA8ZmlsdGVyIGlkPSJnbG93IiB4PSItNTAlIiB5PSItNTAlIiB3aWR0aD0iMjAwJSIgaGVpZ2h0PSIyMDAlIj4KICAgICAgPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMTIiIHJlc3VsdD0iYmx1ciIgLz4KICAgICAgPGZlQ29tcG9zaXRlIGluPSJTb3VyY2VHcmFwaGljIiBpbjI9ImJsdXIiIG9wZXJhdG9yPSJvdmVyIiAvPgogICAgPC9maWx0ZXI+CiAgICA8ZmlsdGVyIGlkPSJzb2Z0LWdsb3ciIHg9Ii01MCUiIHk9Ii01MCUiIHdpZHRoPSIyMDAlIiBoZWlnaHQ9IjIwMCUiPgogICAgICA8ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIyNSIgcmVzdWx0PSJibHVyIiAvPgogICAgPC9maWx0ZXI+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdvbGQiIHgxPSIwJSIgeTE9IjEwMCUiIHgyPSIxMDAlIiB5Mj0iMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIyMCUiIHN0b3AtY29sb3I9IiNmY2VhYmIiIHN0b3Atb3BhY2l0eT0iMC45Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjZjhiNTAwIiBzdG9wLW9wYWNpdHk9IjAuNyIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjgwJSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwLjkiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9IndoaXRlIiB4MT0iMCUiIHkxPSIxMDAlIiB4Mj0iNjAlIiB5Mj0iMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI0MCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMC44Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICAKICA8IS0tIEw/cCBwaO+/vXQgc++/vW5nIG4/biAtLT4KICA8cGF0aCBkPSJNLTEwMCw3MDAgQyAyMDAsNTAwIDQwMCwyMDAgMTUwLDAgQyA1MCwtMTAwIDMwMCwtMTUwIDUwMCwtMTAwIiBzdHJva2U9InVybCgjZ29sZCkiIHN0cm9rZS13aWR0aD0iNTAiIGZpbGw9Im5vbmUiIGZpbHRlcj0idXJsKCNzb2Z0LWdsb3cpIiBvcGFjaXR5PSIwLjQiLz4KICA8cGF0aCBkPSJNLTEwMCw2MDAgQyAyNTAsNDAwIDM1MCwxNTAgMTAwLC01MCBDIDAsLTE1MCAyNTAsLTIwMCA0NTAsLTE1MCIgc3Ryb2tlPSJ1cmwoI3doaXRlKSIgc3Ryb2tlLXdpZHRoPSI0MCIgZmlsbD0ibm9uZSIgZmlsdGVyPSJ1cmwoI3NvZnQtZ2xvdykiIG9wYWNpdHk9IjAuMyIvPgoKICA8IS0tIEPvv71jIGQ/aSBsP2EgY2jvv71uaCAoZO+/vXkgdu+/vSBz77+9bmcpIC0tPgogIDxwYXRoIGQ9Ik0tNTAsNjAwIEMgMTgwLDQ1MCAyODAsMjAwIDEzMCwwIEMgMzAsLTE1MCAyMzAsLTIwMCA0MzAsLTE1MCIgc3Ryb2tlPSJ1cmwoI3doaXRlKSIgc3Ryb2tlLXdpZHRoPSIxMCIgZmlsbD0ibm9uZSIgZmlsdGVyPSJ1cmwoI2dsb3cpIi8+CiAgPHBhdGggZD0iTS02MCw1OTAgQyAxNzAsNDQwIDI3MCwxOTAgMTIwLC0xMCBDIDIwLC0xNjAgMjIwLC0yMTAgNDIwLC0xNjAiIHN0cm9rZT0idXJsKCNnb2xkKSIgc3Ryb2tlLXdpZHRoPSIxNSIgZmlsbD0ibm9uZSIgZmlsdGVyPSJ1cmwoI2dsb3cpIi8+CiAgPHBhdGggZD0iTS04MCw1NzAgQyAxNTAsNDIwIDI1MCwxNzAgMTAwLC0zMCBDIDAsLTE4MCAyMDAsLTIzMCA0MDAsLTE4MCIgc3Ryb2tlPSJ1cmwoI3doaXRlKSIgc3Ryb2tlLXdpZHRoPSI2IiBmaWxsPSJub25lIiBmaWx0ZXI9InVybCgjZ2xvdykiLz4KCiAgPCEtLSBD77+9YyBzP2kgbD9hIHBoPyBkYW4geGVuIHbvv710IGzvv71uIGfvv71jIHBoP2kgLS0+CiAgPHBhdGggZD0iTS0xMDAsNTAwIEMgMjAwLDQwMCA0MDAsMTUwIDM1MCwtNTAgQyAzMDAsLTE1MCA2MDAsLTIwMCA5MDAsLTE1MCIgc3Ryb2tlPSJ1cmwoI3doaXRlKSIgc3Ryb2tlLXdpZHRoPSI4IiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjkiLz4KICA8cGF0aCBkPSJNLTEyMCw0ODAgQyAxODAsMzgwIDM4MCwxMzAgMzMwLC03MCBDIDI4MCwtMTcwIDU4MCwtMjIwIDg4MCwtMTcwIiBzdHJva2U9InVybCgjZ29sZCkiIHN0cm9rZS13aWR0aD0iNSIgZmlsbD0ibm9uZSIgb3BhY2l0eT0iMC43Ii8+CiAgPHBhdGggZD0iTS01MCw2NTAgQyAyNTAsNTUwIDM1MCwzMDAgMjAwLDEwMCBDIDEwMCwtNTAgMzAwLC0xMDAgNTAwLC01MCIgc3Ryb2tlPSJ1cmwoI3doaXRlKSIgc3Ryb2tlLXdpZHRoPSI0IiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjgiLz4KCiAgPCEtLSBD77+9YyBu77+9dCB0byBtP25oIC0tPgogIDxwYXRoIGQ9Ik0tMzAsNDAwIEMgMTAwLDMwMCAxNTAsMTAwIDUwLC01MCBDIDAsLTEwMCAxNTAsLTE1MCAzMDAsLTEwMCIgc3Ryb2tlPSJ1cmwoI2dvbGQpIiBzdHJva2Utd2lkdGg9IjMiIGZpbGw9Im5vbmUiIG9wYWNpdHk9IjAuOSIvPgogIDxwYXRoIGQ9Ik0tNDAsNDIwIEMgMTIwLDMyMCAxNzAsMTIwIDcwLC0zMCBDIDIwLC04MCAxNzAsLTEzMCAzMjAsLTgwIiBzdHJva2U9InVybCgjd2hpdGUpIiBzdHJva2Utd2lkdGg9IjIiIGZpbGw9Im5vbmUiIG9wYWNpdHk9IjEiLz4KPC9zdmc+") !important;
+  background-size: 130% 130% !important;
+  background-position: bottom left !important;
+  background-repeat: no-repeat !important;
+  opacity: 1 !important;
+  mix-blend-mode: screen !important; /* H�a tr?n m�u d? ph�t s�ng r?c r? */
+}
+
+/* Th? ch?a v�n s�ng l?a */
+.card-prudential__bg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAwIDYwMCIgcHJlc2VydmVBc3BlY3RSYXRpbz0ibm9uZSI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9InNpbGsiIHgxPSIwJSIgeTE9IjEwMCUiIHgyPSIxMDAlIiB5Mj0iMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIyMCUiIHN0b3AtY29sb3I9IiNmY2VhYmIiIHN0b3Atb3BhY2l0eT0iMC45Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjEiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI4MCUiIHN0b3AtY29sb3I9IiNmOGI1MDAiIHN0b3Atb3BhY2l0eT0iMC44Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICAKICA8IS0tIEw/cCBi77+9bmcgZD8gcGjvv71hIHNhdSBkPyB0P28gY2hpP3Ugc++/vXUgLS0+CiAgPGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDAwMDAwIiBzdHJva2Utd2lkdGg9IjMiIGZpbHRlcj0iYmx1cigzcHgpIiBvcGFjaXR5PSIwLjQiPgogICAgPHBhdGggZD0iTS01MCw2NTAgQyAxNTAsNDUwIDMwMCwyMDAgMTAwLDAgQyAtNTAsLTE1MCAyMDAsLTIwMCA0NTAsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tMTAwLDUwMCBDIDIwMCw0MDAgNDAwLDE1MCAzNTAsLTUwIEMgMzAwLC0xNTAgNjAwLC0yMDAgOTAwLC0xNTAiIC8+CiAgPC9nPgoKICA8IS0tIELvv70gcz9pIHRvIGNo77+9bmggKEc/bSBo77+9bmcgY2g/YyBzP2kgbT9uaCBk77+9IGzvv71uIG5oYXUpIC0tPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0idXJsKCNzaWxrKSIgc3Ryb2tlLXdpZHRoPSIxLjIiPgogICAgPHBhdGggZD0iTS01MCw2NTAgQyAxNTAsNDUwIDMwMCwyMDAgMTAwLDAgQyAtNTAsLTE1MCAyMDAsLTIwMCA0NTAsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tNDgsNjUwIEMgMTUyLDQ1MCAzMDIsMjAwIDEwMiwwIEMgLTQ4LC0xNTAgMjAyLC0yMDAgNDUyLC0xNTAiIC8+CiAgICA8cGF0aCBkPSJNLTQ2LDY1MCBDIDE1NCw0NTAgMzA0LDIwMCAxMDQsMCBDIC00NiwtMTUwIDIwNCwtMjAwIDQ1NCwtMTUwIiAvPgogICAgPHBhdGggZD0iTS00NCw2NTAgQyAxNTYsNDUwIDMwNiwyMDAgMTA2LDAgQyAtNDQsLTE1MCAyMDYsLTIwMCA0NTYsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tNDIsNjUwIEMgMTU4LDQ1MCAzMDgsMjAwIDEwOCwwIEMgLTQyLC0xNTAgMjA4LC0yMDAgNDU4LC0xNTAiIC8+CiAgICA8cGF0aCBkPSJNLTQwLDY1MCBDIDE2MCw0NTAgMzEwLDIwMCAxMTAsMCBDIC00MCwtMTUwIDIxMCwtMjAwIDQ2MCwtMTUwIiAvPgogICAgPHBhdGggZD0iTS0zOCw2NTAgQyAxNjIsNDUwIDMxMiwyMDAgMTEyLDAgQyAtMzgsLTE1MCAyMTIsLTIwMCA0NjIsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tMzYsNjUwIEMgMTY0LDQ1MCAzMTQsMjAwIDExNCwwIEMgLTM2LC0xNTAgMjE0LC0yMDAgNDY0LC0xNTAiIC8+CiAgICA8cGF0aCBkPSJNLTM0LDY1MCBDIDE2Niw0NTAgMzE2LDIwMCAxMTYsMCBDIC0zNCwtMTUwIDIxNiwtMjAwIDQ2NiwtMTUwIiAvPgogICAgPHBhdGggZD0iTS0zMiw2NTAgQyAxNjgsNDUwIDMxOCwyMDAgMTE4LDAgQyAtMzIsLTE1MCAyMTgsLTIwMCA0NjgsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tMzAsNjUwIEMgMTcwLDQ1MCAzMjAsMjAwIDEyMCwwIEMgLTMwLC0xNTAgMjIwLC0yMDAgNDcwLC0xNTAiIC8+CiAgICA8cGF0aCBkPSJNLTI4LDY1MCBDIDE3Miw0NTAgMzIyLDIwMCAxMjIsMCBDIC0yOCwtMTUwIDIyMiwtMjAwIDQ3MiwtMTUwIiAvPgogICAgPHBhdGggZD0iTS0yNiw2NTAgQyAxNzQsNDUwIDMyNCwyMDAgMTI0LDAgQyAtMjYsLTE1MCAyMjQsLTIwMCA0NzQsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tMjQsNjUwIEMgMTc2LDQ1MCAzMjYsMjAwIDEyNiwwIEMgLTI0LC0xNTAgMjI2LC0yMDAgNDc2LC0xNTAiIC8+CiAgICA8cGF0aCBkPSJNLTIyLDY1MCBDIDE3OCw0NTAgMzI4LDIwMCAxMjgsMCBDIC0yMiwtMTUwIDIyOCwtMjAwIDQ3OCwtMTUwIiAvPgogICAgPHBhdGggZD0iTS0yMCw2NTAgQyAxODAsNDUwIDMzMCwyMDAgMTMwLDAgQyAtMjAsLTE1MCAyMzAsLTIwMCA0ODAsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tMTgsNjUwIEMgMTgyLDQ1MCAzMzIsMjAwIDEzMiwwIEMgLTE4LC0xNTAgMjMyLC0yMDAgNDgyLC0xNTAiIC8+CiAgICA8cGF0aCBkPSJNLTE2LDY1MCBDIDE4NCw0NTAgMzM0LDIwMCAxMzQsMCBDIC0xNiwtMTUwIDIzNCwtMjAwIDQ4NCwtMTUwIiAvPgogICAgPHBhdGggZD0iTS0xNCw2NTAgQyAxODYsNDUwIDMzNiwyMDAgMTM2LDAgQyAtMTQsLTE1MCAyMzYsLTIwMCA0ODYsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tMTIsNjUwIEMgMTg4LDQ1MCAzMzgsMjAwIDEzOCwwIEMgLTEyLC0xNTAgMjM4LC0yMDAgNDg4LC0xNTAiIC8+CiAgPC9nPgoKICA8IS0tIELvv70gcz9pIHRvIGRhbiBjaO+/vW8gdu+/vXQgbO+/vW4gZ++/vWMgcGg/aSAtLT4KICA8ZyBmaWxsPSJub25lIiBzdHJva2U9InVybCgjc2lsaykiIHN0cm9rZS13aWR0aD0iMC44IiBvcGFjaXR5PSIwLjkiPgogICAgPHBhdGggZD0iTS0xMDAsNTAwIEMgMjAwLDQwMCA0MDAsMTUwIDM1MCwtNTAgQyAzMDAsLTE1MCA2MDAsLTIwMCA5MDAsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tOTgsNTAwIEMgMjAyLDQwMCA0MDIsMTUwIDM1MiwtNTAgQyAzMDIsLTE1MCA2MDIsLTIwMCA5MDIsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tOTYsNTAwIEMgMjA0LDQwMCA0MDQsMTUwIDM1NCwtNTAgQyAzMDQsLTE1MCA2MDQsLTIwMCA5MDQsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tOTQsNTAwIEMgMjA2LDQwMCA0MDYsMTUwIDM1NiwtNTAgQyAzMDYsLTE1MCA2MDYsLTIwMCA5MDYsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tOTIsNTAwIEMgMjA4LDQwMCA0MDgsMTUwIDM1OCwtNTAgQyAzMDgsLTE1MCA2MDgsLTIwMCA5MDgsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tOTAsNTAwIEMgMjEwLDQwMCA0MTAsMTUwIDM2MCwtNTAgQyAzMTAsLTE1MCA2MTAsLTIwMCA5MTAsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tODgsNTAwIEMgMjEyLDQwMCA0MTIsMTUwIDM2MiwtNTAgQyAzMTIsLTE1MCA2MTIsLTIwMCA5MTIsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tODYsNTAwIEMgMjE0LDQwMCA0MTQsMTUwIDM2NCwtNTAgQyAzMTQsLTE1MCA2MTQsLTIwMCA5MTQsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tODQsNTAwIEMgMjE2LDQwMCA0MTYsMTUwIDM2NiwtNTAgQyAzMTYsLTE1MCA2MTYsLTIwMCA5MTYsLTE1MCIgLz4KICAgIDxwYXRoIGQ9Ik0tODIsNTAwIEMgMjE4LDQwMCA0MTgsMTUwIDM2OCwtNTAgQyAzMTgsLTE1MCA2MTgsLTIwMCA5MTgsLTE1MCIgLz4KICA8L2c+Cjwvc3ZnPg==") !important;
+  background-size: 120% 120% !important;
+  background-position: bottom left !important;
+  background-repeat: no-repeat !important;
+  opacity: 1 !important;
+  mix-blend-mode: screen !important;
+}
+
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL ICONIC STYLE (FIXED LAYOUT)
+   ============================================================ */
+.card-prudential {
+  background: radial-gradient(circle at 80% 20%, #1a4282 0%, #0a2540 80%) !important;
+  border-radius: 20px !important;
+  padding: 24px 30px !important;
+  color: #fff !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 260px !important;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
+  box-sizing: border-box !important;
+  font-family: var(--c-font-body), sans-serif !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* �p v�n s�ng ch? n?m n?a b�n tr�i */
+.card-prudential__bg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 55% !important;
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MDAgNjAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ29sZCIgeDE9IjAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjQwJSIgc3RvcC1jb2xvcj0iI2ZjZWFiYiIgc3RvcC1vcGFjaXR5PSIwLjgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI3MCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMC45Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2Y4YjUwMCIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGZpbHRlciBpZD0iYmx1ci1sZyI+PGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iOCIvPjwvZmlsdGVyPgogICAgPGZpbHRlciBpZD0iYmx1ci1zbSI+PGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMiIvPjwvZmlsdGVyPgogIDwvZGVmcz4KICA8ZyBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgPCEtLSBMP3Agbj9uIG0/IC0tPgogICAgPHBhdGggZD0iTS0xMDAsNjUwIEMgMTUwLDQ1MCAzMDAsMjAwIDE1MCwtNTAgQyA1MCwtMjAwIDI1MCwtMjUwIDQ1MCwtMjAwIiBzdHJva2U9InVybCgjZ29sZCkiIHN0cm9rZS13aWR0aD0iMzAiIGZpbHRlcj0idXJsKCNibHVyLWxnKSIgb3BhY2l0eT0iMC41Ii8+CiAgICA8IS0tIEPvv71jIHM/aSBsP2EgbT9tIG0/aSAtLT4KICAgIDxwYXRoIGQ9Ik0tMTAwLDY1MCBDIDE1MCw0NTAgMzAwLDIwMCAxNTAsLTUwIEMgNTAsLTIwMCAyNTAsLTI1MCA0NTAsLTIwMCIgc3Ryb2tlPSJ1cmwoI2dvbGQpIiBzdHJva2Utd2lkdGg9IjQiIGZpbHRlcj0idXJsKCNibHVyLXNtKSIvPgogICAgPHBhdGggZD0iTS05MCw2NDAgQyAxNjAsNDQwIDMxMCwxOTAgMTYwLC02MCBDIDYwLC0yMTAgMjYwLC0yNjAgNDYwLC0yMTAiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIyIiBmaWx0ZXI9InVybCgjYmx1ci1zbSkiIG9wYWNpdHk9IjAuOCIvPgogICAgPHBhdGggZD0iTS0xMTAsNjYwIEMgMTQwLDQ2MCAyOTAsMjEwIDE0MCwtNDAgQyA0MCwtMTkwIDI0MCwtMjQwIDQ0MCwtMTkwIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMS41IiBmaWx0ZXI9InVybCgjYmx1ci1zbSkiIG9wYWNpdHk9IjAuNiIvPgogICAgCiAgICA8cGF0aCBkPSJNLTE1MCw1MDAgQyAxMDAsNDAwIDI1MCwyMDAgMTUwLDAgQyA1MCwtMTUwIDI1MCwtMjAwIDQ1MCwtMTUwIiBzdHJva2U9InVybCgjZ29sZCkiIHN0cm9rZS13aWR0aD0iMTAiIGZpbHRlcj0idXJsKCNibHVyLXNtKSIgb3BhY2l0eT0iMC40Ii8+CiAgICA8cGF0aCBkPSJNLTE0MCw0OTAgQyAxMTAsMzkwIDI2MCwxOTAgMTYwLC0xMCBDIDYwLC0xNjAgMjYwLC0yMTAgNDYwLC0xNjAiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIyIiBmaWx0ZXI9InVybCgjYmx1ci1zbSkiIG9wYWNpdHk9IjAuNyIvPgogIDwvZz4KPC9zdmc+") !important;
+  background-size: cover !important;
+  background-position: left center !important;
+  background-repeat: no-repeat !important;
+  opacity: 0.9 !important;
+  mix-blend-mode: screen !important;
+}
+
+.card-prudential > *:not(.card-prudential__bg) {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.card-prudential__top {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+.card-prudential__logo {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 13px !important;
+  letter-spacing: 1.5px !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* �?y ch? VWA PAY ra ch�nh gi?a */
+.card-prudential__middle {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  margin: 10px 0 !important;
+}
+
+.card-prudential__title {
+  text-align: center !important;
+}
+
+.card-prudential__title h2 {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 48px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  letter-spacing: 6px !important;
+  text-shadow: 0px 4px 10px rgba(0,0,0,0.3) !important;
+}
+
+.card-prudential__title p {
+  margin: 6px 0 0 !important;
+  font-size: 14px !important;
+  color: #fff !important;
+  letter-spacing: 1.5px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  opacity: 0.8 !important;
+}
+
+/* H�ng du?i c�ng: Tag b�n tr�i, T�n b�n ph?i */
+.card-prudential__bottom {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-end !important;
+  width: 100% !important;
+}
+
+.card-prudential__tag {
+  background: linear-gradient(90deg, #a87f42 0%, #d4af37 100%) !important;
+  color: #fff !important;
+  padding: 8px 18px !important;
+  border-radius: 20px 4px 20px 4px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  box-shadow: 0 4px 15px rgba(212,175,55,0.3) !important;
+  white-space: nowrap !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+}
+
+.card-prudential__info {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 15px !important;
+  letter-spacing: 1.5px !important;
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+}
+
+.card-prudential__sep {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-weight: 300 !important;
+}
+
+@media (max-width: 640px) {
+  .card-prudential__title h2 { font-size: 36px !important; }
+  .card-prudential__tag { font-size: 9px !important; padding: 6px 12px !important; }
+  .card-prudential__info { font-size: 12px !important; gap: 8px !important; }
+  .card-prudential__bottom { flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; }
+}
+
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL ICONIC (CENTERED TEXT + LEFT WAVE)
+   ============================================================ */
+.card-prudential {
+  background: radial-gradient(circle at 50% 50%, #1a4282 0%, #0a2540 80%) !important;
+  border-radius: 20px !important;
+  padding: 24px 30px !important;
+  color: #fff !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important; /* Can gi?a to�n b? n?i dung */
+  align-items: center !important;
+  min-height: 280px !important;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
+  box-sizing: border-box !important;
+  font-family: var(--c-font-body), sans-serif !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* Khung v�n s�ng b�n tr�i */
+.card-prudential__bg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 45% !important; /* Ch? chi?m 45% b�n tr�i */
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MDAgNjAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ29sZCIgeDE9IjAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjMwJSIgc3RvcC1jb2xvcj0iI2ZjZWFiYiIgc3RvcC1vcGFjaXR5PSIwLjgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI2MCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNhODdmNDIiIHN0b3Atb3BhY2l0eT0iMCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0id2hpdGUiIHgxPSIwJSIgeTE9IjEwMCUiIHgyPSIxMDAlIiB5Mj0iMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1MCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMC42Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICAKICA8ZyBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgPCEtLSBMP3Agcz9pIHRvIG4/biAoTT8gaG9uKSAtLT4KICAgIDxnIHN0cm9rZT0idXJsKCN3aGl0ZSkiIHN0cm9rZS13aWR0aD0iMS41IiBvcGFjaXR5PSIwLjUiPgogICAgICA8cGF0aCBkPSJNLTUwLDY1MCBDIDE1MCw0NTAgMzAwLDIwMCAxNTAsLTUwIEMgNTAsLTIwMCAyNTAsLTI1MCA0NTAsLTIwMCIgLz4KICAgICAgPHBhdGggZD0iTS00MCw2NTAgQyAxNjAsNDUwIDMxMCwyMDAgMTYwLC01MCBDIDYwLC0yMDAgMjYwLC0yNTAgNDYwLC0yMDAiIC8+CiAgICAgIDxwYXRoIGQ9Ik0tMzAsNjUwIEMgMTcwLDQ1MCAzMjAsMjAwIDE3MCwtNTAgQyA3MCwtMjAwIDI3MCwtMjUwIDQ3MCwtMjAwIiAvPgogICAgICA8cGF0aCBkPSJNLTIwLDY1MCBDIDE4MCw0NTAgMzMwLDIwMCAxODAsLTUwIEMgODAsLTIwMCAyODAsLTI1MCA0ODAsLTIwMCIgLz4KICAgICAgPHBhdGggZD0iTS0xMCw2NTAgQyAxOTAsNDUwIDM0MCwyMDAgMTkwLC01MCBDIDkwLC0yMDAgMjkwLC0yNTAgNDkwLC0yMDAiIC8+CiAgICA8L2c+CgogICAgPCEtLSBC77+9IHM/aSB0byBjaO+/vW5oIChT77+9bmcgdu+/vSBzP2Mgbu+/vXQpIC0tPgogICAgPGcgc3Ryb2tlPSJ1cmwoI2dvbGQpIiBzdHJva2Utd2lkdGg9IjEuMiIgb3BhY2l0eT0iMC45Ij4KICAgICAgPHBhdGggZD0iTS00NSw2NTAgQyAxNTUsNDUwIDMwNSwyMDAgMTU1LC01MCBDIDU1LC0yMDAgMjU1LC0yNTAgNDU1LC0yMDAiIC8+CiAgICAgIDxwYXRoIGQ9Ik0tMzUsNjUwIEMgMTY1LDQ1MCAzMTUsMjAwIDE2NSwtNTAgQyA2NSwtMjAwIDI2NSwtMjUwIDQ2NSwtMjAwIiAvPgogICAgICA8cGF0aCBkPSJNLTI1LDY1MCBDIDE3NSw0NTAgMzI1LDIwMCAxNzUsLTUwIEMgNzUsLTIwMCAyNzUsLTI1MCA0NzUsLTIwMCIgLz4KICAgICAgPHBhdGggZD0iTS0xNSw2NTAgQyAxODUsNDUwIDMzNSwyMDAgMTg1LC01MCBDIDg1LC0yMDAgMjg1LC0yNTAgNDg1LC0yMDAiIC8+CiAgICA8L2c+CiAgICAKICAgIDwhLS0gQ++/vWMgcz9pIGRhbiBjaO+/vW8gLS0+CiAgICA8ZyBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMC44IiBvcGFjaXR5PSIwLjciPgogICAgICA8cGF0aCBkPSJNLTEwMCw0MDAgQyAxMDAsMzUwIDI1MCwxNTAgMTUwLDAgQyA1MCwtMTUwIDI1MCwtMjAwIDQ1MCwtMTUwIiAvPgogICAgICA8cGF0aCBkPSJNLTkwLDQxMCBDIDExMCwzNjAgMjYwLDE2MCAxNjAsMTAgQyA2MCwtMTQwIDI2MCwtMTkwIDQ2MCwtMTQwIiAvPgogICAgICA8cGF0aCBkPSJNLTgwLDQyMCBDIDEyMCwzNzAgMjcwLDE3MCAxNzAsMjAgQyA3MCwtMTMwIDI3MCwtMTgwIDQ3MCwtMTMwIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+") !important;
+  background-size: 120% 120% !important;
+  background-position: left center !important;
+  background-repeat: no-repeat !important;
+  opacity: 0.9 !important;
+  mix-blend-mode: screen !important;
+}
+
+/* Kh?i n?i dung ? gi?a */
+.card-prudential__center {
+  position: relative !important;
+  z-index: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+  gap: 12px !important;
+}
+
+.card-prudential__logo {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 12px !important;
+  letter-spacing: 2px !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  margin-bottom: 4px !important;
+}
+
+.card-prudential__title h2 {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 52px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  letter-spacing: 8px !important;
+  text-shadow: 0px 4px 12px rgba(0,0,0,0.4) !important;
+}
+
+.card-prudential__title p {
+  margin: 4px 0 0 !important;
+  font-size: 14px !important;
+  color: #fff !important;
+  letter-spacing: 2px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  opacity: 0.7 !important;
+}
+
+.card-prudential__tag {
+  background: linear-gradient(90deg, #a87f42 0%, #d4af37 100%) !important;
+  color: #fff !important;
+  padding: 6px 20px !important;
+  border-radius: 20px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  box-shadow: 0 4px 15px rgba(212,175,55,0.3) !important;
+  white-space: nowrap !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+  margin-top: 6px !important;
+}
+
+/* T�n v� MSSV ? g�c du?i ph?i */
+.card-prudential__bottom-right {
+  position: absolute !important;
+  bottom: 24px !important;
+  right: 30px !important;
+  z-index: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 14px !important;
+  letter-spacing: 1.5px !important;
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+}
+
+.card-prudential__sep {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-weight: 300 !important;
+}
+
+@media (max-width: 640px) {
+  .card-prudential__title h2 { font-size: 36px !important; letter-spacing: 4px !important; }
+  .card-prudential__bottom-right { bottom: 16px !important; right: 20px !important; font-size: 11px !important; }
+}
+
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL ICONIC (FINAL)
+   ============================================================ */
+.card-prudential {
+  background: radial-gradient(circle at 70% 30%, #1a4282 0%, #0a2540 80%) !important;
+  border-radius: 20px !important;
+  padding: 24px 30px !important;
+  color: #fff !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  min-height: 280px !important;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
+  box-sizing: border-box !important;
+  font-family: var(--c-font-body), sans-serif !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+.card-prudential__bg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 60% !important;
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MDAgNTAwIiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJub25lIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ29sZCIgeDE9IjAlIiB5MT0iMTAwJSIgeDI9IjEwMCUiIHkyPSIwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjMwJSIgc3RvcC1jb2xvcj0iI2ZjZWFiYiIgc3RvcC1vcGFjaXR5PSIwLjgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI2MCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNkNGFmMzciIHN0b3Atb3BhY2l0eT0iMCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZGltIiB4MT0iMCUiIHkxPSIxMDAlIiB4Mj0iMTAwJSIgeTI9IjAlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZmZmZmZiIgc3RvcC1vcGFjaXR5PSIwIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjZmZmZmZmIiBzdG9wLW9wYWNpdHk9IjAuMyIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNmZmZmZmYiIHN0b3Atb3BhY2l0eT0iMCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPGcgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDwhLS0gTD9wIG4/biBtPyAtLT4KICAgIDxwYXRoIGQ9Ik0tMTAwLDYwMCBDIDIwMCw0MDAgMzAwLDEwMCAxMDAsLTUwIEMgMCwtMTUwIDE1MCwtMjAwIDQwMCwtMjAwIiBzdHJva2U9InVybCgjZGltKSIgc3Ryb2tlLXdpZHRoPSIxNSIgZmlsdGVyPSJibHVyKDRweCkiLz4KICAgIDxwYXRoIGQ9Ik0tNTAsNDAwIEMgMTUwLDMwMCAyMDAsMTAwIDUwLC0xMDAgQyAtNTAsLTIwMCAxMDAsLTI1MCAzNTAsLTI1MCIgc3Ryb2tlPSJ1cmwoI2RpbSkiIHN0cm9rZS13aWR0aD0iMjAiIGZpbHRlcj0iYmx1cig2cHgpIi8+CgogICAgPCEtLSBC77+9IHM/aSBjaO+/vW5oIChkaSB0PyBkdT9pIGzvv71uKSAtLT4KICAgIDxwYXRoIGQ9Ik0tNTAsNjAwIEMgMjAwLDQwMCAzNTAsMTUwIDE1MCwtNTAgQyA1MCwtMTUwIDE1MCwtMjAwIDM1MCwtMTUwIiBzdHJva2U9InVybCgjZ29sZCkiIHN0cm9rZS13aWR0aD0iMiIvPgogICAgPHBhdGggZD0iTS00MCw2MDAgQyAyMTAsNDAwIDM2MCwxNTAgMTYwLC01MCBDIDYwLC0xNTAgMTYwLC0yMDAgMzYwLC0xNTAiIHN0cm9rZT0idXJsKCNnb2xkKSIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KICAgIDxwYXRoIGQ9Ik0tMzAsNjAwIEMgMjIwLDQwMCAzNzAsMTUwIDE3MCwtNTAgQyA3MCwtMTUwIDE3MCwtMjAwIDM3MCwtMTUwIiBzdHJva2U9InVybCgjZ29sZCkiIHN0cm9rZS13aWR0aD0iMSIvPgogICAgCiAgICA8IS0tIEPvv71jIHM/aSBkYW4gY2jvv71vICh0P28gZD8gcj9pIGM/YSBsP2EpIC0tPgogICAgPHBhdGggZD0iTS0xMDAsNDUwIEMgMTUwLDMwMCAyNTAsNTAgMTAwLC0xMDAgQyAwLC0yMDAgMjAwLC0yNTAgNDUwLC0yMDAiIHN0cm9rZT0idXJsKCNnb2xkKSIgc3Ryb2tlLXdpZHRoPSIzIiBvcGFjaXR5PSIwLjgiLz4KICAgIDxwYXRoIGQ9Ik0tMTIwLDQ4MCBDIDEzMCwzMzAgMjMwLDgwIDgwLC04MCBDIC0yMCwtMTgwIDE4MCwtMjMwIDQzMCwtMTgwIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMSIgb3BhY2l0eT0iMC42Ii8+CiAgICA8cGF0aCBkPSJNLTgwLDQyMCBDIDE3MCwyNzAgMjcwLDIwIDEyMCwtMTMwIEMgMjAsLTIzMCAyMjAsLTI4MCA0NzAsLTIzMCIgc3Ryb2tlPSJ1cmwoI2dvbGQpIiBzdHJva2Utd2lkdGg9IjEuNSIgb3BhY2l0eT0iMC45Ii8+CgogICAgPCEtLSBD77+9YyBu77+9dCB2P24gdD9vIGhpZ2hsaWdodCAtLT4KICAgIDxwYXRoIGQ9Ik0wLDY1MCBDIDI1MCw0NTAgNDAwLDIwMCAyMDAsMCBDIDEwMCwtMTAwIDIwMCwtMTUwIDQwMCwtMTAwIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMC41IiBvcGFjaXR5PSIwLjgiLz4KICA8L2c+Cjwvc3ZnPg==") !important;
+  background-size: cover !important;
+  background-position: left center !important;
+  background-repeat: no-repeat !important;
+  opacity: 0.9 !important;
+  mix-blend-mode: screen !important;
+}
+
+.card-prudential__center {
+  position: relative !important;
+  z-index: 2 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+  gap: 12px !important;
+}
+
+.card-prudential__logo {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 12px !important;
+  letter-spacing: 2px !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  margin-bottom: 4px !important;
+}
+
+.card-prudential__title h2 {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 52px !important;
+  font-weight: 700 !important;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  margin: 0 !important;
+  line-height: 1 !important;
+  letter-spacing: 8px !important;
+  text-shadow: 0px 4px 12px rgba(0,0,0,0.4) !important;
+}
+
+.card-prudential__title p {
+  margin: 4px 0 0 !important;
+  font-size: 14px !important;
+  color: #fff !important;
+  letter-spacing: 2px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  opacity: 0.7 !important;
+}
+
+.card-prudential__tag {
+  background: linear-gradient(90deg, #a87f42 0%, #d4af37 100%) !important;
+  color: #fff !important;
+  padding: 6px 20px !important;
+  border-radius: 20px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  box-shadow: 0 4px 15px rgba(212,175,55,0.3) !important;
+  white-space: nowrap !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+  margin-top: 6px !important;
+}
+
+/* ��Y L� PH?N S?A L?I CH?NG CH�O CH?: �p c? d?nh ? g�c du?i ph?i */
+.card-prudential__bottom-right {
+  position: absolute !important;
+  bottom: 20px !important;
+  right: 30px !important;
+  z-index: 3 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 14px !important;
+  letter-spacing: 1.5px !important;
+  color: #fff !important;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6) !important;
+}
+
+.card-prudential__sep {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-weight: 300 !important;
+}
+
+@media (max-width: 640px) {
+  .card-prudential__title h2 { font-size: 36px !important; letter-spacing: 4px !important; }
+  .card-prudential__bottom-right { bottom: 16px !important; right: 20px !important; font-size: 11px !important; }
+}
+
+/* ============================================================
+   VWA CARD FINAL - PRUDENTIAL STYLE (100% FIXED)
+   ============================================================ */
+.vwa-card-final {
+  background: radial-gradient(circle at 50% 50%, #143668 0%, #081a33 100%) !important;
+  border-radius: 20px !important;
+  padding: 24px !important;
+  color: #fff !important;
+  position: relative !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  min-height: 260px !important;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.5) !important;
+  box-sizing: border-box !important;
+  font-family: var(--c-font-body), sans-serif !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+.vwa-card-final__logo {
+  display: flex !important; align-items: center !important; gap: 8px !important;
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 12px !important; letter-spacing: 1.5px !important; font-weight: 700 !important;
+  color: rgba(255,255,255,0.9) !important;
+}
+
+.vwa-card-final__center {
+  position: relative !important;
+  z-index: 2 !important;
+  display: flex !important; flex-direction: column !important; align-items: center !important;
+  text-align: center !important; gap: 10px !important;
+}
+
+.vwa-card-final__sep {
+  color: rgba(255,255,255,0.3) !important;
+}
+
+@media (max-width: 640px) {
+  }
+
+
+/* ============================================================
+   VWA SMART PAY - SILK WAVE (ULTRA DETAIL)
+   ============================================================ */
+.vwa-card-final {
+  background: radial-gradient(circle at 80% 20%, #163e7a 0%, #081a33 80%) !important;
+}
+
+
+/* ============================================================
+   VWA SMART PAY - PERFECT SILK WAVE (Matching Prudential)
+   ============================================================ */
+
+/* ============================================================
+   VWA SMART PAY - SOFT SILK (REALISTIC)
+   ============================================================ */
+
+/* ============================================================
+   VWA SMART PAY - PRUDENTIAL SILK (EXACT MATCH)
+   ============================================================ */
+.vwa-card-final {
+  background: radial-gradient(circle at 85% 15%, #16437e 0%, #0a1c33 70%) !important; /* M�u xanh chu?n Prudential */
+}
+/* VWA CARD FINAL STYLES */
+.vwa-card-final {
+  background: radial-gradient(circle at 80% 20%, #1e508e 0%, #0d2b54 80%) !important;
+}
+
+.vwa-card-final__bg {
+  position: absolute !important;
+  top: 0 !important; 
+  left: 0 !important;
+  width: 70% !important; 
+  height: 100% !important;
+  z-index: 0 !important;
+  pointer-events: none !important;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 600' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='100%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='30%25' stop-color='%23fceabb' stop-opacity='0.9'/%3E%3Cstop offset='50%25' stop-color='%23fff' stop-opacity='1'/%3E%3Cstop offset='70%25' stop-color='%23d4af37' stop-opacity='0.8'/%3E%3Cstop offset='100%25' stop-color='%23fff' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='s' x1='0%25' y1='100%25' x2='80%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='50%25' stop-color='%23e2e8f0' stop-opacity='0.7'/%3E%3Cstop offset='100%25' stop-color='%23fff' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cpath d='M-150,800 C 200,500 100,100 700,-100' stroke='url(%23g)' stroke-width='1' opacity='1'/%3E%3Cpath d='M-148,800 C 202,500 102,100 702,-100' stroke='url(%23g)' stroke-width='1' opacity='0.9'/%3E%3Cpath d='M-146,800 C 204,500 104,100 704,-100' stroke='url(%23g)' stroke-width='1' opacity='0.8'/%3E%3Cpath d='M-144,800 C 206,500 106,100 706,-100' stroke='url(%23g)' stroke-width='1' opacity='0.7'/%3E%3Cpath d='M-142,800 C 208,500 108,100 708,-100' stroke='url(%23g)' stroke-width='1' opacity='0.6'/%3E%3Cpath d='M-200,600 C 150,400 400,150 900,-50' stroke='url(%23s)' stroke-width='1.2' opacity='0.8'/%3E%3Cpath d='M-198,600 C 152,400 402,150 902,-50' stroke='url(%23s)' stroke-width='1.2' opacity='0.7'/%3E%3Cpath d='M-196,600 C 154,400 404,150 904,-50' stroke='url(%23s)' stroke-width='1.2' opacity='0.6'/%3E%3C/g%3E%3C/svg%3E") !important;
+  background-size: cover !important;
+  background-position: left center !important;
+  background-repeat: no-repeat !important;
+  opacity: 1 !important;
+}
+
+.vwa-card-final__top-right {
+  position: absolute !important;
+  top: 24px !important; 
+  right: 24px !important;
+  z-index: 2 !important;
+}
+
+.vwa-card-final__title h2 {
+  font-family: "Times New Roman", Times, serif !important;
+  font-size: 40px !important; 
+  font-weight: 700 !important;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  margin: 0 !important; 
+  line-height: 1 !important; 
+  letter-spacing: 4px !important; 
+  text-shadow: 0px 4px 12px rgba(0,0,0,0.4) !important;
+  white-space: nowrap !important;
+}
+
+.vwa-card-final__title p {
+  margin: 4px 0 0 !important; 
+  font-size: 14px !important; 
+  color: #fff !important; 
+  letter-spacing: 2px !important; 
+  font-family: var(--c-font-body), sans-serif !important; 
+  opacity: 0.7 !important;
+}
+
+.vwa-card-final__logo b {
+  font-family: var(--c-font-head), sans-serif !important;
+  font-size: 13px !important;
+  letter-spacing: 1.5px !important;
+}
+
+.vwa-card-final__bottom-info {
+  position: absolute !important;
+  bottom: 24px !important; 
+  left: 24px !important; 
+  right: 24px !important;
+  z-index: 2 !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: flex-end !important;
+  font-family: Arial, sans-serif !important; 
+}
+
+.vwa-card-final__balance span,
+.vwa-card-final__holder-item span {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.vwa-card-final__balance b {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.vwa-card-final__balance small {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.vwa-card-final__holder {
+  display: flex;
+  gap: 24px;
+}
+
+.vwa-card-final__holder-item b {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 640px) {
+  .vwa-card-final__title h2 { 
+    font-size: 28px !important; 
+    letter-spacing: 2px !important; 
+  }
+  .vwa-card-final__bottom-info {
+    bottom: 16px !important; 
+    left: 16px !important; 
+    right: 16px !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+  }
+  .vwa-card-final__holder {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* ===== VWA GREEN POINTS POPUP ===== */
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) {
+  padding: 16px;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+  width: min(400px, calc(100vw - 32px)) !important;
+  max-width: 400px;
+  padding: 16px !important;
+  border: 1px solid #d5e4dc !important;
+  border-radius: 19px !important;
+  background: linear-gradient(145deg, #f0fdf4 0%, #ffffff 100%) !important;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.10) !important;
+  color: #172033;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) h2 {
+  font-size: 22px !important;
+  line-height: 1.25;
+  letter-spacing: -0.45px;
+  color: #172033;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) p {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="grid-template-columns"] > div {
+  border-color: #d1dce8 !important;
+  border-radius: 14px !important;
+  padding: 12px !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="border: 1px solid #dcfce7"] {
+  border: 1px dashed #86efac !important;
+  border-radius: 14px !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > button:last-child {
+  min-height: 40px;
+  border-radius: 12px !important;
+  background: #16a34a !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 480px) {
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) {
+    padding: 12px;
+  }
+
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+    width: calc(100vw - 24px) !important;
+    padding: 14px !important;
+  }
+
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) h2 {
+    font-size: 20px !important;
+  }
+}
+/* ===== END VWA GREEN POINTS POPUP ===== */
+
+
+/* VWA Green Points - final layout correction */
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+  display: block !important;
+  width: min(400px, calc(100vw - 32px)) !important;
+  max-width: 400px !important;
+  padding: 16px !important;
+  overflow: hidden !important;
+  border-radius: 19px !important;
+  background: linear-gradient(135deg, #f0fdf4 0%, #fff 100%) !important;
+  box-sizing: border-box !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div:first-of-type {
+  display: inline-flex !important;
+  width: fit-content !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 4px 10px !important;
+  margin: 0 !important;
+  border-radius: 20px !important;
+  line-height: 1.3 !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) h2 {
+  margin: 7px 0 0 !important;
+  font-size: 22px !important;
+  line-height: 1.25 !important;
+  font-weight: 850 !important;
+  letter-spacing: -0.5px !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > p {
+  margin: 4px 0 12px !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="grid-template-columns"] {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+  margin: 0 !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="grid-template-columns"] > div {
+  min-width: 0 !important;
+  padding: 11px 12px !important;
+  border: 1px solid #cfd9e6 !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="border: 1px solid #dcfce7"] {
+  display: flex !important;
+  min-height: 0 !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+  padding: 10px 12px !important;
+  border: 1px dashed #86efac !important;
+  border-radius: 13px !important;
+  background: #fff !important;
+  box-sizing: border-box !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > button:last-child {
+  display: flex !important;
+  width: 100% !important;
+  min-height: 40px !important;
+  margin-top: 10px !important;
+  padding: 10px !important;
+  border-radius: 12px !important;
+  background: #16a34a !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+}
+
+@media (max-width: 480px) {
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+    width: calc(100vw - 24px) !important;
+    padding: 14px !important;
+  }
+
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) h2 {
+    font-size: 20px !important;
+  }
+}
+/* End VWA Green Points correction */
+
+
+/* ===== VWA GREEN POINTS - VISUAL POLISH ===== */
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(187,247,208,.42), transparent 38%),
+    linear-gradient(145deg, #f0fdf4 0%, #ffffff 58%, #f8fffb 100%) !important;
+  border: 1px solid #d4e8dc !important;
+  box-shadow: 0 20px 60px rgba(15, 45, 35, .20),
+              0 4px 12px rgba(22, 163, 74, .08) !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > span {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(145deg, #dcfce7, #bbf7d0) !important;
+  color: #15803d !important;
+  font-size: 32px !important;
+  line-height: 1 !important;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, .12);
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) h2 {
+  color: #152238 !important;
+  font-size: 23px !important;
+  font-weight: 850 !important;
+  letter-spacing: -.65px !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="grid-template-columns"] > div {
+  background: rgba(255,255,255,.92) !important;
+  border: 1px solid #d8e4ed !important;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, .025);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="grid-template-columns"] > div:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 14px rgba(22, 163, 74, .08);
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="border: 1px solid #dcfce7"] {
+  border: 1px dashed #86efac !important;
+  background: linear-gradient(100deg, #ffffff, #f7fff9) !important;
+  box-shadow: 0 3px 12px rgba(22, 163, 74, .045);
+  transition: border-color .18s ease, transform .18s ease;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="border: 1px solid #dcfce7"]:hover {
+  border-color: #22c55e !important;
+  transform: translateY(-1px);
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > div[style*="border: 1px solid #dcfce7"] > div:first-child {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 13px !important;
+  background: linear-gradient(145deg, #fef3c7, #fde68a) !important;
+  font-size: 21px !important;
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.8);
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > button:last-child {
+  min-height: 44px !important;
+  background: linear-gradient(100deg, #16a34a, #19a653) !important;
+  box-shadow: 0 5px 12px rgba(22, 163, 74, .17) !important;
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] > button:last-child:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+  box-shadow: 0 7px 16px rgba(22, 163, 74, .23) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) * {
+    transition: none !important;
+  }
+}
+/* ===== END VISUAL POLISH ===== */
+
+
+/* Hide custom points redemption panel */
+.promo-redeem-custom { display: none !important; }
+
+/* Voucher redemption grid: maximum 6 cards per row */
+.promo-redeem-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  align-items: stretch;
+}
+
+.promo-redeem-grid > * {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1100px) {
+  .promo-redeem-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .promo-redeem-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+}

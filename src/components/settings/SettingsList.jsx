@@ -95,7 +95,8 @@ export default function SettingsList({
         );
       })}
 
-      <div className="settings-list__sep" />
+      <>
+<div className="settings-list__sep" />
 
       <button
         type="button"
@@ -157,6 +158,7 @@ export default function SettingsList({
           />
         </div>
       </button>
+</>
     </div>
   );
 }
