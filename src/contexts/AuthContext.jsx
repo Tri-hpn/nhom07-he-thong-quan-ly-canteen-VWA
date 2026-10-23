@@ -104,6 +104,7 @@ export function AuthProvider({ children }) {
     setMustChangePassword(false);
 
     try {
+      localStorage.removeItem("canteen_cart_selected");
       sessionStorage.removeItem("canteen_cart_selected");
       localStorage.removeItem("orders_last_seen");
       localStorage.removeItem("points_last_seen");

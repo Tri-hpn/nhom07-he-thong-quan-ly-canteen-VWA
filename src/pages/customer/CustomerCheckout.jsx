@@ -203,10 +203,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     Math.floor(REDEEM_MAX_AMOUNT / REDEEM_PER_POINT),
     Math.floor(Math.max(0, Number(subtotal) || 0) / REDEEM_PER_POINT)
   );
-  const pointsDiscount =
-    usePoints && !appliedVoucher && pointsToRedeem >= MIN_ORDER_POINTS_REDEEM
-      ? pointsToRedeem * REDEEM_PER_POINT
-      : 0;
+  const pointsDiscount = usePoints ? Math.min(points || 0, Math.floor(subtotal * 0.3)) : 0;
 
   const total = useMemo(
     () => Math.max(0, subtotal - discount - pointsDiscount),
@@ -577,8 +574,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           payment: method,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-          ...orderDiscountPayload,
+                    ...orderDiscountPayload,
           isGreen,
+          useXu: usePoints,
         });
 
         if (!isBuyNow) {
@@ -670,8 +668,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           payment: paymentMethodArg,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-          ...orderDiscountPayload,
+                    ...orderDiscountPayload,
           isGreen,
+          useXu: usePoints,
         });
 
         if (!isBuyNow) {
@@ -963,13 +962,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 />
                 <div className="checkout-points-option__body">
                   <div className="checkout-points-option__head">
-                    <b>{t("Sử dụng điểm sinh viên Green Points")}</b>
+                    <b>{t("Dùng Xu VWA (Tối đa 30%)")}</b>
                     <span className="checkout-points-option__discount">
                       -{money(pointsDiscount)}
                     </span>
                   </div>
                   <p>
-                    {t("Bạn đang có {points} điểm tích lũy. Quy đổi tối đa 2.500 đ cho suất ăn này.")
+                    {t("Bạn đang có {points} Xu. Có thể dùng tối đa 30% giá trị đơn hàng.")
                       .replace("{points}", points)}
                   </p>
                 </div>

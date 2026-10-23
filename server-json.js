@@ -396,7 +396,12 @@ function buildSeedData() {
       { id: 2, name: "Trần Văn Trí", email: "nhanvien@vwa.vn", password: SEED_PASSWORD_HASH, role: "EMPLOYEE", status: "Hoạt động", phone: "", points: 50, chat_enabled: true, created_at: "2025-01-01T00:00:00.000Z" },
       { id: 3, name: "Trần Văn Trí", email: "sinhvien@vwa.vn", password: SEED_PASSWORD_HASH, role: "CUSTOMER", status: "Hoạt động", phone: "", points: 1959, created_at: "2025-01-01T00:00:00.000Z" },
     ],
-    menu_items: [], categories: [], sizes: [], toppings: [], orders: [], inventory: [],
+    sizes: [
+      { id: "S", name: "Nhỏ", extra_price: 0 },
+      { id: "M", name: "Vừa", extra_price: 5000 },
+      { id: "L", name: "Lớn", extra_price: 10000 },
+    ],
+    menu_items: [], categories: [], toppings: [], orders: [], inventory: [],
     notifications: [], vouchers: [], reviews: [], messages: [], attendances: [], imports: [],
     price_history: [], shifts: [], wallets: [], wallet_transactions: [], tasks: [], points_history: [],
     chat_transfer_requests: [], eco_rewards: [], orderReminders: [],
@@ -538,7 +543,7 @@ function loadDB() {
 // SAVE DB — UPSERT, KHÔNG DELETE + INSERT
 // ============================================================
 let saveQueue = Promise.resolve();
-const UNIQUE_KEY_BY_COLL = { wallets: "user_id" };
+const UNIQUE_KEY_BY_COLL = { wallets: "user_id", inventory: "code" };
 
 async function _writeCollection(db, key, value) {
   const coll = db.collection(key);
@@ -1420,7 +1425,16 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (!voucherCode && clientDiscount > 0) return res.status(400).json({ message: "Giảm giá không hợp lệ (không có voucher)" });
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: `Giảm giá không khớp với voucher` });
 
-    total = Math.max(0, subtotal - computedDiscount);
+    // XỬ LÝ DÙNG XU VWA (Tối đa 30%)
+    let xuDiscount = 0;
+    const useXu = req.body.useXu === true;
+    customer = db.users.find(u => u.id === req.user.id);
+    if (useXu && customer) {
+      const maxXuAllowed = Math.floor(subtotal * 0.3);
+      xuDiscount = Math.min(customer.points || 0, maxXuAllowed);
+      customer.points = (customer.points || 0) - xuDiscount;
+    }
+    total = Math.max(0, subtotal - computedDiscount - xuDiscount);
     isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
 
     if (isWalletPay) {
@@ -1432,7 +1446,7 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (isWalletPay) { wallet.balance -= total; wallet.updated_at = new Date().toISOString(); }
 
     const __cfg = getPointsConfig(db);
-    pointsEarned = calcEarnPoints(total, __cfg);
+    pointsEarned = Number(__cfg.earn.rate_points) || 200;
     const __greenBonus = isGreen ? calcGreenBonus(__cfg) : 0;
     const __greenRequireApproval = isGreen && __cfg.earn.green_require_approval !== false;
     if (isGreen && !__greenRequireApproval) pointsEarned += __greenBonus;
@@ -1448,7 +1462,7 @@ app.post("/api/orders", auth(), async (req, res) => {
       db.wallet_transactions.push(walletTx);
     }
 
-    const order = { id, code, customer_id: req.user.id, customer_name: req.user.name, subtotal, discount: computedDiscount, total, points_earned: pointsEarned, status: "Chờ xác nhận", green_requested: !!isGreen, green_status: isGreen ? (__greenRequireApproval ? "pending" : "approved") : null, green_points: isGreen ? __greenBonus : 0, payment, note, items: detailed, created_at: new Date().toISOString() };
+    const order = { id, code, customer_id: req.user.id, customer_name: req.user.name, subtotal, discount: computedDiscount, xu_discount: xuDiscount, total, points_earned: pointsEarned, status: "Chờ xác nhận", green_requested: !!isGreen, green_status: isGreen ? (__greenRequireApproval ? "pending" : "approved") : null, green_points: isGreen ? __greenBonus : 0, payment, note, items: detailed, created_at: new Date().toISOString() };
 
     if (usedVoucher) { usedVoucher.used = true; usedVoucher.used_at = new Date().toISOString(); usedVoucher.order_code = code; }
     order.voucher_code = usedVoucher ? usedVoucher.code : "";
@@ -1459,6 +1473,7 @@ app.post("/api/orders", auth(), async (req, res) => {
   } catch (e) {
     touchedItems.forEach(({ m, q }) => { m.stock = (m.stock || 0) + q; m.sold = Math.max(0, (m.sold || 0) - q); });
     if (isWalletPay && wallet) { wallet.balance += total; wallet.updated_at = new Date().toISOString(); if (walletTx && db.wallet_transactions) db.wallet_transactions = db.wallet_transactions.filter((t) => t.id !== walletTx.id); }
+    if (customer && xuDiscount > 0) customer.points = (customer.points || 0) + xuDiscount;
     if (customer && pointsEarned > 0) customer.points = Math.max(0, (customer.points || 0) - pointsEarned);
     if (usedVoucher) { usedVoucher.used = false; delete usedVoucher.used_at; delete usedVoucher.order_code; }
     try { await saveDBOrThrow(db); } catch { }
@@ -1757,7 +1772,7 @@ app.post("/api/reviews", auth(), async (req, res) => {
     const avgRating = itemReviews.reduce((s, r) => s + r.rating, 0) / itemReviews.length;
     const mi = db.menu_items.find(m => m.id == menuItemId);
     if (mi) { mi.rating = Math.round(avgRating * 10) / 10; mi.review_count = itemReviews.length; }
-    const __reviewBonus = calcReviewBonus(getPointsConfig(db));
+    const __reviewBonus = Number(__cfg.earn.review_points) || 500;
     review.points_earned = __reviewBonus;
     const authorUser = db.users.find(u => u.id === req.user.id);
     if (authorUser) authorUser.points = (authorUser.points || 0) + __reviewBonus;
@@ -1770,6 +1785,7 @@ app.post("/api/reviews", auth(), async (req, res) => {
 // POINTS CONFIG & POINTS
 // ============================================================
 app.get("/api/points/config", auth(), (req, res) => { try { res.json(getPointsConfig(loadDB())); } catch (e) { res.status(500).json({ message: e.message }); } });
+app.get("/api/points/history", auth(["ADMIN"]), (req, res) => { try { const db = loadDB(); res.json((db.points_config_history || []).sort((a,b) => b.id - a.id)); } catch (e) { res.status(500).json({ message: e.message }); } });
 app.put("/api/points/config", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1791,6 +1807,26 @@ app.put("/api/points/config", auth(["ADMIN"]), async (req, res) => {
     }
     next.redeem.tiers.sort((a, b) => Number(a.points) - Number(b.points));
     next.updated_at = new Date().toISOString();
+    if (!db.points_config_history) db.points_config_history = [];
+    const changes = [];
+    const oldE = current.earn;
+    const newE = next.earn;
+    if (oldE.rate_points !== newE.rate_points) changes.push({ field: "Ăn tại Căng tin", old: oldE.rate_points, new: newE.rate_points });
+    if (oldE.green_enabled !== newE.green_enabled) changes.push({ field: "Bật Sống Xanh", old: oldE.green_enabled, new: newE.green_enabled, isBool: true });
+    else if (newE.green_enabled && oldE.green_points !== newE.green_points) changes.push({ field: "Sống Xanh", old: oldE.green_points, new: newE.green_points });
+    if (oldE.review_enabled !== newE.review_enabled) changes.push({ field: "Bật Đánh giá", old: oldE.review_enabled, new: newE.review_enabled, isBool: true });
+    else if (newE.review_enabled && oldE.review_points !== newE.review_points) changes.push({ field: "Đánh giá", old: oldE.review_points, new: newE.review_points });
+    if (JSON.stringify(oldE.custom_programs || []) !== JSON.stringify(newE.custom_programs || [])) changes.push({ field: "Chương trình tùy chỉnh", old: "Đã thay đổi", new: "Đã thay đổi" });
+
+    if (changes.length > 0) {
+      const historyId = Math.max(0, ...db.points_config_history.map(h => h.id)) + 1;
+      db.points_config_history.push({
+        id: historyId,
+        updated_at: new Date().toISOString(),
+        updated_by: req.user.name,
+        changes: changes
+      });
+    }
     db.points_config = next;
     await saveDBOrThrow(db);
     res.json({ ok: true, config: next });
@@ -1842,12 +1878,12 @@ app.post("/api/vouchers", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     if (!db.vouchers) db.vouchers = [];
-    const { code, value, user_id, points_used } = req.body;
+    const { code, value, user_id, points_used, publish_date, is_flash_sale, duration, duration_unit , isFlashSale } = req.body;
     if (!code || !value) return res.status(400).json({ message: "Thiếu mã hoặc giá trị" });
     const codeNorm = String(code).toUpperCase().trim();
     if (db.vouchers.find((v) => v.code.toUpperCase() === codeNorm)) return res.status(400).json({ message: "Mã voucher đã tồn tại" });
     const id = nextId(db.vouchers);
-    const voucher = { id, code: codeNorm, value: +value, user_id: user_id ? +user_id : null, points_used: +points_used || 0, used: false, created_at: new Date().toISOString() };
+    const voucher = { id, code: codeNorm, value: +value, user_id: user_id ? +user_id : null, points_used: +points_used || 0, used: false, isFlashSale: !!isFlashSale, is_flash_sale: !!(is_flash_sale || isFlashSale), created_at: new Date().toISOString() };
     db.vouchers.push(voucher);
     await saveDBOrThrow(db);
     res.status(201).json(voucher);
@@ -1858,6 +1894,18 @@ app.put("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
   const v = (db.vouchers || []).find(x => x.id == req.params.id);
   if (!v) return res.status(404).json({ message: "Không tìm thấy" });
   if (req.body.value !== undefined) v.value = +req.body.value;
+  if (req.body.publish_date !== undefined) v.publish_date = req.body.publish_date;
+  if (req.body.is_flash_sale !== undefined) v.is_flash_sale = !!req.body.is_flash_sale;
+  if (req.body.isFlashSale !== undefined) v.isFlashSale = !!req.body.isFlashSale;
+  if (req.body.duration !== undefined) v.duration = Number(req.body.duration);
+  if (req.body.duration_unit !== undefined) v.duration_unit = req.body.duration_unit;
+  if (v.is_flash_sale) {
+    const d = new Date(v.publish_date || Date.now());
+    const ms = v.duration_unit === "hours" ? v.duration * 60 * 60 * 1000 : v.duration * 60 * 1000;
+    v.expires_at = new Date(d.getTime() + ms).toISOString();
+  } else {
+    v.expires_at = null;
+  }
   if (req.body.used !== undefined) v.used = req.body.used;
   if (req.body.code) {
     const codeNorm = req.body.code.toUpperCase();
@@ -1959,7 +2007,8 @@ function ensureCategories(db) {
 app.get("/api/categories", (req, res) => {
   const db = loadDB();
   const { categories, changed } = ensureCategories(db);
-  if (changed) saveDB(db);
+  if (changed) if (req.body.isFlashSale !== undefined) v.isFlashSale = !!req.body.isFlashSale;
+  saveDB(db);
   res.json([...categories].sort((a, b) => (a.order || 0) - (b.order || 0)));
 });
 app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
@@ -2162,6 +2211,18 @@ app.post("/api/wallet/pay", auth(), async (req, res) => {
 // ============================================================
 // CHAT SYSTEM
 // ============================================================
+function cleanupExpiredChatMessages(db) {
+  if (!db || !Array.isArray(db.messages) || db.messages.length === 0) return false;
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const initial = db.messages.length;
+  db.messages = db.messages.filter((m) => {
+    if (!m || !m.created_at) return false;
+    const t = new Date(m.created_at).getTime();
+    return !isNaN(t) && t >= cutoff;
+  });
+  return db.messages.length !== initial;
+}
+
 function ensureChatSchema(db) {
   if (!db) return false;
   let changed = false;
@@ -2172,6 +2233,7 @@ function ensureChatSchema(db) {
   }
   if (!Array.isArray(db.chat_transfer_requests)) { db.chat_transfer_requests = []; changed = true; }
   if (!db.chat_conversations) { db.chat_conversations = {}; changed = true; }
+  if (cleanupExpiredChatMessages(db)) changed = true;
   return changed;
 }
 function getAdminAssignedUserIds(db) {
@@ -2397,7 +2459,17 @@ app.post("/api/orders/:id/reminder", auth(), async (req, res) => {
 });
 
 app.get("/api/toppings", (req, res) => { const db = loadDB(); const { category } = req.query; let list = db.toppings || []; if (category) list = list.filter(t => t.applies_to?.includes(category)); res.json(list); });
-app.get("/api/sizes", (req, res) => { res.json(loadDB().sizes || [ { id: "S", name: "Nhỏ", extra_price: 0 }, { id: "M", name: "Vừa", extra_price: 5000 }, { id: "L", name: "Lớn", extra_price: 10000 } ]); });
+app.get("/api/sizes", (req, res) => {
+  const db = loadDB();
+  const list = Array.isArray(db.sizes) && db.sizes.length > 0
+    ? db.sizes
+    : [
+        { id: "S", name: "Nhỏ", extra_price: 0 },
+        { id: "M", name: "Vừa", extra_price: 5000 },
+        { id: "L", name: "Lớn", extra_price: 10000 },
+      ];
+  res.json(list);
+});
 
 app.get("/api/stats", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   const db = loadDB(); const today = getLocalDateStr();
