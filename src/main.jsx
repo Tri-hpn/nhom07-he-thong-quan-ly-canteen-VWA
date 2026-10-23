@@ -1,23 +1,16 @@
-// ============================================================
-// MAIN.JSX — Entry point (V6 - FINAL)
-// ============================================================
-// V6 (2026-10):
-//   - 🔧 FIX M6: HMR dispose unmount root — tránh stale component
-//     sau khi sửa code trong dev
-// ============================================================
-
-import React from "react";
-import ReactDOM from "react-dom/client";
+import React, { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-
-import App from "./App";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./components/UI";
 import { AuthProvider } from "./contexts/AuthContext";
-import { initI18n } from "./lib/i18n";
+import App from "./App.jsx";
 
 // ============================================================
-// STYLES — Thứ tự QUAN TRỌNG (không đổi)
+// CSS IMPORTS — THỨ TỰ BẮT BUỘC (cascade)
+// 1. styles.css         → base + reset + layout + toast
+// 2. styles-sky.css     → theme xanh da trời (sidebar, topbar, form)
+// 3. styles-employee.css→ layout KDS / Chat / Menu86 / Dashboard nhân viên
+// 4. styles-admin.css   → layout Owner (menu, employees, print)
+// 5. styles-customer.css→ layout Customer (home, menu, cart, wallet, chat)
 // ============================================================
 import "./styles.css";
 import "./styles-sky.css";
@@ -25,81 +18,53 @@ import "./styles-employee.css";
 import "./styles-admin.css";
 import "./styles-customer.css";
 
-// ============================================================
-// LƯỚI AN TOÀN TOÀN CỤC — bắt lỗi async không qua ErrorBoundary
-// ============================================================
-window.addEventListener("unhandledrejection", (e) => {
-  console.error("[unhandledrejection]", e.reason);
-});
-window.addEventListener("error", (e) => {
-  console.error("[window.error]", e.error || e.message);
-});
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
-// ============================================================
-// ROOT
-// ============================================================
-const rootEl = document.getElementById("root");
-if (!rootEl) {
-  throw new Error("Không tìm thấy #root trong index.html");
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Canteen App Error caught:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "40px", textAlign: "center", fontFamily: "sans-serif" }}>
+          <h2>Đã có lỗi xảy ra trong hệ thống Canteen.</h2>
+          <p>Vui lòng tải lại trang hoặc kiểm tra console.</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ padding: "10px 20px", background: "#ff4d4f", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", marginTop: "15px" }}
+          >
+            Tải lại trang
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
-// ✅ FIX V5: guard gắn vào DOM — không bị reset khi HMR
-if (rootEl.dataset.reactMounted === "1") {
-  console.warn(
-    "[main] #root đã được mount — skip renderApp() để tránh double-render"
-  );
-} else {
-  rootEl.dataset.reactMounted = "1";
+const rootElement = document.getElementById("root");
 
-  const root = ReactDOM.createRoot(rootEl);
+if (rootElement) {
+  const root = createRoot(rootElement);
 
-  function renderApp() {
-    root.render(
-      <React.StrictMode>
-        {/*
-          ✅ FIX CRITICAL: AuthProvider PHẢI bọc NGOÀI BrowserRouter
-        */}
+  root.render(
+    <StrictMode>
+      <ErrorBoundary>
         <AuthProvider>
-          <BrowserRouter
-            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-          >
-            <ThemeProvider>
-              <ErrorBoundary>
-                <App />
-              </ErrorBoundary>
-            </ThemeProvider>
+          <BrowserRouter>
+            <App />
           </BrowserRouter>
         </AuthProvider>
-      </React.StrictMode>
-    );
-  }
-
-  // ============================================================
-  // INIT I18N — không block render, có guard chống double
-  // ============================================================
-  (async () => {
-    try {
-      const result = initI18n();
-      if (result && typeof result.then === "function") {
-        await result;
-      }
-
-    } catch (err) {
-      console.error("[i18n] init failed, rendering anyway:", err);
-    } finally {
-      renderApp();
-    }
-  })();
-
-  // ✅ FIX M6: HMR cleanup — unmount root để lần sau mount lại từ đầu
-  if (import.meta.hot) {
-    import.meta.hot.dispose(() => {
-      try {
-        delete rootEl.dataset.reactMounted;
-        root.unmount();
-      } catch (e) {
-        console.warn("[main] HMR dispose error:", e);
-      }
-    });
-  }
+      </ErrorBoundary>
+    </StrictMode>
+  );
 }

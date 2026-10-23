@@ -1,9 +1,9 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V10 - FINAL)
+// API.JS — HTTP client cho Backend Express (V11 - FINAL)
 // ============================================================
-// V10 (2026-10):
-//   - ✅ FIX: Thêm biến `isAuthExpiredDispatched` để chỉ dispatch
-//     sự kiện "auth-expired" 1 lần duy nhất, tránh redirect loop.
+// V11 (2026-10):
+//   - ✅ Thêm orders.approveGreen / rejectGreen (đồng bộ backend)
+//   - ✅ Giữ nguyên toàn bộ logic V10 (auth-expired chốt 1 lần)
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -11,11 +11,8 @@ const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
-// ============================================================
-// TOKEN — sessionStorage + memoryToken fallback (Safari private mode)
-// ============================================================
 let memoryToken = null;
-let isAuthExpiredDispatched = false; // 🔧 Chốt chặn dispatch 401
+let isAuthExpiredDispatched = false;
 
 let sessionStorageAvailable = (() => {
   try {
@@ -23,9 +20,7 @@ let sessionStorageAvailable = (() => {
     sessionStorage.setItem(k, "1");
     sessionStorage.removeItem(k);
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 })();
 
 export function getToken() {
@@ -33,23 +28,18 @@ export function getToken() {
     try {
       const t = sessionStorage.getItem("token");
       if (t) return t;
-    } catch {
-      sessionStorageAvailable = false;
-    }
+    } catch { sessionStorageAvailable = false; }
   }
   return memoryToken;
 }
 
 export function setToken(t) {
   memoryToken = t || null;
-  if (t) isAuthExpiredDispatched = false; // Reset khi có token mới
+  if (t) isAuthExpiredDispatched = false;
   if (sessionStorageAvailable) {
     try {
-      if (t) {
-        sessionStorage.setItem("token", t);
-      } else {
-        sessionStorage.removeItem("token");
-      }
+      if (t) sessionStorage.setItem("token", t);
+      else sessionStorage.removeItem("token");
     } catch (e) {
       console.warn("[api] sessionStorage không dùng được, chuyển sang memoryToken:", e.message);
       sessionStorageAvailable = false;
@@ -57,22 +47,15 @@ export function setToken(t) {
   }
 }
 
-export function clearToken() {
-  setToken(null);
-}
+export function clearToken() { setToken(null); }
 
-// ============================================================
-// REQUEST WRAPPER
-// ============================================================
 async function req(path, options = {}) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const headers = { ...(options.headers || {}) };
-  if (options.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -80,61 +63,40 @@ async function req(path, options = {}) {
   let res;
   try {
     res = await fetch(BASE + path, {
-      ...options,
-      headers,
-      cache: "no-store",
-      credentials: "same-origin",
-      signal: controller.signal,
+      ...options, headers, cache: "no-store", credentials: "same-origin", signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === "AbortError") {
-      const err = new Error(
-        "Yêu cầu quá thời gian. Vui lòng kiểm tra kết nối và thử lại."
-      );
-      err.status = 0;
-      err.isTimeout = true;
-      throw err;
+      const err = new Error("Yêu cầu quá thời gian. Vui lòng kiểm tra kết nối và thử lại.");
+      err.status = 0; err.isTimeout = true; throw err;
     }
-    const err = new Error(
-      "Không kết nối được máy chủ: " + (e.message || "unknown error")
-    );
-    err.status = 0;
-    err.isNetworkError = true;
-    throw err;
+    const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown error"));
+    err.status = 0; err.isNetworkError = true; throw err;
   } finally {
     clearTimeout(timeoutId);
   }
 
   if (res.status === 401 && token) {
     clearToken();
-    // 🔧 FIX: Chỉ dispatch 1 lần duy nhất
     if (!isAuthExpiredDispatched) {
       isAuthExpiredDispatched = true;
-      try {
-        window.dispatchEvent(new CustomEvent("auth-expired"));
-      } catch {}
+      try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
     }
   }
 
   const contentType = res.headers.get("content-type") || "";
   let data;
   try {
-    if (contentType.includes("application/json")) {
-      data = await res.json();
-    } else {
+    if (contentType.includes("application/json")) data = await res.json();
+    else {
       const text = await res.text();
       data = text ? { message: text.slice(0, 300) } : {};
     }
-  } catch {
-    data = {};
-  }
+  } catch { data = {}; }
 
   if (!res.ok) {
-    const message =
-      data.message ||
-      data.error ||
-      `HTTP ${res.status}${res.statusText ? " " + res.statusText : ""}`;
+    const message = data.message || data.error || `HTTP ${res.status}${res.statusText ? " " + res.statusText : ""}`;
     const err = new Error(message);
     err.status = res.status;
     err.body = data;
@@ -144,20 +106,13 @@ async function req(path, options = {}) {
   return data;
 }
 
-// ============================================================
-// API
-// ============================================================
 export const api = {
   _base: BASE,
 
   health: () => req(""),
 
-  // AUTH
   login: (email, password) =>
-    req("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+    req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   register: (data) =>
     req("/auth/register", { method: "POST", body: JSON.stringify(data) }),
   me: () => req("/auth/me"),
@@ -208,8 +163,7 @@ export const api = {
     create:   (data)       => req("/orders",               { method: "POST",  body: JSON.stringify(data) }),
     myOrders: ()           => req("/orders/me"),
     all: (status = "Tất cả") => {
-      const qs = status && status !== "Tất cả"
-        ? `?status=${encodeURIComponent(status)}` : "";
+      const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : "";
       return req("/orders" + qs);
     },
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
@@ -221,6 +175,10 @@ export const api = {
 
     remind: (id, data) => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
+
+    // 🔧 MỚI: duyệt Sống Xanh theo đơn
+    approveGreen: (id) => req(`/orders/${id}/green/approve`, { method: "POST" }),
+    rejectGreen:  (id, reason) => req(`/orders/${id}/green/reject`, { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   },
 
   users: {
@@ -232,34 +190,21 @@ export const api = {
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
 
     setPoints: (id, data) =>
-      req(`/users/${id}/points`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-      }),
+      req(`/users/${id}/points`, { method: "PUT", body: JSON.stringify(data) }),
 
     schoolInfo: (id, data) =>
-      req(`/users/${id}/school-info`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-      }),
+      req(`/users/${id}/school-info`, { method: "PUT", body: JSON.stringify(data) }),
 
     unlinkMssv: (id) =>
       req(`/users/${id}/unlink-mssv`, { method: "DELETE" }),
   },
 
   school: {
-    parseStudent: (code) =>
-      req(`/school/parse-student/${encodeURIComponent(code)}`),
-    parseTeacher: (code) =>
-      req(`/school/parse-teacher/${encodeURIComponent(code)}`),
+    parseStudent: (code) => req(`/school/parse-student/${encodeURIComponent(code)}`),
+    parseTeacher: (code) => req(`/school/parse-teacher/${encodeURIComponent(code)}`),
     majorsMap: () => req("/school/majors-map"),
-    updateMajorsMap: (map) =>
-      req("/school/majors-map", {
-        method: "PUT",
-        body: JSON.stringify({ map }),
-      }),
-    resetMajorsMap: () =>
-      req("/school/majors-map/reset", { method: "POST" }),
+    updateMajorsMap: (map) => req("/school/majors-map", { method: "PUT", body: JSON.stringify({ map }) }),
+    resetMajorsMap: () => req("/school/majors-map/reset", { method: "POST" }),
   },
 
   inventory: {
@@ -329,15 +274,9 @@ export const api = {
 
   ecoRewards: {
     me: () => req("/eco-rewards/me"),
-    create: (data) => req("/eco-rewards", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+    create: (data) => req("/eco-rewards", { method: "POST", body: JSON.stringify(data) }),
     pending: () => req("/eco-rewards/pending"),
-    decide: (id, status) => req(`/eco-rewards/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status }),
-    }),
+    decide: (id, status) => req(`/eco-rewards/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   },
   reviews: {
     me:        ()           => req("/reviews/me"),

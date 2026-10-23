@@ -1347,7 +1347,6 @@ export default function OwnerVouchers() {
           to   { transform: rotate(360deg); }
         }
       `}</style>
-      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1399,7 +1398,6 @@ function Stat({ label, value, color, icon }) {
         </span>
       </div>
       <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
-      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1465,7 +1463,6 @@ function Modal({ children, onClose, maxWidth = 500, zIndex = MODAL_Z }) {
       >
         {children}
       </div>
-      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1512,7 +1509,6 @@ function ErrorBox({ message, onRetry, t }) {
           {t("Thử lại")}
         </button>
       )}
-      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1744,7 +1740,6 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
           <ConfigHistoryTable t={t} key={historyRefreshKey} />
         </Modal>
       )}
-      {showRulesModal && <RulesModal isAdmin={true} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
