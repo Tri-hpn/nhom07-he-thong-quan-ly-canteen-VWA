@@ -1,11 +1,20 @@
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-// 🔧 Đã sửa: thêm 's' vào 'contexts' cho khớp với thư mục thực tế
-import { AuthProvider } from "./contexts/AuthContext"; 
+import { AuthProvider } from "./contexts/AuthContext";
 import App from "./App.jsx";
 
+// ============================================================
+// CSS IMPORTS — THỨ TỰ BẮT BUỘC (cascade)
+// 1. styles.css         → base + reset + layout + toast
+// 2. styles-sky.css     → theme xanh da trời (sidebar, topbar, form)
+// 3. styles-employee.css→ layout KDS / Chat / Menu86 / Dashboard nhân viên
+// 4. styles-admin.css   → layout Owner (menu, employees, print)
+// 5. styles-customer.css→ layout Customer (home, menu, cart, wallet, chat)
+// ============================================================
 import "./styles.css";
+import "./styles-sky.css";
+import "./styles-employee.css";
 import "./styles-admin.css";
 import "./styles-customer.css";
 
@@ -14,12 +23,15 @@ class ErrorBoundary extends React.Component {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error) { 
-    return { hasError: true, error }; 
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
   }
+
   componentDidCatch(error, errorInfo) {
     console.error("Canteen App Error caught:", error, errorInfo);
   }
+
   render() {
     if (this.state.hasError) {
       return (
