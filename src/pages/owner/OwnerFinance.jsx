@@ -163,7 +163,6 @@ export default function OwnerFinance() {
       <div
         style={{
           marginBottom: 20,
-          marginBottom: 20,
         }}
       >
         {/* TAB BUTTONS */}
