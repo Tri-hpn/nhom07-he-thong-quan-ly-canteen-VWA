@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Hệ thống quản lĂ½ Canteen VWA",
+  "description": "Hệ thống quản lý Canteen VWA",
   "scripts": {
     "predev": "node scripts/free-dev-ports.mjs 5173",
     "dev": "vite",

@@ -1002,7 +1002,7 @@ export default function OwnerCustomers() {
                 <SkeletonTable
                   columns={9}
                   rows={5}
-                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("ĐiỒm"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
+                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Điểm"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
                 />
               )}
 
@@ -1040,14 +1040,14 @@ export default function OwnerCustomers() {
 
               {!loading && !error && (
                 <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <table className="customer-table" style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
                         <th style={thStyle}>{t("ID")}</th>
                         <th style={thStyle}>{t("Khách hàng")}</th>
                         <th style={thStyle}>{t("Liên hệ")}</th>
                         <th style={thStyle}>{t("MSSV · Ngành")}</th>
-                        <th style={thStyle}>{t("ĐiỒm")}</th>
+                        <th style={thStyle}>{t("Điểm")}</th>
                         <th style={thStyle}>{t("Hạng")}</th>
                         <th style={thStyle}>{t("Loại")}</th>
                         <th style={thStyle}>{t("Trạng thái")}</th>
@@ -1299,7 +1299,7 @@ export default function OwnerCustomers() {
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <table className="customer-table" style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
                         <th style={thStyle}>{t("Mã ngành")}</th>
@@ -1867,8 +1867,8 @@ function Modal({ children, onClose, maxWidth = 480 }) {
 // ============================================================
 // STYLE CONSTANTS
 // ============================================================
-const thStyle = { padding: 11, textAlign: "left", fontSize: 12, color: "var(--text-muted, #64748b)", fontWeight: 600 };
-const tdStyle = { padding: 11, color: "var(--text-primary, #172033)", fontSize: 13 };
+const thStyle = { padding: 11, textAlign: "left", fontSize: 12, color: "var(--text-muted, #64748b)", fontWeight: 600 , whiteSpace: "nowrap", minWidth: "100px" };
+const tdStyle = { padding: 11, color: "var(--text-primary, #172033)", fontSize: 13 , whiteSpace: "nowrap" };
 const modalCloseStyle = { background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 4, display: "grid", placeItems: "center" };
 const modalInputStyle = { width: "100%", padding: 10, border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, marginBottom: 14, outline: "none", background: "var(--bg-secondary, #fff)", color: "var(--text-primary, #172033)", fontSize: 13, boxSizing: "border-box" };
 const modalLabelStyle = { display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "var(--text-muted, #475569)" };

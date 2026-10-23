@@ -9,9 +9,7 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings,
-} from "lucide-react";
+import {Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings, History, Zap} from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
@@ -91,7 +89,7 @@ export default function OwnerVouchers() {
   const SOURCE_FILTERS = useMemo(
     () => [
       { id: "all",      label: t("Tất cả") },
-      { id: "public",   label: `𾼐 ${t("Public")}` },
+      { id: "public",   label: "🌐 Toàn hệ thống" },
       { id: "personal", label: `👤 ${t("Cá nhân")}` },
     ],
     [t]
@@ -126,6 +124,12 @@ export default function OwnerVouchers() {
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formValue, setFormValue] = useState("");
+  const [formIsFlashSale, setFormIsFlashSale] = useState(false);
+  const [publishDate, setPublishDate] = useState(new Date().toISOString().slice(0, 10));
+  const [expiryDate, setExpiryDate] = useState("");
+  const [isFlashSale, setIsFlashSale] = useState(false);
+  const [duration, setDuration] = useState(30);
+  const [durationUnit, setDurationUnit] = useState("minutes");
   const [selectedUserId, setSelectedUserId] = useState(""); // ✅ V5: Controlled select
 
   // ✅ V3: Khởi tạo filter từ localStorage
@@ -134,6 +138,7 @@ export default function OwnerVouchers() {
 
   const [selected, setSelected] = useState([]);
   const [copiedId, setCopiedId] = useState(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // ---------- Claims modal ----------
   const [claimsModal, setClaimsModal] = useState(null);
@@ -143,6 +148,7 @@ export default function OwnerVouchers() {
   // ---------- Points config ----------
   const [pointsConfig, setPointsConfig] = useState(null);
   const [configModal, setConfigModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("vouchers"); // "vouchers" | "rules"
   const [savingConfig, setSavingConfig] = useState(false);
   // ---------- Confirm dialog ----------
   const [confirm, setConfirm] = useState(null);
@@ -209,6 +215,10 @@ export default function OwnerVouchers() {
   useEffect(() => {
     if (modal) {
       setFormValue(modal.value != null ? Number(modal.value) : "");
+      setFormIsFlashSale(!!modal.isFlashSale);
+      setFormIsFlashSale(modal.is_flash_sale || false);
+      setPublishDate(modal.publish_date ? modal.publish_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
+      setExpiryDate(modal.expires_at ? modal.expires_at.slice(0, 10) : "");
       setSelectedUserId(modal.user_id ? String(modal.user_id) : ""); // ✅ V5
     }
   }, [modal]);
@@ -243,28 +253,44 @@ export default function OwnerVouchers() {
   const filtered = useMemo(() => {
     let result = [...list];
 
-    // Search
+    // Search Nâng cao: Bắt mọi trường (Mã, Tên, Tiền, Nguồn, Trạng thái, Ngày)
     if (q.trim()) {
       const s = q.toLowerCase().trim();
-      result = result.filter(
-        (v) =>
-          v.code?.toLowerCase().includes(s) ||
-          String(v.user_id || "").includes(s) ||
-          String(v.value).includes(s)
-      );
+      const sNoDot = s.replace(/\./g, ""); // Bỏ dấu chấm để tìm "50.000" hoặc "50000"
+
+      result = result.filter((v) => {
+        const cust = (customers || []).find(c => String(c.id) === String(v.user_id));
+        const cName = cust ? (cust.name || "").toLowerCase() : "";
+        
+        const codeStr = (v.code || "").toLowerCase();
+        const valueStr = String(v.value || "");
+        const valueFormatted = Number(v.value || 0).toLocaleString("vi-VN").toLowerCase(); // VD: 50.000
+        
+        const statusStr = v.used ? "đã dùng used" : "chưa dùng unused";
+        const sourceStr = !v.user_id ? "hệ thống toàn hệ thống public" : "cá nhân personal";
+        const dateStr = v.created_at ? new Date(v.created_at).toLocaleDateString("vi-VN") : "";
+
+        // Kiểm tra tất cả các trường
+        return codeStr.includes(s) ||
+               cName.includes(s) ||
+               valueStr.includes(s) || valueStr.includes(sNoDot) ||
+               valueFormatted.includes(s) || valueFormatted.includes(sNoDot) ||
+               statusStr.includes(s) ||
+               sourceStr.includes(s) ||
+               dateStr.includes(s);
+      });
     }
 
     // Status filter
     if (filterStatus === "used") result = result.filter((v) => v.used);
     if (filterStatus === "unused") result = result.filter((v) => !v.used);
 
-    // Source filter
-    if (filterSource === "public") {
-      result = result.filter((v) => !v.user_id && !v.claimed_from);
-    }
-    if (filterSource === "personal") {
-      result = result.filter((v) => v.user_id);
-    }
+            // Source filter
+        if (filterSource === "all" || filterSource === "public") {
+          result = result.filter((v) => !v.user_id && !v.claimed_from);
+        } else if (filterSource === "personal") {
+          result = result.filter((v) => v.user_id);
+        }
 
     // Sort
     switch (sortBy) {
@@ -283,7 +309,26 @@ export default function OwnerVouchers() {
     }
 
     return result;
-  }, [list, q, filterStatus, filterSource, sortBy]);
+  }, [list, q, filterStatus, filterSource, sortBy, customers]);
+
+  const suggestions = useMemo(() => {
+    if (!q.trim() || !showSuggestions) return [];
+    return filtered.slice(0, 8);
+  }, [q, filtered, showSuggestions]);
+
+  const highlightMatch = (text, query) => {
+    if (!query || !text) return text;
+    const str = String(text);
+    const idx = str.toLowerCase().indexOf(query.toLowerCase());
+    if (idx < 0) return str;
+    return (
+      <>
+        {str.slice(0, idx)}
+        <b style={{ color: "#2634d5" }}>{str.slice(idx, idx + query.length)}</b>
+        {str.slice(idx + query.length)}
+      </>
+    );
+  };
 
   const stats = useMemo(() => {
     const publicTemplates = list.filter(
@@ -419,7 +464,7 @@ export default function OwnerVouchers() {
 
     setSaving(true);
     try {
-      const data = { code, value, user_id: userId };
+      const data = { code, value, user_id: userId, points_used: Number(f.get("points_used")) || 0, isFlashSale: !!formIsFlashSale };
       if (modal?.id) {
         await api.vouchers.update(modal.id, data);
         toast(t("Đã cập nhật voucher"), "success");
@@ -587,27 +632,20 @@ export default function OwnerVouchers() {
 
   return (
     <div>
-      {/* ============================================================
-          STATS
-          ============================================================ */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        <Stat label={t("Tổng voucher")} value={stats.total} color="#2634d5" icon={<Ticket size={16} />} />
-        <Stat label={t("Toàn hệ thống")} value={stats.public} color="#ec4899" icon={<Globe size={16} />} />
-        <Stat label={t("Cá nhân")} value={stats.personal} color="#8b5cf6" icon={<UserIcon size={16} />} />
-        <Stat label={t("Khả dụng (cá nhân)")} value={stats.personalAvailable} color="#18a967" icon={<Gift size={16} />} />
-        <Stat label={t("Đã dùng")} value={stats.used} color="#ef4444" icon={<Check size={16} />} />
-        <Stat label={t("Lượt nhận")} value={stats.totalClaims} color="#f59e0b" icon={<Users size={16} />} />
+      {/* THANH TAB */}
+      <div style={{ display: "inline-flex", background: "var(--bg-tertiary, #f5f7fb)", padding: 4, borderRadius: 12, gap: 4, marginBottom: 20 }}>
+        <button onClick={() => setActiveTab("vouchers")} style={{ padding: "10px 20px", background: activeTab === "vouchers" ? "#2634d5" : "transparent", color: activeTab === "vouchers" ? "#fff" : "var(--text-muted, #475569)", border: 0, borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Ticket size={16} /> {t("Quản lý Voucher")}
+        </button>
+        <button onClick={() => setActiveTab("rules")} style={{ padding: "10px 20px", background: activeTab === "rules" ? "#2634d5" : "transparent", color: activeTab === "rules" ? "#fff" : "var(--text-muted, #475569)", border: 0, borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Settings size={16} /> {t("Quy tắc Xu")}
+        </button>
       </div>
 
+      {activeTab === "vouchers" && (
+      <>
       {/* ============================================================
-          TOOLBAR + FILTERS
+            TOOLBAR + FILTERS
           ============================================================ */}
       <div style={cardStyle}>
         <div
@@ -630,13 +668,16 @@ export default function OwnerVouchers() {
               padding: "8px 12px",
               flex: 1,
               minWidth: 200,
+              position: "relative",
             }}
           >
             <Search size={16} style={{ color: "var(--text-light, #8993a3)" }} />
             <input
               value={q}
-              onChange={(e) => setFilterField("q", e.target.value)}
-              placeholder={t("Tìm mã, giá trị, khách...")}
+              onChange={(e) => { setFilters((prev) => ({ ...prev, q: e.target.value, source: "all", status: "all" })); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              placeholder={t("Tìm mã, tên KH, số tiền, trạng thái...")}
               style={{
                 flex: 1,
                 border: 0,
@@ -655,6 +696,50 @@ export default function OwnerVouchers() {
               >
                 <X size={14} />
               </button>
+            )}
+
+            {showSuggestions && suggestions.length > 0 && (
+              <div style={{
+                position: "absolute",
+                top: "calc(100% + 4px)",
+                left: 0, right: 0,
+                background: "var(--card-bg, #fff)",
+                border: "1px solid var(--border-color, #e5e9ef)",
+                borderRadius: 10,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                maxHeight: 320,
+                overflowY: "auto",
+                zIndex: 100,
+              }}>
+                {suggestions.map((v) => {
+                  const cust = (customers || []).find(c => String(c.id) === String(v.user_id));
+                  return (
+                    <div
+                      key={v.id}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { setFilterField("q", v.code); setShowSuggestions(false); }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "rgba(14,165,233,0.06)"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                      style={{
+                        padding: "10px 14px",
+                        cursor: "pointer",
+                        borderBottom: "1px solid var(--border-color, #f1f5f9)",
+                        fontSize: 13,
+                        transition: "background 0.15s",
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{highlightMatch(v.code, q)}</div>
+                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        <span>{cust ? `👤 ${highlightMatch(cust.name, q)}` : `🌐 ${highlightMatch("Hệ thống", q)}`}</span>
+                        <span>·</span>
+                        <span>{highlightMatch(money(v.value), q)}</span>
+                        <span>·</span>
+                        <span>{highlightMatch(v.used ? "Đã dùng" : "Chưa dùng", q)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
 
@@ -685,54 +770,16 @@ export default function OwnerVouchers() {
           </select>
 
           {/* Sort */}
-          <select
-            value={sortBy}
-            onChange={(e) => setFilterField("sortBy", e.target.value)}
-            style={selectStyle}
-          >
-            {SORT_OPTIONS.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
-              </option>
-            ))}
-          </select>
+          
 
           {/* Clear filters */}
-          {hasActiveFilter && (
-            <button
-              onClick={clearFilters}
-              style={{
-                padding: "9px 14px",
-                background: "transparent",
-                color: "#ef4444",
-                border: "1px solid #ef4444",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <X size={13} /> {t("Xoá lọc")}
-            </button>
-          )}
+
 
           {/* Points config */}
-          <button
-            onClick={() => setConfigModal(true)}
-            style={toolBtnStyle}
-            disabled={loading || !pointsConfig}
-            title={t("Sửa quy tắc tích điểm và đổi điểm")}
-          >
-            <Settings size={14} /> {t("Quy tắc điểm")}
-          </button>
+          
 
           {/* Export */}
-          <button onClick={exportCSV} style={toolBtnStyle} disabled={loading}>
-            <Download size={14} /> {t("Xuất CSV")}
-          </button>
+          
 
           {/* Create */}
           <button
@@ -838,21 +885,16 @@ export default function OwnerVouchers() {
               <thead>
                 <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
                   <th style={{ ...thStyle, width: 40 }}>
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleSelectAll}
-                      style={{ cursor: "pointer" }}
-                      aria-label={t("Chọn tất cả")}
-                    />
+                    <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: "pointer" }} aria-label="Chọn tất cả" />
                   </th>
-                  <th style={thStyle}>{t("Mã")}</th>
-                  <th style={thStyle}>{t("Giá trị")}</th>
-                  <th style={thStyle}>{t("Nguồn")}</th>
-                  <th style={thStyle}>{t("Khách / Lượt nhận")}</th>
-                  <th style={thStyle}>{t("Trạng thái")}</th>
-                  <th style={thStyle}>{t("Ngày")}</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>{t("Thao tác")}</th>
+                  <th style={thStyle}>Mã</th>
+                  <th style={thStyle}>Giá trị</th>
+                  <th style={thStyle}>Nguồn</th>
+                  <th style={thStyle}>Deal Sốc</th>
+                  <th style={thStyle}>Lượt nhận</th>
+                  <th style={thStyle}>Trạng thái</th>
+                  <th style={thStyle}>Ngày</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -860,211 +902,104 @@ export default function OwnerVouchers() {
                   const cust = customerMap.get(String(v.user_id));
                   const src = getSource(v);
                   const isTemplate = !v.user_id && !v.claimed_from;
-                  const claimCount = isTemplate
-                    ? claimsCountMap.get(v.id) || 0
-                    : 0;
+                  const claimCount = isTemplate ? (claimsCountMap.get(v.id) || 0) : 0;
                   const isSelected = selected.includes(v.id);
                   const isCopied = copiedId === v.id;
 
                   return (
                     <tr
                       key={v.id}
+                      onClick={() => openClaims(v)}
                       style={{
+                        cursor: "pointer",
                         borderBottom: "1px solid var(--border-color, #eef2f7)",
-                        background: isSelected
+                        background: v.isFlashSale
+                          ? "rgba(245, 158, 11, 0.10)"
+                          : isSelected
                           ? "rgba(38, 52, 213, 0.04)"
                           : "transparent",
+                        borderLeft: v.isFlashSale ? "3px solid #f59e0b" : "3px solid transparent",
+                        transition: "background 0.2s ease",
                       }}
                     >
-                      <td style={tdStyle}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelect(v.id)}
-                          style={{ cursor: "pointer" }}
-                          aria-label={`${t("Chọn")} ${v.code}`}
-                        />
+                      {/* 1. Checkbox */}
+                      <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(v.id)} style={{ cursor: "pointer" }} aria-label={`Chọn ${v.code}`} />
                       </td>
-
-                      {/* Code + copy */}
+                      {/* 2. Mã */}
                       <td style={tdStyle}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
-                          <b
-                            style={{
-                              color: "#2634d5",
-                              fontFamily: "monospace",
-                              fontSize: 12,
-                            }}
-                          >
-                            {v.code}
-                          </b>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <b style={{ color: "#2634d5", fontFamily: "monospace", fontSize: 12 }}>{v.code}</b>
                           <button
-                            onClick={() => copyCode(v)}
-                            title={t("Sao chép mã")}
-                            aria-label={t("Sao chép mã")}
-                            style={{
-                              background: "transparent",
-                              border: 0,
-                              cursor: "pointer",
-                              color: isCopied
-                                ? "#18a967"
-                                : "var(--text-light, #94a3b8)",
-                              padding: 2,
-                              display: "grid",
-                              placeItems: "center",
-                            }}
+                            onClick={(e) => { e.stopPropagation(); copyCode(v); }}
+                            title="Sao chép mã"
+                            style={{ background: "transparent", border: 0, cursor: "pointer", color: isCopied ? "#18a967" : "var(--text-light, #94a3b8)", padding: 2, display: "grid", placeItems: "center" }}
                           >
                             {isCopied ? <Check size={12} /> : <Copy size={12} />}
                           </button>
                         </div>
                       </td>
-
-                      {/* Value */}
+                      {/* 3. Giá trị */}
                       <td style={tdStyle}>
                         <b style={{ color: "#18a967" }}>{money(v.value)}</b>
                       </td>
-
-                      {/* Source */}
+                      {/* 4. Nguồn */}
                       <td style={tdStyle}>
-                        <span
-                          style={{
-                            padding: "3px 9px",
-                            borderRadius: 12,
-                            fontSize: 10.5,
-                            fontWeight: 700,
-                            background: src.bg,
-                            color: src.color,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 3,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isTemplate ? (
-                            <Globe size={10} />
-                          ) : (
-                            <UserIcon size={10} />
-                          )}
+                        <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: src.bg, color: src.color, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
+                          {isTemplate ? <Globe size={10} /> : <UserIcon size={10} />}
                           {src.label}
                         </span>
                       </td>
-
-                      {/* Customer / claims */}
-                      <td style={{ ...tdStyle, fontSize: 12 }}>
-                        {isTemplate ? (
-                          <button
-                            onClick={() => openClaims(v)}
-                            style={{
-                              background: "transparent",
-                              border: 0,
-                              cursor: "pointer",
-                              color:
-                                claimCount > 0
-                                  ? "#2634d5"
-                                  : "var(--text-light, #94a3b8)",
-                              fontWeight: claimCount > 0 ? 700 : 400,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              fontSize: 12,
-                              padding: 0,
-                            }}
-                          >
-                            <Users size={12} />
-                            {claimCount > 0
-                              ? `${claimCount} ${t("khách đã nhận")}`
-                              : t("Chưa ai nhận")}
-                          </button>
-                        ) : cust ? (
-                          cust.name
-                        ) : v.user_id ? (
-                          <span style={{ color: "var(--text-muted, #64748b)" }}>
-                            User #{v.user_id}
-                          </span>
-                        ) : (
-                          <span style={{ color: "var(--text-light, #94a3b8)" }}>
-                            —
-                          </span>
+                      {/* 5. Deal Sốc — huy hiệu vuông bo góc màu cam */}
+                      <td style={{ ...tdStyle, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                        {v.isFlashSale && (
+                          <div style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 6,
+                            background: "#f59e0b",
+                            color: "#fff",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            boxShadow: "0 2px 5px rgba(245, 158, 11, 0.35)"
+                          }}>
+                            <Check size={16} strokeWidth={3} />
+                          </div>
                         )}
                       </td>
-
-                      {/* Status */}
-                      <td style={tdStyle}>
-                        <span
-                          style={{
-                            padding: "3px 9px",
-                            borderRadius: 12,
-                            fontSize: 10.5,
-                            fontWeight: 700,
-                            background: v.used ? "#fee2e2" : "#e8f9f1",
-                            color: v.used ? "#ef4444" : "#18a967",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {v.used ? t("Đã dùng") : t("Chưa dùng")}
+                      {/* 6. Lượt nhận */}
+                      <td style={{ ...tdStyle, fontSize: 12 }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: claimCount > 0 || v.user_id ? "#2634d5" : "var(--text-light, #94a3b8)", fontWeight: claimCount > 0 || v.user_id ? 700 : 400 }}>
+                          <Users size={12} />
+                          {v.user_id ? "1 khách đã nhận" : claimCount > 0 ? `${claimCount} khách đã nhận` : "Chưa ai nhận"}
                         </span>
                       </td>
-
-                      {/* Date */}
-                      <td
-                        style={{
-                          ...tdStyle,
-                          fontSize: 11,
-                          color: "var(--text-muted, #64748b)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {v.created_at
-                          ? new Date(v.created_at).toLocaleDateString("vi-VN")
-                          : "—"}
+                      {/* 7. Trạng thái */}
+                      <td style={tdStyle}>
+                        <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: v.used ? "#fee2e2" : "#e8f9f1", color: v.used ? "#ef4444" : "#18a967", whiteSpace: "nowrap" }}>
+                          {v.used ? "Đã dùng" : "Chưa dùng"}
+                        </span>
                       </td>
-
-                      {/* Actions */}
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 4,
-                            justifyContent: "flex-end",
-                          }}
-                        >
+                      {/* 8. Ngày */}
+                      <td style={{ ...tdStyle, fontSize: 11, color: "var(--text-muted, #64748b)", whiteSpace: "nowrap" }}>
+                        {v.created_at ? new Date(v.created_at).toLocaleDateString("vi-VN") : "—"}
+                      </td>
+                      {/* 9. Thao tác */}
+                      <td style={{ ...tdStyle, textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
                           {isTemplate && (
-                            <IconButton
-                              onClick={() => openClaims(v)}
-                              title={t("Xem lượt nhận")}
-                              color="#8b5cf6"
-                            >
+                            <IconButton onClick={() => openClaims(v)} title="Xem lượt nhận" color="#8b5cf6">
                               <Eye size={14} />
                             </IconButton>
                           )}
-                          <IconButton
-                            onClick={() => toggleUsed(v)}
-                            title={
-                              v.used
-                                ? t("Đánh dấu chưa dùng")
-                                : t("Đánh dấu đã dùng")
-                            }
-                            color={v.used ? "#18a967" : "#f59e0b"}
-                          >
+                          <IconButton onClick={() => toggleUsed(v)} title={v.used ? "Đánh dấu chưa dùng" : "Đánh dấu đã dùng"} color={v.used ? "#18a967" : "#f59e0b"}>
                             <Power size={14} />
                           </IconButton>
-                          <IconButton
-                            onClick={() => setModal(v)}
-                            title={t("Sửa")}
-                          >
+                          <IconButton onClick={() => setModal(v)} title="Sửa">
                             <Edit size={14} />
                           </IconButton>
-                          <IconButton
-                            onClick={() => removeVoucher(v)}
-                            title={t("Xóa")}
-                            color="#ef4444"
-                          >
+                          <IconButton onClick={() => removeVoucher(v)} title="Xóa" color="#ef4444">
                             <Trash2 size={14} />
                           </IconButton>
                         </div>
@@ -1117,45 +1052,6 @@ export default function OwnerVouchers() {
             />
 
             <label style={labelStyle}>{t("Giá trị (VNĐ)")} *</label>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: 6,
-                marginBottom: 8,
-              }}
-            >
-              {QUICK_VALUES.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setFormValue(v)}
-                  disabled={saving}
-                  style={{
-                    padding: "6px 4px",
-                    background:
-                      formValue === v
-                        ? "#2634d5"
-                        : "var(--bg-tertiary, #f5f7fb)",
-                    color:
-                      formValue === v
-                        ? "#fff"
-                        : "var(--text-primary, #172033)",
-                    border: `1px solid ${
-                      formValue === v
-                        ? "#2634d5"
-                        : "var(--border-color, #e5e9ef)"
-                    }`,
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: saving ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {v / 1000}K
-                </button>
-              ))}
-            </div>
             <input
               name="value"
               type="number"
@@ -1168,6 +1064,46 @@ export default function OwnerVouchers() {
               disabled={saving}
               style={inputStyle}
             />
+
+            <label style={labelStyle}>{t("Ngày tung")} *</label>
+            <input
+              type="date"
+              value={publishDate}
+              onChange={(e) => setPublishDate(e.target.value)}
+              required
+              disabled={saving}
+              style={inputStyle}
+            />
+
+            <label style={labelStyle}>{t("Ngày hết hạn")}</label>
+            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} disabled={saving} style={inputStyle} />
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 20, marginTop: 8 }}>
+              (Để trống nếu voucher không có ngày hết hạn)
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", boxSizing: "border-box", marginTop: 16, marginBottom: 12, padding: "12px 16px", background: "rgba(245, 158, 11, 0.05)", borderRadius: 10, border: formIsFlashSale ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid var(--border-color, #e5e9ef)" }}>
+              <div style={{ margin: 0, fontWeight: 700, color: formIsFlashSale ? "#f59e0b" : "var(--text-primary)", display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                <Zap size={18} /> Kích hoạt Deal Sốc (Flash Sale)
+              </div>
+              <input type="checkbox" checked={formIsFlashSale} onChange={(e) => setFormIsFlashSale(e.target.checked)} disabled={saving} style={{ width: 28, height: 28, accentColor: "#f59e0b", cursor: saving ? "not-allowed" : "pointer", margin: 0, flexShrink: 0 }} />
+            </div>
+
+            {formIsFlashSale && (
+              <div style={{ marginBottom: 20, padding: 16, background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, width: "100%", flexWrap: "nowrap" }}>
+                  <div style={{ margin: 0, fontWeight: 600, color: "var(--text-muted, #475569)", whiteSpace: "nowrap", flexShrink: 0 }}>{t("Thời gian hiệu lực")} *</div>
+                  <input type="number" min="1" value={duration} onChange={(e) => setDuration(e.target.value)} required style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, textAlign: "center", fontWeight: 700 }} disabled={saving} />
+                  <select value={durationUnit} onChange={(e) => setDurationUnit(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, fontWeight: 600 }} disabled={saving}>
+                    <option value="minutes">Phút</option>
+                    <option value="hours">Giờ</option>
+                  </select>
+                </div>
+                <div style={{ fontSize: 13, color: "#d97706", display: "flex", gap: 6, alignItems: "flex-start", fontWeight: 600 }}>
+                  <AlertCircle size={16} style={{ marginTop: 2, flexShrink: 0 }} />
+                  <span>Voucher sẽ hết hạn sau <b>{duration || 30} {durationUnit === "hours" ? "giờ" : "phút"}</b> kể từ ngày tung.</span>
+                </div>
+              </div>
+            )}
 
             {/* Info box: public voucher */}
             <div
@@ -1189,23 +1125,7 @@ export default function OwnerVouchers() {
               {t('Để trống "Khách hàng" → voucher sẽ hiện ở trang "Ưu đãi" cho mọi khách nhận')}
             </div>
 
-            <label style={labelStyle}>
-              {t("Khách hàng (để trống = toàn hệ thống)")}
-            </label>
-            <select
-              name="user_id"
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              disabled={saving}
-              style={inputStyle}
-            >
-              <option value="">{t("— Toàn hệ thống —")}</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.email})
-                </option>
-              ))}
-            </select>
+            
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button
@@ -1380,16 +1300,18 @@ export default function OwnerVouchers() {
       {/* ============================================================
           POINTS CONFIG MODAL
           ============================================================ */}
-      {configModal && pointsConfig && (
-        <PointsConfigModal
+      </>
+      )}
+
+      {activeTab === "rules" && pointsConfig && (
+        <PointsConfigTab
           initial={pointsConfig}
           saving={savingConfig}
-          onClose={() => !savingConfig && setConfigModal(false)}
+          
           onSave={async (next) => {
             setSavingConfig(true);
             try {
               const res = await api.points.updateConfig(next);
-              toast(t("Đã lưu quy tắc điểm"), "success");
               setPointsConfig(res.config || next);
               setConfigModal(false);
             } catch (e) {
@@ -1592,274 +1514,283 @@ function ErrorBox({ message, onRetry, t }) {
 // ============================================================
 // POINTS CONFIG MODAL — Sửa quy tắc tích/đổi điểm
 // ============================================================
-function PointsConfigModal({ initial, saving, onClose, onSave, t }) {
-  const [earn, setEarn] = useState(() => ({ ...initial.earn }));
-  const [redeem, setRedeem] = useState(() => ({
-    ...initial.redeem,
-    tiers: [...(initial.redeem.tiers || [])],
-  }));
-
-  const setEarnField = (k, v) => setEarn((p) => ({ ...p, [k]: v }));
-  const setRedeemField = (k, v) => setRedeem((p) => ({ ...p, [k]: v }));
-
-  const setTier = (idx, k, v) =>
-    setRedeem((p) => {
-      const tiers = [...p.tiers];
-      tiers[idx] = { ...tiers[idx], [k]: v };
-      return { ...p, tiers };
-    });
-
-  const addTier = () =>
-    setRedeem((p) => ({
-      ...p,
-      tiers: [...p.tiers, { points: 100, value: 10000 }],
-    }));
-
-  const removeTier = (idx) =>
-    setRedeem((p) => ({
-      ...p,
-      tiers: p.tiers.filter((_, i) => i !== idx),
-    }));
+function PointsConfigTab({ initial, saving, onSave, t }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [historyModal, setHistoryModal] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  
+  // Lấy dữ liệu ban đầu từ config
+  const [ratePoints, setRatePoints] = useState(initial.earn.rate_points || 200);
+  const [greenEnabled, setGreenEnabled] = useState(initial.earn.green_enabled !== false);
+  const [greenPoints, setGreenPoints] = useState(initial.earn.green_points || 300);
+  const [greenApproval, setGreenApproval] = useState(initial.earn.green_require_approval !== false);
+  const [reviewEnabled, setReviewEnabled] = useState(initial.earn.review_enabled !== false);
+  const [reviewPoints, setReviewPoints] = useState(initial.earn.review_points || 500);
+  
+  // Mảng các chương trình tùy chỉnh thêm mới
+  const [customPrograms, setCustomPrograms] = useState(initial.earn.custom_programs || []);
 
   const submit = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (saving) return;
+    
+    const changes = [];
+    const old = initial.earn;
+    const num = (v) => Number(v) || 0;
+    
+    if (num(old.rate_points) !== num(ratePoints)) changes.push(`Hoàn thành đơn hàng: ${num(old.rate_points)} → ${num(ratePoints)} Xu`);
+    if (!!old.green_enabled !== greenEnabled) changes.push(`Sống Xanh: ${greenEnabled ? "BẬT" : "TẮT"}`);
+    else if (greenEnabled && num(old.green_points) !== num(greenPoints)) changes.push(`Sống Xanh: ${num(old.green_points)} → ${num(greenPoints)} Xu`);
+    if (!!old.green_require_approval !== greenApproval) changes.push(`Duyệt Sống Xanh: ${greenApproval ? "BẬT" : "TẮT"}`);
+    if (!!old.review_enabled !== reviewEnabled) changes.push(`Đánh giá: ${reviewEnabled ? "BẬT" : "TẮT"}`);
+    else if (reviewEnabled && num(old.review_points) !== num(reviewPoints)) changes.push(`Đánh giá: ${num(old.review_points)} → ${num(reviewPoints)} Xu`);
+    if (JSON.stringify(old.custom_programs || []) !== JSON.stringify(customPrograms)) changes.push(`Chương trình tùy chỉnh thay đổi`);
+    
+    if (changes.length === 0) {
+      toast(t("Không có thay đổi nào để lưu"), "info");
+      setIsEditing(false);
+      return;
+    }
+    toast(t("Đã lưu: ") + changes.join(" · "), "success");
+    setIsEditing(false);
+    
     const payload = {
       earn: {
-        rate_amount: Number(earn.rate_amount),
-        rate_points: Number(earn.rate_points),
-        green_enabled: !!earn.green_enabled,
-        green_points: Number(earn.green_points),
-        green_require_approval: !!earn.green_require_approval,
-        review_enabled: !!earn.review_enabled,
-        review_points: Number(earn.review_points),
+        ...initial.earn,
+        rate_points: Number(ratePoints),
+        green_enabled: greenEnabled,
+        green_points: Number(greenPoints),
+        green_require_approval: greenApproval,
+        review_enabled: reviewEnabled,
+        review_points: Number(reviewPoints),
+        custom_programs: customPrograms
       },
-      redeem: {
-        rate_points: Number(redeem.rate_points),
-        rate_value: Number(redeem.rate_value),
-        min_points: Number(redeem.min_points),
-        max_unused_vouchers: Number(redeem.max_unused_vouchers),
-        tiers: redeem.tiers
-          .map((t) => ({ points: Number(t.points), value: Number(t.value) }))
-          .filter((t) => t.points > 0 && t.value > 0),
-      },
+      redeem: initial.redeem
     };
     onSave(payload);
+    setHistoryRefreshKey(prev => prev + 1);
+  };
+
+  const handleAddProgram = () => {
+    setCustomPrograms([...customPrograms, { id: "custom_" + Date.now(), name: "Chương trình mới", desc: "Mô tả chương trình", points: 100 }]);
+    toast(t("Đã thêm chương trình mới. Bấm Lưu để ghi lại."), "info");
+  };
+
+  const handleUpdateProgram = (id, field, value) => {
+    setCustomPrograms(customPrograms.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const handleRemoveProgram = (id) => {
+    setCustomPrograms(customPrograms.filter(p => p.id !== id));
+    toast(t("Đã xóa chương trình. Bấm Lưu để ghi lại."), "warning");
   };
 
   return (
-    <Modal onClose={onClose} maxWidth={620}>
-      <div style={modalHeaderStyle}>
-        <h3 style={modalTitleStyle}>
-          <Settings size={20} /> {t("Quy tắc tích điểm & đổi điểm")}
-        </h3>
-        <button
-          onClick={onClose}
-          style={modalCloseStyle}
-          disabled={saving}
-          aria-label={t("Đóng")}
-        >
-          <X size={20} />
-        </button>
+    <div style={{ background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e7ebf0)", borderRadius: 12, padding: 24 }}>
+      
+      {/* HEADER + CÁC NÚT THAO TÁC */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary, #172033)", display: "flex", alignItems: "center", gap: 10 }}>
+          <Settings size={24} /> Quy tắc cộng Xu VWA
+        </div>
+        
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={() => setHistoryModal(true)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f5f7fb)", color: "var(--text-primary, #172033)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <History size={16} /> Lịch sử
+          </button>
+          
+          {!isEditing ? (
+            <button type="button" onClick={() => setIsEditing(true)} style={{ padding: "8px 16px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              <Edit size={16} /> Chỉnh sửa
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={() => setIsEditing(false)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f5f7fb)", color: "var(--text-primary, #172033)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>Hủy</button>
+              <button type="button" onClick={submit} disabled={saving} style={{ padding: "8px 16px", background: "#18a967", color: "#fff", border: 0, borderRadius: 8, cursor: saving ? "not-allowed" : "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                <Save size={16} /> {saving ? "Đang lưu..." : "Lưu lại"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      <form onSubmit={submit} autoComplete="off">
-        <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#18a967", marginBottom: 10 }}>
-            📥 {t("TÍCH ĐIỂM")}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* QUY TẮC 1: Hoàn thành đơn hàng */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🍽️ Hoàn thành đơn hàng</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Hoàn thành đơn hàng tự động cộng Xu.</div>
           </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={labelStyle}>{t("Mỗi (VNĐ)")}</label>
-              <input
-                type="number" min="0" step="1000"
-                value={earn.rate_amount}
-                onChange={(e) => setEarnField("rate_amount", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{t("= Số điểm")}</label>
-              <input
-                type="number" min="0"
-                value={earn.rate_points}
-                onChange={(e) => setEarnField("rate_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-            <input
-              type="checkbox"
-              checked={!!earn.green_enabled}
-              onChange={(e) => setEarnField("green_enabled", e.target.checked)}
-              disabled={saving} id="green-enabled"
-            />
-            <label htmlFor="green-enabled" style={{ fontSize: 13, fontWeight: 600 }}>
-              🌱 {t("Bật Sống Xanh Học Đường")}
-            </label>
-          </div>
-          {earn.green_enabled && (
-            <div style={{ marginTop: 8 }}>
-              <label style={labelStyle}>{t("Số điểm Sống Xanh / lần")}</label>
-              <input
-                type="number" min="0"
-                value={earn.green_points}
-                onChange={(e) => setEarnField("green_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-          )}
-
-          {earn.green_enabled && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-              <input
-                type="checkbox"
-                checked={!!earn.green_require_approval}
-                onChange={(e) => setEarnField("green_require_approval", e.target.checked)}
-                disabled={saving}
-                id="green-approval"
-              />
-              <label htmlFor="green-approval" style={{ fontSize: 13, fontWeight: 600 }}>
-                🛡️ {t("Yêu cầu nhân viên duyệt Sống Xanh")}
-              </label>
-            </div>
-          )}
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-            <input
-              type="checkbox"
-              checked={!!earn.review_enabled}
-              onChange={(e) => setEarnField("review_enabled", e.target.checked)}
-              disabled={saving} id="review-enabled"
-            />
-            <label htmlFor="review-enabled" style={{ fontSize: 13, fontWeight: 600 }}>
-              ⭐ {t("Bật thưởng Đánh giá món")}
-            </label>
-          </div>
-          {earn.review_enabled && (
-            <div style={{ marginTop: 8 }}>
-              <label style={labelStyle}>{t("Số điểm Đánh giá / lần")}</label>
-              <input
-                type="number" min="0"
-                value={earn.review_points}
-                onChange={(e) => setEarnField("review_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-          )}
-        </div>
-
-        <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#2634d5", marginBottom: 10 }}>
-            📤 {t("ĐỔI ĐIỂM")}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={labelStyle}>{t("Số điểm")}</label>
-              <input type="number" min="1" value={redeem.rate_points}
-                onChange={(e) => setRedeemField("rate_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{t("= Voucher (VNĐ)")}</label>
-              <input type="number" min="0" step="1000" value={redeem.rate_value}
-                onChange={(e) => setRedeemField("rate_value", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{t("Tối thiểu đổi")}</label>
-              <input type="number" min="1" value={redeem.min_points}
-                onChange={(e) => setRedeemField("min_points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{t("Max voucher chưa dùng")}</label>
-              <input type="number" min="1" value={redeem.max_unused_vouchers}
-                onChange={(e) => setRedeemField("max_unused_vouchers", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style={{ padding: 14, background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", marginBottom: 10 }}>
-            🎟️ {t("Xóa voucher")}
-          </div>
-
-          {redeem.tiers.map((tier, idx) => (
-            <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 40px", gap: 8, marginBottom: 8, alignItems: "center" }}>
-              <input type="number" min="1" placeholder={t("ĐiỒm")} value={tier.points}
-                onChange={(e) => setTier(idx, "points", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-              <input type="number" min="0" step="1000" placeholder={t("VNĐ")} value={tier.value}
-                onChange={(e) => setTier(idx, "value", e.target.value)}
-                style={inputStyle} disabled={saving}
-              />
-              <button type="button" onClick={() => removeTier(idx)}
-                disabled={saving || redeem.tiers.length <= 1}
-                style={{
-                  width: 32, height: 32, border: 0, borderRadius: 6,
-                  background: "#fee2e2", color: "#ef4444",
-                  cursor: redeem.tiers.length <= 1 ? "not-allowed" : "pointer",
-                  display: "grid", placeItems: "center",
-                  opacity: redeem.tiers.length <= 1 ? 0.4 : 1,
-                }}
-                title={t("Xoá lọc")}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-
-          <button type="button" onClick={addTier} disabled={saving}
-            style={{
-              padding: "8px 12px", background: "transparent", color: "#2634d5",
-              border: "1px dashed #2634d5", borderRadius: 8, fontSize: 12,
-              fontWeight: 600, cursor: "pointer", display: "inline-flex",
-              alignItems: "center", gap: 4, marginTop: 4,
-            }}
-          >
-            <Plus size={13} /> {t("Thêm mốc mới")}
-          </button>
-        </div>
-
-        <div style={{ display: "flex", gap: 10 }}>
-          <button type="button" onClick={onClose} disabled={saving}
-            style={{ ...btnCancelStyle, flex: 1 }}
-          >
-            {t("Hủy")}
-          </button>
-          <button type="submit" disabled={saving}
-            style={{ ...btnPrimaryStyle, flex: 1, width: "auto" }}
-          >
-            {saving ? (
-              <>
-                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-                {t("Đang lưu...")}
-              </>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+            {isEditing ? (
+              <input type="number" value={ratePoints} onChange={(e) => setRatePoints(e.target.value)} style={{ width: 80, padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", textAlign: "right" }} />
             ) : (
-              <>
-                <Save size={14} /> {t("Lưu quy tắc")}
-              </>
+              <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{ratePoints} Xu</b>
             )}
-          </button>
+            <input type="checkbox" checked={true} disabled={!isEditing || saving} onChange={() => {}} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} title="Quy tắc mặc định (luôn bật)" />
+          </div>
         </div>
-      </form>
-    </Modal>
+
+        {/* QUY TẮC 2: SỐNG XANH */}
+        <div style={{ display: "flex", flexDirection: "column", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🌱 Sống Xanh Học Đường</div>
+              <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Cộng Xu khi khách mang hộp cá nhân và được duyệt.</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+              {isEditing ? (
+                <input type="number" value={greenPoints} onChange={(e) => setGreenPoints(e.target.value)} style={{ width: 80, padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", textAlign: "right" }} />
+              ) : (
+                <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{greenPoints} Xu</b>
+              )}
+              <input type="checkbox" checked={greenEnabled} onChange={(e) => setGreenEnabled(e.target.checked)} disabled={!isEditing || saving} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} />
+            </div>
+          </div>
+          {greenEnabled && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 20px 16px 20px", borderTop: "1px dashed var(--border-color, #cbd5e1)", paddingTop: 12 }}>
+              <span style={{ fontSize: 13, color: "var(--text-muted, #64748b)", fontWeight: 600 }}>🛡️ Yêu cầu nhân viên duyệt</span>
+              <div style={{ marginLeft: "auto" }}>
+                <input type="checkbox" checked={greenApproval} onChange={(e) => setGreenApproval(e.target.checked)} disabled={!isEditing || saving} style={{ width: 18, height: 18, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* QUY TẮC 3: ĐÁNH GIÁ */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>⭐ Đánh giá món ăn</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Cộng Xu khi khách đánh giá món đã mua.</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+            {isEditing ? (
+              <input type="number" value={reviewPoints} onChange={(e) => setReviewPoints(e.target.value)} style={{ width: 80, padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", textAlign: "right" }} />
+            ) : (
+              <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{reviewPoints} Xu</b>
+            )}
+            <input type="checkbox" checked={reviewEnabled} onChange={(e) => setReviewEnabled(e.target.checked)} disabled={!isEditing || saving} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} />
+          </div>
+        </div>
+
+        {/* QUY TẮC 4: TRỢ GIÁ SINH VIÊN */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🎓 Trợ giá sinh viên</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Ưu đãi giảm giá 10.000đ cho mỗi đơn hàng dành riêng cho sinh viên.</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+            <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+10.000 Xu</b>
+            <input type="checkbox" checked={true} disabled={!isEditing || saving} onChange={() => {}} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} title="Quy tắc mặc định (luôn bật)" />
+          </div>
+        </div>
+
+        {/* CÁC CHƯƠNG TRÌNH TÙY CHỈNH THÊM MỚI */}
+        {customPrograms.map((prog) => (
+          <div key={prog.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "rgba(14, 165, 233, 0.05)", borderRadius: 10, border: "1px dashed rgba(14, 165, 233, 0.4)" }}>
+            <div style={{ flex: 1, marginRight: 16 }}>
+              {isEditing ? (
+                <>
+                  <input type="text" value={prog.name} onChange={(e) => handleUpdateProgram(prog.id, "name", e.target.value)} placeholder="Tên chương trình" style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", marginBottom: 6, fontWeight: 700 }} />
+                  <input type="text" value={prog.desc} onChange={(e) => handleUpdateProgram(prog.id, "desc", e.target.value)} placeholder="Mô tả" style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", fontSize: 13 }} />
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#0EA5E9" }}>{prog.name}</div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>{prog.desc}</div>
+                </>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+              {isEditing ? (
+                <input type="number" value={prog.points} onChange={(e) => handleUpdateProgram(prog.id, "points", e.target.value)} style={{ width: 80, padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", textAlign: "right" }} />
+              ) : (
+                <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{prog.points} Xu</b>
+              )}
+              
+              {isEditing && (
+                <button type="button" onClick={() => handleRemoveProgram(prog.id)} style={{ background: "#fee2e2", color: "#ef4444", border: 0, width: 32, height: 32, borderRadius: 6, display: "grid", placeItems: "center", cursor: "pointer" }} title="Xóa chương trình này">
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* NÚT THÊM CHƯƠNG TRÌNH */}
+        {isEditing && (
+          <button type="button" onClick={handleAddProgram} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, background: "transparent", border: "1px dashed #0EA5E9", color: "#0EA5E9", borderRadius: 10, fontWeight: 600, cursor: "pointer", marginTop: 8 }}>
+            <Plus size={18} /> Thêm chương trình mới
+          </button>
+        )}
+      </div>
+
+      {/* MODAL LỊCH SỬ */}
+      {historyModal && (
+        <Modal onClose={() => setHistoryModal(false)} maxWidth={700}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h3 style={{ margin: 0, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}><History size={20} /> Lịch sử thay đổi Quy tắc</h3>
+            <button onClick={() => setHistoryModal(false)} style={{ background: "transparent", border: 0, cursor: "pointer" }}><X size={20} /></button>
+          </div>
+          <ConfigHistoryTable t={t} key={historyRefreshKey} />
+        </Modal>
+      )}
+    </div>
   );
 }
 
-// ============================================================
-// STYLE CONSTANTS
-// ============================================================
+function ConfigHistoryTable({ t }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    api.points.history()
+      .then(data => setHistory(data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div style={{ textAlign: "center", padding: 30 }}>Đang tải lịch sử...</div>;
+  if (!history.length) return <div style={{ textAlign: "center", padding: 30, color: "#64748b" }}>Chưa có lịch sử thay đổi nào.</div>;
+
+  return (
+    <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: "var(--bg-tertiary, #f8fafc)", borderBottom: "1px solid var(--border-color, #e2e8f0)" }}>
+            <th style={{ padding: 10, textAlign: "left" }}>Thời gian</th>
+            <th style={{ padding: 10, textAlign: "left" }}>Người đổi</th>
+            <th style={{ padding: 10, textAlign: "left" }}>Chi tiết thay đổi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {history.map(h => (
+            <tr key={h.id} style={{ borderBottom: "1px solid var(--border-color, #f1f5f9)" }}>
+              <td style={{ padding: 10, color: "var(--text-muted, #64748b)", whiteSpace: "nowrap" }}>
+                {new Date(h.updated_at).toLocaleString("vi-VN")}
+              </td>
+              <td style={{ padding: 10, fontWeight: 600 }}>{h.updated_by}</td>
+              <td style={{ padding: 10 }}>
+                {h.changes ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {h.changes.map((chg, i) => (
+                      <div key={i}>
+                        <span style={{ color: "#64748b" }}>{chg.field}:</span>{" "}
+                        <span style={{ color: "#ef4444", textDecoration: "line-through" }}>{chg.isBool ? (chg.old ? "BẬT" : "TẮT") : chg.old}</span> → <span style={{ color: "#18a967", fontWeight: 600 }}>{chg.isBool ? (chg.new ? "BẬT" : "TẮT") : chg.new}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span style={{ color: "var(--text-muted, #64748b)", fontStyle: "italic" }}>Dữ liệu lịch sử cũ</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 const cardStyle = {
   background: "var(--card-bg, #fff)",
   border: "1px solid var(--border-color, #e7ebf0)",

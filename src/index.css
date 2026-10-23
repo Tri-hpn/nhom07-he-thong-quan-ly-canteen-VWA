@@ -1,0 +1,15 @@
+﻿
+/* ==========================================
+   FIX LỖI BẢNG BỊ RỚT DÒNG TRÊN TRANG KHÁCH HÀNG
+   ========================================== */
+.customer-table th, 
+.customer-table td {
+  white-space: nowrap !important; /* Cấm rớt dòng */
+  padding: 12px 16px !important;  /* Thêm khoảng trống cho chữ thở */
+  vertical-align: middle !important;
+}
+
+.customer-table {
+  table-layout: auto !important;
+  width: 100%;
+}

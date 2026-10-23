@@ -20,8 +20,6 @@ import Layout from "./components/Layout";
 import CardHoverEffect from "./components/CardHoverEffect";
 import { setToken } from "./api";
 import { toast } from "./components/Effects";
-
-// ---------- Auth / Phân quyền ----------
 import { useAuth } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
