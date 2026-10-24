@@ -1,17 +1,13 @@
 // src/api.js
-// ============================================================
-// API.JS — HTTP client (V19 - MULTI-TAB SESSIONSTORAGE)
-// ============================================================
-
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 3;
+const MAX_RETRY_503 = 5;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
+let refreshInFlight = null;
 
-// Sử dụng sessionStorage để mỗi Tab có một session riêng biệt
 let storageAvailable = (() => {
   try {
     const k = "__test__";
@@ -41,22 +37,14 @@ export function setToken(t) {
       else sessionStorage.removeItem("token");
     } catch {}
   }
-  try {
-    window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } }));
-  } catch {}
+  try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } })); } catch {}
 }
 
 export function clearToken() { setToken(null); }
 export function resetAuthExpiredFlag() { isAuthExpiredDispatched = false; }
 
-const authChannel =
-  typeof window !== "undefined" && "BroadcastChannel" in window
-    ? new BroadcastChannel("vwa_auth")
-    : null;
-
-function broadcastAuthEvent(type) {
-  try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {}
-}
+const authChannel = typeof window !== "undefined" && "BroadcastChannel" in window ? new BroadcastChannel("vwa_auth") : null;
+function broadcastAuthEvent(type) { try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {} }
 
 function dispatchAuthExpired() {
   if (isAuthExpiredDispatched) return;
@@ -65,15 +53,32 @@ function dispatchAuthExpired() {
   broadcastAuthEvent("logout");
 }
 
+async function tryRefresh() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(BASE + "/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => ({}));
+      if (data.token) setToken(data.token);
+      return true;
+    } catch { return false; }
+    finally { refreshInFlight = null; }
+  })();
+  return refreshInFlight;
+}
+
 async function req(path, options = {}, _retryCount = 0) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const headers = { ...(options.headers || {}) };
-  if (options.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -81,11 +86,7 @@ async function req(path, options = {}, _retryCount = 0) {
   let res;
   try {
     res = await fetch(BASE + path, {
-      ...options,
-      headers,
-      cache: "no-store",
-      credentials: "same-origin",
-      signal: controller.signal,
+      ...options, headers, cache: "no-store", credentials: "include", signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
@@ -99,19 +100,32 @@ async function req(path, options = {}, _retryCount = 0) {
     const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown")); err.status = 0; throw err;
   } finally { clearTimeout(timeoutId); }
 
+  // 503 — Vercel Cold Start, retry lên tới 5 lần với backoff
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
-    try {
-      const data = await res.json();
-      if (data.code === "SERVER_WARMING_UP") {
-        await new Promise((r) => setTimeout(r, 2000 * (_retryCount + 1)));
-        return req(path, options, _retryCount + 1);
-      }
-    } catch {}
+    await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
+    return req(path, options, _retryCount + 1);
   }
 
+  // 401 — thử refresh 1 lần trước khi đá văng
   if (res.status === 401 && token) {
-    clearToken();
-    dispatchAuthExpired();
+    const isAuthEndpoint =
+      path.includes("/auth/login") ||
+      path.includes("/auth/register") ||
+      path.includes("/auth/refresh") ||
+      path.includes("/auth/logout") ||
+      path.includes("/auth/me");
+
+    if (!isAuthEndpoint && _retryCount < 2) {
+      const refreshed = await tryRefresh();
+      if (refreshed) {
+        return req(path, options, _retryCount + 1);
+      }
+    }
+
+    if (!isAuthEndpoint) {
+      clearToken();
+      dispatchAuthExpired();
+    }
   }
 
   const contentType = res.headers.get("content-type") || "";
@@ -179,9 +193,7 @@ export const api = {
     update: (id, data) => req(`/menu/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/menu/${id}`, { method: "DELETE" }),
   },
-  priceHistory: {
-    list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")),
-  },
+  priceHistory: { list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")) },
   orders: {
     create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
     myOrders: () => req("/orders/me"),
@@ -364,10 +376,7 @@ export const api = {
 
 if (typeof window !== "undefined" && authChannel) {
   authChannel.onmessage = (e) => {
-    if (e.data?.type === "logout") {
-      try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-    }
+    if (e.data?.type === "logout") { try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {} }
   };
 }
-
 export default api;

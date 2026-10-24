@@ -1,5 +1,5 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V20 - HTTPONLY COOKIE)
+// APP.JSX — Root component + Routing (V21 - FIX RACE CONDITION)
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -80,6 +80,7 @@ export default function App() {
   useEffect(() => {
     const handler = () => {
       const now = Date.now();
+      // Tránh việc văng liên tục nếu có nhiều request 401 cùng lúc
       if (now - lastAuthExpiredRef.current < 2000) return;
       lastAuthExpiredRef.current = now;
 
@@ -109,6 +110,11 @@ export default function App() {
   const handleLogin = async (email, password) => {
     const u = await login(email, password);
     setUser(u);
+    
+    // 🔴 [FIX] Chờ 800ms để đảm bảo Token được lưu vào sessionStorage và Cookie được set
+    // trước khi Router chuyển trang. Tránh việc component con gọi API bị 401.
+    await new Promise((r) => setTimeout(r, 800));
+    
     const home = homePathForRole(u.role);
     navigate(home, { replace: true });
     toast("Xin chào " + u.name + "!", "success");
