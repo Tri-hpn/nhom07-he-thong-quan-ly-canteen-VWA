@@ -1,20 +1,10 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V18 - AUDIT FIX)
+// SERVER-JSON.JS — Backend Express (V19 - FINAL FIX)
 // ============================================================
-// V18 (2026-10) — FIX AUDIT:
-//   🔴 FIX P0-1: __cfg undefined trong POST /api/reviews
-//   🔴 FIX P0-2: GET /api/categories có dòng rác `v.isFlashSale`
-//   🔴 FIX P0-3: POST /api/orders — declare `let order = null` ngoài try
-//   🔴 FIX P0-4: Đổi route ADMIN history → /api/points/config-history
-//   🔴 FIX P0-6: auth() trả 503 khi Mongo chưa ready → F5 không logout
-//   🔴 FIX P0-7: Timeout middleware 10s → 8s (an toàn Hobby 10s)
-//   🔴 FIX P0-8: saveDBOrThrow THỰC SỰ throw lỗi (không nuốt)
-//   🔴 FIX P0-9: CORS thêm credentials: true
-//   🟠 FIX P1-11: Rollback xoá order khỏi db.orders nếu lỗi
-//   🟠 FIX P1-12: Withdraw có check pending trước khi trừ balance
-//   🟠 FIX P2-16: Tạo Mongo indexes khi init
-//   🟠 FIX P2-18: JWT_SECRET production bắt buộc, throw nếu thiếu
-//   🟠 FIX P2-19: Menu update check permission menu.update
+// V19 (2026-10) — FIX TRIỆT ĐỂ:
+//   🔴 FIX XOÁ USER: Bỏ check `keys.length >= dbCount` trong _writeCollection
+//   🔴 FIX POST /api/orders: Khai báo `let orderCreated` và `let xuDiscount` ngoài try
+//   (Các fix V18 vẫn giữ nguyên: __cfg, categories rác, auth 503, timeout 8s, CORS...)
 // ============================================================
 
 import express from "express";
@@ -49,7 +39,7 @@ import { sanitizeBody } from "./middleware/sanitize.js";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v18-audit-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v19-final-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -465,9 +455,7 @@ async function ensureIndexes(db) {
     for (const [coll, spec] of idx) {
       try {
         await db.collection(coll).createIndex(spec);
-      } catch (e) {
-        // bỏ qua nếu collection chưa tồn tại hoặc index trùng
-      }
+      } catch (e) {}
     }
   } catch (e) {
     console.warn("ensureIndexes failed:", e.message);
@@ -502,7 +490,6 @@ async function initMongo() {
       console.log("✅ Đã kết nối MongoDB");
       const db = mongoose.connection.db;
 
-      // 🔴 FIX P2-16: tạo index trước khi seed
       await ensureIndexes(db);
 
       const seed = buildSeedData();
@@ -595,7 +582,6 @@ async function initMongo() {
     } catch (e) {
       console.error("❌ MONGODB LỖI:", e.message);
       mongoReady = false;
-      // 🔴 FIX: không set seed data khi có MONGO_URI — để auth() trả 503
       if (!MONGO_URI) dbCache = buildSeedData();
       return false;
     } finally {
@@ -609,12 +595,10 @@ async function initMongo() {
 function loadDB() {
   if (dbCache) return dbCache;
   initMongo().catch(() => {});
-  // 🔴 FIX P0-6: chỉ dùng seed data khi KHÔNG có MONGO_URI
   if (!MONGO_URI) {
     dbCache = buildSeedData();
     return dbCache;
   }
-  // có MONGO_URI nhưng chưa ready → trả empty shape, auth() sẽ chặn 503
   return buildEmptyShape();
 }
 
@@ -673,17 +657,11 @@ async function _writeCollection(db, key, value) {
       }
     }
 
-    // 🟠 FIX P1-10: chỉ delete khi local array >= số doc trong DB
-    // → giảm race condition khi 2 instance ghi đồng thời
+    // 🔴 FIX P0: LUÔN xoá các bản ghi không còn trong keys
     if (keys.length > 0) {
-      try {
-        const dbCount = await coll.countDocuments({});
-        if (keys.length >= dbCount) {
-          await coll.deleteMany({ [uniqueField]: { $nin: keys } });
-        }
-      } catch (e) {
-        console.warn(`deleteMany ${key} skipped:`, e.message);
-      }
+      await coll.deleteMany({ [uniqueField]: { $nin: keys } });
+    } else {
+      await coll.deleteMany({});
     }
     return;
   }
@@ -737,7 +715,6 @@ function saveDB(data) {
   return saveQueue;
 }
 
-// 🔴 FIX P0-8: saveDBOrThrow THỰC SỰ throw để route catch bắt được
 async function saveDBOrThrow(data) {
   dbCache = data;
   if (!mongoReady || !mongoose.connection.db) return;
@@ -750,7 +727,6 @@ async function saveDBOrThrow(data) {
   }
 }
 
-// Alias để rõ nghĩa
 const saveDBStrict = saveDBOrThrow;
 
 function invalidateMenuCache() {
@@ -862,12 +838,11 @@ function rollbackCancelledOrder(db, order) {
 const app = express();
 app.set("trust proxy", 1);
 
-// 🔴 FIX P0-9: CORS credentials
 app.use(cors({
   origin: [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://canteenvwa.vercel.app",   // ← FIX: domain thật
+    "https://canteenvwa.vercel.app",
     /\.vercel\.app$/,
     /\.onrender\.com$/,
   ],
@@ -889,11 +864,9 @@ function getInitPromise() {
   return initPromise;
 }
 
-// Health check bypass — trả lời ngay
 app.use(async (req, res, next) => {
   if (req.path === "/" || req.path === "/api" || req.path === "/api/") return next();
   if (mongoReady) return next();
-  // 🔴 FIX P0-7: 8s (Hobby max 10s) — chừa 2s cho response
   await Promise.race([getInitPromise(), new Promise((r) => setTimeout(r, 8000))]);
   next();
 });
@@ -937,7 +910,6 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ message: "Lỗi tải ảnh: " + e.message }); }
 });
 
-// 🟠 FIX P2-18: JWT_SECRET bắt buộc ở production
 const JWT_SECRET = process.env.JWT_SECRET || "";
 if (!JWT_SECRET) {
   if (process.env.NODE_ENV === "production") {
@@ -948,7 +920,6 @@ if (!JWT_SECRET) {
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_IN_PROD";
 
-// 🔴 FIX P0-6: auth() trả 503 khi Mongo chưa ready
 function auth(roles = []) {
   return (req, res, next) => {
     if (MONGO_URI && !mongoReady) {
@@ -1106,10 +1077,6 @@ const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || "";
 const GOOGLE_OAUTH_ENABLED = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 const FACEBOOK_OAUTH_ENABLED = !!(FACEBOOK_APP_ID && FACEBOOK_APP_SECRET);
 
-// ⚠️ NOTE: OAuth CSRF (state param) — CHƯA fix vì yêu cầu đổi FE.
-// Khuyến nghị FE sinh `state` lưu sessionStorage, gửi kèm authorize URL
-// và POST callback → BE verify. Xem ghi chú P2-15.
-
 app.post("/api/auth/google/callback", async (req, res) => {
   try {
     if (!GOOGLE_OAUTH_ENABLED) return res.status(503).json({ message: "Google OAuth chưa được cấu hình" });
@@ -1180,12 +1147,9 @@ async function microsoftCallbackHandler(req, res) {
     if (!MICROSOFT_OAUTH_ENABLED) return res.status(503).json({ message: "Microsoft OAuth chưa được cấu hình" });
     const code = req.query.code || req.body?.code;
     
-    // 🔧 FIX AADSTS50011: Ưu tiên lấy redirectUri do Frontend gửi lên (POST body)
-    // Nếu không có, mới fallback về host (nhưng thực tế FE luôn gửi)
     const proto = String(req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim() || "https";
     const fwdHost = req.get("x-forwarded-host") || req.get("host");
     
-    // Đảm bảo route trả về là route của Frontend, không phải API
     const defaultRedirect = `${proto}://${fwdHost}/auth/microsoft-entra-id/callback`;
     const redirectUri = req.body?.redirectUri || req.query.redirectUri || defaultRedirect;
 
@@ -1197,7 +1161,7 @@ async function microsoftCallbackHandler(req, res) {
         client_id: MICROSOFT_CLIENT_ID, 
         client_secret: MICROSOFT_CLIENT_SECRET, 
         code, 
-        redirect_uri: redirectUri, // Lúc này sẽ khớp với Azure
+        redirect_uri: redirectUri,
         grant_type: "authorization_code" 
       }),
     });
@@ -1205,7 +1169,6 @@ async function microsoftCallbackHandler(req, res) {
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) return res.status(400).json({ message: tokenData.error_description || "Lỗi Microsoft Auth" });
     
-    // ... (Phần còn lại của hàm giữ nguyên như file cũ) ...
     const userRes = await fetch("https://graph.microsoft.com/v1.0/me", { headers: { Authorization: "Bearer " + tokenData.access_token } });
     const profile = await userRes.json();
     const emailNorm = normalizeEmail(profile.mail || profile.userPrincipalName || "");
@@ -1240,7 +1203,6 @@ async function microsoftCallbackHandler(req, res) {
     }
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, EFFECTIVE_JWT_SECRET, { expiresIn: "7d" });
     
-    // Trả về JSON cho Frontend (vì frontend gọi POST)
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password, student_code: user.student_code || "", teacher_code: user.teacher_code || "", major_name: user.major_name || "", faculty: user.faculty || "", year_in: user.year_in || null, is_new_user: isNewUser, auto_filled: autoFilled } });
   } catch (e) { 
     res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message }); 
@@ -1326,7 +1288,6 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
 app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
-    // 🟠 FIX P2-19: EMPLOYEE phải có menu.update
     if (req.user.role === "EMPLOYEE") {
       const emp = db.users.find((u) => u.id === req.user.id);
       const rolePerms = ROLE_PERMISSIONS.EMPLOYEE || [];
@@ -1592,10 +1553,20 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), async (req, res) => {
 // ============================================================
 // ORDERS
 // ============================================================
-// 🔴 FIX P0-3: khai báo state NGOÀI try để catch dùng được an toàn
+// 🔴 FIX V19: Khai báo state NGOÀI try
 app.post("/api/orders", auth(), async (req, res) => {
   const db = loadDB();
-  let touchedItems = []; let wallet = null; let total = 0; let isWalletPay = false; let customer = null; let pointsEarned = 0; let walletTx = null; let usedVoucher = null;
+  let touchedItems = []; 
+  let wallet = null; 
+  let total = 0; 
+  let isWalletPay = false; 
+  let customer = null; 
+  let pointsEarned = 0; 
+  let walletTx = null; 
+  let usedVoucher = null;
+  let orderCreated = null;   
+  let xuDiscount = 0;        
+
   try {
     const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode, isGreen = false } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
@@ -1672,9 +1643,8 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: "Giảm giá không khớp với voucher" });
 
     // XỬ LÝ DÙNG XU VWA (Tối đa 30%)
-    let xuDiscount = 0;
     const useXu = req.body.useXu === true;
-    customer = db.users.find(u => u.id === req.user.id);
+    customer = db.users.find((u) => u.id === req.user.id);
     if (useXu && customer) {
       const pointsConfig = getPointsConfig(db);
       const maxRedeemPercent = Math.max(
@@ -1796,7 +1766,6 @@ app.post("/api/orders/scan-pickup/lookup", auth(["ADMIN", "EMPLOYEE"]), (req, re
   } catch (e) { res.status(500).json({ message: e.message || "Không tra cứu được đơn hàng" }); }
 });
 
-// 🟠 FIX P1-13: scan-received chống race condition
 app.post("/api/orders/:id/scan-received", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1804,7 +1773,6 @@ app.post("/api/orders/:id/scan-received", auth(["ADMIN", "EMPLOYEE"]), async (re
     const order = (db.orders || []).find((item) => item.id == req.params.id);
     if (!order) return res.status(404).json({ message: "Không tìm thấy đơn hàng" });
     if (order.status !== "Sẵn sàng nhận") return res.status(409).json({ message: order.status === "Hoàn thành" ? "Đơn hàng đã hoàn thành" : "Đơn hàng chưa sẵn sàng nhận" });
-    // 🔒 Đánh dấu trạng thái trước khi await để chặn 2 request đồng thời
     if (order._scanning) return res.status(409).json({ message: "Đơn hàng đang được xử lý bởi nhân viên khác" });
     order._scanning = true;
     try {
@@ -2070,7 +2038,6 @@ app.get("/api/reviews/can-review/:menuItemId", auth(), (req, res) => {
 app.get("/api/reviews/me", auth(), (req, res) => { res.json((loadDB().reviews || []).filter((r) => r.user_id === req.user.id)); });
 app.get("/api/reviews/:menuItemId", (req, res) => { res.json((loadDB().reviews || []).filter((r) => r.menu_item_id == req.params.menuItemId)); });
 
-// 🔴 FIX P0-1: __cfg chưa khai báo → ReferenceError. Đã khai báo đúng trong try
 app.post("/api/reviews", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2088,7 +2055,6 @@ app.post("/api/reviews", auth(), async (req, res) => {
     const avgRating = itemReviews.reduce((s, r) => s + r.rating, 0) / itemReviews.length;
     const mi = db.menu_items.find((m) => m.id == menuItemId);
     if (mi) { mi.rating = Math.round(avgRating * 10) / 10; mi.review_count = itemReviews.length; }
-    // 🔴 FIX P0-1: khai báo __cfg ở đây
     const __cfg = getPointsConfig(db);
     const __reviewBonus = Number(__cfg.earn?.review_points) || 500;
     review.points_earned = __reviewBonus;
@@ -2105,7 +2071,6 @@ app.post("/api/reviews", auth(), async (req, res) => {
 // ============================================================
 app.get("/api/points/config", auth(), (req, res) => { try { res.json(getPointsConfig(loadDB())); } catch (e) { res.status(500).json({ message: e.message }); } });
 
-// 🔴 FIX P0-4: đổi route ADMIN history → path riêng, KHÔNG trùng /api/points/history của customer
 app.get("/api/points/config-history", auth(["ADMIN"]), (req, res) => {
   try {
     const db = loadDB();
@@ -2150,7 +2115,6 @@ app.post("/api/points/preview", auth(), (req, res) => {
   try { const db = loadDB(); const cfg = getPointsConfig(db); const total = Number(req.body?.total) || 0; const isGreen = !!req.body?.isGreen; const base = calcEarnPoints(total, cfg); const green = isGreen ? calcGreenBonus(cfg) : 0; res.json({ base, green, total: base + green }); } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// customer xem lịch sử điểm — route riêng, KHÔNG trùng
 app.get("/api/points/history", auth(), (req, res) => {
   const db = loadDB();
   res.json(db.settings?.rules_history || []);
@@ -2271,7 +2235,6 @@ app.post("/api/vouchers/claim/:id", auth(), async (req, res) => {
     const template = (db.vouchers || []).find((v) => v.id == req.params.id && !v.user_id);
     if (!template) return res.status(404).json({ message: "Voucher không tồn tại hoặc đã hết" });
     if ((db.vouchers || []).find((v) => v.user_id === req.user.id && v.claimed_from === template.id)) return res.status(400).json({ message: "Bạn đã nhận voucher này rồi" });
-    // 🔴 FIX P0-5: dùng timestamp + random để tránh trùng code khi claim nhiều lần
     const claimCode = `${template.code}-U${req.user.id}-${Date.now().toString(36).toUpperCase()}`;
     const newVoucher = { id: nextId(db.vouchers), code: claimCode, value: template.value, user_id: req.user.id, points_used: 0, used: false, claimed_from: template.id, created_at: new Date().toISOString() };
     db.vouchers.push(newVoucher);
@@ -2341,7 +2304,6 @@ function ensureCategories(db) {
   return { categories: db.categories, changed: false };
 }
 
-// 🔴 FIX P0-2: bỏ dòng rác `if (changed) if (req.body.isFlashSale...) v.isFlashSale...` (v undefined)
 app.get("/api/categories", (req, res) => {
   const db = loadDB();
   const { categories, changed } = ensureCategories(db);
@@ -2458,7 +2420,6 @@ app.post("/api/wallet/deposit", auth(), async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// 🟠 FIX P1-12: withdraw — check pending trước, và trừ balance NGUYÊN TỬ (dùng cờ)
 app.post("/api/wallet/withdraw", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2468,11 +2429,9 @@ app.post("/api/wallet/withdraw", auth(), async (req, res) => {
     const w = getOrCreateWallet(db, req.user.id);
     if (w.balance < amt) return res.status(400).json({ message: "Số dư không đủ" });
     if (!w.bank_account) return res.status(400).json({ message: "Chưa liên kết tài khoản ngân hàng" });
-    // 🔒 Kiểm tra pending trước — tránh 2 request đồng thời cùng rút
     if (!db.wallet_transactions) db.wallet_transactions = [];
     const existingPending = db.wallet_transactions.find((t) => t.user_id === req.user.id && t.type === "withdraw" && t.status === "pending");
     if (existingPending) return res.status(400).json({ message: "Bạn đang có lệnh rút chờ duyệt. Vui lòng chờ admin xử lý." });
-    // Trừ balance NGAY, nếu save fail thì rollback
     const oldBalance = w.balance;
     w.balance -= amt;
     w.updated_at = new Date().toISOString();
@@ -2481,7 +2440,6 @@ app.post("/api/wallet/withdraw", auth(), async (req, res) => {
     try {
       await saveDBOrThrow(db);
     } catch (saveErr) {
-      // rollback balance nếu save lỗi
       w.balance = oldBalance;
       db.wallet_transactions = db.wallet_transactions.filter((t) => t.id !== tx.id);
       throw saveErr;
@@ -2575,12 +2533,10 @@ app.post("/api/wallet/pay", auth(), async (req, res) => {
 // ============================================================
 // CHAT SYSTEM
 // ============================================================
-// 🔧 OPT: cache message TTL check (48h) — tránh filter lặp lại
 let chatTTLRefreshAt = 0;
 function cleanupExpiredChatMessages(db) {
   if (!db || !Array.isArray(db.messages) || db.messages.length === 0) return false;
   const now = Date.now();
-  // chỉ refresh mỗi 60s
   if (now - chatTTLRefreshAt < 60_000) return false;
   chatTTLRefreshAt = now;
   const cutoff = now - 48 * 60 * 60 * 1000;
@@ -3177,7 +3133,6 @@ app.post("/api/time-slots/reset", auth(["ADMIN"]), async (req, res) => {
 
 app.get("/api/backup/export", auth(["ADMIN"]), (req, res) => { const db = loadDB(); res.json({ version: "1.0", exported_at: new Date().toISOString(), exported_by: req.user.name, data: db }); });
 
-// 🔴 FIX P2-20: whitelist collections — tránh user chèn collection lạ vào DB
 const ALLOWED_BACKUP_COLLECTIONS = [
   "users", "sizes", "menu_items", "categories", "toppings", "orders", "inventory",
   "notifications", "vouchers", "reviews", "messages", "attendances", "imports",
@@ -3195,7 +3150,6 @@ app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
     for (const u of data.users) if (u.email) u.email = normalizeEmail(u.email);
     for (const u of data.users) if (!u.id || !u.email || !VALID_ROLES.includes(u.role)) return res.status(400).json({ message: "User không hợp lệ" });
 
-    // 🔴 FIX P2-20: chỉ import collection whitelist
     const cleanData = {};
     for (const k of ALLOWED_BACKUP_COLLECTIONS) {
       if (data[k] !== undefined) cleanData[k] = data[k];
@@ -3286,9 +3240,6 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) =
   } catch (e) { console.error("BACKFILL ERROR:", e); res.status(500).json({ message: e.message }); }
 });
 
-// ============================================================
-// GLOBAL ERROR HANDLER — trả JSON thay vì HTML, không lộ stack
-// ============================================================
 app.use((err, req, res, next) => {
   console.error("🔥 GLOBAL ERROR:", req.method, req.path, "→", err.message);
   if (res.headersSent) return next(err);
@@ -3299,15 +3250,11 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler — trả JSON cho /api/*
 app.use((req, res) => {
   if (req.path.startsWith("/api/")) return res.status(404).json({ message: "Endpoint không tồn tại", path: req.path });
   res.status(404).send("Not Found");
 });
 
-// ============================================================
-// HEALTH CHECK
-// ============================================================
 const healthHandler = (_, res) =>
   res.json({
     ok: true,
@@ -3326,9 +3273,6 @@ app.get("/", healthHandler);
 app.get("/api", healthHandler);
 app.get("/api/", healthHandler);
 
-// ============================================================
-// START
-// ============================================================
 const PORT = process.env.PORT || 3000;
 export default app;
 
@@ -3342,6 +3286,5 @@ if (!IS_VERCEL) {
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
   console.log("🚀 API chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
-  // Không gọi app.listen trên Vercel — Vercel tự quản lý socket
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }
