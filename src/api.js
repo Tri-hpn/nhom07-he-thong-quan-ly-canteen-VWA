@@ -2,10 +2,11 @@
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 5; // 🔴 Tăng lên 5 lần cho Vercel Cold Start
+const MAX_RETRY_503 = 5;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
+let refreshInFlight = null;
 
 let storageAvailable = (() => {
   try {
@@ -52,6 +53,25 @@ function dispatchAuthExpired() {
   broadcastAuthEvent("logout");
 }
 
+async function tryRefresh() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(BASE + "/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => ({}));
+      if (data.token) setToken(data.token);
+      return true;
+    } catch { return false; }
+    finally { refreshInFlight = null; }
+  })();
+  return refreshInFlight;
+}
+
 async function req(path, options = {}, _retryCount = 0) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
@@ -70,7 +90,9 @@ async function req(path, options = {}, _retryCount = 0) {
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === "AbortError") { const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err; }
+    if (e.name === "AbortError") {
+      const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err;
+    }
     if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
       return req(path, options, _retryCount + 1);
@@ -78,23 +100,32 @@ async function req(path, options = {}, _retryCount = 0) {
     const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown")); err.status = 0; throw err;
   } finally { clearTimeout(timeoutId); }
 
-  // 🔴 [FIX] Vòng lặp Retry khi Vercel đang khởi động (503)
+  // 503 — Vercel Cold Start, retry lên tới 5 lần với backoff
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
-    try {
-      const data = await res.clone().json();
-      if (data.code === "SERVER_WARMING_UP") {
-        const waitTime = 2000 + (_retryCount * 1000); // 2s, 3s, 4s...
-        await new Promise((r) => setTimeout(r, waitTime));
-        return req(path, options, _retryCount + 1);
-      }
-    } catch {}
+    await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
+    return req(path, options, _retryCount + 1);
   }
 
-  // 🔴 [FIX] Không đá văng user nếu đang gọi các API check session
-  const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/me") || path.includes("/auth/refresh");
-  if (res.status === 401 && token && !isAuthEndpoint) {
-    clearToken();
-    dispatchAuthExpired();
+  // 401 — thử refresh 1 lần trước khi đá văng
+  if (res.status === 401 && token) {
+    const isAuthEndpoint =
+      path.includes("/auth/login") ||
+      path.includes("/auth/register") ||
+      path.includes("/auth/refresh") ||
+      path.includes("/auth/logout") ||
+      path.includes("/auth/me");
+
+    if (!isAuthEndpoint && _retryCount < 2) {
+      const refreshed = await tryRefresh();
+      if (refreshed) {
+        return req(path, options, _retryCount + 1);
+      }
+    }
+
+    if (!isAuthEndpoint) {
+      clearToken();
+      dispatchAuthExpired();
+    }
   }
 
   const contentType = res.headers.get("content-type") || "";

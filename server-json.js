@@ -1,16 +1,10 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V21 - FULL PATCHED 2026-10)
+// SERVER-JSON.JS — Backend Express (V22 - FIXED ASYNC AUTH)
 // ============================================================
-// V21 gồm TẤT CẢ patches từ V20:
-//   [P1]  Imports mới + cookieParser middleware
-//   [P3]  auth() dual Bearer + HttpOnly Cookie
-//   [P4]  login/register/oauth set HttpOnly cookies
-//   [P5]  POST /auth/refresh + /auth/logout
-//   [P7]  POST /orders full rewrite (MongoDB Transaction)
-//   [P8]  broadcastSse order.new (trong P7)
-//   [P9]  broadcastSse order.updated (PATCH /orders/:id)
-//   [P10] /api/kds/stream, /api/kds/poll, /api/kds/stats
-//   [P12] findByIdOrMongo thay .find(x => x.id == req.params.id)
+// V22 (2026-10) — FIX TRIỆT ĐỂ 503/401:
+//   🔴 auth() là async, chờ Mongo tối đa 8s (Vercel cold start)
+//   🔴 Đọc token từ req.query.token cho SSE
+//   🔴 Vẫn giữ toàn bộ patches V21 (transaction, SSE, cookie, etc.)
 // ============================================================
 
 import express from "express";
@@ -44,9 +38,6 @@ import {
 import { rateLimit } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
 
-// ─────────────────────────────────────────────────────────────
-// [P1] IMPORTS MỚI
-// ─────────────────────────────────────────────────────────────
 import {
   withTransaction,
   atomicDecrement,
@@ -74,7 +65,7 @@ import {
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v21-final-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v22-final-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -861,11 +852,10 @@ app.use(cors({
     /\.onrender\.com$/,
   ],
   credentials: true,
-  exposedHeaders: ["set-cookie"], // 🔴 Thêm dòng này
+  exposedHeaders: ["set-cookie"],
 }));
 
 app.use(express.json({ limit: "25mb" }));
-// [P1] Cookie parser — BẮT BUỘC cho HttpOnly Cookie auth
 app.use(cookieParser(process.env.COOKIE_SECRET || undefined));
 app.use(sanitizeBody);
 
@@ -936,22 +926,29 @@ if (!JWT_SECRET) {
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_IN_PROD";
 
 // ============================================================
-// [P3] AUTH MIDDLEWARE — Dual Bearer + HttpOnly Cookie
+// [P3-V22] AUTH MIDDLEWARE — Async + Wait for Mongo
 // ============================================================
 function auth(roles = []) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
+    // 🔴 [FIX] Chờ Mongo khởi động tối đa 8s (Vercel cold start)
     if (MONGO_URI && !mongoReady) {
-  // Nếu request là check session, đợi 2s xem server có kết nối xong chưa
-  if (req.path === "/api/auth/me") {
-    await new Promise((r) => setTimeout(r, 2000));
-    if (!mongoReady) return res.status(503).json({ code: "SERVER_WARMING_UP" });
-  } else {
-    return res.status(503).json({ code: "SERVER_WARMING_UP" });
-  }
-}
- if (req.query.token && !req.headers.authorization) {
+      const deadline = Date.now() + 8000;
+      while (!mongoReady && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (!mongoReady) {
+        return res.status(503).json({
+          code: "SERVER_WARMING_UP",
+          message: "Server đang khởi động, vui lòng thử lại.",
+        });
+      }
+    }
+
+    // 🔴 [FIX] SSE — đọc token từ query (EventSource không gửi Header được)
+    if (req.query.token && !req.headers.authorization) {
       req.headers.authorization = `Bearer ${req.query.token}`;
     }
+
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
     if (!v.ok) {
       return res.status(401).json({
@@ -983,7 +980,6 @@ function auth(roles = []) {
 // ============================================================
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 
-// [P4] LOGIN — set HttpOnly cookies
 app.post("/api/auth/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
@@ -1016,7 +1012,6 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// [P4] REGISTER — set cookies sau khi tạo user
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, password, name, phone, student_code } = req.body || {};
@@ -1050,7 +1045,6 @@ app.post("/api/auth/register", async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// [P5] REFRESH TOKEN
 app.post("/api/auth/refresh", async (req, res) => {
   try {
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "refresh");
@@ -1070,7 +1064,6 @@ app.post("/api/auth/refresh", async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
 });
 
-// [P5] LOGOUT
 app.post("/api/auth/logout", (req, res) => {
   try {
     clearAuthCookies(res);
@@ -1679,7 +1672,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       return res.status(400).json({ message: "Giỏ hàng trống" });
     }
 
-    // ─── BƯỚC 1: VALIDATE (đọc dbCache) ──────────────────────
     const db = loadDB();
     const menuById = new Map((db.menu_items || []).map((m) => [String(m.id), m]));
     const sizeList = Array.isArray(db.sizes) && db.sizes.length > 0
@@ -1800,7 +1792,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
-    // ─── BƯỚC 2: PREPARE DOCS ──────────────────────────────
     const orderId = nextId(db.orders);
     const orderCode = generateOrderCode(db);
     const __cfg = getPointsConfig(db);
@@ -1848,7 +1839,6 @@ app.post("/api/orders", auth(), async (req, res) => {
         }
       : null;
 
-    // ─── BƯỚC 3: TRANSACTION (atomic) ──────────────────────
     try {
       await withTransaction(async (session) => {
         const mongoDb = mongoose.connection.db;
@@ -1898,7 +1888,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       return res.status(400).json({ message: txErr.message });
     }
 
-    // ─── BƯỚC 4: MIRROR dbCache ────────────────────────────
     try {
       for (const [mid, qty] of qtyByItem) {
         const m = menuById.get(mid);
@@ -1933,7 +1922,6 @@ app.post("/api/orders", auth(), async (req, res) => {
 
     notifyNewOrder(db, orderCreated);
 
-    // [P8] Broadcast SSE cho KDS
     try {
       broadcastSse("order.new", {
         id: orderCreated.id,
@@ -2107,7 +2095,6 @@ function awardPickupPointsOnce(db, order, actor) {
   return pointsAwarded;
 }
 
-// [P9] PATCH — broadcast SSE sau đổi status
 app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2135,7 +2122,6 @@ app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     }
     notifyOrderStatus(db, o, newStatus);
 
-    // [P9] Broadcast SSE
     try {
       broadcastSse("order.updated", {
         id: o.id,
@@ -3679,7 +3665,7 @@ app.use((req, res) => {
 const healthHandler = (_, res) =>
   res.json({
     ok: true,
-    name: "Canteen VWA API (V21)",
+    name: "Canteen VWA API (V22)",
     version: BUILD_VERSION,
     timezone: VN_TIMEZONE,
     autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
@@ -3703,13 +3689,13 @@ export default app;
 const IS_VERCEL = !!process.env.VERCEL;
 if (!IS_VERCEL) {
   app.listen(PORT, () => {
-    console.log("🚀 API (V21): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+    console.log("🚀 API (V22): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
     console.log("   💬 Chat TTL: 24h | Auth: HttpOnly Cookie");
     console.log("   🖼️  Cloudinary:", process.env.CLOUDINARY_URL ? "ON" : "OFF (fallback menu_images)");
     console.log("   ⚡ KDS: SSE + Polling");
   });
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
-  console.log("🚀 API V21 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  console.log("🚀 API V22 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }
