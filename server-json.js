@@ -1595,20 +1595,7 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), async (req, res) => {
 // 🔴 FIX P0-3: khai báo state NGOÀI try để catch dùng được an toàn
 app.post("/api/orders", auth(), async (req, res) => {
   const db = loadDB();
-<<<<<<< HEAD
-  let touchedItems = [];
-  let wallet = null;
-  let total = 0;
-  let isWalletPay = false;
-  let customer = null;
-  let pointsEarned = 0;
-  let walletTx = null;
-  let usedVoucher = null;
-  let xuDiscount = 0;
-  let orderCreated = null;   // 🔴 FIX P1-11: track order để rollback đầy đủ
-=======
-  let touchedItems = []; let wallet = null; let total = 0; let isWalletPay = false; let customer = null; let pointsEarned = 0; let walletTx = null; let usedVoucher = null; let xuDiscount = 0;
->>>>>>> 79fd8d785560e816c28b053b1e41ebd30f28d825
+  let touchedItems = []; let wallet = null; let total = 0; let isWalletPay = false; let customer = null; let pointsEarned = 0; let walletTx = null; let usedVoucher = null;
   try {
     const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode, isGreen = false } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
@@ -1685,16 +1672,9 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: "Giảm giá không khớp với voucher" });
 
     // XỬ LÝ DÙNG XU VWA (Tối đa 30%)
-<<<<<<< HEAD
+    let xuDiscount = 0;
     const useXu = req.body.useXu === true;
-    customer = db.users.find((u) => u.id === req.user.id);
-=======
-
-    const useXu = req.body.useXu === true;
-
-
     customer = db.users.find(u => u.id === req.user.id);
->>>>>>> 79fd8d785560e816c28b053b1e41ebd30f28d825
     if (useXu && customer) {
       const pointsConfig = getPointsConfig(db);
       const maxRedeemPercent = Math.max(
@@ -2134,51 +2114,16 @@ app.get("/api/points/config-history", auth(["ADMIN"]), (req, res) => {
 });
 
 app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
-<<<<<<< HEAD
-  try {
-    const db = loadDB();
-    const nextConfig = req.body;
-    const oldConfig = db.points_config || {};
-
-    if (!db.settings) db.settings = {};
-    if (!db.settings.rules_history) db.settings.rules_history = [];
-
-    const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
-
-    if (oldConfig.earn && nextConfig.earn) {
-      Object.keys(ruleLabels).forEach((k) => {
-        if (nextConfig.earn[k] !== undefined && Number(oldConfig.earn[k] || 0) !== Number(nextConfig.earn[k])) {
-          db.settings.rules_history.push({
-            id: Date.now() + Math.floor(Math.random() * 1000),
-            time: new Date().toISOString(),
-            rule: ruleLabels[k],
-            old_value: oldConfig.earn[k] || 0,
-            new_value: nextConfig.earn[k],
-            changed_by: req.user.name || "Admin",
-          });
-        }
-      });
-    }
-
-    db.points_config = nextConfig;
-    saveDB(db);
-    res.json({ ok: true, config: nextConfig });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
-});
-
-=======
       try {
         const db = loadDB();
         const nextConfig = req.body;
         const oldConfig = db.points_config || {};
-
+        
         if (!db.settings) db.settings = {};
         if (!db.settings.rules_history) db.settings.rules_history = [];
-
+        
         const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
-
+        
         if (oldConfig.earn && nextConfig.earn) {
           Object.keys(ruleLabels).forEach(k => {
             if (nextConfig.earn[k] !== undefined && Number(oldConfig.earn[k] || 0) !== Number(nextConfig.earn[k])) {
@@ -2193,7 +2138,7 @@ app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
             }
           });
         }
-
+        
         db.points_config = nextConfig;
         saveDB(db);
         res.json({ ok: true, config: nextConfig });
@@ -2201,7 +2146,6 @@ app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
         res.status(500).json({ message: e.message });
       }
     });
->>>>>>> 79fd8d785560e816c28b053b1e41ebd30f28d825
 app.post("/api/points/preview", auth(), (req, res) => {
   try { const db = loadDB(); const cfg = getPointsConfig(db); const total = Number(req.body?.total) || 0; const isGreen = !!req.body?.isGreen; const base = calcEarnPoints(total, cfg); const green = isGreen ? calcGreenBonus(cfg) : 0; res.json({ base, green, total: base + green }); } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -3193,12 +3137,8 @@ app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
     const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "custom_programs", "rate_desc", "green_desc", "review_desc", "subsidy_desc"];
     const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
     if (!db.settings.rules_history) db.settings.rules_history = [];
-
-<<<<<<< HEAD
-    allowed.forEach((k) => {
-=======
+    
     allowed.forEach(k => {
->>>>>>> 79fd8d785560e816c28b053b1e41ebd30f28d825
       if (req.body[k] !== undefined) {
         if (ruleLabels[k] && Number(db.settings[k] || 0) !== Number(req.body[k])) {
           db.settings.rules_history.push({
