@@ -1,11 +1,25 @@
-// src/hooks/usePointsConfig.js
 // ============================================================
-// Hook dùng chung — cache config points toàn cục
+// usePointsConfig.js — Cache config points toàn cục
 // ============================================================
+// V2 (2026-10):
+//   - 🔧 notify() cả trong nhánh catch — component khác đang listen
+//     sẽ nhận DEFAULTS thay vì giữ state cũ stale.
+//   - 🔧 Export clearPointsConfigCache() để admin đổi config có thể
+//     force refresh (sau khi PUT /points/config thành công).
+// ============================================================
+
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
 const DEFAULTS = {
+  membership: {
+    tiers: [
+      { name: "Đồng", min_spent: 0 },
+      { name: "Bạc", min_spent: 1000000 },
+      { name: "Vàng", min_spent: 3000000 },
+      { name: "Kim cương", min_spent: 10000000 },
+    ],
+  },
   earn: {
     rate_amount: 10000, rate_points: 1,
     green_enabled: true, green_points: 10, green_require_approval: true,
@@ -27,7 +41,9 @@ let CACHE = null;
 let FETCHING = null;
 const LISTENERS = new Set();
 
-function notify() { LISTENERS.forEach((fn) => { try { fn(CACHE); } catch {} }); }
+function notify() {
+  LISTENERS.forEach((fn) => { try { fn(CACHE); } catch {} });
+}
 
 function deepMerge(base, override) {
   if (!override || typeof override !== "object") return base;
@@ -51,7 +67,9 @@ export async function fetchPointsConfig() {
       return CACHE;
     })
     .catch(() => {
+      // 🔧 FIX: notify cả khi lỗi
       if (!CACHE) CACHE = DEFAULTS;
+      notify();
       return CACHE;
     })
     .finally(() => { FETCHING = null; });
@@ -62,13 +80,21 @@ export function getPointsConfig() {
   return CACHE || DEFAULTS;
 }
 
+// 🔧 Force refresh — gọi sau khi admin PUT /points/config thành công
+export function clearPointsConfigCache() {
+  CACHE = null;
+  notify();
+  return fetchPointsConfig();
+}
+
 export function usePointsConfig() {
   const [cfg, setCfg] = useState(CACHE || DEFAULTS);
 
   useEffect(() => {
     let mounted = true;
-    if (CACHE) { setCfg(CACHE); }
-    else {
+    if (CACHE) {
+      setCfg(CACHE);
+    } else {
       fetchPointsConfig().then((c) => { if (mounted) setCfg(c); });
     }
     const listener = (c) => { if (mounted) setCfg(c); };

@@ -1,105 +1,110 @@
-// ============================================================
-// MAIN.JSX — Entry point (V6 - FINAL)
-// ============================================================
-// V6 (2026-10):
-//   - 🔧 FIX M6: HMR dispose unmount root — tránh stale component
-//     sau khi sửa code trong dev
-// ============================================================
-
-import React from "react";
-import ReactDOM from "react-dom/client";
+// src/main.jsx
+import React, { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-
-import App from "./App";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./components/UI";
 import { AuthProvider } from "./contexts/AuthContext";
-import { initI18n } from "./lib/i18n";
+import App from "./App.jsx";
 
-// ============================================================
-// STYLES — Thứ tự QUAN TRỌNG (không đổi)
-// ============================================================
 import "./styles.css";
 import "./styles-sky.css";
 import "./styles-employee.css";
 import "./styles-admin.css";
 import "./styles-customer.css";
 
-// ============================================================
-// LƯỚI AN TOÀN TOÀN CỤC — bắt lỗi async không qua ErrorBoundary
-// ============================================================
-window.addEventListener("unhandledrejection", (e) => {
-  console.error("[unhandledrejection]", e.reason);
-});
-window.addEventListener("error", (e) => {
-  console.error("[window.error]", e.error || e.message);
-});
+function registerPWA() {
+  if (!("serviceWorker" in navigator) || !import.meta.env.PROD) return;
 
-// ============================================================
-// ROOT
-// ============================================================
-const rootEl = document.getElementById("root");
-if (!rootEl) {
-  throw new Error("Không tìm thấy #root trong index.html");
+  import("virtual:pwa-register")
+    .then(({ registerSW }) => {
+      const updateSW = registerSW({
+        immediate: true,
+        onNeedRefresh() {
+          if (window.confirm("Có bản cập nhật mới cho Canteen VWA. Tải lại ngay?")) {
+            updateSW(true);
+          }
+        },
+        onOfflineReady() {
+          console.log("[PWA] Sẵn sàng offline — menu vẫn xem được khi mất mạng");
+        },
+      });
+    })
+    .catch((e) => {
+      console.warn("[PWA] register failed:", e);
+    });
+
+  if (navigator.storage?.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
 }
 
-// ✅ FIX V5: guard gắn vào DOM — không bị reset khi HMR
-if (rootEl.dataset.reactMounted === "1") {
-  console.warn(
-    "[main] #root đã được mount — skip renderApp() để tránh double-render"
-  );
+if (document.readyState === "complete") {
+  registerPWA();
 } else {
-  rootEl.dataset.reactMounted = "1";
+  window.addEventListener("load", registerPWA);
+}
 
-  const root = ReactDOM.createRoot(rootEl);
+// [ĐÃ XÓA BroadcastChannel Ở ĐÂY VÌ api.js ĐÃ QUẢN LÝ]
 
-  function renderApp() {
-    root.render(
-      <React.StrictMode>
-        {/*
-          ✅ FIX CRITICAL: AuthProvider PHẢI bọc NGOÀI BrowserRouter
-        */}
-        <AuthProvider>
-          <BrowserRouter
-            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Canteen App Error caught:", error, errorInfo);
+    try {
+      fetch("/api/telemetry/error", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: String(error?.message || error),
+          stack: String(error?.stack || "").slice(0, 2000),
+          component: errorInfo?.componentStack?.slice(0, 2000),
+          url: window.location.href,
+          ua: navigator.userAgent,
+          ts: Date.now(),
+        }),
+      }).catch(() => {});
+    } catch {}
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}>
+          <h2>Đã có lỗi xảy ra trong hệ thống Canteen.</h2>
+          <p>Vui lòng tải lại trang hoặc kiểm tra console.</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ padding: "10px 20px", background: "#ff4d4f", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", marginTop: 15 }}
           >
-            <ThemeProvider>
-              <ErrorBoundary>
-                <App />
-              </ErrorBoundary>
-            </ThemeProvider>
+            Tải lại trang
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <AuthProvider>
+          {/* [FIX] Thêm future flags để tắt cảnh báo React Router v7 */}
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <App />
           </BrowserRouter>
         </AuthProvider>
-      </React.StrictMode>
-    );
-  }
-
-  // ============================================================
-  // INIT I18N — không block render, có guard chống double
-  // ============================================================
-  (async () => {
-    try {
-      const result = initI18n();
-      if (result && typeof result.then === "function") {
-        await result;
-      }
-
-    } catch (err) {
-      console.error("[i18n] init failed, rendering anyway:", err);
-    } finally {
-      renderApp();
-    }
-  })();
-
-  // ✅ FIX M6: HMR cleanup — unmount root để lần sau mount lại từ đầu
-  if (import.meta.hot) {
-    import.meta.hot.dispose(() => {
-      try {
-        delete rootEl.dataset.reactMounted;
-        root.unmount();
-      } catch (e) {
-        console.warn("[main] HMR dispose error:", e);
-      }
-    });
-  }
+      </ErrorBoundary>
+    </StrictMode>
+  );
 }

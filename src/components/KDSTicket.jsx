@@ -1,15 +1,18 @@
 // ============================================================
-// KDSTICKET.JSX — Ticket đơn trong KDS board (V5)
+// KDSTICKET.JSX — Ticket đơn trong KDS board (V6 - LIVE TIMER)
 // ============================================================
-// V5 (2026-10):
-//   - ✅ Logic Sống Xanh:
-//       + Bước 4 (Sẵn sàng nhận): Hiện nút Duyệt/Từ chối.
-//       + Bước 1, 2, 3: Chỉ hiện badge nhỏ báo "Có Sống Xanh".
+// V6 (2026-10):
+//   - ⏱ Tự động tick timer mỗi 1s (không phụ thuộc cha re-render).
+//   - 🔧 Fix hiển thị điểm Sống Xanh (điểm/Xu, không phải đ).
+//   - 🎯 Ngưỡng urgency dùng prep_time nếu có.
+//   - ♿ Thêm aria-label cho các nút action.
+//   - ⚡ useMemo cho items/total/paymentLabel.
 // ============================================================
 
+import { useEffect, useMemo, useState } from "react";
 import {
-  Check, Clock, Volume2, CheckCircle2, Soup, AlertTriangle,
-  XCircle, PackageCheck, Loader2, Timer, Ban, Leaf,
+  Check, Volume2, CheckCircle2, Soup, AlertTriangle,
+  XCircle, PackageCheck, Loader2, Timer, Leaf,
 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 import { money } from "./UI";
@@ -17,8 +20,12 @@ import { fmtTime, getDateLabelVariant } from "../lib/datetime";
 
 function fmtElapsed(seconds) {
   if (!seconds || seconds < 0) return "00:00";
-  const m = Math.floor(seconds / 60);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
+  if (h > 0) {
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
@@ -45,9 +52,8 @@ const PAYMENT_LABELS = {
 };
 
 // ============================================================
-// PICKUP TICKET (variant "pickup" — giữ nguyên)
+// PICKUP TICKET (variant "pickup")
 // ============================================================
-
 function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
   return (
     <div className="kds-pickup">
@@ -76,17 +82,14 @@ function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
           </p>
         </div>
 
-        <div
-          className={`kds-pickup__actions ${
-            onRecall ? "" : "kds-pickup__actions--single"
-          }`}
-        >
+        <div className={`kds-pickup__actions ${onRecall ? "" : "kds-pickup__actions--single"}`}>
           {onRecall && (
             <button
               type="button"
               className="kds-pickup__btn kds-pickup__btn--ghost"
               onClick={onRecall}
               disabled={loading}
+              aria-label={t("Gọi lại khách đến nhận")}
             >
               <Volume2 size={14} />
               {t("Gọi Lại")}
@@ -97,8 +100,13 @@ function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
             className="kds-pickup__btn kds-pickup__btn--success"
             onClick={() => onAction?.(order)}
             disabled={loading}
+            aria-label={t("Xác nhận đã trao khay cho khách")}
           >
-            <CheckCircle2 size={14} />
+            {loading ? (
+              <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+            ) : (
+              <CheckCircle2 size={14} />
+            )}
             {onRecall ? t("Đã Trao") : t("Xác Nhận Đã Trao Khay")}
           </button>
         </div>
@@ -108,9 +116,8 @@ function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
 }
 
 // ============================================================
-// MAIN
+// MAIN KDSTICKET
 // ============================================================
-
 export default function KDSTicket({
   variant = "prep",
   layout = "compact",
@@ -133,10 +140,33 @@ export default function KDSTicket({
   const { t: tHook } = useI18n();
   const t = tProp || tHook;
 
+  // ─── LIVE TIMER: tự tick mỗi 1s từ order.created_at ─────────
+  const [elapsedSec, setElapsedSec] = useState(elapsed);
+
+  useEffect(() => {
+    setElapsedSec(elapsed);
+  }, [elapsed]);
+
+  useEffect(() => {
+    if (!order?.created_at) return;
+    const created = new Date(order.created_at).getTime();
+    if (isNaN(created)) return;
+
+    const tick = () => {
+      const now = Date.now();
+      setElapsedSec(Math.max(0, Math.floor((now - created) / 1000)));
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [order?.created_at]);
+
   const priority = isPriority || urgent;
   const processing = isProcessing || loading;
   const handleAdvance = onAdvance || onAction;
 
+  // ─── Nếu là Pickup variant thì return sớm (trước khi dùng memo) ──
   if (variant === "pickup") {
     return (
       <PickupTicket
@@ -151,77 +181,81 @@ export default function KDSTicket({
   }
 
   const normalizedVariant = variant === "preparing" ? "prep" : variant;
-
   const isPending = normalizedVariant === "pending";
   const isConfirmed = normalizedVariant === "confirmed";
   const isPrep = normalizedVariant === "prep";
   const isReady = normalizedVariant === "ready";
 
-  const items = order.items || [];
-  const total = Number(order.total) || 0;
+  // ─── Memo hóa để tick 1s không gây re-render nặng ──────────
+  const items = useMemo(() => order?.items || [], [order?.items]);
+  const total = useMemo(() => Number(order?.total) || 0, [order?.total]);
 
-  const elapsedMin = Math.floor(elapsed / 60);
-  const isUrgent = elapsedMin >= 12;
+  const elapsedMin = Math.floor(elapsedSec / 60);
 
-  const paymentLabel =
-    PAYMENT_LABELS[order.payment] || order.payment || t("Tiền mặt tại quầy");
+  // Ngưỡng urgency: dùng prep_time lớn nhất + 3 phút buffer, tối thiểu 12 phút
+  const maxPrepTime = useMemo(
+    () => items.reduce((mx, it) => Math.max(mx, Number(it.prep_time) || 0), 0),
+    [items]
+  );
+  const urgencyThreshold = maxPrepTime > 0 ? Math.max(12, maxPrepTime + 3) : 12;
+  const isUrgent = elapsedMin >= urgencyThreshold;
+  const minutesLeft = Math.max(0, urgencyThreshold - elapsedMin);
 
-  const actionLabel =
-    ACTION_LABELS[order.status] ||
-    (isPrep ? t("Báo Xong Món") : t("Xử lý"));
+  const paymentLabel = useMemo(
+    () => PAYMENT_LABELS[order?.payment] || order?.payment || t("Tiền mặt tại quầy"),
+    [order?.payment, t]
+  );
 
-  const dateVariant = getDateLabelVariant(order.created_at);
+  const actionLabel = useMemo(
+    () => ACTION_LABELS[order?.status] || (isPrep ? t("Báo Xong Món") : t("Xử lý")),
+    [order?.status, isPrep, t]
+  );
+
+  const dateVariant = getDateLabelVariant(order?.created_at);
   const showDateLabel = dateVariant && dateVariant !== "today";
-  const dateLabelText = (() => {
+  const dateLabelText = useMemo(() => {
     if (!showDateLabel) return "";
     if (dateVariant === "yesterday") return t("Hôm qua");
     const d = new Date(order.created_at);
     const dd = d.getDate().toString().padStart(2, "0");
     const mm = (d.getMonth() + 1).toString().padStart(2, "0");
     return `${dd}/${mm}`;
-  })();
+  }, [showDateLabel, dateVariant, order?.created_at, t]);
 
   const showReject = isPending && typeof onReject === "function";
-
   const isTall = layout === "tall";
 
-  // 🔧 Xác định có điểm Sống Xanh hay không
-  const hasGreen = 
-    order.green_status === "pending" || 
-    order.green_status === "approved" || 
-    Number(order.green_points) > 0;
+  // Điểm Sống Xanh — có thể là pending, approved hoặc legacy (chỉ có points)
+  const hasGreen =
+    order?.green_status === "pending" ||
+    order?.green_status === "approved" ||
+    Number(order?.green_points) > 0;
+
+  const greenPoints = Number(order?.green_points) || 0;
+  const isWallet = order?.payment === "Ví Canteen" || order?.payment === "WALLET";
+  const isQR = order?.payment === "QR" || order?.payment === "VietQR";
 
   return (
     <article
-      className={`kds-card ${
-        processing ? "kds-card--processing" : ""
-      } ${priority ? "kds-ticket--priority" : ""}`}
+      className={`kds-card ${processing ? "kds-card--processing" : ""} ${
+        priority ? "kds-ticket--priority" : ""
+      }`}
+      aria-busy={processing}
     >
       {/* HEAD */}
       <div className="kds-card__head">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            minWidth: 0,
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span className="kds-card__code">{order.code}</span>
           {isUrgent && isPending && (
             <span className="kds-card__tag kds-card__tag--danger">
-              {t("Còn")} {Math.max(0, 12 - elapsedMin)}p
+              {t("Còn")} {minutesLeft}p
             </span>
           )}
           {isConfirmed && (
-            <span className="kds-card__tag kds-card__tag--primary">
-              {t("Chờ Bếp")}
-            </span>
+            <span className="kds-card__tag kds-card__tag--primary">{t("Chờ Bếp")}</span>
           )}
           {isPrep && (
-            <span className="kds-card__tag kds-card__tag--primary">
-              {t("BẾP")}
-            </span>
+            <span className="kds-card__tag kds-card__tag--primary">{t("BẾP")}</span>
           )}
           {isReady && (
             <span className="kds-card__tag kds-card__tag--success">
@@ -247,56 +281,58 @@ export default function KDSTicket({
             {fmtTime(order.created_at)}
           </span>
           {showDateLabel && (
-            <span
-              className={`kds-card__date-label kds-card__date-label--${dateVariant}`}
-            >
+            <span className={`kds-card__date-label kds-card__date-label--${dateVariant}`}>
               {dateLabelText}
             </span>
           )}
         </div>
       </div>
 
-      {/* CUSTOMER — ẩn khi tall; hiện MSSV/email */}
+      {/* CUSTOMER */}
       {!isTall && (
         <div className="kds-card__customer">
           {order.customer_name || t("Khách")}{" "}
           {order.customer_mssv ? (
-            <span className="kds-card__customer-id">
-              (MSSV: {order.customer_mssv})
-            </span>
+            <span className="kds-card__customer-id">(MSSV: {order.customer_mssv})</span>
           ) : order.customer_email ? (
-            <span className="kds-card__customer-id">
-              ({order.customer_email})
-            </span>
+            <span className="kds-card__customer-id">({order.customer_email})</span>
           ) : null}
         </div>
       )}
 
-      {/* TIMER */}
-      {isPrep && !isTall && (
+      {/* TIMER — luôn hiện khi Prep hoặc Pending để bếp thấy đang chờ bao lâu */}
+      {(isPrep || isPending) && !isTall && (
         <div
           style={{
             display: "flex",
             alignItems: "center",
             gap: 6,
             fontSize: 12,
-            color: "var(--st-text-muted)",
+            color: isUrgent ? "var(--st-error, #ef4444)" : "var(--st-text-muted)",
             fontWeight: 600,
           }}
         >
           <Timer size={13} />
-          <span style={{ fontVariantNumeric: "tabular-nums" }}>
-            {fmtElapsed(elapsed)}
-          </span>
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmtElapsed(elapsedSec)}</span>
+          {isUrgent && (
+            <span style={{ marginLeft: "auto", fontSize: 11 }}>
+              ⚠ {t("Trễ")} {Math.floor((elapsedSec - urgencyThreshold * 60) / 60)}p
+            </span>
+          )}
         </div>
       )}
 
       {/* ITEMS */}
       <div className="kds-card__items">
         {items.slice(0, 4).map((it, i) => (
-          <div key={i} className="kds-card__item">
+          <div key={`${it.menu_item_id || i}-${i}`} className="kds-card__item">
             <span className="kds-card__item-name">
               {it.qty}x {it.name}
+              {it.size?.id && it.size.id !== "S" && (
+                <span style={{ color: "var(--st-text-muted)", fontWeight: 500 }}>
+                  {" "}({it.size.id})
+                </span>
+              )}
             </span>
             <span className="kds-card__item-price">
               {money((Number(it.price) || 0) * (Number(it.qty) || 0))}
@@ -320,10 +356,7 @@ export default function KDSTicket({
 
         {order.note && (
           <div className="kds-card__note">
-            <AlertTriangle
-              size={12}
-              style={{ flexShrink: 0, marginTop: 2 }}
-            />
+            <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />
             <span>{order.note}</span>
           </div>
         )}
@@ -332,14 +365,8 @@ export default function KDSTicket({
       {/* META */}
       <div className="kds-card__meta">
         <span
-          className={`kds-card__payment ${
-            order.payment === "Ví Canteen" || order.payment === "WALLET"
-              ? "kds-card__payment--success"
-              : ""
-          } ${
-            order.payment === "QR" || order.payment === "VietQR"
-              ? "kds-card__payment--primary"
-              : ""
+          className={`kds-card__payment ${isWallet ? "kds-card__payment--success" : ""} ${
+            isQR ? "kds-card__payment--primary" : ""
           }`}
         >
           <CheckCircle2 size={14} />
@@ -349,19 +376,38 @@ export default function KDSTicket({
       </div>
 
       {/* GREEN STATUS */}
-      {hasGreen && (
-        isReady ? (
-          // Bước 4: Khối Duyệt/Từ chối đầy đủ
-          <div className="kds-card__green-block" style={{
-            marginTop: 6, padding: "8px 10px",
-            background: "rgba(24, 169, 103, 0.08)",
-            border: "1px solid rgba(24, 169, 103, 0.35)",
-            borderRadius: 8,
-            display: "flex", flexDirection: "column", gap: 6,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#18a967" }}>
+      {hasGreen &&
+        (isReady ? (
+          <div
+            className="kds-card__green-block"
+            style={{
+              marginTop: 6,
+              padding: "8px 10px",
+              background: "rgba(24, 169, 103, 0.08)",
+              border: "1px solid rgba(24, 169, 103, 0.35)",
+              borderRadius: 8,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#18a967",
+              }}
+            >
               <Leaf size={14} />
-              <span>{order.green_status === "pending" ? t("Chờ duyệt Sống Xanh") : t("Đã duyệt Sống Xanh")} +{order.green_points || 0} {t("điểm")}</span>
+              <span>
+                {order.green_status === "pending"
+                  ? t("Chờ duyệt Sống Xanh")
+                  : t("Đã duyệt Sống Xanh")}{" "}
+                +{greenPoints} {t("điểm")}
+              </span>
             </div>
             {order.green_status === "pending" && (onApproveGreen || onRejectGreen) && (
               <div style={{ display: "flex", gap: 6 }}>
@@ -370,15 +416,30 @@ export default function KDSTicket({
                     type="button"
                     onClick={() => onApproveGreen(order)}
                     disabled={greenBusy || processing}
+                    aria-label={t("Duyệt điểm Sống Xanh")}
                     style={{
-                      flex: 1, padding: "6px 10px", border: 0, borderRadius: 6,
-                      background: "#18a967", color: "#fff", fontWeight: 700,
-                      fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
-                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+                      flex: 1,
+                      padding: "6px 10px",
+                      border: 0,
+                      borderRadius: 6,
+                      background: "#18a967",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: greenBusy ? "wait" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 4,
                       opacity: greenBusy ? 0.6 : 1,
                     }}
                   >
-                    <Check size={13} /> {t("Duyệt")}
+                    {greenBusy ? (
+                      <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
+                    ) : (
+                      <Check size={13} />
+                    )}{" "}
+                    {t("Duyệt")}
                   </button>
                 )}
                 {onRejectGreen && (
@@ -386,12 +447,21 @@ export default function KDSTicket({
                     type="button"
                     onClick={() => onRejectGreen(order)}
                     disabled={greenBusy || processing}
+                    aria-label={t("Từ chối điểm Sống Xanh")}
                     style={{
-                      flex: 1, padding: "6px 10px", borderRadius: 6,
-                      background: "transparent", color: "#ef4444",
-                      border: "1px solid #ef4444", fontWeight: 700,
-                      fontSize: 12, cursor: greenBusy ? "wait" : "pointer",
-                      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+                      flex: 1,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      background: "transparent",
+                      color: "#ef4444",
+                      border: "1px solid #ef4444",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: greenBusy ? "wait" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 4,
                       opacity: greenBusy ? 0.6 : 1,
                     }}
                   >
@@ -402,40 +472,44 @@ export default function KDSTicket({
             )}
           </div>
         ) : (
-          // Bước 1, 2, 3: Chỉ hiện badge nhỏ báo có Sống Xanh
-          <div style={{
-            marginTop: 6,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "3px 8px",
-            borderRadius: 12,
-            background: "rgba(24, 169, 103, 0.1)",
-            color: "#18a967",
-            fontSize: 11,
-            fontWeight: 700,
-            alignSelf: "flex-start",
-          }}>
+          <div
+            style={{
+              marginTop: 6,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "3px 8px",
+              borderRadius: 12,
+              background: "rgba(24, 169, 103, 0.1)",
+              color: "#18a967",
+              fontSize: 11,
+              fontWeight: 700,
+              alignSelf: "flex-start",
+            }}
+          >
             <Leaf size={12} />
-            <span>{t("Khách mang đồ đựng")} (+{order.green_points || 10}đ)</span>
+            {/* FIX: dùng "điểm" thay vì "đ" (tiền) */}
+            <span>
+              {t("Khách mang đồ đựng")} (+{greenPoints || 10} {t("điểm")})
+            </span>
           </div>
-        )
-      )}
+        ))}
 
       {/* ACTIONS */}
-      <div
-        className={`kds-card__actions ${
-          showReject ? "kds-card__actions--stack" : ""
-        }`}
-      >
+      <div className={`kds-card__actions ${showReject ? "kds-card__actions--stack" : ""}`}>
         {showReject && (
           <button
             type="button"
             className="kds-card__btn kds-card__btn--ghost"
             onClick={() => onReject?.(order)}
             disabled={processing}
+            aria-label={t("Từ chối đơn hàng")}
           >
-            <XCircle size={18} />
+            {processing ? (
+              <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+            ) : (
+              <XCircle size={18} />
+            )}
             <span>{t("Từ chối")}</span>
           </button>
         )}
@@ -450,12 +524,10 @@ export default function KDSTicket({
             }`}
             onClick={() => handleAdvance(order)}
             disabled={processing}
+            aria-label={t(actionLabel)}
           >
             {processing ? (
-              <Loader2
-                size={18}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
+              <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
             ) : isPending ? (
               <Check size={18} />
             ) : isConfirmed ? (

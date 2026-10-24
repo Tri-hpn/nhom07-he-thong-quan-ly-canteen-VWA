@@ -9,12 +9,13 @@
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import {Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings, History, Zap} from "lucide-react";
+import {Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings, History, Zap, Info} from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import RulesModal from "../../components/RulesModal";
 
 // ============================================================
 // CONSTANTS
@@ -1311,11 +1312,14 @@ export default function OwnerVouchers() {
           onSave={async (next) => {
             setSavingConfig(true);
             try {
+              console.log("Đang gửi API:", next.earn);
               const res = await api.points.updateConfig(next);
+              console.log("API phản hồi:", res);
               setPointsConfig(res.config || next);
-              setConfigModal(false);
+              toast("Đã lưu Quy tắc Xu thành công!", "success");
             } catch (e) {
-              toast(e.message || t("Không lưu được quy tắc"), "error");
+              console.error("Lỗi lưu API:", e);
+              toast(e.message || "Lỗi khi lưu, vui lòng thử lại", "error");
             } finally {
               setSavingConfig(false);
             }
@@ -1515,7 +1519,15 @@ function ErrorBox({ message, onRetry, t }) {
 // POINTS CONFIG MODAL — Sửa quy tắc tích/đổi điểm
 // ============================================================
 function PointsConfigTab({ initial, saving, onSave, t }) {
+  const [subsidyPoints, setSubsidyPoints] = useState(initial?.earn?.subsidy_points || 10000);
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [rateEnabled, setRateEnabled] = useState(initial?.earn?.rate_enabled ?? true);
+  const [subsidyEnabled, setSubsidyEnabled] = useState(initial?.earn?.subsidy_enabled ?? true);
   const [isEditing, setIsEditing] = useState(false);
+    const [rateDesc, setRateDesc] = useState(initial?.earn?.rate_desc || "Điều kiện nhận thưởng: Đơn hàng được hoàn thành thành công.\nCách cộng Xu: Hệ thống tự động cộng Xu vào tài khoản sau khi đơn hàng hoàn thành.\nTrường hợp không được thưởng: Đơn hàng chưa hoàn thành hoặc đã bị hủy sẽ không được nhận Xu thưởng.\nKiểm tra Xu: Xem số Xu được cộng trong mục Lịch sử Xu.");
+  const [greenDesc, setGreenDesc] = useState(initial?.earn?.green_desc || "Điều kiện tham gia: Mang hộp đựng cá nhân khi mua đồ ăn mang về.\nCách nhận thưởng: Thông báo với nhân viên tại quầy để được kiểm tra và xác nhận hợp lệ. Sau khi được duyệt, bạn nhận Xu.\nGiới hạn thưởng: Mỗi đơn hàng chỉ được nhận thưởng Sống Xanh một lần.\nLưu ý: Mang hộp cá nhân nhưng chưa được nhân viên xác nhận thì chưa đủ điều kiện nhận Xu.");
+  const [reviewDesc, setReviewDesc] = useState(initial?.earn?.review_desc || "Điều kiện nhận thưởng: Đơn hàng đã hoàn thành và món ăn được đánh giá là món bạn đã mua.\nCách nhận thưởng: Chọn số sao và gửi nhận xét về món ăn thông qua chức năng đánh giá.\nMức thưởng: Nhận Xu cho mỗi lượt đánh giá hợp lệ.\nGiới hạn thưởng: Mỗi tài khoản chỉ được nhận thưởng một lần cho mỗi món ăn; đánh giá trùng lặp không được cộng thêm Xu.");
+  const [subsidyDesc, setSubsidyDesc] = useState(initial?.earn?.subsidy_desc || "Chương trình hỗ trợ một phần chi phí bữa ăn cho sinh viên đủ điều kiện. Khoản trợ giá được tính bằng VNĐ và được trừ trực tiếp vào tiền suất ăn, không cộng vào số dư Xu.\nMức trợ giá: Hỗ trợ tối đa 10.000đ cho mỗi suất ăn đủ điều kiện.\nĐiều kiện áp dụng: Suất ăn có giá từ 25.000đ trở lên và thanh toán theo hình thức được chương trình quy định tại quầy.\nCách nhận trợ giá: Chọn suất ăn đủ điều kiện và thực hiện thanh toán tại quầy theo hướng dẫn của căng tin. Khoản trợ giá được áp dụng khi giao dịch đáp ứng điều kiện chương trình.\nHạn mức hỗ trợ: Số tiền trợ giá phụ thuộc vào ngân sách quỹ và số suất ăn còn được hỗ trợ trong kỳ.\nTheo dõi quyền lợi: Bạn có thể xem hạn mức trợ giá còn lại, số suất đã sử dụng trong tháng và tiến độ sử dụng trên giao diện chương trình.\nLưu ý: Trợ giá là khoản giảm trực tiếp bằng VNĐ, không phải Xu. Mức hỗ trợ thực tế không vượt quá 10.000đ cho mỗi suất ăn và phụ thuộc vào điều kiện, hạn mức còn lại của chương trình.");
   const [historyModal, setHistoryModal] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   
@@ -1533,41 +1545,29 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
   const submit = (e) => {
     if (e) e.preventDefault();
     if (saving) return;
-    
-    const changes = [];
-    const old = initial.earn;
-    const num = (v) => Number(v) || 0;
-    
-    if (num(old.rate_points) !== num(ratePoints)) changes.push(`Hoàn thành đơn hàng: ${num(old.rate_points)} → ${num(ratePoints)} Xu`);
-    if (!!old.green_enabled !== greenEnabled) changes.push(`Sống Xanh: ${greenEnabled ? "BẬT" : "TẮT"}`);
-    else if (greenEnabled && num(old.green_points) !== num(greenPoints)) changes.push(`Sống Xanh: ${num(old.green_points)} → ${num(greenPoints)} Xu`);
-    if (!!old.green_require_approval !== greenApproval) changes.push(`Duyệt Sống Xanh: ${greenApproval ? "BẬT" : "TẮT"}`);
-    if (!!old.review_enabled !== reviewEnabled) changes.push(`Đánh giá: ${reviewEnabled ? "BẬT" : "TẮT"}`);
-    else if (reviewEnabled && num(old.review_points) !== num(reviewPoints)) changes.push(`Đánh giá: ${num(old.review_points)} → ${num(reviewPoints)} Xu`);
-    if (JSON.stringify(old.custom_programs || []) !== JSON.stringify(customPrograms)) changes.push(`Chương trình tùy chỉnh thay đổi`);
-    
-    if (changes.length === 0) {
-      toast(t("Không có thay đổi nào để lưu"), "info");
-      setIsEditing(false);
-      return;
-    }
-    toast(t("Đã lưu: ") + changes.join(" · "), "success");
-    setIsEditing(false);
-    
+
     const payload = {
       earn: {
         ...initial.earn,
+        rate_enabled: rateEnabled,
         rate_points: Number(ratePoints),
         green_enabled: greenEnabled,
         green_points: Number(greenPoints),
         green_require_approval: greenApproval,
         review_enabled: reviewEnabled,
         review_points: Number(reviewPoints),
+        subsidy_enabled: subsidyEnabled,
+        subsidy_points: Number(subsidyPoints),
+        rate_desc: rateDesc,
+        green_desc: greenDesc,
+        review_desc: reviewDesc,
+        subsidy_desc: subsidyDesc,
         custom_programs: customPrograms
       },
       redeem: initial.redeem
     };
     onSave(payload);
+    setIsEditing(false);
     setHistoryRefreshKey(prev => prev + 1);
   };
 
@@ -1595,9 +1595,10 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         </div>
         
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={() => setHistoryModal(true)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f5f7fb)", color: "var(--text-primary, #172033)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-            <History size={16} /> Lịch sử
+          <button type="button" onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <Info size={16} /> Quy tắc Xu
           </button>
+          
           
           {!isEditing ? (
             <button type="button" onClick={() => setIsEditing(true)} style={{ padding: "8px 16px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
@@ -1606,7 +1607,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
           ) : (
             <>
               <button type="button" onClick={() => setIsEditing(false)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f5f7fb)", color: "var(--text-primary, #172033)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>Hủy</button>
-              <button type="button" onClick={submit} disabled={saving} style={{ padding: "8px 16px", background: "#18a967", color: "#fff", border: 0, borderRadius: 8, cursor: saving ? "not-allowed" : "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+              <button type="button" onClick={submit} style={{ position: "relative", zIndex: 99, padding: "8px 16px", background: "#18a967", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
                 <Save size={16} /> {saving ? "Đang lưu..." : "Lưu lại"}
               </button>
             </>
@@ -1619,7 +1620,11 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🍽️ Hoàn thành đơn hàng</div>
-            <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Hoàn thành đơn hàng tự động cộng Xu.</div>
+{isEditing ? (
+              <textarea value={rateDesc} onChange={(e) => setRateDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+            ) : (
+              <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{rateDesc}</div>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
             {isEditing ? (
@@ -1627,7 +1632,11 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
             ) : (
               <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{ratePoints} Xu</b>
             )}
-            <input type="checkbox" checked={true} disabled={!isEditing || saving} onChange={() => {}} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} title="Quy tắc mặc định (luôn bật)" />
+            {isEditing ? (
+                <button type="button" onClick={() => setRateEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
+              ) : (
+                <input type="checkbox" checked={rateEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
+              )}
           </div>
         </div>
 
@@ -1636,7 +1645,11 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px" }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🌱 Sống Xanh Học Đường</div>
-              <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Cộng Xu khi khách mang hộp cá nhân và được duyệt.</div>
+{isEditing ? (
+                <textarea value={greenDesc} onChange={(e) => setGreenDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+              ) : (
+                <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{greenDesc}</div>
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
               {isEditing ? (
@@ -1644,7 +1657,11 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
               ) : (
                 <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{greenPoints} Xu</b>
               )}
-              <input type="checkbox" checked={greenEnabled} onChange={(e) => setGreenEnabled(e.target.checked)} disabled={!isEditing || saving} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} />
+              {isEditing ? (
+                <button type="button" onClick={() => setGreenEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
+              ) : (
+                <input type="checkbox" checked={greenEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
+              )}
             </div>
           </div>
           {greenEnabled && (
@@ -1661,7 +1678,11 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>⭐ Đánh giá món ăn</div>
-            <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Cộng Xu khi khách đánh giá món đã mua.</div>
+{isEditing ? (
+              <textarea value={reviewDesc} onChange={(e) => setReviewDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+            ) : (
+              <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{reviewDesc}</div>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
             {isEditing ? (
@@ -1669,7 +1690,11 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
             ) : (
               <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{reviewPoints} Xu</b>
             )}
-            <input type="checkbox" checked={reviewEnabled} onChange={(e) => setReviewEnabled(e.target.checked)} disabled={!isEditing || saving} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} />
+            {isEditing ? (
+                <button type="button" onClick={() => setReviewEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
+              ) : (
+                <input type="checkbox" checked={reviewEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
+              )}
           </div>
         </div>
 
@@ -1677,11 +1702,23 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🎓 Trợ giá sinh viên</div>
-            <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4 }}>Ưu đãi giảm giá 10.000đ cho mỗi đơn hàng dành riêng cho sinh viên.</div>
+{isEditing ? (
+              <textarea value={subsidyDesc} onChange={(e) => setSubsidyDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
+            ) : (
+              <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{subsidyDesc}</div>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-            <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+10.000 Xu</b>
-            <input type="checkbox" checked={true} disabled={!isEditing || saving} onChange={() => {}} style={{ width: 20, height: 20, accentColor: "#18a967", cursor: (!isEditing || saving) ? "not-allowed" : "pointer" }} title="Quy tắc mặc định (luôn bật)" />
+            {isEditing ? (
+              <input type="number" value={subsidyPoints || 10000} onChange={(e) => setSubsidyPoints(e.target.value)} style={{ width: 80, padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", textAlign: "right" }} />
+            ) : (
+              <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{Number(subsidyPoints || 10000).toLocaleString("vi-VN")} Xu</b>
+            )}
+            {isEditing ? (
+                <button type="button" onClick={() => setRateEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
+              ) : (
+                <input type="checkbox" checked={rateEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
+              )}
           </div>
         </div>
 
@@ -1735,6 +1772,27 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
           <ConfigHistoryTable t={t} key={historyRefreshKey} />
         </Modal>
       )}
+      {showRulesModal && (
+        <RulesModal
+          isAdmin={true}
+          onClose={() => setShowRulesModal(false)}
+          liveData={{
+            rate_points: Number(ratePoints),
+            green_points: Number(greenPoints),
+            review_points: Number(reviewPoints),
+            subsidy_points: Number(subsidyPoints || 10000),
+            rate_desc: rateDesc,
+            green_desc: greenDesc,
+            review_desc: reviewDesc,
+            subsidy_desc: subsidyDesc,
+            custom_programs: customPrograms,
+            rate_enabled: rateEnabled,
+            green_enabled: greenEnabled,
+            review_enabled: reviewEnabled,
+            subsidy_enabled: subsidyEnabled
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1744,8 +1802,7 @@ function ConfigHistoryTable({ t }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.points.history()
-      .then(data => setHistory(data || []))
+    api.settings.get().then(data => setHistory(data || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

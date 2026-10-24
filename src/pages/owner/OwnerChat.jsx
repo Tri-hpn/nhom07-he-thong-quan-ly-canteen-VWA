@@ -292,9 +292,9 @@ export default function OwnerChat() {
     const dist =
       container.scrollHeight - container.scrollTop - container.clientHeight;
 
-    if (isOwn || dist < 120) {
+    if (isOwn || dist < 30) {
       requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
       });
     }
 
@@ -313,7 +313,7 @@ export default function OwnerChat() {
     }
 
     setSending(true);
-    const tempId = "tmp-" + Date.now();
+    const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
     const tempMsg = {
       id: tempId,
       from: "staff",

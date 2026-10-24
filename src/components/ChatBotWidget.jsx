@@ -45,7 +45,7 @@ const PROMPT_SUGGESTIONS = [
 const AI_REPLY_DELAY_MS = 600;
 const POLL_MS = 3000;
 const MAX_MESSAGE_LENGTH = 2000;
-const SCROLL_THRESHOLD_PX = 120;
+const SCROLL_THRESHOLD_PX = 30;
 
 // ============================================================
 // HELPERS
@@ -337,7 +337,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
     if (isInitial || isOwn || (grew && nearBottom) || aiTyping) {
       requestAnimationFrame(() => {
         aiBottomRef.current?.scrollIntoView({
-          behavior: isInitial ? "auto" : "smooth",
+          behavior: isInitial ? "auto" : "auto",
         });
       });
     }
@@ -365,7 +365,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
     if (isInitial || isOwn || (grew && nearBottom)) {
       requestAnimationFrame(() => {
         staffBottomRef.current?.scrollIntoView({
-          behavior: isInitial ? "auto" : "smooth",
+          behavior: isInitial ? "auto" : "auto",
         });
       });
     }

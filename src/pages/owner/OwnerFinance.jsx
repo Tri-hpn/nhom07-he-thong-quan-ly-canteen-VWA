@@ -163,38 +163,47 @@ export default function OwnerFinance() {
       <div
         style={{
           marginBottom: 20,
-          background: "var(--card-bg, #fff)",
-          border: "1px solid var(--border-color, #e7ebf0)",
-          borderRadius: 12,
-          padding: 12,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
         }}
       >
-        <label style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted, #475569)" }}>
-          {t("Mục:")}
-        </label>
-        <select
-          value={mainTab}
-          onChange={(e) => setMainTab(e.target.value)}
-          style={{
-            flex: 1,
-            maxWidth: 400,
-            padding: "10px 14px",
-            border: "1px solid var(--border-color, #e5e9ef)",
-            borderRadius: 8,
-            background: "var(--bg-secondary, #fff)",
-            color: "var(--text-primary, #172033)",
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: "pointer",
-            outline: "none",
-          }}
-        >
-          <option value="report">{t("Báo cáo")}</option>
-          <option value="finance">{t("Tài chính")}</option>
-        </select>
+        {/* TAB BUTTONS */}
+        <div style={{ display: "inline-flex", background: "var(--bg-tertiary, #f5f7fb)", padding: 4, borderRadius: 10, gap: 4 }}>
+          <button
+            type="button"
+            onClick={() => setMainTab("report")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              background: mainTab === "report" ? "#2634d5" : "transparent",
+              color: mainTab === "report" ? "#fff" : "var(--text-muted, #64748b)",
+              boxShadow: mainTab === "report" ? "0 2px 4px rgba(38, 52, 213, 0.2)" : "none"
+            }}
+          >
+            {t("Báo cáo")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMainTab("finance")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              background: mainTab === "finance" ? "#2634d5" : "transparent",
+              color: mainTab === "finance" ? "#fff" : "var(--text-muted, #64748b)",
+              boxShadow: mainTab === "finance" ? "0 2px 4px rgba(38, 52, 213, 0.2)" : "none"
+            }}
+          >
+            {t("Tài chính")}
+          </button>
+        </div>
       </div>
 
       {/* TAB CONTENT */}

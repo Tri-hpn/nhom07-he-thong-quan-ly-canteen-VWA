@@ -2,7 +2,7 @@
 // CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V4 - FINAL + i18n)
 // ============================================================
 // 🔧 FIX:
-//   - M16: Tab reward filter thật
+//   - FIX CRASH: Đổi emoji string trong EARN_METHODS thành Lucide Icon
 //   - F1: Filter fallback dựa vào value
 //   - F3: affordableOnly ưu tiên user chưa có điểm
 //   - F4: Không refetch khi đổi ngôn ngữ
@@ -18,9 +18,10 @@ import {
   Copy, Check, Gift, Sparkles, ArrowRight, Ticket, Leaf, TrendingUp,
   History, HelpCircle, Utensils, Recycle, PiggyBank, Star, QrCode,
   ExternalLink, ThumbsUp, Receipt, Lightbulb, Wallet, Plus, Loader2,
-  AlertCircle, RefreshCw, X, Award,
+  AlertCircle, RefreshCw, X, Award, Info,
 } from "lucide-react";
 import { api } from "../../api";
+import RulesModal from "../../components/RulesModal";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
@@ -32,7 +33,7 @@ import { QRCodeCanvas } from "qrcode.react";
 
 const COPY_FEEDBACK_MS = 1500;
 const MIN_REDEEM = 100;
-const POINT_TO_VND = 100;
+const POINT_TO_VND = 1;
 const REDEEM_OPTIONS = [100, 200, 500, 1000];
 
 const EARN_METHODS = [
@@ -43,7 +44,16 @@ const EARN_METHODS = [
     title: "Hoàn thành đơn hàng",
     badge: "Hoàn 1%",
     desc: "Mỗi 10.000 đ thanh toán tại quầy hoặc ứng dụng nhận ngay 1 VWA Point tự động.",
-    cta: "Quét mã SV khi nhận món",
+    cta: "Xem hạn mức và quyền lợi trợ giá",
+  },
+  {
+    key: "subsidy",
+    icon: Award, // 🔧 Đã sửa: Dùng Icon thay vì emoji string
+    color: "#F59E0B", // 🔧 Đã sửa: Thêm màu
+    title: "Trợ giá sinh viên",
+    badge: "Học kỳ II",
+    desc: "Ưu đãi giảm giá đặc biệt dành riêng cho sinh viên VWA.",
+    cta: "Xem hạn mức trợ giá",
   },
   {
     key: "eco",
@@ -55,18 +65,10 @@ const EARN_METHODS = [
     cta: "Chung tay giảm đồ nhựa",
   },
   {
-      id: "subsidy",
-      icon: "🎓",
-      title: "Trợ giá sinh viên",
-      desc: "Ưu đãi giảm giá đặc biệt dành riêng cho sinh viên VWA.",
-      points: 100,
-      active: true,
-    },
-    {
     key: "review",
     icon: Star,
     color: "#0051B1",
-    title: "Đánh giá món Ēn",
+    title: "Đánh giá món ăn",
     badge: "+5 pts/lần",
     desc: "Để lại nhận xét sao & góp ý khẩu vị trong mục Lịch sử đơn hàng để cải thiện chất lượng phục vụ bữa ăn.",
     cta: "Đánh giá đơn gần nhất",
@@ -74,14 +76,7 @@ const EARN_METHODS = [
 ];
 
 // ============================================================
-// 🔧 F1 + F5: REWARD_TABS với filter rõ ràng
-// ============================================================
-// Logic phân loại:
-//   1. Nếu code chứa prefix rõ ràng (COMBO, GIFT, FOOD, DRINK, ECO, GREEN) → vào tab tương ứng.
-//   2. Nếu không có prefix:
-//      - value >= 10000 → tab Voucher (giảm tiền)
-//      - value < 10000 → tab Food (quà nhỏ)
-//   3. Tab "Voucher" = catch-all cho voucher KHÔNG khớp tab nào khác.
+// REWARD_TABS với filter rõ ràng
 // ============================================================
 
 function getCodeUpper(v) {
@@ -111,7 +106,6 @@ const REWARD_TABS = [
   {
     id: "voucher",
     label: "Voucher Giảm Tiền Trực Tiếp",
-    // 🔧 F5: Voucher = KHÔNG match các tab khác
     filter: (v) => {
       const code = getCodeUpper(v);
       if (isComboCode(code) || isEcoCode(code) || isFoodCode(code)) return false;
@@ -124,7 +118,6 @@ const REWARD_TABS = [
     filter: (v) => {
       const code = getCodeUpper(v);
       if (isFoodCode(code)) return true;
-      //  F1: Fallback — value nhỏ thường là món/quà
       if (isComboCode(code) || isEcoCode(code)) return false;
       const val = getValue(v);
       return val > 0 && val < 10000;
@@ -200,16 +193,18 @@ export default function CustomerPromotions() {
   const { t } = useI18n();
 
   const [vouchers, setVouchers] = useState([]);
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const [publicVouchers, setPublicVouchers] = useState([]);
   const [points, setPoints] = useState(0);
   const [pointHistory, setPointHistory] = useState([]);
   const [customerOrders, setCustomerOrders] = useState([]);
   const [orderStatsLoaded, setOrderStatsLoaded] = useState(false);
   const [showPointHistory, setShowPointHistory] = useState(false);
-  const [showPointRules, setShowPointRules] = useState(false);
-  const [showPickupQrModal, setShowPickupQrModal] = useState(false);
+  const [showVoucherWallet, setShowVoucherWallet] = useState(false);
+  const [showStudentSubsidyModal, setShowStudentSubsidyModal] = useState(false);
+  const [autoSubsidyRenew, setAutoSubsidyRenew] = useState(true);
   const [selectedPickupOrderCode, setSelectedPickupOrderCode] = useState("");
-const [showEcoModal, setShowEcoModal] = useState(false);
+  const [showEcoModal, setShowEcoModal] = useState(false);
   const [ecoOrderId, setEcoOrderId] = useState("");
   const [ecoMethod, setEcoMethod] = useState("bottle");
   const [ecoSubmitting, setEcoSubmitting] = useState(false);
@@ -232,14 +227,12 @@ const [showEcoModal, setShowEcoModal] = useState(false);
   const [redeemPoints, setRedeemPoints] = useState(MIN_REDEEM);
   const [customRedeemPoints, setCustomRedeemPoints] = useState("250");
   const [redeemLoading, setRedeemLoading] = useState(false);
+  const [redeemOptionLoading, setRedeemOptionLoading] = useState(null);
 
   const copyTimerRef = useRef(null);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // ============================================================
-  // Track mount
-  // ============================================================
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -248,10 +241,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     };
   }, []);
 
-  // ============================================================
-  // LOAD
-  // 🔧 F4: Không phụ thuộc `t` để tránh refetch khi đổi ngôn ngữ
-  // ============================================================
   const loadAll = useCallback(
     async (silent = false) => {
       if (inFlightRef.current) return;
@@ -278,9 +267,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
         setOrderStatsLoaded(Array.isArray(ordersRes));
       } catch (e) {
         if (mountedRef.current && !silent) {
-          setError(
-            e.message || "Không tải được dữ liệu khuyến mãi"
-          );
+          setError(e.message || "Không tải được dữ liệu khuyến mãi");
         }
       } finally {
         if (mountedRef.current) {
@@ -297,42 +284,13 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     loadAll(false);
   }, [loadAll]);
 
-  // Lam moi trang thai don trong luc modal QR dang mo.
-  useEffect(() => {
-    if (!showPickupQrModal) return undefined;
-
-    let cancelled = false;
-
-    const refreshPickupOrders = async () => {
-      try {
-        const data = await api.orders.myOrders();
-        if (!cancelled && Array.isArray(data)) {
-          setCustomerOrders(data);
-        }
-      } catch (_) {
-        // Giu du lieu hien tai neu mang tam thoi loi.
-      }
-    };
-
-    refreshPickupOrders();
-    const timer = window.setInterval(refreshPickupOrders, 4000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [showPickupQrModal]);
-
-  // ============================================================
-  // DERIVED
-  // ============================================================
   const { active, used } = useMemo(() => {
     return {
       active: vouchers.filter((v) => !v.used),
       used: vouchers.filter((v) => v.used),
     };
   }, [vouchers]);
-  // Thong ke tu lich su don hang va voucher da su dung
+
   const promoStats = useMemo(() => {
     const validOrders = customerOrders.filter((order) => {
       const status = String(order.status || "")
@@ -348,7 +306,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
       return code && discount > 0 ? sum + discount : sum;
     }, 0);
 
-    // Chi dem voucher ECO/GREEN da duoc su dung, khong dem voucher chua dung
     const ecoUses = used.filter((voucher) =>
       voucher.used && isEcoCode(getCodeUpper(voucher))
     ).length;
@@ -379,9 +336,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     [pickupOrders, selectedPickupOrderCode]
   );
 
-  /**
-   *  M16 + F3: Lọc theo tab reward + tab active/used.
-   */
   const list = useMemo(() => {
     const source = tab === "active" ? active : used;
 
@@ -390,7 +344,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
 
     let result = source.filter(filterFn);
 
-    // 🔧 F3: affordableOnly — nếu user chưa có điểm, hiện hết
     if (affordableOnly && points > 0) {
       result = result.filter((v) => {
         const usedPoints = Number(v.points_used) || 0;
@@ -409,25 +362,30 @@ const [showEcoModal, setShowEcoModal] = useState(false);
   }, [publicVouchers, rewardTab]);
   const canRedeem = points >= redeemPoints && redeemPoints >= MIN_REDEEM;
 
-  // Tier
+  const completedSpent = useMemo(() => {
+    return customerOrders.reduce((sum, order) => {
+      if (order.status !== "Hoàn thành") return sum;
+      return sum + (Number(order.total) || 0);
+    }, 0);
+  }, [customerOrders]);
+
   const tier = useMemo(() => {
-    if (points >= 1000) {
-      return { name: t("Bạch Kim"), short: t("Platinum"), next: 1500 };
+    if (completedSpent >= 10000000) {
+      return { name: t("Kim cương"), short: t("Diamond"), next: 10000000, isMax: true };
     }
-    if (points >= 500) {
-      return { name: t("Vàng"), short: t("Gold"), next: 1000 };
+    if (completedSpent >= 3000000) {
+      return { name: t("Vàng"), short: t("Gold"), next: 10000000, isMax: false };
     }
-    if (points >= 100) {
-      return { name: t("Bạc"), short: t("Silver"), next: 500 };
+    if (completedSpent >= 1000000) {
+      return { name: t("Bạc"), short: t("Silver"), next: 3000000, isMax: false };
     }
-    return { name: t("Đồng"), short: t("Bronze"), next: 100 };
-  }, [points, t]);
+    return { name: t("Đồng"), short: t("Bronze"), next: 1000000, isMax: false };
+  }, [completedSpent, t]);
 
-  const tierProgress = Math.min(100, (points / tier.next) * 100);
+  const tierProgress = tier.isMax
+    ? 100
+    : Math.min(100, (completedSpent / tier.next) * 100);
 
-  // ============================================================
-  // HANDLERS
-  // ============================================================
   const scrollToSection = useCallback((id) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -459,7 +417,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     try {
       const voucher = await api.points.redeem({ points: amount });
       toast(
-        `${t("Đổi thành công!")} ${voucher.code} — ${money(voucher.value)}`,
+        `${t("Đã nhận voucher thành công!")} ${voucher.code} — ${money(voucher.value)}`,
         "success"
       );
       setRedeemPoints(MIN_REDEEM);
@@ -518,9 +476,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
     return () => window.removeEventListener("keydown", handler);
   }, [openedGroup]);
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
     <div className="customer-promo-v2">
       {error && (
@@ -545,7 +500,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
         <button
             type="button"
             className="promo-header__cta"
-            onClick={() => scrollToSection("my-vouchers")}
+            onClick={() => setShowVoucherWallet(true)}
           >
             <Ticket size={18} />
             {t("Ví Voucher Của Tôi")} ({active.length})
@@ -588,7 +543,13 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                   {t("Tiến độ thăng Hạng")} {tier.name}
                 </span>
                 <span>
-                  <b>{points}</b> / {tier.next} pts
+                  {tier.isMax ? (
+                    <b>Đã đạt hạng cao nhất</b>
+                  ) : (
+                    <>
+                      <b>{money(completedSpent)}</b> / {money(tier.next)}
+                    </>
+                  )}
                 </span>
               </div>
               <div className="promo-hero__tier-bar">
@@ -605,17 +566,18 @@ const [showEcoModal, setShowEcoModal] = useState(false);
             <div className="promo-hero__actions">
               <button
                 type="button"
-                className="promo-hero__action promo-hero__action--solid" onClick={() => scrollToSection("points-activity")}>
+                className="promo-hero__action promo-hero__action--solid" onClick={() => { setShowPointHistory(true); loadAll(); }}>
                 <History size={16} />
                 {t("Lịch sử tích/đổi điểm")}
               </button>
               <button
-                type="button"
-                className="promo-hero__action promo-hero__action--ghost"
-               onClick={() => setShowPointRules(true)}>
-                <HelpCircle size={16} />
-                {t("Quy tắc tích điểm")}
-              </button>
+  type="button"
+  className="promo-hero__action promo-hero__action--ghost"
+  onClick={() => setShowRulesModal(true)}
+>
+  <Info size={16} />
+  Quy tắc Xu
+</button>
               <span className="promo-hero__expiry">
                 {t("Hạn điểm:")} <b>30/06/2025</b>
               </span>
@@ -671,6 +633,9 @@ const [showEcoModal, setShowEcoModal] = useState(false);
             const Icon = m.icon;
             return (
               <div key={m.key} className="promo-earn-card">
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                 <div
                   className="promo-earn-card__icon"
                   style={{ background: `${m.color}15`, color: m.color }}
@@ -682,7 +647,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                     <b>{t(m.title)}</b>
                     <span
                       className="promo-earn-card__badge"
-                      style={{ background: `${m.color}15`, color: m.color }}
+                      style={m.key === "eat" ? { background: "#dcfce7", color: "#15803d" } : { background: `${m.color}15`, color: m.color }}
                     >
                       {t(m.badge)}
                     </span>
@@ -705,27 +670,13 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                       cursor: "pointer",
                     }}
                     onClick={async () => {
-                      if (m.key === "eat") {
-                        const ready = customerOrders.find(
-                          (o) => o.status === "Sẵn sàng nhận" && o.code
-                        );
-                        setSelectedPickupOrderCode(ready?.code || "");
-                        setShowPickupQrModal(true);
+                      // 🔧 Sửa logic: Cả "eat" và "subsidy" đều mở modal Trợ giá
+                      if (m.key === "eat" || m.key === "subsidy") {
+                        setShowStudentSubsidyModal(true);
                         return;
                       }
 
-                      if (m.key === "eco") {
-                        const readyOrders = customerOrders.filter(
-                          (o) => o.status === "Sẵn sàng nhận"
-                        );
-                        const first = readyOrders[0];
-                        setEcoOrderId(
-                          first ? String(first.id || first._id || "") : ""
-                        );
-                        setEcoMethod("bottle");
-                        setShowEcoModal(true);
-                        return;
-                      }
+                      if (m.key === "eco") { setShowEcoModal(true); return; }
 
                       if (m.key === "review") {
                         try {
@@ -796,193 +747,105 @@ const [showEcoModal, setShowEcoModal] = useState(false);
 
       {/* REDEEM HUB */}
       <section className="promo-section">
-        <div className="promo-section__head">
-          <div>
-            <h2 className="promo-section__title">
-              {t("Kho Quà & Voucher Đổi Điểm")}
-            </h2>
-
-          </div>
-          <div className="promo-redeem-controls">
-
-          </div>
-        </div>
-
-        {/*  M16: Tab filter giờ hoạt động thật */}
-
-        {/* Đổi điểm */}
-                <div className="promo-redeem-area">
-
-          <div className="promo-redeem-lower">
-          <div className="promo-redeem-cards">
-            {REDEEM_OPTIONS.map((p) => {
-              const disabled = points < p;
-              const value = p * POINT_TO_VND;
-
-              return (
-                <article
-                  key={p}
-                  className={`promo-redeem-card ${disabled ? "is-locked" : ""}`}
-                >
-                  <div className="promo-redeem-card__top">
-                    <span>💰 {p} pts</span>
-                  </div>
-
-                  <div className="promo-redeem-card__ticket">
-                    <span>VOUCHER</span>
-                    <b>{Math.round(value / 1000)}K</b>
-                  </div>
-
-                  <div className="promo-redeem-card__description">
-                    <b>{t("Voucher giảm")} {money(value)}</b>
-                    <span>{t("Trừ ngay hóa đơn")}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="promo-redeem-card__button"
-                    disabled={redeemLoading || disabled}
-                    onClick={() => {
-                      setRedeemPoints(p);
-                      doRedeem(p);
-                    }}
-                  >
-                    {redeemLoading ? (
-                      <>
-                        <Loader2 size={14} className="promo-spin" />
-                        {t("Đang đổi...")}
-                      </>
-                    ) : disabled ? (
-                      <>🔒 {t("Chưa đủ điểm")}</>
-                    ) : (
-                      <>
-                        <Gift size={14} />
-                        {t("Đổi ngay")}
-                      </>
-                    )}
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-
-          <div className="promo-redeem-custom">
-  <div className="promo-redeem-custom__title">
-    <Gift size={17} color="#2563EB" />
-    <strong>{t("ĐỔI ĐIỂM LINH HOẠT THEO Ý MUỐN")}</strong>
+  <div className="promo-section__head">
+    <div>
+      <h2 className="promo-section__title">
+        {t("Kho Quà & Voucher Đổi Điểm")}
+      </h2>
+    </div>
   </div>
 
-  <p className="promo-redeem-custom__balance">
-    {t("Bạn đang có:")}{" "}
-    <b>{Number(points || 0).toLocaleString("vi-VN")} {t("điểm")}</b>
-    {" "}({t("Tương đương")}{" "}
-    <b>{money(Number(points || 0) * POINT_TO_VND)}</b>)
-  </p>
+  {/* Public vouchers */}
+  {filteredPublicVouchers.length > 0 && (
+    <div className="promo-public-section">
+      <div className="promo-public-section__head">
+        <Ticket size={18} />
+        <b>
+          {t("Ưu đãi toàn hệ thống")} ({filteredPublicVouchers.length})
+        </b>
+      </div>
 
-  <label className="promo-redeem-custom__label" htmlFor="custom-redeem-points">
-    {t("Nhập số điểm muốn đổi:")}
-  </label>
+      <div className="promo-public-grid">
+        {filteredPublicVouchers.map((v) => {
+          const isClaiming = claimingIds.has(v.id);
+          const anyClaiming = claimingIds.size > 0;
 
-  <input
-    id="custom-redeem-points"
-    className="promo-redeem-custom__input"
-    type="number"
-    min="10"
-    max={Number(points || 0)}
-    step="1"
-    inputMode="numeric"
-    value={customRedeemPoints}
-    onChange={(e) => setCustomRedeemPoints(e.target.value)}
-  />
+          return (
+            <div key={v.id} className="promo-public-card">
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
+              <div className="promo-public-card__value">
+                {money(v.value)}
+              </div>
+              <div className="promo-public-card__code">{v.code}</div>
 
-  <div className="promo-redeem-custom__value">
-    <span>{t("Số tiền nhận được:")}</span>
-    <b>{money(Math.max(0, Number(customRedeemPoints) || 0) * POINT_TO_VND)}</b>
-  </div>
-
-  <small className="promo-redeem-custom__hint">
-    {t("Tối thiểu 10 điểm")} · {t("100 điểm = 10.000đ")}
-  </small>
-
-  {Number(customRedeemPoints) > Number(points || 0) && (
-    <small className="promo-redeem-custom__error">
-      {t("Không đủ điểm")}
-    </small>
+              <button
+                type="button"
+                className="promo-public-card__btn"
+                disabled={isClaiming || anyClaiming}
+                onClick={() => claimVoucher(v)}
+              >
+                {isClaiming ? (
+                  <>
+                    <Loader2 size={13} className="promo-spin" />
+                    {t("Đang nhận...")}
+                  </>
+                ) : (
+                  <>
+                    <Plus size={14} />
+                    {t("Nhận ngay")}
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   )}
-
-  <button
-    type="button"
-    className="promo-redeem-custom__button"
-    disabled={
-      redeemLoading ||
-      !Number.isSafeInteger(Number(customRedeemPoints)) ||
-      Number(customRedeemPoints) < 10 ||
-      Number(customRedeemPoints) > Number(points || 0)
-    }
-    onClick={() => doRedeem(Number(customRedeemPoints), true)}
-  >
-    {redeemLoading ? (
-      <>
-        <Loader2 size={14} className="promo-spin" />
-        {t("Đang đổi...")}
-      </>
-    ) : (
-      t("ĐỔI SỐ ĐIỂM ĐÃ NHẬP")
-    )}
-  </button>
-</div>
-        </div>
-
-        </div>
-        {/* Public vouchers */}
-        {publicVouchers.length > 0 && (
-          <div className="promo-public-section">
-            <div className="promo-public-section__head">
-              <Ticket size={18} />
-              <b>
-                {t("Ưu đãi toàn hệ thống")} ({filteredPublicVouchers.length})
-              </b>
-            </div>
-            <div className="promo-public-grid">
-              {filteredPublicVouchers.map((v) => {
-                const isClaiming = claimingIds.has(v.id);
-                const anyClaiming = claimingIds.size > 0;
-                return (
-                  <div key={v.id} className="promo-public-card">
-                    <div className="promo-public-card__value">
-                      {money(v.value)}
-                    </div>
-                    <div className="promo-public-card__code">{v.code}</div>
-                    <button
-                      type="button"
-                      className="promo-public-card__btn"
-                      disabled={isClaiming || anyClaiming}
-                      onClick={() => claimVoucher(v)}
-                    >
-                      {isClaiming ? (
-                        <>
-                          <Loader2 size={13} className="promo-spin" />
-                          {t("Đang nhận...")}
-                        </>
-                      ) : (
-                        <>
-                          <Plus size={14} />
-                          {t("Nhận ngay")}
-                        </>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* WALLET + ACTIVITY */}
+</section>
+{/* WALLET + ACTIVITY */}{/* WALLET + ACTIVITY */}
       <section className="promo-section" id="my-vouchers">
         <div className="promo-split">
-          {/* Wallet */}
+          {/* Voucher wallet popup */}
+          {showVoucherWallet && (
+            <div
+              className="promo-modal-overlay"
+              onClick={() => setShowVoucherWallet(false)}
+            >
+              <div
+                className="promo-modal promo-voucher-wallet-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t("Ví Voucher Đã Đổi")}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "min(760px, calc(100vw - 28px))",
+                  maxWidth: 760,
+                  maxHeight: "88vh",
+                  overflowY: "auto",
+                  position: "relative",
+                  boxSizing: "border-box",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowVoucherWallet(false)}
+                  aria-label={t("Đóng")}
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
+                    border: 0,
+                    background: "transparent",
+                    padding: 8,
+                    cursor: "pointer",
+                    zIndex: 1,
+                  }}
+                >
+                  <X size={20} />
+                </button>
           <div className="promo-split__left">
             <div className="promo-split__head">
               <div>
@@ -1016,7 +879,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
 
             {!loading && grouped.length > 0 && (
               <div className="promo-wallet-list">
-                {grouped.slice(0, 4).map((g) => {
+                {grouped.map((g) => {
                   const isUsed = g.available === 0;
                   const firstVoucher = g.vouchers[0];
                   const days = daysRemaining(firstVoucher?.expires_at);
@@ -1029,6 +892,9 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                         isUsed ? "promo-wallet-card--used" : ""
                       }`}
                     >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                       <div className="promo-wallet-card__top">
                         <div className="promo-wallet-card__icon">
                           <Ticket size={22} />
@@ -1087,17 +953,6 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                     </div>
                   );
                 })}
-
-                {grouped.length > 4 && (
-                  <button
-                    type="button"
-                    className="promo-wallet-see-more"
-                    onClick={() => scrollToSection("my-vouchers")}
-                  >
-                    {t("Xem tất cả")} ({grouped.length}){" "}
-                    <ArrowRight size={14} />
-                  </button>
-                )}
               </div>
             )}
 
@@ -1109,221 +964,11 @@ const [showEcoModal, setShowEcoModal] = useState(false);
             </div>
           </div>
 
-          {/* Activity */}
-          {/* 🔧 F2: Data mẫu — sẽ thay bằng api.points.me().history khi BE sẵn sàng */}
-          <div id="points-activity" className="promo-split__right" style={{ scrollMarginTop: "24px" }}>
-            <div className="promo-split__head">
-              <div className="promo-activity-heading"><Wallet size={24} color="#2563EB" /><div><h2 className="promo-section__title">
-                  {t("Biến Động Điểm Thưởng")}
-                </h2>
-</div></div>
-
-            </div>
-
-            <div className="promo-activity-table">
-              <div className="promo-activity-table__head">
-                <div>{t("Thời gian")}</div>
-                <div>{t("Nội dung hoạt động")}</div>
-                <div className="right">{t("Điểm số")}</div>
               </div>
-              <div className="promo-activity-table__body">
-  {Array.isArray(pointHistory) && pointHistory.length > 0 ? (
-    pointHistory.slice(0, 5).map((item, index) => {
-      const points = Number(item.points) || 0;
-      const dateValue = item.date ? new Date(item.date) : null;
-      const validDate = dateValue && !Number.isNaN(dateValue.getTime());
-      const dateLabel = validDate
-        ? dateValue.toLocaleDateString("vi-VN")
-        : "—";
-      const timeLabel = validDate
-        ? dateValue.toLocaleTimeString("vi-VN", {
-            hour: "2-digit",
-            minute: "2-digit"
-          })
-        : "";
-
-      return (
-        <ActivityRow
-          key={`${item.type || "point"}-${item.code || index}-${item.date || index}`}
-          date={dateLabel}
-          time={timeLabel}
-          icon={
-            item.type === "review"
-              ? <ThumbsUp size={18} />
-              : <Lightbulb size={18} />
-          }
-          iconColor={points < 0 ? "#DC2626" : "#2563EB"}
-          title={
-            item.title ||
-            (item.type === "redeem"
-              ? t("Đổi điểm lấy voucher")
-              : item.type === "review"
-                ? t("Thưởng đánh giá món ăn")
-                : item.type === "pickup"
-                  ? t("Thưởng nhận món")
-                  : t("Tích điểm đơn hàng"))
-          }
-          sub={item.detail || (item.code ? `#${item.code}` : t("Giao dịch điểm thưởng"))}
-          delta={`${points > 0 ? "+" : ""}${points}`}
-          deltaType={points < 0 ? "down" : "up"}
-          highlight={points < 0}
-        />
-      );
-    })
-  ) : (
-    <p style={{ padding: "16px", textAlign: "center", color: "#64748b" }}>
-      Chưa có biến động điểm thưởng.
-    </p>
-  )}
-</div>
-            <button
-  type="button"
-  className="promo-activity-see-all--below"
-  onClick={() => {
-    setShowPointHistory(true);
-    loadAll();
-  }}
->
-  {t("Xem tất cả")} ({pointHistory.length}) <ArrowRight size={14} />
-</button>
-</div>
-
-<div className="promo-activity-tip">
-  <Lightbulb size={20} color="#2563EB" />
-  <span>Điểm thưởng được tổng hợp từ các giao dịch thực tế đã ghi nhận.</span>
-  <button type="button" onClick={() => loadAll()}>Làm mới</button>
-</div>
-          </div>
+            </div>
+          )}          
         </div>
       </section>
-
-      {/* POINT RULES MODAL */}
-      {showPointRules && (
-        <div
-          className="promo-modal-overlay"
-          onClick={() => setShowPointRules(false)}
-        >
-          <div
-            className="promo-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("Quy tắc tích điểm")}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(620px, calc(100vw - 28px))",
-              maxHeight: "85vh",
-              overflowY: "auto",
-              position: "relative",
-              boxSizing: "border-box",
-            }}
-          >
-            <div className="promo-modal__head">
-              <div>
-                <h3>{t("Quy tắc tích điểm và đổi điểm")}</h3>
-                <p>{t("Tích lũy VWA Points và đổi thành voucher ưu đãi")}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPointRules(false)}
-                aria-label={t("Đóng")}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ padding: "8px 20px 22px", display: "grid", gap: 18 }}>
-              <section>
-                <h4 style={{ margin: "0 0 12px", color: "#1d4ed8" }}>
-                  {t("CÁCH TÍCH ĐIỂM")}
-                </h4>
-
-                <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-                  <Utensils size={22} color="#2563eb" />
-                  <div>
-                    <strong>{t("Mua hàng tại Căng tin")}</strong>
-                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
-                      {t("Mỗi 10.000đ thực trả được cộng 1 VWA Point. Điểm được làm tròn xuống số nguyên.")}
-                    </p>
-                    <small style={{ color: "#2563eb" }}>
-                      {t("Ví dụ: đơn 27.500đ được 2 điểm.")}
-                    </small>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-                  <Leaf size={22} color="#16a34a" />
-                  <div>
-                    <strong>{t("Sống Xanh Học Đường — +10 điểm/lần")}</strong>
-                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
-                      {t("Mang bình nước cá nhân hoặc hộp cơm riêng khi mua mang về. Nhân viên quầy xác nhận hợp lệ để cộng 10 Points; tối đa một lần thưởng xanh cho mỗi đơn.")}
-                    </p>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 12 }}>
-                  <Star size={22} color="#d97706" />
-                  <div>
-                    <strong>{t("Đánh giá món ăn — +5 điểm/lần")}</strong>
-                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
-                      {t("Gửi đánh giá sao và góp ý cho món đã mua sau khi đơn hoàn thành. Mỗi tài khoản chỉ được đánh giá một lần cho mỗi món.")}
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <div style={{ height: 1, background: "#e2e8f0" }} />
-
-              <section>
-                <h4 style={{ margin: "0 0 12px", color: "#1d4ed8" }}>
-                  {t("QUY TẮC ĐỔI ĐIỂM")}
-                </h4>
-
-                <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-                  <Wallet size={22} color="#7c3aed" />
-                  <div>
-                    <strong>{t("Tỷ lệ quy đổi")}</strong>
-                    <p style={{ margin: "5px 0", color: "#64748b", lineHeight: 1.6 }}>
-                      {t("100 điểm đổi được voucher trị giá 10.000đ. Tương đương 1 điểm = 100đ giá trị voucher.")}
-                    </p>
-                  </div>
-                </div>
-
-                <div style={{
-                  border: "1px solid #dbeafe",
-                  borderRadius: 12,
-                  padding: 12,
-                  background: "#eff6ff",
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 10,
-                }}>
-                  {[
-                    ["100 điểm", "10.000đ"],
-                    ["200 điểm", "20.000đ"],
-                    ["500 điểm", "50.000đ"],
-                    ["1.000 điểm", "100.000đ"],
-                  ].map(([pts, value]) => (
-                    <div key={pts}>
-                      <strong style={{ color: "#1d4ed8" }}>{pts}</strong>
-                      <div style={{ color: "#475569", fontSize: 13 }}>
-                        {t("Voucher")} {value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <ul style={{ paddingLeft: 20, color: "#475569", lineHeight: 1.7 }}>
-                  <li>{t("Mỗi lần đổi tối thiểu 100 điểm; phải có đủ điểm trong tài khoản.")}</li>
-                  <li>{t("Điểm bị trừ khi đổi thành công và voucher được thêm vào Ví Voucher của tôi.")}</li>
-                  <li>{t("Voucher không quy đổi thành tiền mặt; tối đa một voucher cho mỗi đơn và không cộng dồn với voucher khác.")}</li>
-                  <li>{t("Mỗi tài khoản có tối đa 50 voucher chưa sử dụng.")}</li>
-                  <li>{t("Đơn bị hủy hoặc hoàn tiền sẽ được xử lý điểm theo trạng thái đơn; không giữ điểm thưởng của giao dịch bị hủy.")}</li>
-                </ul>
-              </section>
-            </div>
-          </div>
-        </div>
-      )}
       {/* POINT HISTORY MODAL */}
       {showPointHistory && (
         <div
@@ -1336,8 +981,8 @@ const [showEcoModal, setShowEcoModal] = useState(false);
           >
             <div className="promo-modal__head">
               <div>
-                <h3>{t("Lịch sử tích/đổi điểm")}</h3>
-                <p>{t("Theo dõi các lần cộng và sử dụng điểm của bạn")}</p>
+                <h3>{t("Biến Động Điểm Thưởng")}</h3>
+                <p>{t("Theo dõi thời gian, nội dung và điểm số của các giao dịch")}</p>
               </div>
               <button
                 type="button"
@@ -1373,6 +1018,9 @@ const [showEcoModal, setShowEcoModal] = useState(false);
                       className="promo-point-history-item"
                       key={`${item.code || "history"}-${item.date || index}-${index}`}
                     >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                       <div
                         className={`promo-point-history-icon ${isRedeem ? "down" : "up"}`}
                       >
@@ -1402,237 +1050,181 @@ const [showEcoModal, setShowEcoModal] = useState(false);
         </div>
       )}
 
-      {/* PICKUP QR MODAL — độc lập với lịch sử điểm */}
-      {showPickupQrModal && (
+      {/* STUDENT SUBSIDY MODAL */}
+    {showStudentSubsidyModal && (
+      <div
+        className="promo-modal-overlay"
+        role="presentation"
+        onClick={() => setShowStudentSubsidyModal(false)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 10000,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+          background: "rgba(15, 23, 42, 0.48)",
+        }}
+      >
         <div
-          className="promo-modal-overlay"
-          onClick={() => setShowPickupQrModal(false)}
-          role="presentation"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Trợ Giá Sinh Viên Kỳ II"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "relative",
+            width: "100%",
+            maxWidth: 432,
+            minHeight: 0,
+            boxSizing: "border-box",
+            padding: 22,
+            borderRadius: 20,
+            background: "#fff",
+            color: "#172033",
+            boxShadow: "0 20px 60px rgba(15,23,42,.22)",
+          }}
         >
-          <div
-            className="promo-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("QR nhận món theo đơn hàng")}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(760px, calc(100vw - 28px))",
-              maxHeight: "88vh",
-              overflowY: "auto",
-              position: "relative",
-              padding: 18,
-              boxSizing: "border-box",
-            }}
-          >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+            <div>
+              <span style={{
+                display: "inline-block",
+                padding: "4px 9px",
+                borderRadius: 20,
+                background: "#eff6ff",
+                color: "#2563eb",
+                fontSize: 12,
+                fontWeight: 800,
+                letterSpacing: ".3px",
+              }}>
+                QUỸ HỌC ĐƯỜNG
+              </span>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+  <h2 style={{ margin: 0, fontSize: 24, lineHeight: 1.3 }}>
+    Trợ Giá Sinh Viên Kỳ II
+  </h2>
+  <span style={{ position: "absolute", right: 22, top: 68, color: "#64748b", fontSize: 12, whiteSpace: "nowrap" }}>Năm học 2024 - 2025</span>
+</div>
+            </div>
             <button
               type="button"
-              onClick={() => setShowPickupQrModal(false)}
-              aria-label={t("Đóng")}
+              aria-label="Đóng"
+              onClick={() => setShowStudentSubsidyModal(false)}
               style={{
-                position: "absolute",
-                top: 18,
-                right: 18,
-                zIndex: 5,
-                width: 32,
-                height: 32,
-                padding: 0,
+                flexShrink: 0,
+                width: 36,
+                height: 36,
                 border: 0,
-                background: "transparent",
-                display: "grid",
-                placeItems: "center",
+                borderRadius: 10,
+                background: "#eff6ff",
+                color: "#2563eb",
+                fontSize: 23,
                 cursor: "pointer",
               }}
             >
-              <X size={20} />
-            </button>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(245px, 1fr))",
-                gap: 14,
-                paddingTop: 2,
-              }}
-            >
-              <section>
-                <h4
-                  style={{
-                    margin: "4px 44px 14px 0",
-                    color: "#172033",
-                    minHeight: 32,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  {t("Giỏ hàng của bạn")}
-                </h4>
-
-                {pickupOrders.length > 0 ? (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {pickupOrders.map((order) => {
-                      const isSelected =
-                        selectedPickupOrderCode === order.code;
-                      const isReady = order.status === "Sẵn sàng nhận";
-
-                      return (
-                        <button
-                          key={order.id || order._id || order.code}
-                          type="button"
-                          onClick={() =>
-                            setSelectedPickupOrderCode(order.code)
-                          }
-                          aria-pressed={isSelected}
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            border: isSelected
-                              ? "2px solid #2563eb"
-                              : "1px solid #dbe3ef",
-                            borderRadius: 12,
-                            padding: 12,
-                            background: isSelected ? "#eff6ff" : "#fff",
-                            display: "grid",
-                            gridTemplateColumns: "minmax(0, 1fr) auto",
-                            alignItems: "center",
-                            gap: "6px 10px",
-                            textAlign: "left",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <strong
-                            style={{
-                              color: "#1d4ed8",
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            #{order.code}
-                          </strong>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: isReady ? "#15803d" : "#64748b",
-                              textAlign: "right",
-                            }}
-                          >
-                            {t(order.status)}
-                          </span>
-                          <small
-                            style={{
-                              gridColumn: "1 / -1",
-                              color: isReady ? "#15803d" : "#64748b",
-                            }}
-                          >
-                            {t(
-                              isReady
-                                ? "Bấm để hiển thị QR nhận món"
-                                : "QR sẽ hiện khi đơn sẵn sàng nhận"
-                            )}
-                          </small>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p style={{ color: "#64748b", lineHeight: 1.6 }}>
-                    {t("Bạn chưa có đơn hàng đang xử lý.")}
-                  </p>
-                )}
-              </section>
-
-              <section
-                style={{
-                  minHeight: 260,
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 16,
-                  padding: 16,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  gap: 10,
-                }}
-              >
-                {selectedPickupOrder?.status === "Sẵn sàng nhận" ? (
-                  <>
-                    <strong style={{ color: "#1d4ed8", overflowWrap: "anywhere" }}>
-                      #{selectedPickupOrder.code}
-                    </strong>
-                    <div
-                      style={{
-                        background: "#fff",
-                        padding: 10,
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 12,
-                      }}
-                    >
-                      <QRCodeCanvas
-                        value={`${window.location.origin}/order-qr/${encodeURIComponent(selectedPickupOrder.code)}`}
-                        size={190}
-                        level="H"
-                        includeMargin
-                      />
-                    </div>
-                    <span style={{ color: "#15803d", fontSize: 12, fontWeight: 700 }}>
-                      {t("Sẵn sàng nhận")}
-                    </span>
-                    <strong style={{ color: "#0f172a" }}>
-                      {(selectedPickupOrder.items || [])
-                        .map((item) => item.name)
-                        .filter(Boolean)
-                        .slice(0, 3)
-                        .join(", ") || t("Đơn hàng")}
-                    </strong>
-                    <span style={{ color: "#64748b" }}>
-                      {money(Number(selectedPickupOrder.total) || 0)}
-                    </span>
-                  </>
-                ) : selectedPickupOrder ? (
-                  <>
-                    <QrCode size={38} color="#2563eb" />
-                    <strong style={{ color: "#172033" }}>
-                      {t("Đơn chưa sẵn sàng nhận")}
-                    </strong>
-                    <span style={{ color: "#1d4ed8", overflowWrap: "anywhere" }}>
-                      #{selectedPickupOrder.code}
-                    </span>
-                    <span style={{ color: "#64748b", fontSize: 13 }}>
-                      {t(selectedPickupOrder.status)}
-                    </span>
-                    <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
-                      {t("QR sẽ xuất hiện tại đây khi nhân viên chuyển đơn sang Sẵn sàng nhận.")}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <QrCode size={38} color="#2563eb" />
-                    <strong style={{ color: "#172033" }}>
-                      {t("Chọn đơn hàng để xem QR")}
-                    </strong>
-                    <p style={{ margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
-                      {t("Bấm vào một đơn bên trái. QR riêng của đơn sẽ xuất hiện tại đây khi đơn Sẵn sàng nhận.")}
-                    </p>
-                  </>
-                )}
-              </section>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowPickupQrModal(false);
-                navigate("/customer/orders");
-              }}
-              className="promo-modal__close"
-              style={{ marginTop: 16, width: "100%" }}
-            >
-              {t("Xem tất cả đơn hàng")}
+              ×
             </button>
           </div>
+
+          <div style={{ marginTop: 0 }}>
+  <div style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  }}>
+    <span style={{ fontSize: 14, color: "#64748b" }}>
+      Hạn mức trợ giá còn lại:
+    </span>
+    <strong style={{ fontSize: 20, color: "#16a36a" }}>
+      220.000đ
+    </strong>
+  </div>
+  <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+    Tương đương <strong style={{ color: "#16a36a" }}>22 suất ăn</strong>
+    {" "}(10.000đ/suất học viên hỗ trợ)
+  </div><p style={{ margin: "10px 0 6px", fontSize: 14, color: "#64748b" }}>
+              Đã sử dụng trong tháng: 18/40 suất
+            </p>
+            <div
+              role="progressbar"
+              aria-label="Tiến độ sử dụng trợ giá"
+              aria-valuenow={45}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              style={{
+                height: 7,
+                borderRadius: 10,
+                background: "#e2e8f0",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{
+                width: "45%",
+                height: "100%",
+                borderRadius: 10,
+                background: "linear-gradient(90deg, #16a34a, #20c779)",
+              }} />
+            </div>
+            <div style={{ textAlign: "right", marginTop: 0, fontSize: 12, color: "#64748b" }}>
+              45%
+            </div>
+          </div>
+
+          <div style={{
+            display: "flex",
+            gap: 9,
+            alignItems: "center",
+            marginTop: -18,
+            padding: 12,
+            borderRadius: 12,
+            
+            background: "#f0fdf4",
+            color: "#166534",
+            fontSize: 14,
+            lineHeight: 1.55,
+          }}>
+            <span aria-hidden="true">✦</span>
+            <span>
+              Trợ giá tối đa 10.000đ cho mỗi phần cơm/trợ bữa phí 25.000đ trở lên khi quẹt mã tại quầy.
+            </span>
+          </div>
+
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            marginTop: 4,
+            paddingTop: 4,
+            borderTop: "1px solid #e2e8f0",
+          }}>
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              Chu kỳ làm mới: 01/04/2025
+            </div>
+            <label style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#2563eb",
+              cursor: "pointer",
+            }}>
+              <input
+                type="checkbox"
+                checked={autoSubsidyRenew}
+                onChange={(e) => setAutoSubsidyRenew(e.target.checked)}
+              />
+              Tự động cộng lại
+            </label>
+          </div>
         </div>
-      )}
-      {/* ECO REWARD REQUEST MODAL */}
+      </div>
+    )}
+
+      {/* VWA GREEN POINTS MODAL */}
       {showEcoModal && (
         <div
           className="promo-modal-overlay"
@@ -1640,159 +1232,200 @@ const [showEcoModal, setShowEcoModal] = useState(false);
           role="presentation"
         >
           <div
-            className="promo-modal"
             role="dialog"
             aria-modal="true"
-            aria-label={t("Chung tay giảm đồ nhựa")}
+            aria-label="VWA Green Points"
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: "min(540px, calc(100vw - 28px))",
-              maxHeight: "85vh",
-              overflowY: "auto",
+              position: "relative",
+              width: "min(390px, calc(100vw - 28px))",
               boxSizing: "border-box",
+              padding: 16,
+              borderRadius: 20,
+              background: "linear-gradient(145deg, #f0fdf4, #ffffff 75%)",
+              border: "1px solid #d1fae5",
+              boxShadow: "0 18px 50px rgba(15, 100, 55, 0.16)",
+              color: "#172033",
             }}
           >
-            <div className="promo-modal__head">
-              <div>
-                <h3>{t("Chung tay giảm đồ nhựa")}</h3>
-                <p>{t("Gửi yêu cầu tham gia chương trình Sống Xanh Học Đường.")}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowEcoModal(false)}
-                aria-label={t("Đóng")}
-              >
-                <X size={20} />
-              </button>
+            <button
+              type="button"
+              onClick={() => setShowEcoModal(false)}
+              aria-label="Đóng"
+              style={{
+                position: "absolute",
+                top: 10,
+                right: 10,
+                width: 30,
+                height: 30,
+                border: 0,
+                borderRadius: "50%",
+                background: "#dcfce7",
+                color: "#15803d",
+                fontSize: 20,
+                cursor: "pointer",
+              }}
+            >
+              ×
+            </button>
+
+            <div
+              style={{
+                display: "inline-flex",
+                padding: "4px 10px",
+                borderRadius: 20,
+                background: "#16a34a",
+                color: "#fff",
+                fontSize: 9,
+                fontWeight: 800,
+              }}
+            >
+              SINH THÁI HỌC ĐƯỜNG
             </div>
 
-            <div style={{ padding: "8px 20px 20px" }}>
-              <div style={{
-                background: "#f0fdf4",
-                color: "#166534",
-                borderRadius: 12,
-                padding: 14,
-                marginBottom: 14,
-                lineHeight: 1.6,
-              }}>
-                <strong style={{ fontSize: 18 }}>+10 VWA Points</strong>
-                <div style={{ fontSize: 13 }}>
-                  {t("Nhân viên sẽ kiểm tra và duyệt trước khi cộng điểm. Mỗi đơn chỉ nhận thưởng Sống Xanh một lần.")}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginTop: 7,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 850 }}>
+                VWA Green Points
+              </h2>
+              <span style={{ fontSize: 23, color: "#16a34a" }}>✧</span>
+            </div>
+
+            <p style={{ margin: "4px 0 14px", color: "#64748b", fontSize: 11 }}>
+              Tích điểm khi mang bình nước / dùng khay tái chế
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  padding: 11,
+                  border: "1px solid #dbe5e7",
+                  borderRadius: 12,
+                  background: "#fff",
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ color: "#64748b", fontSize: 10 }}>
+                  Điểm tích lũy
+                </div>
+                <div style={{ marginTop: 3, fontSize: 22, fontWeight: 850 }}>
+                  {Number(points || 0).toLocaleString("vi-VN")}
+                </div>
+                <div style={{ color: "#64748b", fontSize: 9, marginTop: 3 }}>
+                  VWA Points hiện có
                 </div>
               </div>
 
-              {customerOrders.some((o) => o.status === "Sẵn sàng nhận") ? (
-                <>
-                  <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
-                    {t("Chọn đơn hàng")}
-                  </label>
-                  <select
-                    value={ecoOrderId}
-                    onChange={(e) => setEcoOrderId(e.target.value)}
-                    disabled={ecoSubmitting}
-                    style={{
-                      width: "100%",
-                      padding: 12,
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 10,
-                      marginBottom: 14,
-                      background: "#fff",
-                    }}
-                  >
-                    {customerOrders
-                      .filter((o) => o.status === "Sẵn sàng nhận")
-                      .map((o) => (
-                        <option
-                          key={o.id || o._id || o.code}
-                          value={String(o.id || o._id)}
-                        >
-                          #{o.code} — {money(Number(o.total) || 0)}
-                        </option>
-                      ))}
-                  </select>
-
-                  <label style={{ display: "block", fontWeight: 700, marginBottom: 6 }}>
-                    {t("Bạn mang theo")}
-                  </label>
-                  <select
-                    value={ecoMethod}
-                    onChange={(e) => setEcoMethod(e.target.value)}
-                    disabled={ecoSubmitting}
-                    style={{
-                      width: "100%",
-                      padding: 12,
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 10,
-                      marginBottom: 18,
-                      background: "#fff",
-                    }}
-                  >
-                    <option value="bottle">{t("Bình nước cá nhân")}</option>
-                    <option value="container">{t("Hộp cơm cá nhân")}</option>
-                  </select>
-
-                  <button
-                    type="button"
-                    disabled={ecoSubmitting || !ecoOrderId}
-                    onClick={async () => {
-                      if (ecoSubmitting || !ecoOrderId) return;
-                      setEcoSubmitting(true);
-                      try {
-                        await api.ecoRewards.create({
-                          orderId: ecoOrderId,
-                          method: ecoMethod,
-                        });
-                        toast(
-                          t("Đã gửi yêu cầu Sống Xanh. Chờ nhân viên xác nhận để nhận 10 điểm."),
-                          "success"
-                        );
-                        setShowEcoModal(false);
-                        await loadAll(true);
-                      } catch (e) {
-                        toast(
-                          e.message || t("Không gửi được yêu cầu Sống Xanh"),
-                          "error"
-                        );
-                      } finally {
-                        setEcoSubmitting(false);
-                      }
-                    }}
-                    style={{
-                      width: "100%",
-                      border: 0,
-                      borderRadius: 10,
-                      padding: 13,
-                      background: ecoSubmitting ? "#94a3b8" : "#15803d",
-                      color: "#fff",
-                      fontWeight: 800,
-                      cursor: ecoSubmitting ? "wait" : "pointer",
-                    }}
-                  >
-                    {ecoSubmitting ? t("Đang gửi...") : t("Gửi yêu cầu nhận 10 điểm")}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p style={{ color: "#64748b", lineHeight: 1.6 }}>
-                    {t("Bạn chưa có đơn ở trạng thái Sẵn sàng nhận. Khi đơn sẵn sàng, bạn có thể gửi yêu cầu Sống Xanh cho đơn đó.")}
-                  </p>
-                  <button
-                    type="button"
-                    className="promo-modal__close"
-                    onClick={() => {
-                      setShowEcoModal(false);
-                      navigate("/customer/orders");
-                    }}
-                    style={{ width: "100%" }}
-                  >
-                    {t("Xem đơn hàng của tôi")}
-                  </button>
-                </>
-              )}
+              <div
+                style={{
+                  padding: 11,
+                  border: "1px solid #dbe5e7",
+                  borderRadius: 12,
+                  background: "#fff",
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ color: "#64748b", fontSize: 10 }}>
+                  Giá trị quy đổi
+                </div>
+                <div
+                  style={{
+                    marginTop: 3,
+                    fontSize: 20,
+                    fontWeight: 850,
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {money(Number(points || 0) * POINT_TO_VND)}
+                </div>
+                <div style={{ color: "#64748b", fontSize: 9, marginTop: 3 }}>
+                  Theo tỷ lệ quy đổi điểm
+                </div>
+              </div>
             </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginTop: 10,
+                padding: 12,
+                border: "1px solid #dcfce7",
+                borderRadius: 12,
+                background: "#fff",
+              }}
+            >
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  flexShrink: 0,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 10,
+                  background: "#fef3c7",
+                  fontSize: 18,
+                }}
+              >
+                ☕
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 800 }}>
+                  Voucher Giảm 20.000đ Đồ Uống
+                </div>
+                <div style={{ marginTop: 3, color: "#64748b", fontSize: 10 }}>
+                  Quy đổi với 100 Green Points
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowEcoModal(false);
+                document.getElementById("my-vouchers")?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                width: "100%",
+                marginTop: 10,
+                padding: "12px 10px",
+                border: 0,
+                borderRadius: 11,
+                background: "#16a34a",
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              <span>＋</span>
+              Đổi điểm nhận quà &amp; voucher ưu đãi
+            </button>
           </div>
         </div>
       )}
+
 
       {/* REVIEW SUBMISSION MODAL */}
       {selectedReviewTarget && (
@@ -2051,6 +1684,7 @@ const [showEcoModal, setShowEcoModal] = useState(false);
   margin: 0;
 }
       `}</style>
+      {showRulesModal && <RulesModal isAdmin={false} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -2072,6 +1706,9 @@ function ActivityRow({
 }) {
   return (
     <div className={`promo-activity-row ${highlight ? "highlight" : ""}`}>
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
       <div className="promo-activity-row__date">
         <b>{date}</b>
         <span>{time}</span>
@@ -2110,6 +1747,9 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
       aria-label={t("Chọn voucher")}
       className="promo-modal-overlay"
     >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
       <div onClick={(e) => e.stopPropagation()} className="promo-modal">
         <div className="promo-modal__head">
           <h3>
@@ -2134,6 +1774,9 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
                 key={v.id}
                 className={`promo-modal__item ${vUsed ? "used" : ""}`}
               >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                 <div className="promo-modal__item-info">
                   <b>{v.code}</b>
                   <span>
@@ -2180,6 +1823,7 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
           {t("Đóng")}
         </button>
       </div>
-    </div>
+
+</div>
   );
 }

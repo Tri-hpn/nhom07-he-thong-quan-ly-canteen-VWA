@@ -109,3 +109,24 @@ check-db.mjs
 
 backups/
 tree-clean.txt
+# ==========================================
+# JUNK FILES & BACKUPS
+# ==========================================
+*.pre_*
+*.bak
+*.zip
+*.rar
+*.7z
+*.log
+
+# Node modules & Build
+node_modules/
+dist/
+build/
+
+# Env & IDE
+.env
+.env.local
+.DS_Store
+Thumbs.db
+.vscode/

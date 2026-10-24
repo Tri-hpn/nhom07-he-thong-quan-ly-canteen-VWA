@@ -1,22 +1,80 @@
 // ============================================================
-// VITE.CONFIG.JS — Vite configuration (V5 - FINAL)
-// ============================================================
-// V5 (2026-10):
-//   - 🔧 FIX M7: changeOrigin mặc định true; opt-in giữ Host gốc
-//     qua env VITE_KEEP_ORIGIN_HOST=1 (dành cho OAuth callback).
+// VITE.CONFIG.JS — Vite configuration (V8 - PWA CLEAN)
 // ============================================================
 
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { VitePWA } from "vite-plugin-pwa";
 import i18nPlugin from "./vite-plugin-i18n.mjs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const isProd = mode === "production";
 
   return {
-    plugins: [react(), i18nPlugin()],
+    plugins: [
+      react(),
+      i18nPlugin(),
+      VitePWA({
+        registerType: "autoUpdate",
+        manifest: false,
+        injectRegister: null, // [FIX] Tắt tự động chèn /registerSW.js để sạch console
+        devOptions: {
+          enabled: true,
+          type: "module",
+        },
+        workbox: {
+          globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
+          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
+          navigateFallback: "index.html",
+          runtimeCaching: [
+            {
+              urlPattern: /^\/api\/uploads\/menu\/.*/i,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "vwa-menu-images",
+                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /^\/api\/(menu|categories|toppings|sizes)/i,
+              handler: "StaleWhileRevalidate",
+              options: {
+                cacheName: "vwa-api-menu",
+                expiration: { maxEntries: 50, maxAgeSeconds: 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /^\/api\/(orders|auth|wallet|points|vouchers|chat|notifications)/i,
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "vwa-api-dynamic",
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /^\/api\/.*/i,
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "vwa-api-misc",
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
+        },
+      }),
+    ],
 
     resolve: {
       alias: {
@@ -35,9 +93,6 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": {
           target: env.VITE_BACKEND_URL || "http://localhost:3000",
-          // ✅ FIX M7: mặc định changeOrigin=true (an toàn với Vite).
-          // Nếu cần giữ Host gốc cho Microsoft OAuth callback local,
-          // set VITE_KEEP_ORIGIN_HOST=1 trong .env.
           changeOrigin: env.VITE_KEEP_ORIGIN_HOST !== "1",
           secure: false,
           configure: (proxy) => {
@@ -46,10 +101,7 @@ export default defineConfig(({ mode }) => {
               const host = req.headers.host;
               if (host) {
                 proxyReq.setHeader("x-forwarded-host", host);
-                proxyReq.setHeader(
-                  "x-forwarded-proto",
-                  req.connection?.encrypted ? "https" : "http"
-                );
+                proxyReq.setHeader("x-forwarded-proto", req.connection?.encrypted ? "https" : "http");
               }
             });
           },
@@ -57,10 +109,7 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    preview: {
-      port: 4173,
-      host: true,
-    },
+    preview: { port: 4173, host: true },
 
     build: {
       outDir: "dist",
@@ -68,7 +117,6 @@ export default defineConfig(({ mode }) => {
       minify: "esbuild",
       target: "es2020",
       chunkSizeWarningLimit: 1200,
-
       rollupOptions: {
         output: {
           manualChunks: {
@@ -80,32 +128,19 @@ export default defineConfig(({ mode }) => {
           assetFileNames: "assets/[name].[hash].[ext]",
         },
       },
-
       esbuild: isProd
-        ? {
-            drop: ["debugger"],
-            pure: ["console.log", "console.debug", "console.trace"],
-          }
+        ? { drop: ["debugger"], pure: ["console.log", "console.debug", "console.trace"] }
         : {},
     },
 
     optimizeDeps: {
-      include: [
-        "react",
-        "react-dom",
-        "react-router-dom",
-        "lucide-react",
-      ],
+      include: ["react", "react-dom", "react-router-dom", "lucide-react"],
     },
 
-    css: {
-      devSourcemap: true,
-    },
+    css: { devSourcemap: true },
 
     define: {
-      __APP_VERSION__: JSON.stringify(
-        process.env.npm_package_version || "1.0.0"
-      ),
+      __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "1.0.0"),
     },
   };
 });
