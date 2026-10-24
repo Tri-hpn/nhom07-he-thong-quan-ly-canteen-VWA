@@ -33,7 +33,7 @@ const BOT_AVATAR = "/bot-avatar.svg";
 const POLL_MS = 3000;
 const AI_REPLY_DELAY_MS = 600;
 const MAX_MESSAGE_LENGTH = 2000;
-const SCROLL_THRESHOLD_PX = 120;
+const SCROLL_THRESHOLD_PX = 30;
 
 // ============================================================
 // HELPERS
@@ -376,7 +376,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       requestAnimationFrame(() => {
         container.scrollTo({
           top: container.scrollHeight,
-          behavior: "smooth",
+          behavior: "auto",
         });
       });
       lastAiCountRef.current = aiMessages.length;
@@ -398,7 +398,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       requestAnimationFrame(() => {
         container.scrollTo({
           top: container.scrollHeight,
-          behavior: "smooth",
+          behavior: "auto",
         });
       });
     }
@@ -485,7 +485,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       requestAnimationFrame(() => {
         container.scrollTo({
           top: container.scrollHeight,
-          behavior: "smooth",
+          behavior: "auto",
         });
       });
       lastStaffCountRef.current = messages.length;
@@ -505,7 +505,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       requestAnimationFrame(() => {
         container.scrollTo({
           top: container.scrollHeight,
-          behavior: "smooth",
+          behavior: "auto",
         });
       });
     }

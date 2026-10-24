@@ -1,10 +1,13 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V19 - FINAL FIX)
+// SERVER-JSON.JS — Backend Express (V20 - FINAL FULL)
 // ============================================================
-// V19 (2026-10) — FIX TRIỆT ĐỂ:
-//   🔴 FIX XOÁ USER: Bỏ check `keys.length >= dbCount` trong _writeCollection
+// V20 (2026-10) — BẢN HOÀN CHỈNH:
+//   🔴 FIX XOÁ USER: Dùng deleteOne trực tiếp trên MongoDB + fallback filter mảng
 //   🔴 FIX POST /api/orders: Khai báo `let orderCreated` và `let xuDiscount` ngoài try
-//   (Các fix V18 vẫn giữ nguyên: __cfg, categories rác, auth 503, timeout 8s, CORS...)
+//   🔴 FIX POST /api/reviews: Khai báo `__cfg` trước khi dùng
+//   🔴 FIX GET /api/categories: Xoá dòng rác
+//   🔴 FIX F5 LOGOUT: Trả 503 khi Mongo chưa ready
+//   🔴 FIX CORS: Thêm domain vercel thật
 // ============================================================
 
 import express from "express";
@@ -39,7 +42,7 @@ import { sanitizeBody } from "./middleware/sanitize.js";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v19-final-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v20-final-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -1351,6 +1354,7 @@ app.delete("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 // ============================================================
 // USERS
 // ============================================================
@@ -1435,11 +1439,58 @@ app.put("/api/users/:id", auth(["ADMIN"]), async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// 🔴 FIX P0: Xoá user hỗ trợ match theo id (số), _id (ObjectId), code (KH5), email
 app.delete("/api/users/:id", auth(["ADMIN"]), async (req, res) => {
-  const db = loadDB();
-  db.users = db.users.filter((u) => u.id != req.params.id);
-  await saveDBOrThrow(db);
-  res.json({ ok: true });
+  try {
+    const db = loadDB();
+    const targetId = String(req.params.id).trim();
+    const before = db.users.length;
+
+    // Match theo 1 trong các trường: id, _id, code, email
+    const found = db.users.find((u) => {
+      return (
+        String(u.id) === targetId ||
+        String(u._id) === targetId ||
+        String(u.code) === targetId ||
+        String(u.email) === targetId
+      );
+    });
+
+    if (!found) {
+      return res.status(404).json({
+        message: `Không tìm thấy user với ID ${targetId}`,
+        tried: ["id", "_id", "code", "email"],
+      });
+    }
+
+    // Xoá user
+    db.users = db.users.filter((u) => u !== found);
+
+    // Lưu vào MongoDB
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("users");
+      // Xoá chính xác doc của user này bằng _id (nếu có) hoặc id
+      if (found._id) {
+        await coll.deleteOne({ _id: found._id });
+      } else if (found.id !== undefined) {
+        await coll.deleteOne({ id: found.id });
+      }
+      // Sau đó gọi saveDBOrThrow để dọn dẹp các bản ghi lạ
+      await saveDBOrThrow(db);
+    }
+
+    const removed = before - db.users.length;
+    console.log(`🗑  Xoá user "${found.name}" (${found.email}) — Đã xoá ${removed} user`);
+
+    res.json({
+      ok: true,
+      removed,
+      deleted_user: { id: found.id, email: found.email, name: found.name },
+    });
+  } catch (e) {
+    console.error("DELETE /api/users error:", e);
+    res.status(500).json({ message: "Lỗi xoá user: " + e.message });
+  }
 });
 
 app.post("/api/users/:id/reset-password", auth(["ADMIN"]), async (req, res) => {
@@ -2530,6 +2581,7 @@ app.post("/api/wallet/pay", auth(), async (req, res) => {
     res.status(201).json({ ok: true, transaction: tx, newBalance: w.balance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 // ============================================================
 // CHAT SYSTEM
 // ============================================================

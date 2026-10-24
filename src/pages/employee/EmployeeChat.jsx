@@ -30,7 +30,7 @@ import {
 
 const POLL_INTERVAL_MS = 3000;
 const PERMISSION_POLL_MS = 5000;
-const SCROLL_THRESHOLD_PX = 120;
+const SCROLL_THRESHOLD_PX = 30;
 const MAX_MESSAGE_LENGTH = 2000;
 const PINNED_STORAGE_KEY = "canteen.chat.pinned";
 const PRINT_NOTE_STORAGE_KEY = "canteen.chat.print_notes";
@@ -1034,7 +1034,7 @@ export default function EmployeeChat() {
     if (isOwnMessage || isNearBottom) {
       requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({
-          behavior: "smooth",
+          behavior: "auto",
           block: "end",
         });
       });
@@ -1088,7 +1088,7 @@ export default function EmployeeChat() {
       }
 
       setSending(true);
-      const tempId = "tmp-" + Date.now();
+      const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
 
       const tempMsg = {
         id: tempId,
