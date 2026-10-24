@@ -793,10 +793,15 @@ function getInitPromise() {
   return initPromise;
 }
 
+// Health check bypass — trả lời ngay lập tức không chờ Mongo
 app.use(async (req, res, next) => {
+  if (req.path === "/" || req.path === "/api" || req.path === "/api/") {
+    return next();
+  }
   if (mongoReady) return next();
-  // 🔧 Timeout 30s — không treo request nếu Mongo down
-  await Promise.race([getInitPromise(), new Promise((r) => setTimeout(r, 30000))]);
+  // Timeout ngắn: 10s là đủ cho Mongo Atlas cold start
+  // (30s cũ quá dài, gây user thấy load chậm 30s)
+  await Promise.race([getInitPromise(), new Promise((r) => setTimeout(r, 10000))]);
   next();
 });
 

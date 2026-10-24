@@ -1,12 +1,11 @@
 // ============================================================
-// AUTHCONTEXT.JSX — Context xác thực toàn cục (V7 - FINAL)
+// AUTHCONTEXT.JSX — Context xác thực toàn cục (V8 - FINAL)
 // ============================================================
-// V7 (2026-10):
-//   - ✅ Derive mustChangePassword từ user — bỏ state riêng
-//     (tránh side-effect trong updater của setUserState)
-//   - ✅ logout / auth-expired tăng meReqIdRef — huỷ refreshUser
-//     đang bay, không bị "tự đăng nhập lại" sau logout
-//   - ✅ login() return `me` (đầy đủ field) thay vì res.user
+// V8 (2026-10):
+//   - ✅ FIX: Listen `token-changed` → OAuth/FB/Microsoft tự
+//     động refresh user ngay khi setToken được gọi.
+//   - ✅ FIX: Listen `storage` event để đồng bộ giữa các tab.
+//   - ✅ Giữ nguyên V7 (derive mustChangePassword từ user).
 // ============================================================
 
 import {
@@ -25,7 +24,6 @@ export function AuthProvider({ children }) {
   const mountedRef = useRef(true);
   const isRefreshingRef = useRef(false);
 
-  // 🔧 Derive mustChangePassword — không có state riêng
   const mustChangePassword = useMemo(() => !!user?.must_change_password, [user]);
 
   const setUser = useCallback((updater) => {
@@ -68,7 +66,6 @@ export function AuthProvider({ children }) {
     setToken(res.token);
     setUserState(res.user);
 
-    // 🔧 Trả về `me` đầy đủ field
     try {
       const me = await api.me();
       if (mountedRef.current) setUserState(me);
@@ -79,7 +76,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
-    // 🔧 Tăng reqId để huỷ refreshUser đang bay
     meReqIdRef.current++;
     setToken(null);
     setUserState(null);
@@ -91,7 +87,9 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
-  // Mount: đọc token, fetch /auth/me
+  // ============================================================
+  // MOUNT: đọc token → fetch /me
+  // ============================================================
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -123,10 +121,32 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // Global events
+  // ============================================================
+  // Listen token-changed (OAuth callback, external setToken)
+  // ============================================================
+  useEffect(() => {
+    const onTokenChanged = (e) => {
+      const hasToken = e?.detail?.hasToken;
+      if (hasToken) {
+        // Có token mới (OAuth/Login) → refresh user
+        refreshUser();
+      } else {
+        // Token bị xoá (logout hoặc auth-expired) → clear state
+        meReqIdRef.current++;
+        setUserState(null);
+      }
+    };
+
+    window.addEventListener("token-changed", onTokenChanged);
+    return () => window.removeEventListener("token-changed", onTokenChanged);
+  }, [refreshUser]);
+
+  // ============================================================
+  // Listen auth-expired, logout, refresh-user events
+  // ============================================================
   useEffect(() => {
     const onAuthExpired = () => {
-      meReqIdRef.current++;  // 🔧 huỷ refreshUser đang bay
+      meReqIdRef.current++;
       setUserState(null);
     };
     const onLogout = () => {

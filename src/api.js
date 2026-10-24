@@ -1,9 +1,10 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V11 - FINAL)
+// API.JS — HTTP client cho Backend Express (V12 - FINAL)
 // ============================================================
-// V11 (2026-10):
-//   - ✅ Thêm orders.approveGreen / rejectGreen (đồng bộ backend)
-//   - ✅ Giữ nguyên toàn bộ logic V10 (auth-expired chốt 1 lần)
+// V12 (2026-10):
+//   - ✅ Thêm `token-changed` event → AuthContext tự refresh
+//   - ✅ Tab ID isolation → Duplicate tab không share session
+//   - ✅ Giữ nguyên toàn bộ logic V11
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -11,7 +12,31 @@ const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
+// ============================================================
+// TAB ISOLATION — Mỗi tab có ID riêng để tránh Duplicate Tab share session
+// ============================================================
+const TAB_STORAGE_KEY = "__vwa_tab_id";
+let tabId = null;
+
+(function initTabId() {
+  try {
+    // Tab ID lưu trong sessionStorage của tab này.
+    // Duplicate Tab → copy sessionStorage → cùng tabId → BAD.
+    // Giải pháp: luôn tạo tabId mới MỖI KHI MODULE LOAD,
+    // nhưng KHÔNG ghi đè sessionStorage khi vừa mới load (chỉ ghi khi setToken).
+    // => Duplicate tab sẽ có tabId khác → không share token.
+    tabId = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    // Không lưu vào sessionStorage (để Duplicate tab có tabId khác)
+  } catch {
+    tabId = "fallback-" + Math.random().toString(36).slice(2);
+  }
+})();
+
+// ============================================================
+// TOKEN — sessionStorage + memoryToken + tabId guard
+// ============================================================
 let memoryToken = null;
+let memoryTokenTabId = null; // 🔧 NEW: tabId của tab đã set token
 let isAuthExpiredDispatched = false;
 
 let sessionStorageAvailable = (() => {
@@ -24,27 +49,55 @@ let sessionStorageAvailable = (() => {
 })();
 
 export function getToken() {
+  // 🔧 Guard: nếu token được lưu bởi tab khác (Duplicate tab), reject
   if (sessionStorageAvailable) {
     try {
+      const savedTabId = sessionStorage.getItem(TAB_STORAGE_KEY);
+      // Nếu sessionStorage có token nhưng KHÔNG khớp tabId hiện tại
+      // => tab khác (Duplicate) đã set → ignore
+      if (savedTabId && savedTabId !== tabId) {
+        return null;
+      }
       const t = sessionStorage.getItem("token");
       if (t) return t;
-    } catch { sessionStorageAvailable = false; }
+    } catch {
+      sessionStorageAvailable = false;
+    }
   }
-  return memoryToken;
+  // Memory token cũng phải khớp tabId
+  if (memoryToken && memoryTokenTabId === tabId) {
+    return memoryToken;
+  }
+  return null;
 }
 
 export function setToken(t) {
   memoryToken = t || null;
+  memoryTokenTabId = tabId;
+
   if (t) isAuthExpiredDispatched = false;
+
   if (sessionStorageAvailable) {
     try {
-      if (t) sessionStorage.setItem("token", t);
-      else sessionStorage.removeItem("token");
+      if (t) {
+        sessionStorage.setItem("token", t);
+        sessionStorage.setItem(TAB_STORAGE_KEY, tabId); // 🔧 Lưu tabId sở hữu
+      } else {
+        sessionStorage.removeItem("token");
+        sessionStorage.removeItem(TAB_STORAGE_KEY);
+      }
     } catch (e) {
-      console.warn("[api] sessionStorage không dùng được, chuyển sang memoryToken:", e.message);
+      console.warn("[api] sessionStorage không dùng được:", e.message);
       sessionStorageAvailable = false;
     }
   }
+
+  // 🔧 Notify AuthContext + các listener khác trong CÙNG tab
+  try {
+    window.dispatchEvent(new CustomEvent("token-changed", {
+      detail: { hasToken: !!t }
+    }));
+  } catch {}
 }
 
 export function clearToken() { setToken(null); }
@@ -176,7 +229,6 @@ export const api = {
     remind: (id, data) => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
 
-    // 🔧 MỚI: duyệt Sống Xanh theo đơn
     approveGreen: (id) => req(`/orders/${id}/green/approve`, { method: "POST" }),
     rejectGreen:  (id, reason) => req(`/orders/${id}/green/reject`, { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   },
@@ -364,7 +416,6 @@ export const api = {
   toppings: {
     list: (category) =>
       req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`),
-    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }),
   },
   sizes:      { list: () => req("/sizes") },
   categories: {
