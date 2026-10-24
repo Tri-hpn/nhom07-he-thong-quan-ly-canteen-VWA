@@ -41,8 +41,8 @@ function validatePhone(phone, t) {
 // ✅ XẾP HẠNG THÀNH VIÊN THEO CHI TIÊU (VND)
 function getMemberTier(totalSpent) {
   const t = Number(totalSpent) || 0;
-  if (t >= 4000000) return "Hạng Kim cương";
-  if (t >= 2500000) return "Hạng Vàng";
+  if (t >= 10000000) return "Hạng Kim cương";
+  if (t >= 3000000) return "Hạng Vàng";
   if (t >= 1000000) return "Hạng Bạc";
   return "Thành viên mới";
 }

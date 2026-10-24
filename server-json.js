@@ -1457,7 +1457,7 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), async (req, res) => {
 // ============================================================
 app.post("/api/orders", auth(), async (req, res) => {
   const db = loadDB();
-  let touchedItems = []; let wallet = null; let total = 0; let isWalletPay = false; let customer = null; let pointsEarned = 0; let walletTx = null; let usedVoucher = null;
+  let touchedItems = []; let wallet = null; let total = 0; let isWalletPay = false; let customer = null; let pointsEarned = 0; let walletTx = null; let usedVoucher = null; let xuDiscount = 0;
   try {
     const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode, isGreen = false } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
@@ -1534,13 +1534,22 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: "Giảm giá không khớp với voucher" });
 
     // XỬ LÝ DÙNG XU VWA (Tối đa 30%)
-    let xuDiscount = 0;
+
     const useXu = req.body.useXu === true;
+
+
     customer = db.users.find(u => u.id === req.user.id);
     if (useXu && customer) {
-      const maxXuAllowed = Math.floor(subtotal * 0.3);
-      xuDiscount = Math.min(customer.points || 0, maxXuAllowed);
-      customer.points = (customer.points || 0) - xuDiscount;
+      const pointsConfig = getPointsConfig(db);
+      const maxRedeemPercent = Math.max(
+        0,
+        Math.min(100, Number(pointsConfig.redeem?.max_redeem_percent ?? 30))
+      );
+      const availableXu = Math.max(0, Number(customer.points) || 0);
+      const remainingAfterVoucher = Math.max(0, subtotal - computedDiscount);
+      const maxXuAllowed = Math.floor(remainingAfterVoucher * maxRedeemPercent / 100);
+      xuDiscount = Math.min(availableXu, maxXuAllowed);
+
     }
     total = Math.max(0, subtotal - computedDiscount - xuDiscount);
     isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
@@ -1549,12 +1558,15 @@ app.post("/api/orders", auth(), async (req, res) => {
       wallet = getOrCreateWallet(db, req.user.id);
       if (wallet.balance < total) return res.status(400).json({ message: "Số dư ví không đủ." });
     }
+    if (useXu && customer && xuDiscount > 0) {
+      customer.points = Math.max(0, Number(customer.points) || 0) - xuDiscount;
+    }
 
     touchedItems.forEach(({ m, q }) => { m.stock = (m.stock || 0) - q; m.sold = (m.sold || 0) + q; });
     if (isWalletPay) { wallet.balance -= total; wallet.updated_at = new Date().toISOString(); }
 
     const __cfg = getPointsConfig(db);
-    pointsEarned = Number(__cfg.earn.rate_points) || 200;
+    pointsEarned = calcEarnPoints(total, __cfg);
     const __greenBonus = isGreen ? calcGreenBonus(__cfg) : 0;
     const __greenRequireApproval = isGreen && __cfg.earn.green_require_approval !== false;
     if (isGreen && !__greenRequireApproval) pointsEarned += __greenBonus;
@@ -1936,12 +1948,12 @@ app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
         const db = loadDB();
         const nextConfig = req.body;
         const oldConfig = db.points_config || {};
-        
+
         if (!db.settings) db.settings = {};
         if (!db.settings.rules_history) db.settings.rules_history = [];
-        
+
         const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
-        
+
         if (oldConfig.earn && nextConfig.earn) {
           Object.keys(ruleLabels).forEach(k => {
             if (nextConfig.earn[k] !== undefined && Number(oldConfig.earn[k] || 0) !== Number(nextConfig.earn[k])) {
@@ -1956,7 +1968,7 @@ app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
             }
           });
         }
-        
+
         db.points_config = nextConfig;
         saveDB(db);
         res.json({ ok: true, config: nextConfig });
@@ -2858,7 +2870,7 @@ app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
     const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "custom_programs", "rate_desc", "green_desc", "review_desc", "subsidy_desc"];
     const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
     if (!db.settings.rules_history) db.settings.rules_history = [];
-    
+
     allowed.forEach(k => {
       if (req.body[k] !== undefined) {
         if (ruleLabels[k] && Number(db.settings[k] || 0) !== Number(req.body[k])) {

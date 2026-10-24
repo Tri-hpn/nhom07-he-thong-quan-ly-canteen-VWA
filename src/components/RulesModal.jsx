@@ -8,14 +8,29 @@ export default function RulesModal({ onClose, liveData = null }) {
   useEffect(() => {
     // Luôn luôn cập nhật Realtime nếu có liveData
     if (!liveData) {
-      api.settings.get().then(res => {
+      api.points.config().then(res => {
         if (res) setFetchedData(res);
       }).catch(() => {});
     }
   }, [liveData]);
 
   // NẾU CÓ liveData (từ trang Admin) -> Dùng luôn (Realtime). NẾU KHÔNG -> Dùng data fetch từ API.
-  const data = liveData || fetchedData || {};
+  const sourceData = liveData || fetchedData || {};
+  const data = sourceData.earn ? {
+    rate_points: sourceData.earn.rate_points,
+    green_points: sourceData.earn.green_points,
+    review_points: sourceData.earn.review_points,
+    subsidy_points: sourceData.earn.subsidy_points,
+    rate_desc: sourceData.earn.rate_desc,
+    green_desc: sourceData.earn.green_desc,
+    review_desc: sourceData.earn.review_desc,
+    subsidy_desc: sourceData.earn.subsidy_desc,
+    custom_programs: sourceData.earn.custom_programs,
+    rate_enabled: sourceData.earn.rate_enabled,
+    green_enabled: sourceData.earn.green_enabled,
+    review_enabled: sourceData.earn.review_enabled,
+    subsidy_enabled: sourceData.earn.subsidy_enabled
+  } : sourceData;
 
   const ratePoints = data.rate_points ?? 100;
   const greenPoints = data.green_points ?? 200;
