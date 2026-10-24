@@ -24,9 +24,9 @@ export default defineConfig(({ mode }) => {
         devOptions: { enabled: true, type: "module" },
         workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
-          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
+          // 🔴 Tăng từ 2MB lên 5MB để tránh lỗi "Assets exceeding the limit" trên Vercel
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallback: "index.html",
-          // 🔴 Thêm dòng này để fix warning: Không chặn các route của SPA
           navigateFallbackAllowlist: [/^(?!\/api).*/],
           runtimeCaching: [
             {
