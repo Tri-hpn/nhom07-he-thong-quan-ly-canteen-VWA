@@ -1,12 +1,10 @@
 // api/index.js
 // Entry point cho Vercel Serverless Function.
-// Import Express app đã cấu hình từ server-json.js và export ra để Vercel handle.
 
 import app from "../server-json.js";
 
 // ─────────────────────────────────────────────────────────────
 // VALIDATE: server-json.js PHẢI export default một Express app
-// (function (req, res, next)). Nếu export nhầm object/router → Vercel sẽ 500.
 // ─────────────────────────────────────────────────────────────
 if (typeof app !== "function") {
   throw new Error(
@@ -17,19 +15,44 @@ if (typeof app !== "function") {
 
 // ─────────────────────────────────────────────────────────────
 // COLD-START WARM-UP: log cảnh báo nếu thiếu env quan trọng.
-// Không throw — để function vẫn boot, request sẽ tự 500 nếu thiếu env thật sự.
 // ─────────────────────────────────────────────────────────────
 const REQUIRED_ENV = ["MONGO_URI", "JWT_SECRET"];
-const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
-if (missing.length) {
+const RECOMMENDED_ENV = [
+  "NODE_ENV",
+  "COOKIE_SECRET",
+  "CORS_ORIGIN",
+  "CLOUDINARY_URL",
+  "UPSTASH_REDIS_REST_URL",
+];
+
+const missingRequired = REQUIRED_ENV.filter((k) => !process.env[k]);
+if (missingRequired.length) {
   console.error(
-    `[api/index.js] ❌ Thiếu env bắt buộc: ${missing.join(", ")} — kiểm tra Vercel Dashboard → Settings → Environment Variables`
+    `[api/index.js] ❌ THIẾU ENV BẮT BUỘC: ${missingRequired.join(", ")} ` +
+      `— kiểm tra Vercel Dashboard → Settings → Environment Variables`
   );
 }
 
-// ⚠️ QUAN TRỌNG — KHÔNG gọi app.listen() ở đây:
-//   - Vercel tự quản lý socket; app.listen() sẽ waste resource và có thể hang.
-//   - server-json.js cũng phải guard: if (!process.env.VERCEL) app.listen(PORT)
-//     (sẽ kiểm tra khi gửi Cluster 3).
+const missingRecommended = RECOMMENDED_ENV.filter((k) => !process.env[k]);
+if (missingRecommended.length && process.env.NODE_ENV === "production") {
+  console.warn(
+    `[api/index.js] ⚠️  Thiếu env khuyến nghị: ${missingRecommended.join(", ")} ` +
+      `— một số tính năng (secure cookie, rate-limit Redis, upload Cloudinary) ` +
+      `sẽ không chạy được chính xác.`
+  );
+}
 
+// ─────────────────────────────────────────────────────────────
+// BUILD INFO (giúp trace deploy nào đang chạy trên Vercel)
+// ─────────────────────────────────────────────────────────────
+console.log(
+  `[api/index.js] 🚀 Boot | NODE_ENV=${process.env.NODE_ENV || "dev"} ` +
+    `| VERCEL=${!!process.env.VERCEL} ` +
+    `| VERCEL_ENV=${process.env.VERCEL_ENV || "-"} ` +
+    `| VERCEL_GIT_COMMIT_SHA=${
+      process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "-"
+    }`
+);
+
+// ⚠️ KHÔNG gọi app.listen() ở đây — Vercel tự quản lý socket.
 export default app;

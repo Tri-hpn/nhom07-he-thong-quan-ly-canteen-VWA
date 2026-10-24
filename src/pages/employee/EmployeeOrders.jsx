@@ -1,21 +1,22 @@
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban + Station Filter (V16)
+// EMPLOYEEORDERS.JSX — KDS Kanban (V17 - REAL-TIME SSE)
 // ============================================================
-// V16:
-//   - ✅ Thêm nút "Ẩn bớt" khi đã mở rộng.
-//   - ✅ Đảm bảo layout cuộn ngang 1 hàng.
+// V17 (2026-10):
+//   - ⚡ Tích hợp Server-Sent Events (SSE) thay thế Polling 5s.
+//   - 🔄 Auto fallback về Polling nếu SSE đứt kết nối.
+//   - 🟢 Hiển thị trạng thái kết nối (LIVE / POLLING).
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Search, Loader2, AlertCircle, RefreshCw, Check, XCircle, ChefHat,
+  Search, AlertCircle, RefreshCw, Check, XCircle, ChefHat,
   CheckCircle2, Wallet, Timer, TrendingUp, User, Lock,
   ChevronDown, PackageCheck, Volume2, VolumeX, Store,
   UtensilsCrossed, ListFilter, Inbox, Play, Soup, ArrowRight,
-  Clock, Flame, ChevronLeft
+  Clock, Flame, ChevronLeft, Wifi
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -30,8 +31,6 @@ import {
 // ============================================================
 // CONSTANTS
 // ============================================================
-
-const POLL_MS = 5000;
 const COMPLETED_LIMIT = 8;
 const ROW_LIMIT = 10;
 const SOUND_REPEAT_MS = 4000;
@@ -65,9 +64,7 @@ const CATEGORY_TO_STATION = {
 };
 
 function getOrderStation(order) {
-  if (order?.station && STATION_IDS.includes(order.station)) {
-    return order.station;
-  }
+  if (order?.station && STATION_IDS.includes(order.station)) return order.station;
   const items = order?.items || [];
   for (const it of items) {
     const cat = it.category || it.menu_category || "";
@@ -84,9 +81,7 @@ const PAYMENT_ALIASES = {
   "Thẻ": "card", "Thẻ SV": "card",
 };
 
-function normalizePayment(p) {
-  return PAYMENT_ALIASES[p] || "cash";
-}
+function normalizePayment(p) { return PAYMENT_ALIASES[p] || "cash"; }
 
 const TIMEFRAMES = {
   all: null,
@@ -98,7 +93,6 @@ const TIMEFRAMES = {
 // ============================================================
 // HELPERS
 // ============================================================
-
 function getLocalDateStr(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -126,14 +120,12 @@ function getOrderPickupMinutes(order) {
 // ============================================================
 // WEB AUDIO
 // ============================================================
-
 function playDing() {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
-
     const makeTone = (freq, startAt, duration) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -147,20 +139,15 @@ function playDing() {
       osc.start(startAt);
       osc.stop(startAt + duration + 0.05);
     };
-
     makeTone(880, now, 0.18);
     makeTone(1320, now + 0.16, 0.22);
-
-    setTimeout(() => {
-      try { ctx.close(); } catch (_) {}
-    }, 700);
+    setTimeout(() => { try { ctx.close(); } catch (_) {} }, 700);
   } catch (e) {}
 }
 
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
-
 export default function EmployeeOrders({ isAdmin = false }) {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -169,6 +156,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [sseConnected, setSseConnected] = useState(false); // Trạng thái SSE
 
   const [approvedShifts, setApprovedShifts] = useState([]);
 
@@ -176,9 +164,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const stationParam = searchParams.get("station");
 
   const [search, setSearch] = useState("");
-  const [stationFilter, setStationFilter] = useState(() =>
-    normalizeStation(stationParam)
-  );
+  const [stationFilter, setStationFilter] = useState(() => normalizeStation(stationParam));
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [timeframeFilter, setTimeframeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -192,46 +178,35 @@ export default function EmployeeOrders({ isAdmin = false }) {
     try {
       const v = localStorage.getItem(SOUND_STORAGE_KEY);
       return v === null ? false : v === "1";
-    } catch {
-      return false;
-    }
+    } catch { return false; }
   });
 
   const [expandedRows, setExpandedRows] = useState({
-    pending: false,
-    confirmed: false,
-    prep: false,
-    ready: false,
+    pending: false, confirmed: false, prep: false, ready: false,
   });
 
   const reqIdRef = useRef(0);
-  const inFlightRef = useRef(false);
+  const inFlightRef = useRef(0);
   const prevPendingCountRef = useRef(null);
   const dingIntervalRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
   const stationMenuRef = useRef(null);
+  
+  // Refs cho SSE
+  const esRef = useRef(null);
+  const pollTimerRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
 
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
   useEffect(() => {
-    soundEnabledRef.current = soundEnabled;
+    try { localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "1" : "0"); } catch (_) {}
   }, [soundEnabled]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "1" : "0");
-    } catch (_) {}
-  }, [soundEnabled]);
-
-  // 🔧 Mở khóa âm thanh ngay sau tương tác đầu tiên của người dùng
   useEffect(() => {
     const unlockAudio = () => {
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-          const ctx = new AudioCtx();
-          if (ctx.state === "suspended") {
-            ctx.resume();
-          }
-        }
+        if (AudioCtx) { const ctx = new AudioCtx(); if (ctx.state === "suspended") ctx.resume(); }
       } catch (e) {}
       document.removeEventListener("click", unlockAudio);
     };
@@ -242,9 +217,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
   useEffect(() => {
     if (!showStationMenu) return;
     const handler = (e) => {
-      if (stationMenuRef.current && !stationMenuRef.current.contains(e.target)) {
-        setShowStationMenu(false);
-      }
+      if (stationMenuRef.current && !stationMenuRef.current.contains(e.target)) setShowStationMenu(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -252,17 +225,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
   useEffect(() => {
     let cancelled = false;
-    api.shifts
-      .approvedToday()
-      .then((list) => {
-        if (!cancelled) setApprovedShifts(Array.isArray(list) ? list : []);
-      })
-      .catch(() => {
-        if (!cancelled) setApprovedShifts([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+    api.shifts.approvedToday().then((list) => { if (!cancelled) setApprovedShifts(Array.isArray(list) ? list : []); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -270,78 +234,109 @@ export default function EmployeeOrders({ isAdmin = false }) {
     setStationFilter((cur) => (cur === next ? cur : next));
   }, [stationParam]);
 
-  const changeStation = useCallback(
-    (id) => {
-      setStationFilter(id);
-      setShowStationMenu(false);
-      const next = new URLSearchParams(searchParams);
-      if (id === "all") next.delete("station");
-      else next.set("station", id);
-      setSearchParams(next, { replace: true });
-    },
-    [searchParams, setSearchParams]
-  );
+  const changeStation = useCallback((id) => {
+    setStationFilter(id);
+    setShowStationMenu(false);
+    const next = new URLSearchParams(searchParams);
+    if (id === "all") next.delete("station");
+    else next.set("station", id);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
-  const load = useCallback(
-    async (silent = false) => {
-      if (inFlightRef.current) return;
-      inFlightRef.current = true;
+  const load = useCallback(async (silent = false) => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = 1;
 
-      const myReqId = ++reqIdRef.current;
-      if (!silent) setRefreshing(true);
-      setError("");
+    const myReqId = ++reqIdRef.current;
+    if (!silent) setRefreshing(true);
+    setError("");
 
-      try {
-        const data = await api.orders.all("Tất cả");
-        if (myReqId !== reqIdRef.current) return;
-
-        const list = Array.isArray(data) ? data : [];
-        const sorted = [...list].sort((a, b) => {
-          const ta = new Date(a.created_at || 0).getTime();
-          const tb = new Date(b.created_at || 0).getTime();
-          return ta - tb;
-        });
-        setOrders(sorted);
-      } catch (e) {
-        if (myReqId === reqIdRef.current && !silent) {
-          setError(e.message || t("Không tải được đơn hàng"));
-        }
-      } finally {
-        if (myReqId === reqIdRef.current) {
-          setLoading(false);
-          if (!silent) setRefreshing(false);
-        }
-        inFlightRef.current = false;
+    try {
+      const data = await api.orders.all("Tất cả");
+      if (myReqId !== reqIdRef.current) return;
+      const list = Array.isArray(data) ? data : [];
+      const sorted = [...list].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+      setOrders(sorted);
+    } catch (e) {
+      if (myReqId === reqIdRef.current && !silent) setError(e.message || t("Không tải được đơn hàng"));
+    } finally {
+      if (myReqId === reqIdRef.current) {
+        setLoading(false);
+        if (!silent) setRefreshing(false);
       }
-    },
-    [t]
-  );
+      inFlightRef.current = 0;
+    }
+  }, [t]);
 
+  // ============================================================
+  // SSE & POLLING FALLBACK LOGIC
+  // ============================================================
   useEffect(() => {
-    load(false);
+    let isSubscribed = true;
+
+    const startPolling = () => {
+      if (pollTimerRef.current) return;
+      pollTimerRef.current = setInterval(async () => {
+        try {
+          await load(true); // Silent reload
+        } catch {}
+      }, 15000); // Polling 15s fallback
+    };
+
+    const stopPolling = () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+
+    const connectSSE = () => {
+      if (!isSubscribed) return;
+      stopPolling();
+
+      const token = getToken();
+      const url = `/api/kds/stream${token ? `?token=${token}` : ""}`;
+      const es = new EventSource(url);
+      esRef.current = es;
+
+      es.onopen = () => {
+        if (!isSubscribed) return;
+        setSseConnected(true);
+        load(true); // Đồng bộ ngay khi kết nối
+      };
+
+      // Lắng nghe sự kiện có đơn mới hoặc đổi trạng thái
+      es.addEventListener("order.new", () => { if (isSubscribed) load(true); });
+      es.addEventListener("order.updated", () => { if (isSubscribed) load(true); });
+
+      es.onerror = () => {
+        if (!isSubscribed) return;
+        setSseConnected(false);
+        es.close();
+        esRef.current = null;
+        startPolling();
+        reconnectTimerRef.current = setTimeout(connectSSE, 5000); // Thử lại sau 5s
+      };
+    };
+
+    connectSSE();
+
+    return () => {
+      isSubscribed = false;
+      if (esRef.current) esRef.current.close();
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      stopPolling();
+    };
   }, [load]);
 
+  // Các event từ tab khác (local storage)
   useEffect(() => {
-    const off = onOrderUpdated(() => {
-      load(true);
-    });
+    const off = onOrderUpdated(() => { load(true); });
     return off;
   }, [load]);
 
-  useEffect(() => {
-    const timer = setInterval(() => load(true), POLL_MS);
-    return () => clearInterval(timer);
-  }, [load]);
-
   const rows = useMemo(() => {
-    const byStatus = {
-      pending: [],
-      confirmed: [],
-      prep: [],
-      ready: [],
-      completed: [],
-    };
-
+    const byStatus = { pending: [], confirmed: [], prep: [], ready: [], completed: [] };
     for (const o of orders) {
       if (o.status === "Chờ xác nhận") byStatus.pending.push(o);
       else if (o.status === "Đã xác nhận") byStatus.confirmed.push(o);
@@ -350,112 +345,65 @@ export default function EmployeeOrders({ isAdmin = false }) {
       else if (o.status === "Hoàn thành") byStatus.completed.push(o);
     }
 
-    const sortOldestFirst = (arr) =>
-      arr.sort((a, b) => {
-        const ta = new Date(a.created_at || a.updated_at || 0).getTime();
-        const tb = new Date(b.created_at || b.updated_at || 0).getTime();
-        return ta - tb;
-      });
-
+    const sortOldestFirst = (arr) => arr.sort((a, b) => new Date(a.created_at || a.updated_at || 0).getTime() - new Date(b.created_at || b.updated_at || 0).getTime());
     sortOldestFirst(byStatus.pending);
     sortOldestFirst(byStatus.confirmed);
     sortOldestFirst(byStatus.prep);
     sortOldestFirst(byStatus.ready);
 
-    byStatus.completed.sort((a, b) => {
-      const ta = new Date(a.updated_at || a.created_at || 0).getTime();
-      const tb = new Date(b.updated_at || b.created_at || 0).getTime();
-      return tb - ta;
-    });
+    byStatus.completed.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
     const completedTotal = byStatus.completed.length;
     byStatus.completed = byStatus.completed.slice(0, COMPLETED_LIMIT);
 
     return { ...byStatus, completedTotal };
   }, [orders]);
 
-  const applyFilter = useCallback(
-    (list) => {
-      let result = list;
-
-      if (search.trim()) {
-        const q = search.toLowerCase().trim();
+  const applyFilter = useCallback((list) => {
+    let result = list;
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter((o) => {
+        const code = (o.code || "").toLowerCase();
+        const name = (o.customer_name || "").toLowerCase();
+        const mssv = (o.customer_mssv || "").toLowerCase();
+        const email = (o.customer_email || "").toLowerCase();
+        return code.includes(q) || name.includes(q) || mssv.includes(q) || email.includes(q);
+      });
+    }
+    if (paymentFilter !== "all") result = result.filter((o) => normalizePayment(o.payment) === paymentFilter);
+    if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
+    if (timeframeFilter !== "all") {
+      const range = TIMEFRAMES[timeframeFilter];
+      if (range) {
         result = result.filter((o) => {
-          const code = (o.code || "").toLowerCase();
-          const name = (o.customer_name || "").toLowerCase();
-          const mssv = (o.customer_mssv || "").toLowerCase();
-          const email = (o.customer_email || "").toLowerCase();
-          return (
-            code.includes(q) ||
-            name.includes(q) ||
-            mssv.includes(q) ||
-            email.includes(q)
-          );
+          const mins = getOrderPickupMinutes(o);
+          if (mins === null) return true;
+          return mins >= range[0] && mins < range[1];
         });
       }
+    }
+    return result;
+  }, [search, paymentFilter, statusFilter, timeframeFilter]);
 
-      if (paymentFilter !== "all") {
-        result = result.filter(
-          (o) => normalizePayment(o.payment) === paymentFilter
-        );
-      }
-
-      if (statusFilter !== "all") {
-        result = result.filter((o) => o.status === statusFilter);
-      }
-
-      if (timeframeFilter !== "all") {
-        const range = TIMEFRAMES[timeframeFilter];
-        if (range) {
-          result = result.filter((o) => {
-            const mins = getOrderPickupMinutes(o);
-            if (mins === null) return true;
-            return mins >= range[0] && mins < range[1];
-          });
-        }
-      }
-
-      return result;
-    },
-    [search, paymentFilter, statusFilter, timeframeFilter]
-  );
-
-  const filteredRows = useMemo(
-    () => ({
-      pending: applyFilter(rows.pending),
-      confirmed: applyFilter(rows.confirmed),
-      prep: applyFilter(rows.prep),
-      ready: applyFilter(rows.ready),
-      completed: applyFilter(rows.completed),
-      completedTotal: rows.completedTotal,
-    }),
-    [rows, applyFilter]
-  );
+  const filteredRows = useMemo(() => ({
+    pending: applyFilter(rows.pending),
+    confirmed: applyFilter(rows.confirmed),
+    prep: applyFilter(rows.prep),
+    ready: applyFilter(rows.ready),
+    completed: applyFilter(rows.completed),
+    completedTotal: rows.completedTotal,
+  }), [rows, applyFilter]);
 
   const kpi = useMemo(() => {
     const today = getLocalDateStr(new Date());
-
-    const todayOrders = orders.filter((o) => {
-      const d = getLocalDateStr(new Date(o.created_at || 0));
-      return d === today;
-    });
-
+    const todayOrders = orders.filter((o) => getLocalDateStr(new Date(o.created_at || 0)) === today);
     const completedToday = orders.filter((o) => {
       if (o.status !== "Hoàn thành") return false;
       const refDate = o.updated_at || o.received_at || o.created_at;
-      const d = getLocalDateStr(new Date(refDate || 0));
-      return d === today;
+      return getLocalDateStr(new Date(refDate || 0)) === today;
     });
-
-    const revenue = completedToday.reduce(
-      (s, o) => s + (Number(o.total) || 0),
-      0
-    );
-
-    const onTimePct =
-      todayOrders.length > 0
-        ? ((completedToday.length / todayOrders.length) * 100).toFixed(1)
-        : "0";
-
+    const revenue = completedToday.reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const onTimePct = todayOrders.length > 0 ? ((completedToday.length / todayOrders.length) * 100).toFixed(1) : "0";
     return {
       pending: rows.pending.length,
       prep: rows.prep.length,
@@ -466,163 +414,100 @@ export default function EmployeeOrders({ isAdmin = false }) {
     };
   }, [orders, rows]);
 
-  // Âm báo đơn — ding lặp mỗi 4s cho đến khi hết pending
+  // Âm báo
   useEffect(() => {
     const current = rows.pending.length;
     const prev = prevPendingCountRef.current;
-
-    if (prev === null) {
-      prevPendingCountRef.current = current;
-      return;
-    }
-
-    if (current > prev && soundEnabledRef.current) {
-      playDing();
-    }
-
+    if (prev === null) { prevPendingCountRef.current = current; return; }
+    if (current > prev && soundEnabledRef.current) playDing();
     prevPendingCountRef.current = current;
   }, [rows.pending.length]);
 
   useEffect(() => {
-    if (dingIntervalRef.current) {
-      clearInterval(dingIntervalRef.current);
-      dingIntervalRef.current = null;
-    }
-
+    if (dingIntervalRef.current) { clearInterval(dingIntervalRef.current); dingIntervalRef.current = null; }
     if (rows.pending.length > 0 && soundEnabled) {
-      dingIntervalRef.current = setInterval(() => {
-        if (soundEnabledRef.current) playDing();
-      }, SOUND_REPEAT_MS);
+      dingIntervalRef.current = setInterval(() => { if (soundEnabledRef.current) playDing(); }, SOUND_REPEAT_MS);
     }
-
-    return () => {
-      if (dingIntervalRef.current) {
-        clearInterval(dingIntervalRef.current);
-        dingIntervalRef.current = null;
-      }
-    };
+    return () => { if (dingIntervalRef.current) { clearInterval(dingIntervalRef.current); dingIntervalRef.current = null; } };
   }, [rows.pending.length, soundEnabled]);
 
   const toggleSound = useCallback(() => {
     setSoundEnabled((v) => {
       const next = !v;
-      toast(
-        next ? t("Đã bật âm báo đơn") : t("Đã tắt âm báo đơn"),
-        next ? "success" : "info"
-      );
+      toast(next ? t("Đã bật âm báo đơn") : t("Đã tắt âm báo đơn"), next ? "success" : "info");
       if (next) setTimeout(() => playDing(), 100);
       return next;
     });
   }, [t]);
 
-  const toggleExpand = useCallback((key) => {
-    setExpandedRows((s) => ({ ...s, [key]: !s[key] }));
-  }, []);
+  const toggleExpand = useCallback((key) => { setExpandedRows((s) => ({ ...s, [key]: !s[key] })); }, []);
 
-  const takeVisible = useCallback(
-    (list, key) => {
-      if (expandedRows[key]) return { visible: list, hiddenCount: 0, isExpanded: true };
-      return {
-        visible: list.slice(0, ROW_LIMIT),
-        hiddenCount: Math.max(0, list.length - ROW_LIMIT),
-        isExpanded: false
-      };
-    },
-    [expandedRows]
-  );
+  const takeVisible = useCallback((list, key) => {
+    if (expandedRows[key]) return { visible: list, hiddenCount: 0, isExpanded: true };
+    return { visible: list.slice(0, ROW_LIMIT), hiddenCount: Math.max(0, list.length - ROW_LIMIT), isExpanded: false };
+  }, [expandedRows]);
 
   const shiftLabel = useMemo(() => getCurrentShiftLabel(new Date()), []);
   const staffName = user?.name || t("Nhân viên");
   const staffCode = user?.employeeCode || user?.code || "";
 
-  const approveGreen = useCallback(
-    async (order) => {
-      const id = order._id || order.id;
-      if (greenBusyId !== null) return;
-      setGreenBusyId(id);
-      try {
-        const res = await api.orders.approveGreen(id);
-        toast(`${t("Đã duyệt Sống Xanh")} + ${res.bonus} ${t("Xu")}`, "success");
-        emitOrderUpdated();
-        await load(true);
-      } catch (e) {
-        toast(e.message || t("Không duyệt được"), "error");
-      } finally {
-        setGreenBusyId(null);
-      }
-    },
-    [load, t, greenBusyId]
-  );
+  const approveGreen = useCallback(async (order) => {
+    const id = order._id || order.id;
+    if (greenBusyId !== null) return;
+    setGreenBusyId(id);
+    try {
+      const res = await api.orders.approveGreen(id);
+      toast(`${t("Đã duyệt Sống Xanh")} + ${res.bonus} ${t("Xu")}`, "success");
+      emitOrderUpdated(); await load(true);
+    } catch (e) { toast(e.message || t("Không duyệt được"), "error"); }
+    finally { setGreenBusyId(null); }
+  }, [load, t, greenBusyId]);
 
-  const rejectGreen = useCallback(
-    async (order) => {
-      const id = order._id || order.id;
-      if (greenBusyId !== null) return;
-      setGreenBusyId(id);
-      try {
-        await api.orders.rejectGreen(id);
-        toast(t("Đã từ chối Sống Xanh"), "warning");
-        emitOrderUpdated();
-        await load(true);
-      } catch (e) {
-        toast(e.message || t("Không từ chối được"), "error");
-      } finally {
-        setGreenBusyId(null);
-      }
-    },
-    [load, t, greenBusyId]
-  );
+  const rejectGreen = useCallback(async (order) => {
+    const id = order._id || order.id;
+    if (greenBusyId !== null) return;
+    setGreenBusyId(id);
+    try {
+      await api.orders.rejectGreen(id);
+      toast(t("Đã từ chối Sống Xanh"), "warning");
+      emitOrderUpdated(); await load(true);
+    } catch (e) { toast(e.message || t("Không từ chối được"), "error"); }
+    finally { setGreenBusyId(null); }
+  }, [load, t, greenBusyId]);
 
-  const advance = useCallback(
-    async (order) => {
-      const id = order._id || order.id;
-      if (advancingId !== null) return;
-      const next = NEXT_STATUS[order.status];
-      if (!next) return;
+  const advance = useCallback(async (order) => {
+    const id = order._id || order.id;
+    if (advancingId !== null) return;
+    const next = NEXT_STATUS[order.status];
+    if (!next) return;
+    setAdvancingId(id);
+    try {
+      await api.orders.setStatus(id, next);
+      toast(`"${order.code}" → "${next}"`, "success");
+      await load(true);
+      emitOrderUpdated({ ...order, status: next });
+    } catch (e) { toast(e.message || t("Không chuyển được trạng thái"), "error"); }
+    finally { setAdvancingId(null); }
+  }, [advancingId, load, t]);
 
-      setAdvancingId(id);
-      try {
-        await api.orders.setStatus(id, next);
-        toast(`"${order.code}" → "${next}"`, "success");
-        await load(true);
-        emitOrderUpdated({ ...order, status: next });
-      } catch (e) {
-        toast(e.message || t("Không chuyển được trạng thái"), "error");
-      } finally {
-        setAdvancingId(null);
-      }
-    },
-    [advancingId, load, t]
-  );
-
-  const rejectOrder = useCallback(
-    (order) => {
-      if (advancingId !== null) return;
-      setConfirmReject(order);
-    },
-    [advancingId]
-  );
+  const rejectOrder = useCallback((order) => {
+    if (advancingId !== null) return;
+    setConfirmReject(order);
+  }, [advancingId]);
 
   const executeReject = useCallback(async () => {
     if (!confirmReject) return;
     const order = confirmReject;
     const id = order._id || order.id;
-
     setAdvancingId(id);
     try {
       await api.orders.setStatus(id, "Đã hủy");
-      toast(
-        `${t("Đã hủy")} ${order.code} ${t("và hoàn tiền khách")}`,
-        "warning"
-      );
+      toast(`${t("Đã hủy")} ${order.code} ${t("và hoàn tiền khách")}`, "warning");
       setConfirmReject(null);
       emitOrderUpdated({ ...order, status: "Đã hủy" });
       await load(true);
-    } catch (e) {
-      toast(e.message || t("Không hủy được"), "error");
-    } finally {
-      setAdvancingId(null);
-    }
+    } catch (e) { toast(e.message || t("Không hủy được"), "error"); }
+    finally { setAdvancingId(null); }
   }, [confirmReject, load, t]);
 
   const showRow1 = stationFilter === "all" || stationFilter === "pending";
@@ -630,9 +515,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const showRow3 = stationFilter === "all" || stationFilter === "kitchen";
   const showRow4 = stationFilter === "all" || stationFilter === "dispatch";
   const showRow5 = stationFilter === "all" || stationFilter === "dispatch";
-
-  const currentStationObj =
-    STATION_TABS.find((s) => s.id === stationFilter) || STATION_TABS[0];
+  const currentStationObj = STATION_TABS.find((s) => s.id === stationFilter) || STATION_TABS[0];
 
   return (
     <>
@@ -641,9 +524,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
           <div className="kds-error">
             <AlertCircle size={18} />
             <span style={{ flex: 1 }}>{error}</span>
-            <button type="button" onClick={() => load(false)}>
-              {t("Thử lại")}
-            </button>
+            <button type="button" onClick={() => load(false)}>{t("Thử lại")}</button>
           </div>
         )}
 
@@ -651,10 +532,12 @@ export default function EmployeeOrders({ isAdmin = false }) {
         <div className="kds-console">
           <div className="kds-console__left">
             <div className="kds-console__card">
-              <span className="kds-console__card-dot" />
+              <span className="kds-console__card-dot" style={{ background: sseConnected ? "#10b981" : "#f59e0b" }} />
               <div className="kds-console__card-info">
-                <span className="kds-console__card-label">{t("Ca Vận Hành")}</span>
-                <span className="kds-console__card-value">{shiftLabel}</span>
+                <span className="kds-console__card-label">{t("Kết nối")}</span>
+                <span className="kds-console__card-value" style={{ fontSize: 13 }}>
+                  {sseConnected ? t("LIVE (SSE)") : t("Fallback Polling")}
+                </span>
               </div>
             </div>
 
@@ -669,69 +552,32 @@ export default function EmployeeOrders({ isAdmin = false }) {
               </div>
             </div>
 
-            <button
-              type="button"
-              className="kds-console__sound-btn"
-              onClick={toggleSound}
-              aria-pressed={soundEnabled}
-              title={soundEnabled ? t("Đang bật — bấm để tắt") : t("Đang tắt — bấm để bật")}
-            >
-              {soundEnabled ? (
-                <Volume2 size={22} style={{ color: "var(--st-success)" }} />
-              ) : (
-                <VolumeX size={22} style={{ color: "var(--st-text-muted)" }} />
-              )}
+            <button type="button" className="kds-console__sound-btn" onClick={toggleSound} aria-pressed={soundEnabled}>
+              {soundEnabled ? <Volume2 size={22} style={{ color: "var(--st-success)" }} /> : <VolumeX size={22} style={{ color: "var(--st-text-muted)" }} />}
               <div className="kds-console__sound-text">
                 <span className="kds-console__sound-label">{t("Âm báo đơn")}</span>
-                <span
-                  className="kds-console__sound-status"
-                  style={{ color: soundEnabled ? "var(--st-success)" : "var(--st-text-muted)" }}
-                >
-                  {soundEnabled
-                    ? kpi.pending > 0 ? `${t("Đang báo")} (${kpi.pending})` : t("Đang bật")
-                    : t("Đã tắt")}
+                <span className="kds-console__sound-status" style={{ color: soundEnabled ? "var(--st-success)" : "var(--st-text-muted)" }}>
+                  {soundEnabled ? (kpi.pending > 0 ? `${t("Đang báo")} (${kpi.pending})` : t("Đang bật")) : t("Đã tắt")}
                 </span>
               </div>
-              <span
-                className="kds-console__sound-dot"
-                style={{
-                  background: soundEnabled ? "var(--st-success)" : "var(--st-outline)",
-                  boxShadow: soundEnabled ? "0 0 0 3px rgba(24, 169, 103, 0.2)" : "none",
-                }}
-              />
+              <span className="kds-console__sound-dot" style={{ background: soundEnabled ? "var(--st-success)" : "var(--st-outline)", boxShadow: soundEnabled ? "0 0 0 3px rgba(24, 169, 103, 0.2)" : "none" }} />
             </button>
           </div>
 
-          {/* STATION TABS + DROPDOWN */}
           <div ref={stationMenuRef} className="kds-station-menu-wrap">
-            <button
-              type="button"
-              className="kds-station-btn"
-              onClick={() => setShowStationMenu((s) => !s)}
-              aria-expanded={showStationMenu}
-              aria-haspopup="menu"
-            >
+            <button type="button" className="kds-station-btn" onClick={() => setShowStationMenu((s) => !s)}>
               <currentStationObj.icon size={16} />
               <span>{stationFilter === "all" ? t("Tải ca trạm") : t(currentStationObj.label)}</span>
               <ChevronDown size={14} />
             </button>
-
             {showStationMenu && (
               <div className="kds-station-menu" role="menu">
                 {STATION_TABS.map((s) => {
                   const Icon = s.icon;
                   const active = stationFilter === s.id;
                   return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      role="menuitem"
-                      className={`kds-station-menu__item ${active ? "active" : ""}`}
-                      onClick={() => changeStation(s.id)}
-                    >
-                      <Icon size={16} />
-                      <span>{t(s.label)}</span>
-                      {active && <Check size={14} />}
+                    <button key={s.id} type="button" className={`kds-station-menu__item ${active ? "active" : ""}`} onClick={() => changeStation(s.id)}>
+                      <Icon size={16} /><span>{t(s.label)}</span>{active && <Check size={14} />}
                     </button>
                   );
                 })}
@@ -741,14 +587,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
           <div className="kds-station-tabs">
             {STATION_TABS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={`kds-station-tab ${stationFilter === s.id ? "active" : ""}`}
-                onClick={() => changeStation(s.id)}
-              >
-                {t(s.label)}
-              </button>
+              <button key={s.id} type="button" className={`kds-station-tab ${stationFilter === s.id ? "active" : ""}`} onClick={() => changeStation(s.id)}>{t(s.label)}</button>
             ))}
           </div>
         </div>
@@ -765,13 +604,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
               {kpi.pending > 0 && <span className="kds-kpi__badge">{t("GẤP")}</span>}
             </div>
             <div className="kds-kpi__bar">
-              <div
-                className="kds-kpi__bar-fill kds-kpi__bar-fill--danger"
-                style={{ width: `${Math.min(100, kpi.pending * 20)}%` }}
-              />
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--danger" style={{ width: `${Math.min(100, kpi.pending * 20)}%` }} />
             </div>
           </div>
-
           <div className="kds-kpi">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">{t("Đang Chuẩn Bị (Prep)")}</span>
@@ -782,13 +617,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
               <span className="kds-kpi__unit">{t("Bếp đang xào")}</span>
             </div>
             <div className="kds-kpi__bar">
-              <div
-                className="kds-kpi__bar-fill kds-kpi__bar-fill--primary"
-                style={{ width: `${Math.min(100, kpi.prep * 20)}%` }}
-              />
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--primary" style={{ width: `${Math.min(100, kpi.prep * 20)}%` }} />
             </div>
           </div>
-
           <div className="kds-kpi">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">{t("Chờ Khách Lấy (Ready)")}</span>
@@ -799,13 +630,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
               <span className="kds-kpi__unit">{t("Tủ giữ nóng OK")}</span>
             </div>
             <div className="kds-kpi__bar">
-              <div
-                className="kds-kpi__bar-fill kds-kpi__bar-fill--tertiary"
-                style={{ width: `${Math.min(100, kpi.ready * 20)}%` }}
-              />
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--tertiary" style={{ width: `${Math.min(100, kpi.ready * 20)}%` }} />
             </div>
           </div>
-
           <div className="kds-kpi">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">{t("Hoàn Thành Trong Ca")}</span>
@@ -816,26 +643,19 @@ export default function EmployeeOrders({ isAdmin = false }) {
               <span className="kds-kpi__unit">{kpi.onTimePct}% {t("đúng giờ")}</span>
             </div>
             <div className="kds-kpi__bar">
-              <div
-                className="kds-kpi__bar-fill kds-kpi__bar-fill--success"
-                style={{ width: `${Math.min(100, kpi.onTimePct)}%` }}
-              />
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--success" style={{ width: `${Math.min(100, kpi.onTimePct)}%` }} />
             </div>
           </div>
-
           <div className="kds-kpi kds-kpi--primary">
             <div className="kds-kpi__head">
               <span className="kds-kpi__label">{t("Doanh Thu Tạm Tính")}</span>
               <Wallet size={20} style={{ color: "var(--st-primary)" }} />
             </div>
             <div className="kds-kpi__value-row">
-              <span className="kds-kpi__value" style={{ fontSize: 22 }}>
-                {money(kpi.revenue).replace("đ", "")}đ
-              </span>
+              <span className="kds-kpi__value" style={{ fontSize: 22 }}>{money(kpi.revenue).replace("đ", "")}đ</span>
             </div>
             <div className="kds-kpi__note">
-              <TrendingUp size={14} />
-              <span>+14.2% {t("so với hôm qua")}</span>
+              <TrendingUp size={14} /><span>+14.2% {t("so với hôm qua")}</span>
             </div>
           </div>
         </div>
@@ -845,21 +665,10 @@ export default function EmployeeOrders({ isAdmin = false }) {
           <div className="kds-filter__left">
             <div className="kds-filter__search">
               <Search size={18} className="kds-filter__search-icon" />
-              <input
-                type="text"
-                className="kds-filter__search-input"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("Tìm theo Mã Đơn (#ORD-), Tên SV hoặc MSSV...")}
-              />
+              <input type="text" className="kds-filter__search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Tìm theo Mã Đơn (#ORD-), Tên SV hoặc MSSV...")} />
             </div>
-
             <div className="kds-filter__select-wrap">
-              <select
-                className="kds-filter__select"
-                value={timeframeFilter}
-                onChange={(e) => setTimeframeFilter(e.target.value)}
-              >
+              <select className="kds-filter__select" value={timeframeFilter} onChange={(e) => setTimeframeFilter(e.target.value)}>
                 <option value="all">{t("Mọi khung giờ nhận")}</option>
                 <option value="1130">{t("11:30 - 12:00 (Cao điểm)")}</option>
                 <option value="1200">{t("12:00 - 12:30")}</option>
@@ -867,13 +676,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
               </select>
               <ChevronDown size={16} />
             </div>
-
             <div className="kds-filter__select-wrap">
-              <select
-                className="kds-filter__select"
-                value={paymentFilter}
-                onChange={(e) => setPaymentFilter(e.target.value)}
-              >
+              <select className="kds-filter__select" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
                 <option value="all">{t("Mọi thanh toán")}</option>
                 <option value="qr">{t("VietQR (Đã TT)")}</option>
                 <option value="wallet">{t("Ví Nội Bộ VWA")}</option>
@@ -882,14 +686,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
               </select>
               <ChevronDown size={16} />
             </div>
-
             <div className="kds-filter__select-wrap">
-              <select
-                className="kds-filter__select kds-filter__select--status"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                aria-label={t("Lọc theo trạng thái đơn hàng")}
-              >
+              <select className="kds-filter__select kds-filter__select--status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="all">{t("Trạng thái đơn hàng")}</option>
                 <option value="Chờ xác nhận">{t("Đơn mới")}</option>
                 <option value="Đã xác nhận">{t("Đã xác nhận")}</option>
@@ -901,18 +699,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
               <ChevronDown size={16} />
             </div>
           </div>
-
           <div className="kds-filter__right">
-            <button
-              type="button"
-              className="kds-filter__btn"
-              onClick={() => load(false)}
-              disabled={refreshing}
-            >
-              <RefreshCw
-                size={16}
-                style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }}
-              />
+            <button type="button" className="kds-filter__btn" onClick={() => load(false)} disabled={refreshing}>
+              <RefreshCw size={16} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
               <span>{t("Đồng bộ KDS")}</span>
             </button>
           </div>
@@ -920,182 +709,60 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
         {/* ============ KDS BOARD ============ */}
         <div className="kds-board kds-board--rows">
-          {/* ROW 1: PENDING */}
-          {showRow1 &&
-            (() => {
-              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.pending, "pending");
-              return (
-                <KDSRow
-                  title={t("Đơn Mới")}
-                  subtitle={t("Chờ xác nhận")}
-                  variant="pending"
-                  empty={t("Không có đơn mới")}
-                  moreCount={hiddenCount}
-                  isExpanded={isExpanded}
-                  onMore={() => toggleExpand("pending")}
-                  t={t}
-                >
-                  {visible.map((o, idx) => (
-                    <KDSTicket
-                      key={o._id || o.id}
-                      order={o}
-                      variant="pending"
-                      layout="tall"
-                      isPriority={idx === 0 && !isExpanded}
-                      isProcessing={advancingId === (o._id || o.id)}
-                      elapsed={calcElapsedSec(o.created_at)}
-                      onAdvance={() => advance(o)}
-                      onReject={() => rejectOrder(o)}
-                      onApproveGreen={approveGreen}
-                      onRejectGreen={rejectGreen}
-                      greenBusy={greenBusyId === (o._id || o.id)}
-                      t={t}
-                    />
-                  ))}
-                </KDSRow>
-              );
-            })()}
-
-          {/* ROW 2: CONFIRMED */}
-          {showRow2 &&
-            (() => {
-              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.confirmed, "confirmed");
-              return (
-                <KDSRow
-                  title={t("Đã Xác Nhận")}
-                  subtitle={t("Chờ Bếp")}
-                  variant="confirmed"
-                  empty={t("Không có đơn đã xác nhận")}
-                  moreCount={hiddenCount}
-                  isExpanded={isExpanded}
-                  onMore={() => toggleExpand("confirmed")}
-                  t={t}
-                >
-                  {visible.map((o, idx) => (
-                    <KDSTicket
-                      key={o._id || o.id}
-                      order={o}
-                      variant="confirmed"
-                      layout="tall"
-                      isPriority={idx === 0 && !isExpanded}
-                      isProcessing={advancingId === (o._id || o.id)}
-                      elapsed={calcElapsedSec(o.created_at)}
-                      onAdvance={() => advance(o)}
-                      onApproveGreen={approveGreen}
-                      onRejectGreen={rejectGreen}
-                      greenBusy={greenBusyId === (o._id || o.id)}
-                      t={t}
-                    />
-                  ))}
-                </KDSRow>
-              );
-            })()}
-
-          {/* ROW 3: PREP */}
-          {showRow3 &&
-            (() => {
-              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.prep, "prep");
-              return (
-                <KDSRow
-                  title={t("Đang Nấu")}
-                  subtitle={t("Đang chế biến")}
-                  variant="prep"
-                  empty={t("Không có đơn đang nấu")}
-                  moreCount={hiddenCount}
-                  isExpanded={isExpanded}
-                  onMore={() => toggleExpand("prep")}
-                  t={t}
-                >
-                  {visible.map((o, idx) => (
-                    <KDSTicket
-                      key={o._id || o.id}
-                      order={o}
-                      variant="prep"
-                      layout="tall"
-                      isPriority={idx === 0 && !isExpanded}
-                      isProcessing={advancingId === (o._id || o.id)}
-                      elapsed={calcElapsedSec(o.created_at)}
-                      onAdvance={() => advance(o)}
-                      onApproveGreen={approveGreen}
-                      onRejectGreen={rejectGreen}
-                      greenBusy={greenBusyId === (o._id || o.id)}
-                      t={t}
-                    />
-                  ))}
-                </KDSRow>
-              );
-            })()}
-
-          {/* ROW 4: READY */}
-          {showRow4 &&
-            (() => {
-              const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.ready, "ready");
-              return (
-                <KDSRow
-                  title={t("Sẵn Sàng Nhận")}
-                  subtitle={t("Tủ giữ nóng")}
-                  variant="ready"
-                  empty={t("Không có đơn sẵn sàng")}
-                  moreCount={hiddenCount}
-                  isExpanded={isExpanded}
-                  onMore={() => toggleExpand("ready")}
-                  t={t}
-                >
-                  {visible.map((o, idx) => (
-                    <KDSTicket
-                      key={o._id || o.id}
-                      order={o}
-                      variant="ready"
-                      layout="tall"
-                      isPriority={idx === 0 && !isExpanded}
-                      isProcessing={advancingId === (o._id || o.id)}
-                      onAdvance={() => advance(o)}
-                      onApproveGreen={approveGreen}
-                      onRejectGreen={rejectGreen}
-                      greenBusy={greenBusyId === (o._id || o.id)}
-                      t={t}
-                    />
-                  ))}
-                </KDSRow>
-              );
-            })()}
-
-          {/* ROW 5: COMPLETED */}
+          {showRow1 && (() => {
+            const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.pending, "pending");
+            return (
+              <KDSRow title={t("Đơn Mới")} subtitle={t("Chờ xác nhận")} variant="pending" empty={t("Không có đơn mới")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("pending")} t={t}>
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="pending" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onReject={() => rejectOrder(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
+              </KDSRow>
+            );
+          })()}
+          {showRow2 && (() => {
+            const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.confirmed, "confirmed");
+            return (
+              <KDSRow title={t("Đã Xác Nhận")} subtitle={t("Chờ Bếp")} variant="confirmed" empty={t("Không có đơn đã xác nhận")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("confirmed")} t={t}>
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="confirmed" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
+              </KDSRow>
+            );
+          })()}
+          {showRow3 && (() => {
+            const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.prep, "prep");
+            return (
+              <KDSRow title={t("Đang Nấu")} subtitle={t("Đang chế biến")} variant="prep" empty={t("Không có đơn đang nấu")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("prep")} t={t}>
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="prep" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
+              </KDSRow>
+            );
+          })()}
+          {showRow4 && (() => {
+            const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.ready, "ready");
+            return (
+              <KDSRow title={t("Sẵn Sàng Nhận")} subtitle={t("Tủ giữ nóng")} variant="ready" empty={t("Không có đơn sẵn sàng")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("ready")} t={t}>
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="ready" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
+              </KDSRow>
+            );
+          })()}
           {showRow5 && (
-            <KDSRow
-              title={t("Gần Nhất")}
-              subtitle={t("Hoàn thành")}
-              variant="completed"
-              empty={t("Chưa có đơn hoàn thành")}
-              isStrip
-              t={t}
-            >
+            <KDSRow title={t("Gần Nhất")} subtitle={t("Hoàn thành")} variant="completed" empty={t("Chưa có đơn hoàn thành")} isStrip t={t}>
               {filteredRows.completed.map((o) => (
                 <CompletedStripItem key={o._id || o.id} order={o} t={t} />
               ))}
-
               {filteredRows.completedTotal > COMPLETED_LIMIT && (
-                <button type="button" className="kds-completed__more">
-                  {t("Xem tất cả")} {filteredRows.completedTotal} {t("đơn →")}
-                </button>
+                <button type="button" className="kds-completed__more">{t("Xem tất cả")} {filteredRows.completedTotal} {t("đơn →")}</button>
               )}
             </KDSRow>
           )}
         </div>
       </div>
 
-      {/* CONFIRM REJECT */}
-      <ConfirmDialog
-        open={!!confirmReject}
-        title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""}
-        message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""}
-        confirmText={t("Từ chối & Hoàn tiền")}
-        cancelText={t("Giữ đơn")}
-        danger
-        loading={!!advancingId}
-        onConfirm={executeReject}
-        onClose={() => !advancingId && setConfirmReject(null)}
-      />
+      <ConfirmDialog open={!!confirmReject} title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""} message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""} confirmText={t("Từ chối & Hoàn tiền")} cancelText={t("Giữ đơn")} danger loading={!!advancingId} onConfirm={executeReject} onClose={() => !advancingId && setConfirmReject(null)} />
     </>
   );
 }
@@ -1103,21 +770,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
 // ============================================================
 // SUB: KDSRow
 // ============================================================
-
-function KDSRow({
-  title,
-  subtitle,
-  variant,
-  empty,
-  moreCount = 0,
-  onMore,
-  isExpanded = false,
-  isStrip = false,
-  children,
-  t,
-}) {
+function KDSRow({ title, subtitle, variant, empty, moreCount = 0, onMore, isExpanded = false, isStrip = false, children, t }) {
   const hasChildren = Array.isArray(children) ? children.length > 0 : !!children;
-
   return (
     <section className={`kds-row kds-row--${variant}`}>
       <div className="kds-row__head">
@@ -1127,37 +781,21 @@ function KDSRow({
           {subtitle && <span className="kds-row__subtitle">{subtitle}</span>}
         </div>
       </div>
-
       <div className={`kds-row__body ${isStrip ? "kds-row__body--strip" : ""}`}>
         {hasChildren ? (
           <>
             {children}
-            
-            {/* Nút Xem thêm / Ẩn bớt */}
             {isExpanded ? (
-              <button
-                type="button"
-                className="kds-row__more"
-                onClick={onMore}
-                style={{ borderStyle: "solid", background: "var(--st-surface-container)" }}
-              >
-                <ChevronLeft size={18} style={{ marginBottom: 4 }} />
-                <span>{t("Ẩn bớt")}</span>
+              <button type="button" className="kds-row__more" onClick={onMore} style={{ borderStyle: "solid", background: "var(--st-surface-container)" }}>
+                <ChevronLeft size={18} style={{ marginBottom: 4 }} /><span>{t("Ẩn bớt")}</span>
               </button>
             ) : moreCount > 0 ? (
-              <button
-                type="button"
-                className="kds-row__more"
-                onClick={onMore}
-              >
+              <button type="button" className="kds-row__more" onClick={onMore}>
                 <span>{t("Xem thêm")}</span>
-                <span style={{ fontSize: 11, color: "var(--st-text-muted)", marginTop: 4 }}>
-                  +{moreCount} {t("đơn")}
-                </span>
+                <span style={{ fontSize: 11, color: "var(--st-text-muted)", marginTop: 4 }}>+{moreCount} {t("đơn")}</span>
                 <ArrowRight size={16} style={{ marginTop: 4 }} />
               </button>
             ) : null}
-            
           </>
         ) : (
           <div className="kds-row__empty">{empty}</div>
@@ -1170,28 +808,17 @@ function KDSRow({
 // ============================================================
 // SUB: CompletedStripItem
 // ============================================================
-
 function CompletedStripItem({ order, t }) {
   return (
     <div className="kds-completed-strip-item">
       <div className="kds-completed-strip-item__left">
-        <div className="kds-completed-strip-item__icon">
-          <CheckCircle2 size={16} />
-        </div>
-        <span className="kds-completed-strip-item__code">
-          {order.code}
-        </span>
-        <span className="kds-completed-strip-item__customer">
-          {order.customer_name || t("Khách")}
-        </span>
+        <div className="kds-completed-strip-item__icon"><CheckCircle2 size={16} /></div>
+        <span className="kds-completed-strip-item__code">{order.code}</span>
+        <span className="kds-completed-strip-item__customer">{order.customer_name || t("Khách")}</span>
       </div>
       <div className="kds-completed-strip-item__right">
-        <span className="kds-completed-strip-item__time">
-          {fmtTimeWithLabel(order.updated_at || order.created_at)}
-        </span>
-        <span className="kds-completed-strip-item__total">
-          {money(Number(order.total) || 0)}
-        </span>
+        <span className="kds-completed-strip-item__time">{fmtTimeWithLabel(order.updated_at || order.created_at)}</span>
+        <span className="kds-completed-strip-item__total">{money(Number(order.total) || 0)}</span>
       </div>
     </div>
   );

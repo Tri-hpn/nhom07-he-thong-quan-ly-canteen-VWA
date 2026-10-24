@@ -1,26 +1,22 @@
+// src/api.js
 // ============================================================
-// API.JS — HTTP client (V16 - SESSIONSTORAGE PER-TAB)
-// ============================================================
-// V16:
-//   🔴 localStorage → sessionStorage (mỗi tab session riêng)
-//   🔴 Xoá token localStorage cũ để migration
-//   🔴 Giữ logic retry 503 (cold start Vercel)
+// API.JS — HTTP client (V19 - MULTI-TAB SESSIONSTORAGE)
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
+const MAX_RETRY_503 = 3;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
+// Sử dụng sessionStorage để mỗi Tab có một session riêng biệt
 let storageAvailable = (() => {
   try {
     const k = "__test__";
     sessionStorage.setItem(k, "1");
     sessionStorage.removeItem(k);
-    // Migration: xoá token localStorage cũ (nếu có)
-    try { localStorage.removeItem("token"); } catch {}
     return true;
   } catch { return false; }
 })();
@@ -51,14 +47,33 @@ export function setToken(t) {
 }
 
 export function clearToken() { setToken(null); }
+export function resetAuthExpiredFlag() { isAuthExpiredDispatched = false; }
 
-async function req(path, options = {}) {
+const authChannel =
+  typeof window !== "undefined" && "BroadcastChannel" in window
+    ? new BroadcastChannel("vwa_auth")
+    : null;
+
+function broadcastAuthEvent(type) {
+  try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {}
+}
+
+function dispatchAuthExpired() {
+  if (isAuthExpiredDispatched) return;
+  isAuthExpiredDispatched = true;
+  try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
+  broadcastAuthEvent("logout");
+}
+
+async function req(path, options = {}, _retryCount = 0) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const headers = { ...(options.headers || {}) };
-  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  if (options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -66,36 +81,37 @@ async function req(path, options = {}) {
   let res;
   try {
     res = await fetch(BASE + path, {
-      ...options, headers, cache: "no-store", credentials: "same-origin", signal: controller.signal,
+      ...options,
+      headers,
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian.");
-      err.status = 0; err.isTimeout = true; throw err;
+      const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err;
     }
-    const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown"));
-    err.status = 0; err.isNetworkError = true; throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
+      await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
+      return req(path, options, _retryCount + 1);
+    }
+    const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown")); err.status = 0; throw err;
+  } finally { clearTimeout(timeoutId); }
 
-  if (res.status === 503) {
+  if (res.status === 503 && _retryCount < MAX_RETRY_503) {
     try {
       const data = await res.json();
       if (data.code === "SERVER_WARMING_UP") {
-        await new Promise(r => setTimeout(r, 2000));
-        return req(path, options);
+        await new Promise((r) => setTimeout(r, 2000 * (_retryCount + 1)));
+        return req(path, options, _retryCount + 1);
       }
     } catch {}
   }
 
   if (res.status === 401 && token) {
     clearToken();
-    if (!isAuthExpiredDispatched) {
-      isAuthExpiredDispatched = true;
-      try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-    }
+    dispatchAuthExpired();
   }
 
   const contentType = res.headers.get("content-type") || "";
@@ -107,29 +123,38 @@ async function req(path, options = {}) {
 
   if (!res.ok) {
     const message = data.message || data.error || `HTTP ${res.status}`;
-    const err = new Error(message);
-    err.status = res.status;
-    err.body = data;
-    throw err;
+    const err = new Error(message); err.status = res.status; err.body = data; throw err;
   }
-
   return data;
 }
-
-// ⚠️ QUAN TRỌNG: Giữ NGUYÊN phần export api của bạn
-// (không cần sửa các hàm api.xxx, chỉ cần thay code ở trên)
 
 export const api = {
   _base: BASE,
   health: () => req(""),
-  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }),
+  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }).then(r => {
+    if (r.token) setToken(r.token);
+    resetAuthExpiredFlag();
+    return r;
+  }),
+  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then(r => {
+    if (r.token) setToken(r.token);
+    resetAuthExpiredFlag();
+    return r;
+  }),
+  logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => {
+    clearToken();
+    dispatchAuthExpired();
+  }),
   me: () => req("/auth/me"),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {
     callback: (provider, code, redirectUri) =>
-      req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }),
+      req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }).then(r => {
+        if (r.token) setToken(r.token);
+        resetAuthExpiredFlag();
+        return r;
+      }),
   },
   stats: () => req("/stats"),
   menu: {
@@ -154,7 +179,9 @@ export const api = {
     update: (id, data) => req(`/menu/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/menu/${id}`, { method: "DELETE" }),
   },
-  priceHistory: { list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")) },
+  priceHistory: {
+    list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")),
+  },
   orders: {
     create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
     myOrders: () => req("/orders/me"),
@@ -334,5 +361,13 @@ export const api = {
   },
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },
 };
+
+if (typeof window !== "undefined" && authChannel) {
+  authChannel.onmessage = (e) => {
+    if (e.data?.type === "logout") {
+      try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
+    }
+  };
+}
 
 export default api;

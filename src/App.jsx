@@ -1,24 +1,17 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V18 - FIX TRIỆT ĐỂ F5)
-// ============================================================
-// V18 (2026-10):
-//   - 🔴 BỎ useEffect auto-redirect (nguyên nhân gây F5 tab này tab kia nhảy)
-//   - 🔴 Bọc ProtectedRoute cho toàn bộ CUSTOMER
-//   - 🔴 Fallback: Chưa login → /login
+// APP.JSX — Root component + Routing (V20 - HTTPONLY COOKIE)
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
-// ---------- Core ----------
 import Layout from "./components/Layout";
 import CardHoverEffect from "./components/CardHoverEffect";
-import { setToken } from "./api";
+import { api } from "./api";
 import { toast } from "./components/Effects";
 import { useAuth } from "./contexts/AuthContext";
 import ProtectedRoute, { homePathForRole } from "./components/ProtectedRoute";
 
-// ---------- Auth pages ----------
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -27,7 +20,6 @@ import StaffProfile from "./pages/StaffProfile";
 import OAuthCallback from "./pages/OAuthCallback";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
 
-// ---------- Customer pages ----------
 import CustomerHome from "./pages/customer/CustomerHome";
 import CustomerMenu from "./pages/customer/CustomerMenu";
 import CustomerCart from "./pages/customer/CustomerCart";
@@ -41,14 +33,12 @@ import CustomerSuccess from "./pages/customer/CustomerSuccess";
 import CustomerWallet from "./pages/customer/CustomerWallet";
 import CustomerChat from "./pages/customer/CustomerChat";
 
-// ---------- Employee pages ----------
 import EmployeeHome from "./pages/employee/EmployeeHome";
 import EmployeeOrders from "./pages/employee/EmployeeOrders";
 import EmployeeMenu from "./pages/employee/EmployeeMenu";
 import EmployeeChat from "./pages/employee/EmployeeChat";
 import EmployeeShifts from "./pages/employee/EmployeeShifts";
 
-// ---------- Owner (Admin) pages ----------
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
 import OwnerEmployees from "./pages/owner/OwnerEmployees";
 import OwnerAttendance from "./pages/owner/OwnerAttendance";
@@ -80,7 +70,6 @@ export default function App() {
   const navigate = useNavigate();
   const lastAuthExpiredRef = useRef(0);
 
-  // Tự động lưu cart vào localStorage
   useEffect(() => {
     try {
       localStorage.setItem("canteen_cart", JSON.stringify(cart));
@@ -88,14 +77,12 @@ export default function App() {
     } catch {}
   }, [cart]);
 
-  // Lắng nghe "auth-expired" từ api.js khi gặp 401
   useEffect(() => {
     const handler = () => {
       const now = Date.now();
       if (now - lastAuthExpiredRef.current < 2000) return;
       lastAuthExpiredRef.current = now;
 
-      setToken(null);
       setUser(null);
       setCart({});
       try {
@@ -119,8 +106,6 @@ export default function App() {
     return () => window.removeEventListener("auth-expired", handler);
   }, [navigate, setUser]);
 
-  // ---------- Handlers ----------
-
   const handleLogin = async (email, password) => {
     const u = await login(email, password);
     setUser(u);
@@ -130,11 +115,17 @@ export default function App() {
     return true;
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch {}
+    await logout();
     setCart({});
     try {
       localStorage.removeItem("canteen_cart");
+      localStorage.removeItem("canteen_cart_selected");
+      localStorage.removeItem("orders_last_seen");
+      localStorage.removeItem("points_last_seen");
     } catch {}
 
     document.body.style.overflow = "";
@@ -143,14 +134,9 @@ export default function App() {
     document.body.classList.remove("has-bottom-nav");
     document.body.classList.remove("mobile-open");
 
-    try {
-      window.dispatchEvent(new CustomEvent("logout"));
-    } catch {}
-
-    navigate("/login");
+    navigate("/login", { replace: true });
   };
 
-  // ---------- Render: Loading ----------
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
@@ -159,14 +145,10 @@ export default function App() {
     );
   }
 
-  // Bắt buộc đổi mật khẩu
   if (mustChangePassword) {
     return <ForcePasswordChange />;
   }
 
-  // ============================================================
-  // CHƯA ĐĂNG NHẬP
-  // ============================================================
   if (!user) {
     return (
       <>
@@ -179,21 +161,16 @@ export default function App() {
           <Route path="/payment-result" element={<PaymentResult />} />
           <Route path="/order-qr/:code" element={<PublicOrderQr />} />
 
-          {/* OAuth Callbacks */}
           <Route path="/auth/google/callback" element={<OAuthCallback provider="google" onLoginSuccess={(u) => setUser(u)} />} />
           <Route path="/auth/facebook/callback" element={<OAuthCallback provider="facebook" onLoginSuccess={(u) => setUser(u)} />} />
           <Route path="/auth/microsoft-entra-id/callback" element={<OAuthCallback provider="microsoft-entra-id" onLoginSuccess={(u) => setUser(u)} />} />
 
-          {/* 🔴 FIX: Chưa login → mọi route khác đều về /login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </>
     );
   }
 
-  // ============================================================
-  // HELPER — wrap page trong Layout
-  // ============================================================
   const wrap = (title, subtitle, node, options = {}) => (
     <Layout role={user.role} title={title} subtitle={subtitle} onLogout={handleLogout} user={user} cart={cart} setCart={setCart} {...options}>
       {node}
@@ -206,15 +183,10 @@ export default function App() {
     </Layout>
   );
 
-  // ============================================================
-  // ĐÃ ĐĂNG NHẬP — Routes theo role
-  // ============================================================
   return (
     <>
       <CardHoverEffect />
       <Routes>
-        {/* ==================== CUSTOMER ==================== */}
-        {/* 🔴 FIX: Bọc ProtectedRoute cho TOÀN BỘ CUSTOMER */}
         <Route element={<ProtectedRoute allow={["CUSTOMER"]} />}>
           <Route path="/customer" element={<Navigate to="/customer/home" replace />} />
           <Route path="/customer/home" element={wrapCustomer(<CustomerHome user={user} cart={cart} setCart={setCart} />, { showFooter: true })} />
@@ -231,7 +203,6 @@ export default function App() {
           <Route path="/customer/payment-result" element={wrapCustomer(<PaymentResult />)} />
         </Route>
 
-        {/* ==================== EMPLOYEE ==================== */}
         <Route element={<ProtectedRoute allow={["EMPLOYEE"]} />}>
           <Route path="/employee" element={<Layout role={user.role} title="" subtitle="" onLogout={handleLogout} user={user} hideHeading><EmployeeHome /></Layout>} />
           <Route path="/employee/prep" element={<Navigate to="/employee/orders?station=kitchen" replace />} />
@@ -243,7 +214,6 @@ export default function App() {
           <Route path="/employee/chat" element={wrap("Chat khách hàng", "Hỗ trợ khách hàng", <EmployeeChat />)} />
         </Route>
 
-        {/* ==================== OWNER (ADMIN) ==================== */}
         <Route element={<ProtectedRoute allow={["ADMIN"]} />}>
           <Route path="/owner" element={wrap("Tổng quan", "Theo dõi hoạt động Canteen", <OwnerDashboard />)} />
           <Route path="/owner/employees" element={wrap("Quản lý nhân viên", "Danh sách nhân viên", <OwnerEmployees />)} />
@@ -264,12 +234,9 @@ export default function App() {
           <Route path="/owner/chat" element={wrap("Chat & Hỗ trợ", "Giám sát & điều phối chat toàn hệ thống", <OwnerChat />)} />
         </Route>
 
-        {/* ==================== PUBLIC / SHARED ==================== */}
         <Route path="/order-qr/:code" element={<PublicOrderQr />} />
         <Route path="/payment-result" element={<PaymentResult />} />
 
-        {/* ==================== FALLBACK ==================== */}
-        {/* Khi đã login: "/" và "/login" tự về trang chủ, mọi route lạ cũng về trang chủ */}
         <Route path="/" element={<Navigate to={homePathForRole(user.role)} replace />} />
         <Route path="/login" element={<Navigate to={homePathForRole(user.role)} replace />} />
         <Route path="/register" element={<Navigate to={homePathForRole(user.role)} replace />} />

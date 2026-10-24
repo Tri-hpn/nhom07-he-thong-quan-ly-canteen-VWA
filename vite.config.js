@@ -1,17 +1,12 @@
 // ============================================================
-// VITE.CONFIG.JS — Vite configuration (V6 - FINAL)
-// ============================================================
-// V6 (2026-10):
-//   - 🔧 __dirname chuẩn ESM (fileURLToPath) — không phụ thuộc shim
-//   - 🔧 Giữ nguyên logic proxy V5 (changeOrigin + x-forwarded-*)
-// V6.1 (audit):
-//   - 📝 Document VITE_BACKEND_URL / VITE_KEEP_ORIGIN_HOST trong .env.example
+// VITE.CONFIG.JS — Vite configuration (V8 - PWA CLEAN)
 // ============================================================
 
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { VitePWA } from "vite-plugin-pwa";
 import i18nPlugin from "./vite-plugin-i18n.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,7 +17,64 @@ export default defineConfig(({ mode }) => {
   const isProd = mode === "production";
 
   return {
-    plugins: [react(), i18nPlugin()],
+    plugins: [
+      react(),
+      i18nPlugin(),
+      VitePWA({
+        registerType: "autoUpdate",
+        manifest: false,
+        injectRegister: null, // [FIX] Tắt tự động chèn /registerSW.js để sạch console
+        devOptions: {
+          enabled: true,
+          type: "module",
+        },
+        workbox: {
+          globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
+          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
+          navigateFallback: "index.html",
+          runtimeCaching: [
+            {
+              urlPattern: /^\/api\/uploads\/menu\/.*/i,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "vwa-menu-images",
+                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /^\/api\/(menu|categories|toppings|sizes)/i,
+              handler: "StaleWhileRevalidate",
+              options: {
+                cacheName: "vwa-api-menu",
+                expiration: { maxEntries: 50, maxAgeSeconds: 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /^\/api\/(orders|auth|wallet|points|vouchers|chat|notifications)/i,
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "vwa-api-dynamic",
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              urlPattern: /^\/api\/.*/i,
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "vwa-api-misc",
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
+        },
+      }),
+    ],
 
     resolve: {
       alias: {
