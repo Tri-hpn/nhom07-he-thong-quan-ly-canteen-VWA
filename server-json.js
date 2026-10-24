@@ -932,7 +932,7 @@ function auth(roles = []) {
   return async (req, res, next) => {
     // 🔴 [FIX] Chờ Mongo khởi động tối đa 8s (Vercel cold start)
     if (MONGO_URI && !mongoReady) {
-      const deadline = Date.now() + 8000;
+      const deadline = Date.now() + 5000; 
       while (!mongoReady && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 200));
       }
