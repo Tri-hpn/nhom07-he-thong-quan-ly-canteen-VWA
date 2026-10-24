@@ -18,9 +18,10 @@ import {
   Copy, Check, Gift, Sparkles, ArrowRight, Ticket, Leaf, TrendingUp,
   History, HelpCircle, Utensils, Recycle, PiggyBank, Star, QrCode,
   ExternalLink, ThumbsUp, Receipt, Lightbulb, Wallet, Plus, Loader2,
-  AlertCircle, RefreshCw, X, Award,
+  AlertCircle, RefreshCw, X, Award, Info,
 } from "lucide-react";
 import { api } from "../../api";
+import RulesModal from "../../components/RulesModal";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
@@ -192,6 +193,7 @@ export default function CustomerPromotions() {
   const { t } = useI18n();
 
   const [vouchers, setVouchers] = useState([]);
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const [publicVouchers, setPublicVouchers] = useState([]);
   const [points, setPoints] = useState(0);
   const [pointHistory, setPointHistory] = useState([]);
@@ -467,6 +469,11 @@ export default function CustomerPromotions() {
 
   return (
     <div className="customer-promo-v2">
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+        <Info size={16} /> Quy tắc Xu
+      </button>
+    </div>
       {error && (
         <div className="promo-error">
           <AlertCircle size={18} />
@@ -615,6 +622,9 @@ export default function CustomerPromotions() {
             const Icon = m.icon;
             return (
               <div key={m.key} className="promo-earn-card">
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                 <div
                   className="promo-earn-card__icon"
                   style={{ background: `${m.color}15`, color: m.color }}
@@ -751,6 +761,9 @@ export default function CustomerPromotions() {
 
           return (
             <div key={v.id} className="promo-public-card">
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
               <div className="promo-public-card__value">
                 {money(v.value)}
               </div>
@@ -868,6 +881,9 @@ export default function CustomerPromotions() {
                         isUsed ? "promo-wallet-card--used" : ""
                       }`}
                     >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                       <div className="promo-wallet-card__top">
                         <div className="promo-wallet-card__icon">
                           <Ticket size={22} />
@@ -991,6 +1007,9 @@ export default function CustomerPromotions() {
                       className="promo-point-history-item"
                       key={`${item.code || "history"}-${item.date || index}-${index}`}
                     >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                       <div
                         className={`promo-point-history-icon ${isRedeem ? "down" : "up"}`}
                       >
@@ -1675,6 +1694,9 @@ function ActivityRow({
 }) {
   return (
     <div className={`promo-activity-row ${highlight ? "highlight" : ""}`}>
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
       <div className="promo-activity-row__date">
         <b>{date}</b>
         <span>{time}</span>
@@ -1713,6 +1735,9 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
       aria-label={t("Chọn voucher")}
       className="promo-modal-overlay"
     >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
       <div onClick={(e) => e.stopPropagation()} className="promo-modal">
         <div className="promo-modal__head">
           <h3>
@@ -1737,6 +1762,9 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
                 key={v.id}
                 className={`promo-modal__item ${vUsed ? "used" : ""}`}
               >
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+      
+    </div>
                 <div className="promo-modal__item-info">
                   <b>{v.code}</b>
                   <span>
@@ -1783,6 +1811,7 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
           {t("Đóng")}
         </button>
       </div>
-    </div>
+          {showRulesModal && <RulesModal isAdmin={false} onClose={() => setShowRulesModal(false)} />}
+</div>
   );
 }
