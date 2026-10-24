@@ -22,6 +22,8 @@ function cookieOpts(maxAgeMs) {
     sameSite,
     path: "/",
     maxAge: maxAgeMs,
+    // 🔴 Thêm partitioned: true để fix lỗi chặn third-party cookie trên Vercel
+    partitioned: isProd(),
   };
 }
 
