@@ -941,12 +941,14 @@ const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_
 function auth(roles = []) {
   return (req, res, next) => {
     if (MONGO_URI && !mongoReady) {
-      return res.status(503).json({
-        message: "Server đang khởi động. Vui lòng thử lại sau giây lát.",
-        code: "SERVER_WARMING_UP",
-        retry_after: 3,
-      });
-    }
+  // Nếu request là check session, đợi 2s xem server có kết nối xong chưa
+  if (req.path === "/api/auth/me") {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (!mongoReady) return res.status(503).json({ code: "SERVER_WARMING_UP" });
+  } else {
+    return res.status(503).json({ code: "SERVER_WARMING_UP" });
+  }
+}
  if (req.query.token && !req.headers.authorization) {
       req.headers.authorization = `Bearer ${req.query.token}`;
     }

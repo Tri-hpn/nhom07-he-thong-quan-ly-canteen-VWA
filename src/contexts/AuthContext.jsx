@@ -25,6 +25,7 @@ export function AuthProvider({ children }) {
       return me;
     } catch (e) {
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
+      // 🔴 Bỏ qua lỗi 401 và 503 khi refresh ngầm
       if (e.status === 401) {
         setUserState(null);
         clearToken();
@@ -36,8 +37,6 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const res = await api.login(email, password);
     if (!res || !res.user) throw new Error("Phản hồi không hợp lệ");
-    
-    // 🔴 [FIX] Chỉ set user, không gọi api.me() để tránh bị chặn 401 do cookie chưa kịp lưu
     setUserState(res.user);
     return res.user;
   }, []);
@@ -70,9 +69,13 @@ export function AuthProvider({ children }) {
         const me = await api.me();
         if (!cancelled && myReqId === meReqIdRef.current) setUserState(me);
       } catch (e) {
+        // 🔴 [QUAN TRỌNG] Nếu lỗi 401 (hết hạn token) thì mới xóa. 
+        // Nếu 503 (Vercel đang khởi động) thì GIỮ NGUYÊN session.
         if (!cancelled && e.status === 401) {
           setUserState(null);
           clearToken();
+        } else if (e.status === 503) {
+          console.warn("[AuthContext] Server đang khởi động, giữ nguyên session.");
         }
       } finally {
         if (!cancelled) setLoading(false);

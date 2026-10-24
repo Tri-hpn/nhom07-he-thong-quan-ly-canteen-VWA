@@ -2,7 +2,7 @@
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 3;
+const MAX_RETRY_503 = 5; // 🔴 Tăng lên 5 lần cho Vercel Cold Start
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
@@ -78,17 +78,19 @@ async function req(path, options = {}, _retryCount = 0) {
     const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown")); err.status = 0; throw err;
   } finally { clearTimeout(timeoutId); }
 
+  // 🔴 [FIX] Vòng lặp Retry khi Vercel đang khởi động (503)
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
     try {
-      const data = await res.json();
+      const data = await res.clone().json();
       if (data.code === "SERVER_WARMING_UP") {
-        await new Promise((r) => setTimeout(r, 2000 * (_retryCount + 1)));
+        const waitTime = 2000 + (_retryCount * 1000); // 2s, 3s, 4s...
+        await new Promise((r) => setTimeout(r, waitTime));
         return req(path, options, _retryCount + 1);
       }
     } catch {}
   }
 
-  // 🔴 [FIX] Chỉ dispatch auth-expired nếu KHÔNG PHẢI endpoint auth
+  // 🔴 [FIX] Không đá văng user nếu đang gọi các API check session
   const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/me") || path.includes("/auth/refresh");
   if (res.status === 401 && token && !isAuthEndpoint) {
     clearToken();
