@@ -33,7 +33,7 @@ import { QRCodeCanvas } from "qrcode.react";
 
 const COPY_FEEDBACK_MS = 1500;
 const MIN_REDEEM = 100;
-const POINT_TO_VND = 100;
+const POINT_TO_VND = 1;
 const REDEEM_OPTIONS = [100, 200, 500, 1000];
 
 const EARN_METHODS = [
@@ -362,20 +362,29 @@ export default function CustomerPromotions() {
   }, [publicVouchers, rewardTab]);
   const canRedeem = points >= redeemPoints && redeemPoints >= MIN_REDEEM;
 
-  const tier = useMemo(() => {
-    if (points >= 1000) {
-      return { name: t("Bạch Kim"), short: t("Platinum"), next: 1500 };
-    }
-    if (points >= 500) {
-      return { name: t("Vàng"), short: t("Gold"), next: 1000 };
-    }
-    if (points >= 100) {
-      return { name: t("Bạc"), short: t("Silver"), next: 500 };
-    }
-    return { name: t("Đồng"), short: t("Bronze"), next: 100 };
-  }, [points, t]);
+  const completedSpent = useMemo(() => {
+    return customerOrders.reduce((sum, order) => {
+      if (order.status !== "Hoàn thành") return sum;
+      return sum + (Number(order.total) || 0);
+    }, 0);
+  }, [customerOrders]);
 
-  const tierProgress = Math.min(100, (points / tier.next) * 100);
+  const tier = useMemo(() => {
+    if (completedSpent >= 10000000) {
+      return { name: t("Kim cương"), short: t("Diamond"), next: 10000000, isMax: true };
+    }
+    if (completedSpent >= 3000000) {
+      return { name: t("Vàng"), short: t("Gold"), next: 10000000, isMax: false };
+    }
+    if (completedSpent >= 1000000) {
+      return { name: t("Bạc"), short: t("Silver"), next: 3000000, isMax: false };
+    }
+    return { name: t("Đồng"), short: t("Bronze"), next: 1000000, isMax: false };
+  }, [completedSpent, t]);
+
+  const tierProgress = tier.isMax
+    ? 100
+    : Math.min(100, (completedSpent / tier.next) * 100);
 
   const scrollToSection = useCallback((id) => {
     const el = document.getElementById(id);
@@ -469,11 +478,6 @@ export default function CustomerPromotions() {
 
   return (
     <div className="customer-promo-v2">
-    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-      <button onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-        <Info size={16} /> Quy tắc Xu
-      </button>
-    </div>
       {error && (
         <div className="promo-error">
           <AlertCircle size={18} />
@@ -539,7 +543,13 @@ export default function CustomerPromotions() {
                   {t("Tiến độ thăng Hạng")} {tier.name}
                 </span>
                 <span>
-                  <b>{points}</b> / {tier.next} pts
+                  {tier.isMax ? (
+                    <b>Đã đạt hạng cao nhất</b>
+                  ) : (
+                    <>
+                      <b>{money(completedSpent)}</b> / {money(tier.next)}
+                    </>
+                  )}
                 </span>
               </div>
               <div className="promo-hero__tier-bar">
@@ -561,12 +571,13 @@ export default function CustomerPromotions() {
                 {t("Lịch sử tích/đổi điểm")}
               </button>
               <button
-                type="button"
-                className="promo-hero__action promo-hero__action--ghost"
-               onClick={() => {}}>
-                <HelpCircle size={16} />
-                {t("Quy tắc tích điểm")}
-              </button>
+  type="button"
+  className="promo-hero__action promo-hero__action--ghost"
+  onClick={() => setShowRulesModal(true)}
+>
+  <Info size={16} />
+  Quy tắc Xu
+</button>
               <span className="promo-hero__expiry">
                 {t("Hạn điểm:")} <b>30/06/2025</b>
               </span>
@@ -1673,6 +1684,7 @@ export default function CustomerPromotions() {
   margin: 0;
 }
       `}</style>
+      {showRulesModal && <RulesModal isAdmin={false} onClose={() => setShowRulesModal(false)} />}
     </div>
   );
 }
@@ -1811,7 +1823,7 @@ function GroupModal({ group: g, copiedId, onCopy, onClose, onUse, t }) {
           {t("Đóng")}
         </button>
       </div>
-          {showRulesModal && <RulesModal isAdmin={false} onClose={() => setShowRulesModal(false)} />}
+
 </div>
   );
 }

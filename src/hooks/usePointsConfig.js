@@ -12,6 +12,14 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 const DEFAULTS = {
+  membership: {
+    tiers: [
+      { name: "Đồng", min_spent: 0 },
+      { name: "Bạc", min_spent: 1000000 },
+      { name: "Vàng", min_spent: 3000000 },
+      { name: "Kim cương", min_spent: 10000000 },
+    ],
+  },
   earn: {
     rate_amount: 10000, rate_points: 1,
     green_enabled: true, green_points: 10, green_require_approval: true,

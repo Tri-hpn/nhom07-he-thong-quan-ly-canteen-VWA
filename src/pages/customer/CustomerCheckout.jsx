@@ -41,10 +41,6 @@ const FALLBACK_TIME_SLOTS = [
 // 🔧 FIX #28: Module-scoped frozen constant
 const EMPTY_ARRAY = Object.freeze([]);
 
-const MIN_REDEEM_POINTS = 100;
-const REDEEM_PER_POINT = 100;
-const REDEEM_MAX_AMOUNT = 2500;
-const MIN_ORDER_POINTS_REDEEM = 10;
 const COUNTDOWN_START = 585;
 
 const SELECTED_CART_KEY = "canteen_cart_selected";
@@ -148,7 +144,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [timeSlots, setTimeSlots] = useState(FALLBACK_TIME_SLOTS);
   const [initLoading, setInitLoading] = useState(true);
 
-  const [redeemLoading, setRedeemLoading] = useState(false);
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [paymentOrder, setPaymentOrder] = useState(null);
 
@@ -198,12 +193,16 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     [lines]
   );
 
-  const pointsToRedeem = Math.min(
-    Math.max(0, Math.floor(Number(points) || 0)),
-    Math.floor(REDEEM_MAX_AMOUNT / REDEEM_PER_POINT),
-    Math.floor(Math.max(0, Number(subtotal) || 0) / REDEEM_PER_POINT)
+  const maxRedeemPercent = Math.max(
+    0,
+    Math.min(100, Number(ptsCfg?.redeem?.max_redeem_percent ?? 30))
   );
-  const pointsDiscount = usePoints ? Math.min(points || 0, Math.floor(subtotal * 0.3)) : 0;
+  const pointsDiscount = usePoints
+    ? Math.min(
+        Math.max(0, Number(points) || 0),
+        Math.floor(Math.max(0, subtotal - discount) * maxRedeemPercent / 100)
+      )
+    : 0;
 
   const total = useMemo(
     () => Math.max(0, subtotal - discount - pointsDiscount),
@@ -390,7 +389,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         setDiscount(res.value);
         setVoucherCode(res.code);
         setAppliedVoucher({ code: res.code, value: res.value });
-        setUsePoints(false);
         toast(
           `${t("Đã áp dụng voucher")}: -${money(res.value)}`,
           "success"
@@ -411,38 +409,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     setVoucherCode("");
     setDiscount(0);
     setAppliedVoucher(null);
-  };
-
-  const redeemPoints = async () => {
-    if (points < MIN_REDEEM_POINTS) {
-      toast(
-        t("Bạn cần ít nhất {n} điểm để đổi").replace(
-          "{n}",
-          MIN_REDEEM_POINTS
-        ),
-        "error"
-      );
-      return;
-    }
-    if (redeemLoading) return;
-
-    setRedeemLoading(true);
-    try {
-      const voucher = await api.points.redeem({
-        points: MIN_REDEEM_POINTS,
-      });
-      toast(
-        `${t("Đổi thành công voucher")} ${voucher.code} — ${money(voucher.value)}`,
-        "success"
-      );
-
-      await reloadVouchersAndPoints();
-      await applyVoucher(voucher.code);
-    } catch (e) {
-      toast(e.message || t("Không đổi được voucher"), "error");
-    } finally {
-      setRedeemLoading(false);
-    }
   };
 
   const validate = () => {
@@ -483,73 +449,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   }, [note, pickupTime, t]);
 
   const buildOrderDiscountPayload = useCallback(async () => {
-    if (!usePoints) {
-      return {
-        discount: Number(discount) || 0,
-        voucherCode: appliedVoucher?.code || "",
-      };
-    }
-
-    if (appliedVoucher) {
-      toast(
-        t("Chỉ có thể sử dụng voucher hoặc Green Points cho một đơn hàng."),
-        "warning"
-      );
-      return null;
-    }
-
-    if (pointsToRedeem < MIN_ORDER_POINTS_REDEEM) {
-      toast(
-        t("Cần tối thiểu 10 điểm và đơn hàng từ 1.000 đ để sử dụng Green Points."),
-        "warning"
-      );
-      return null;
-    }
-
-    // API hiện có quy đổi điểm thành voucher:
-    // giá trị voucher = số điểm đổi * 100 VND.
-    const pointVoucher = await api.points.redeem({
-      points: pointsToRedeem,
-    });
-
-    const redeemedValue = Number(pointVoucher?.value) || 0;
-
-    if (
-      !pointVoucher?.code ||
-      redeemedValue !== pointsToRedeem * REDEEM_PER_POINT ||
-      redeemedValue > subtotal
-    ) {
-      await reloadVouchersAndPoints();
-      throw new Error(
-        t("Không xác minh được voucher đổi điểm. Vui lòng kiểm tra lại voucher trong tài khoản.")
-      );
-    }
-
-    // Nếu đặt đơn thất bại, voucher đã tạo vẫn được giữ lại
-    // trong tài khoản để khách có thể sử dụng lại.
-    setUsePoints(false);
-    setDiscount(redeemedValue);
-    setVoucherCode(pointVoucher.code);
-    setAppliedVoucher({
-      code: pointVoucher.code,
-      value: redeemedValue,
-    });
-
-    await reloadVouchersAndPoints();
-
+    // Cho phép dùng voucher và Xu VWA cùng một đơn.
+    // Voucher giảm giá được xác thực ở backend; Xu được trừ riêng.
     return {
-      discount: redeemedValue,
-      voucherCode: pointVoucher.code,
+      discount: Number(discount) || 0,
+      voucherCode: appliedVoucher?.code || "",
     };
-  }, [
-    usePoints,
-    appliedVoucher,
-    discount,
-    pointsToRedeem,
-    subtotal,
-    reloadVouchersAndPoints,
-    t,
-  ]);
+  }, [discount, appliedVoucher]);
+
   const submitOrder = useCallback(
     async (method) => {
       if (submittingRef.current) return;
@@ -608,6 +515,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       pickupTime,
       discount,
       pointsDiscount,
+      usePoints,
       appliedVoucher,
       buildOrderDiscountPayload,
       t,
@@ -633,7 +541,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         phone,
         pickupTime,
         note,
-        discount: discount + pointsDiscount,
+        discount: discount,
         voucherCode: appliedVoucher?.code || "",
           isGreen,
         method,
@@ -703,6 +611,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       pickupTime,
       discount,
       pointsDiscount,
+      usePoints,
       appliedVoucher,
       buildOrderDiscountPayload,
       t,
@@ -948,31 +857,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 </Link>
               </div>
 
-              <label className="checkout-points-option">
-                <input
-                  type="checkbox"
-                  checked={usePoints}
-                  onChange={(e) => {
-                    if (e.target.checked && appliedVoucher) {
-                      toast(t("Chỉ có thể sử dụng voucher hoặc Green Points cho một đơn hàng."), "warning");
-                      return;
-                    }
-                    setUsePoints(e.target.checked);
-                  }}
-                />
-                <div className="checkout-points-option__body">
-                  <div className="checkout-points-option__head">
-                    <b>{t("Dùng Xu VWA (Tối đa 30%)")}</b>
-                    <span className="checkout-points-option__discount">
-                      -{money(pointsDiscount)}
-                    </span>
-                  </div>
-                  <p>
-                    {t("Bạn đang có {points} Xu. Có thể dùng tối đa 30% giá trị đơn hàng.")
-                      .replace("{points}", points)}
-                  </p>
-                </div>
-              </label>
 
               <button
                 type="button"
@@ -1417,53 +1301,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 />
               </label>
 
-              {/* SỐNG XANH HỌC ĐƯỜNG */}
-              <label
-                className="checkout-field checkout-field--full"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "12px 14px",
-                  background: isGreen ? "rgba(24, 169, 103, 0.08)" : "transparent",
-                  border: isGreen ? "1px solid #18a967" : "1px dashed #cbd5e1",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  id="isGreen-tick"
-                  checked={isGreen}
-                  onChange={(e) => setIsGreen(e.target.checked)}
-                  style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#18a967" }}
-                />
-                <span
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: isGreen ? "#18a967" : "var(--text-primary, #172033)",
-                  }}
-                >
-                  <span>
-                    <Leaf size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
-                    {t("Tôi mang bình nước / hộp cơm riêng")}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: "var(--text-muted, #64748b)",
-                    }}
-                  >
-                    {t("Sống Xanh Học Đường — cộng")} {ptsCfg?.earn?.green_points || 10} {t("điểm sau khi nhân viên duyệt")}
-                  </span>
-                </span>
-              </label>
+
             </div>
 
             <p className="checkout-verify__hint">
@@ -1647,6 +1485,63 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 </>
               )}
             </div>
+
+              <label className="checkout-points-option">
+                <input
+                  type="checkbox"
+                  checked={usePoints}
+                  onChange={(e) => {
+                    setUsePoints(e.target.checked);
+                  }}
+                />
+                <div className="checkout-points-option__body">
+                  <span className="checkout-points-option__coin" aria-hidden="true">V</span>
+                  <span className="checkout-points-option__label">Dùng {Number(points || 0).toLocaleString("vi-VN")} VWA Xu</span>
+                </div>
+              </label>
+
+              {/* SỐNG XANH HỌC ĐƯỜNG */}
+              <label
+                className="checkout-field checkout-field--full"
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "12px 16px",
+                  margin: 0,
+                  background: "#fff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    minWidth: 0,
+                    color: "#26334a",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  <Leaf size={17} color="#218653" style={{ flexShrink: 0 }} />
+                  <span>Mang hộp cơm/ bình nước</span>
+                </span>
+                <input
+                  type="checkbox"
+                  id="isGreen-tick"
+                  checked={isGreen}
+                  onChange={(e) => setIsGreen(e.target.checked)}
+                  style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#18a967" }}
+                />
+              </label>
+
             <div className="checkout-summary__costs">
               <div className="checkout-cost-row">
                 <span>{t("Tạm tính:")}</span>
@@ -1668,7 +1563,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <div className="checkout-cost-row checkout-cost-row--discount">
                   <span>
                     <Sparkles size={14} />
-                    {t("Điểm Green Points:")}
+                    {t("Xu VWA:")}
                   </span>
                   <b>-{money(pointsDiscount)}</b>
                 </div>

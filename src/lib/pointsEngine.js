@@ -13,15 +13,15 @@ export const DEFAULT_POINTS_CONFIG = {
     review_points: 5,
   },
   redeem: {
-    rate_points: 100,
-    rate_value: 10000,
-    min_points: 100,
+    rate_points: 1,
+    rate_value: 1,
+    min_points: 1,
     max_unused_vouchers: 50,
     tiers: [
-      { points: 100,  value: 10000 },
-      { points: 200,  value: 20000 },
-      { points: 500,  value: 50000 },
-      { points: 1000, value: 100000 },
+      { points: 100, value: 100 },
+      { points: 200, value: 200 },
+      { points: 500, value: 500 },
+      { points: 1000, value: 1000 },
     ],
   },
 };
