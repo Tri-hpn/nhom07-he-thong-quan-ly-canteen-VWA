@@ -861,6 +861,7 @@ app.use(cors({
     /\.onrender\.com$/,
   ],
   credentials: true,
+  exposedHeaders: ["set-cookie"], // 🔴 Thêm dòng này
 }));
 
 app.use(express.json({ limit: "25mb" }));

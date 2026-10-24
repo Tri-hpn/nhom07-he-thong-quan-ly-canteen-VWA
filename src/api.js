@@ -1,8 +1,4 @@
 // src/api.js
-// ============================================================
-// API.JS — HTTP client (V19 - MULTI-TAB SESSIONSTORAGE)
-// ============================================================
-
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
@@ -11,7 +7,6 @@ const MAX_RETRY_503 = 3;
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
-// Sử dụng sessionStorage để mỗi Tab có một session riêng biệt
 let storageAvailable = (() => {
   try {
     const k = "__test__";
@@ -41,22 +36,14 @@ export function setToken(t) {
       else sessionStorage.removeItem("token");
     } catch {}
   }
-  try {
-    window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } }));
-  } catch {}
+  try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } })); } catch {}
 }
 
 export function clearToken() { setToken(null); }
 export function resetAuthExpiredFlag() { isAuthExpiredDispatched = false; }
 
-const authChannel =
-  typeof window !== "undefined" && "BroadcastChannel" in window
-    ? new BroadcastChannel("vwa_auth")
-    : null;
-
-function broadcastAuthEvent(type) {
-  try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {}
-}
+const authChannel = typeof window !== "undefined" && "BroadcastChannel" in window ? new BroadcastChannel("vwa_auth") : null;
+function broadcastAuthEvent(type) { try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {} }
 
 function dispatchAuthExpired() {
   if (isAuthExpiredDispatched) return;
@@ -71,9 +58,7 @@ async function req(path, options = {}, _retryCount = 0) {
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const headers = { ...(options.headers || {}) };
-  if (options.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -81,17 +66,11 @@ async function req(path, options = {}, _retryCount = 0) {
   let res;
   try {
     res = await fetch(BASE + path, {
-      ...options,
-      headers,
-      cache: "no-store",
-      credentials: "same-origin",
-      signal: controller.signal,
+      ...options, headers, cache: "no-store", credentials: "include", signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err;
-    }
+    if (e.name === "AbortError") { const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err; }
     if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
       return req(path, options, _retryCount + 1);
@@ -109,7 +88,9 @@ async function req(path, options = {}, _retryCount = 0) {
     } catch {}
   }
 
-  if (res.status === 401 && token) {
+  // 🔴 [FIX] Chỉ dispatch auth-expired nếu KHÔNG PHẢI endpoint auth
+  const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/me") || path.includes("/auth/refresh");
+  if (res.status === 401 && token && !isAuthEndpoint) {
     clearToken();
     dispatchAuthExpired();
   }
@@ -179,9 +160,7 @@ export const api = {
     update: (id, data) => req(`/menu/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/menu/${id}`, { method: "DELETE" }),
   },
-  priceHistory: {
-    list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")),
-  },
+  priceHistory: { list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")) },
   orders: {
     create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
     myOrders: () => req("/orders/me"),
@@ -364,10 +343,7 @@ export const api = {
 
 if (typeof window !== "undefined" && authChannel) {
   authChannel.onmessage = (e) => {
-    if (e.data?.type === "logout") {
-      try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-    }
+    if (e.data?.type === "logout") { try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {} }
   };
 }
-
 export default api;

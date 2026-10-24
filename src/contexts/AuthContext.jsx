@@ -36,14 +36,10 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const res = await api.login(email, password);
     if (!res || !res.user) throw new Error("Phản hồi không hợp lệ");
+    
+    // 🔴 [FIX] Chỉ set user, không gọi api.me() để tránh bị chặn 401 do cookie chưa kịp lưu
     setUserState(res.user);
-    try {
-      const me = await api.me();
-      if (mountedRef.current) setUserState(me);
-      return me;
-    } catch {
-      return res.user;
-    }
+    return res.user;
   }, []);
 
   const logout = useCallback(async () => {
