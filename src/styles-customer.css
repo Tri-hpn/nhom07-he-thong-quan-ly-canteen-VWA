@@ -16621,3 +16621,434 @@ body.menu-v3-active .page-content {
     gap: 10px !important;
   }
 }
+
+/* Customer logo: rounded square 3D */
+.customer-topbar__logo > img { width: 40px !important; height: 40px !important; min-width: 40px; aspect-ratio: 1 / 1; box-sizing: border-box; border-radius: 12px !important; object-fit: contain !important; background: linear-gradient(145deg, #ffffff, #eef3ff); border: 1px solid rgba(255,255,255,.95); padding: 2px; box-shadow: 0 1px 2px rgba(255,255,255,.95) inset, 0 3px 0 rgba(38,52,213,.10), 0 5px 12px rgba(38,52,213,.20); transform: translateY(-1px); }
+
+/* CUSTOMER TOPBAR LOGO: REMOVE WHITE FRAME */
+.customer-topbar__logo > img {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 3px 0 rgba(38, 52, 213, 0.10),
+    0 5px 12px rgba(38, 52, 213, 0.20) !important;
+}
+/* END CUSTOMER TOPBAR LOGO */
+
+/* CUSTOMER FOOTER LOGO: REMOVE WHITE FRAME */
+.app-footer .footer-logo {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  object-fit: contain !important;
+  box-shadow:
+    0 3px 0 rgba(38, 52, 213, 0.10),
+    0 5px 12px rgba(38, 52, 213, 0.20) !important;
+}
+/* END CUSTOMER FOOTER LOGO */
+
+/* CUSTOMER LOGOS: MATCH LIGHT ROUNDED FRAME */
+.customer-topbar__logo > img,
+.app-footer .footer-logo,
+.app-footer .footer-logo img {
+  box-sizing: border-box !important;
+  border: 1px solid #dbe5ff !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  padding: 2px !important;
+  box-shadow:
+    0 1px 3px rgba(38, 52, 213, 0.08),
+    0 3px 8px rgba(38, 52, 213, 0.12) !important;
+  object-fit: contain !important;
+}
+/* END CUSTOMER LOGOS */
+
+/* CUSTOMER LOGOS: REMOVE WHITE FRAME */
+.customer-topbar__logo > img,
+.app-footer .footer-logo,
+.app-footer .footer-logo img {
+  background: transparent !important;
+  border-color: transparent !important;
+  padding: 0 !important;
+  box-shadow:
+    0 3px 0 rgba(38, 52, 213, 0.10),
+    0 5px 10px rgba(38, 52, 213, 0.16) !important;
+}
+/* END CUSTOMER LOGOS: REMOVE WHITE FRAME */
+
+/* CUSTOMER LOGOS - MATCH REFERENCE FRAME */
+.customer-topbar__logo > img,
+.app-footer .footer-logo,
+.app-footer .footer-logo img {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px;
+  box-sizing: border-box !important;
+  object-fit: contain !important;
+  border: 1px solid #d7e3f7 !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  padding: 1px !important;
+  box-shadow:
+    0 1px 2px rgba(38, 52, 213, 0.08),
+    0 2px 5px rgba(38, 52, 213, 0.13) !important;
+  transform: none !important;
+}
+/* END CUSTOMER LOGOS - MATCH REFERENCE FRAME */
+
+/* CUSTOMER LOGO: CLEAN TILE + SOFT SHADOW */
+.customer-topbar__logo > img {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.18) !important;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.10));
+}
+
+.app-footer .footer-logo,
+.app-footer .footer-logo img {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.18) !important;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.10));
+}
+/* END CUSTOMER LOGO */
+
+/* CUSTOMER LOGO: REMOVE REMAINING OUTER WHITE SPACE */
+.customer-topbar__logo > img,
+.app-footer .footer-logo,
+.app-footer .footer-logo img {
+  outline: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.16) !important;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.10));
+}
+/* END CUSTOMER LOGO */
+
+/* CUSTOMER LOGO: CLEAN BOTTOM EDGE */
+.customer-topbar__logo > img,
+.app-footer .footer-logo,
+.app-footer .footer-logo img {
+  display: block !important;
+  border: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.14) !important;
+  filter: none !important;
+  vertical-align: middle !important;
+}
+/* END CLEAN BOTTOM EDGE */
+
+/* Checkout: công tắc bật/tắt Dùng Xu VWA */
+.checkout-points-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--c-border, #e5e7eb);
+}
+
+.checkout-points-option input[type="checkbox"] {
+  order: 2;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.checkout-points-option > div,
+.checkout-points-option > label {
+  min-width: 0;
+}
+
+.checkout-points-option input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 24px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #cbd5e1;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.checkout-points-option input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  transition: transform 0.2s ease;
+}
+
+.checkout-points-option input[type="checkbox"]:checked {
+  background: var(--c-primary, #2634d5);
+}
+
+.checkout-points-option input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+.checkout-points-option input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--c-primary, #2634d5);
+  outline-offset: 3px;
+}
+
+
+/* Checkout - thanh Dung VWA Xu theo mau */
+.checkout-points-option {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: 100%;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 10px 14px !important;
+  background: #fff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.checkout-points-option .checkout-points-option__body {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0;
+  margin: 0 !important;
+  order: 1;
+}
+
+.checkout-points-option .checkout-points-option__coin {
+  display: inline-flex;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1.5px solid #f59e0b;
+  border-radius: 50%;
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.checkout-points-option .checkout-points-option__label {
+  color: #292929;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.checkout-points-option input[type="checkbox"] {
+  order: 2 !important;
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  height: 22px !important;
+  margin: 0 0 0 auto !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: #e5e5e5 !important;
+  box-shadow: none !important;
+}
+
+.checkout-points-option input[type="checkbox"]::after {
+  top: 2px !important;
+  left: 2px !important;
+  width: 18px !important;
+  height: 18px !important;
+  transform: none;
+}
+
+.checkout-points-option input[type="checkbox"]:checked {
+  background: #f59e0b !important;
+}
+
+.checkout-points-option input[type="checkbox"]:checked::after {
+  transform: translateX(14px) !important;
+}
+
+/* Checkout: thu hep khoang cach truoc cac tuy chon Xu VWA */
+.checkout-points-option {
+  margin-top: -8px !important;
+}
+
+/* Checkout: bo vien ngoai hai tuy chon Xu va Song Xanh */
+.checkout-points-option,
+.checkout-green-option {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none;
+}
+
+/* Checkout: bo vien rieng muc Song Xanh */
+.checkout-field--full:has(.lucide-leaf),
+.checkout-field--full.checkout-green-option {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Checkout: bo vien xanh focus quanh cong tac Xu VWA */
+.checkout-points-option input[type="checkbox"],
+.checkout-points-option input[type="checkbox"]:focus,
+.checkout-points-option input[type="checkbox"]:focus-visible,
+.checkout-points-option input[type="checkbox"]:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.checkout-points-option input[type="checkbox"]:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
+.checkout-points-option input[type="checkbox"]:not(:checked) {
+  background: #e5e5e5 !important;
+  border: none !important;
+}
+
+/* Checkout: keo hai muc Xu va Song Xanh len gan voucher */
+.checkout-points-option {
+  margin-top: -24px !important;
+}
+
+/* Checkout: thu hep khoang cach giua Xu va Song Xanh */
+.checkout-green-option {
+  margin-top: -18px !important;
+}
+
+/* Checkout: dieu chinh vi tri muc Song Xanh sat muc Xu */
+.checkout-green-option {
+  margin-top: -32px !important;
+  position: relative;
+  top: -8px;
+}
+
+/* FIX: keo muc mang hop com sat muc Xu VWA */
+.checkout-field--full:has(#isGreen-tick) {
+  margin-top: -28px !important;
+  position: relative;
+  top: -8px;
+}
+
+/* Checkout: toggle Song Xanh dong bo voi toggle Xu VWA */
+.checkout-field--full:has(svg.lucide-leaf) {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+.checkout-field--full:has(svg.lucide-leaf) > input[type="checkbox"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  display: block !important;
+  position: relative !important;
+  order: 2 !important;
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  max-width: 36px !important;
+  height: 22px !important;
+  margin: 0 0 0 auto !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: #e5e5e5 !important;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.checkout-field--full:has(svg.lucide-leaf) > input[type="checkbox"]::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 2px !important;
+  left: 2px !important;
+  width: 18px !important;
+  height: 18px !important;
+  border: none !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%) !important;
+  transform: none !important;
+  transition: transform 0.2s ease;
+}
+
+.checkout-field--full:has(svg.lucide-leaf) > input[type="checkbox"]:checked {
+  background: #18a967 !important;
+}
+
+.checkout-field--full:has(svg.lucide-leaf) > input[type="checkbox"]:checked::after {
+  transform: translateX(14px) !important;
+}
+
+.checkout-field--full:has(svg.lucide-leaf) > span {
+  order: 1 !important;
+  flex: 1 1 auto !important;
+  min-width: 0;
+  margin: 0 !important;
+}
+
+.checkout-field--full:has(svg.lucide-leaf) > input[type="checkbox"]:focus,
+.checkout-field--full:has(svg.lucide-leaf) > input[type="checkbox"]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Checkout: thu gon khoang cach sau muc Song Xanh */
+.checkout-field--full:has(svg.lucide-leaf) {
+  margin-bottom: 0 !important;
+  padding-bottom: 6px !important;
+}
+
+.checkout-field--full:has(svg.lucide-leaf) + .checkout-verify__hint {
+  margin-top: 0 !important;
+}
+
+.checkout-summary__costs {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.checkout-points-option + .checkout-summary__costs {
+  margin-top: 0 !important;
+}
+
+/* Thu gon khoang cach truoc duong ke va tong tien */
+.checkout-summary__costs::before {
+  margin-top: 0 !important;
+}
+
+.checkout-summary__costs .checkout-cost-row:first-child {
+  margin-top: 0 !important;
+}
