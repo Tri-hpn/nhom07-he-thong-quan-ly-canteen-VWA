@@ -1,11 +1,9 @@
 // ============================================================
-// AUTHCONTEXT.JSX — Context xác thực toàn cục (V8 - FINAL)
+// AUTHCONTEXT.JSX — Context xác thực toàn cục (V9 - FINAL)
 // ============================================================
-// V8 (2026-10):
-//   - ✅ FIX: Listen `token-changed` → OAuth/FB/Microsoft tự
-//     động refresh user ngay khi setToken được gọi.
-//   - ✅ FIX: Listen `storage` event để đồng bộ giữa các tab.
-//   - ✅ Giữ nguyên V7 (derive mustChangePassword từ user).
+// V9 (2026-10):
+//   - 🔧 FIX F5: Không xoá token khi gặp lỗi mạng (status 0) hoặc 503
+//   - 🔧 Xử lý mượt mà quá trình Server khởi động
 // ============================================================
 
 import {
@@ -14,7 +12,6 @@ import {
 import { api, setToken, getToken } from "../api";
 
 const AuthContext = createContext(null);
-let warnedMissingProvider = false;
 
 export function AuthProvider({ children }) {
   const [user, setUserState] = useState(null);
@@ -51,8 +48,16 @@ export function AuthProvider({ children }) {
     } catch (e) {
       if (!mountedRef.current) return null;
       if (myReqId !== meReqIdRef.current) return null;
-      if (e.status === 401) { setUserState(null); return null; }
-      console.error("[AuthContext] refreshUser failed:", e.message);
+      
+      // 🔧 FIX: Chỉ logout khi 401. Nếu 503 hoặc mất mạng, giữ nguyên user hiện tại (nếu có)
+      if (e.status === 401) {
+        setUserState(null);
+        setToken(null);
+      } else if (e.status === 503) {
+        console.warn("[AuthContext] Server đang khởi động, giữ nguyên session.");
+      } else {
+        console.error("[AuthContext] refreshUser failed:", e.message);
+      }
       return null;
     } finally {
       isRefreshingRef.current = false;
@@ -87,9 +92,7 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
-  // ============================================================
-  // MOUNT: đọc token → fetch /me
-  // ============================================================
+  // MOUNT: Khôi phục session
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -108,8 +111,13 @@ export function AuthProvider({ children }) {
         setUserState(me);
       } catch (e) {
         if (cancelled) return;
-        if (e.status !== 401) console.error("[AuthContext] initial me() failed:", e.message);
-        if (e.status === 401) { setUserState(null); setToken(null); }
+        // 🔧 FIX: Không xoá token khi 503
+        if (e.status === 401) { 
+          setUserState(null); 
+          setToken(null); 
+        } else {
+          console.warn("[AuthContext] Lỗi khôi phục phiên (F5):", e.message);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -121,47 +129,22 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // ============================================================
-  // Listen token-changed (OAuth callback, external setToken)
-  // ============================================================
+  // Listen events
   useEffect(() => {
     const onTokenChanged = (e) => {
-      const hasToken = e?.detail?.hasToken;
-      if (hasToken) {
-        // Có token mới (OAuth/Login) → refresh user
-        refreshUser();
-      } else {
-        // Token bị xoá (logout hoặc auth-expired) → clear state
-        meReqIdRef.current++;
-        setUserState(null);
-      }
+      if (e?.detail?.hasToken) refreshUser();
+      else { meReqIdRef.current++; setUserState(null); }
     };
+    const onAuthExpired = () => { meReqIdRef.current++; setUserState(null); };
+    const onLogout = () => { meReqIdRef.current++; setUserState(null); };
 
     window.addEventListener("token-changed", onTokenChanged);
-    return () => window.removeEventListener("token-changed", onTokenChanged);
-  }, [refreshUser]);
-
-  // ============================================================
-  // Listen auth-expired, logout, refresh-user events
-  // ============================================================
-  useEffect(() => {
-    const onAuthExpired = () => {
-      meReqIdRef.current++;
-      setUserState(null);
-    };
-    const onLogout = () => {
-      meReqIdRef.current++;
-      setUserState(null);
-    };
-    const onRefreshUser = () => { refreshUser(); };
-
     window.addEventListener("auth-expired", onAuthExpired);
     window.addEventListener("logout", onLogout);
-    window.addEventListener("refresh-user", onRefreshUser);
     return () => {
+      window.removeEventListener("token-changed", onTokenChanged);
       window.removeEventListener("auth-expired", onAuthExpired);
       window.removeEventListener("logout", onLogout);
-      window.removeEventListener("refresh-user", onRefreshUser);
     };
   }, [refreshUser]);
 
@@ -175,21 +158,7 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    if (!warnedMissingProvider) {
-      warnedMissingProvider = true;
-      console.warn(
-        "[useAuth] Component gọi useAuth() bên ngoài AuthProvider. Kiểm tra main.jsx."
-      );
-    }
-    return {
-      user: null, loading: false, mustChangePassword: false,
-      login: async () => { throw new Error("AuthProvider chưa được mount"); },
-      logout: () => {},
-      setUser: () => {},
-      refreshUser: async () => null,
-    };
-  }
+  if (!ctx) throw new Error("[useAuth] Phải bọc trong AuthProvider");
   return ctx;
 }
 

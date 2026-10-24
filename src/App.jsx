@@ -1,9 +1,9 @@
 // ============================================================
-// APP.JSX — Root component + Routing (V13 - FINAL)
+// APP.JSX — Root component + Routing (V14 - FINAL FIX OAUTH)
 // ============================================================
-// V13 (2026-10):
-//   - ✅ FIX LỖI RELOAD: Thêm lastAuthExpiredRef chặn vòng lặp 
-//     auth-expired. Sửa handleLogin cập nhật state ngay.
+// V14 (2026-10):
+//   - 🔧 FIX: Thêm đúng Route "/auth/microsoft-entra-id/callback"
+//   - 🔧 Xoá Route cũ "/auth/microsoft/callback" và "/api/..." bị thừa
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -107,7 +107,7 @@ export default function App() {
   const location = useLocation();
 
   const lastRedirectRef = useRef({ path: "", timestamp: 0 });
-  const lastAuthExpiredRef = useRef(0); // 🔧 FIX: Chặn loop auth-expired
+  const lastAuthExpiredRef = useRef(0);
 
   // Tự động lưu cart vào localStorage
   useEffect(() => {
@@ -121,7 +121,7 @@ export default function App() {
   useEffect(() => {
     const handler = () => {
       const now = Date.now();
-      if (now - lastAuthExpiredRef.current < 2000) return; // 🔧 FIX: Bỏ qua nếu vừa xử lý < 2s
+      if (now - lastAuthExpiredRef.current < 2000) return;
       lastAuthExpiredRef.current = now;
 
       setToken(null);
@@ -190,7 +190,7 @@ export default function App() {
 
   const handleLogin = async (email, password) => {
     const u = await login(email, password);
-    setUser(u); // 🔧 FIX: Cập nhật state ngay lập tức
+    setUser(u);
     const home = homePathForRole(u.role);
     navigate(home, { replace: true });
     toast("Xin chào " + u.name + "!", "success");
@@ -246,6 +246,7 @@ export default function App() {
           <Route path="/payment-result" element={<PaymentResult />} />
           <Route path="/order-qr/:code" element={<PublicOrderQr />} />
 
+          {/* OAuth Callbacks */}
           <Route
             path="/auth/google/callback"
             element={
@@ -264,17 +265,10 @@ export default function App() {
               />
             }
           />
+          
+          {/* 🔧 FIX: Đã sửa lại đúng tên route khớp với Login.jsx */}
           <Route
-            path="/auth/microsoft/callback"
-            element={
-              <OAuthCallback
-                provider="microsoft-entra-id"
-                onLoginSuccess={(u) => setUser(u)}
-              />
-            }
-          />
-          <Route
-            path="/api/auth/callback/microsoft-entra-id"
+            path="/auth/microsoft-entra-id/callback"
             element={
               <OAuthCallback
                 provider="microsoft-entra-id"
@@ -554,7 +548,6 @@ export default function App() {
             path="/owner/reports"
             element={<Navigate to="/owner/finance" replace />}
           />
-
 
           <Route
             path="/owner/orders"

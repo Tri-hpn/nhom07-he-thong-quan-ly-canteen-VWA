@@ -1,9 +1,5 @@
 ﻿// ============================================================
-// LOGIN.JSX — Đăng nhập (V12 — AuthLayout + background VWA)
-// ============================================================
-// V12 (2026-10):
-//   - 🎨 Dùng AuthLayout wrapper, ảnh Viện Pháp làm background
-//   - Giữ 100% logic: OAuth, token URL, remember email
+// LOGIN.JSX — Đăng nhập (V13 — Fix Microsoft OAuth Redirect)
 // ============================================================
 
 import { useState, useEffect, useRef } from "react";
@@ -68,9 +64,12 @@ function startMicrosoftOAuth(t) {
     toast(t("Chưa cấu hình Microsoft Client ID"), "error");
     return;
   }
+  
+  // 🔧 FIX TẠI ĐÂY: Xoá bỏ "/api", trỏ đúng về route của Frontend
   const redirectUri = encodeURIComponent(
-    window.location.origin + "/api/auth/callback/microsoft-entra-id"
+    window.location.origin + "/auth/microsoft-entra-id/callback"
   );
+  
   const scope = encodeURIComponent("openid email profile User.Read");
   const tenant = tenantId || "organizations";
   window.location.href =
@@ -100,7 +99,7 @@ export default function Login({ onLogin }) {
     tRef.current = t;
   }, [t]);
 
-  // Handle ?token= từ Microsoft redirect
+  // Handle ?token= từ Microsoft redirect (nếu có dùng luồng cũ)
   useEffect(() => {
     if (urlTokenHandledRef.current) return;
     urlTokenHandledRef.current = true;

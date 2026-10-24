@@ -4,6 +4,8 @@
 // V6 (2026-10):
 //   - 🔧 __dirname chuẩn ESM (fileURLToPath) — không phụ thuộc shim
 //   - 🔧 Giữ nguyên logic proxy V5 (changeOrigin + x-forwarded-*)
+// V6.1 (audit):
+//   - 📝 Document VITE_BACKEND_URL / VITE_KEEP_ORIGIN_HOST trong .env.example
 // ============================================================
 
 import { defineConfig, loadEnv } from "vite";

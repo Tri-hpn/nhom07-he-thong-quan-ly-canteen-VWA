@@ -1,10 +1,10 @@
 // ============================================================
-// API.JS — HTTP client cho Backend Express (V12 - FINAL)
+// API.JS — HTTP client cho Backend Express (V14 - FINAL FULL)
 // ============================================================
-// V12 (2026-10):
-//   - ✅ Thêm `token-changed` event → AuthContext tự refresh
-//   - ✅ Tab ID isolation → Duplicate tab không share session
-//   - ✅ Giữ nguyên toàn bộ logic V11
+// V14 (2026-10):
+//   - 🔧 FIX LỖI F5 BỊ VĂNG: Dùng localStorage thay vì sessionStorage + tabId
+//   - 🔧 FIX LỖI CRASH: Khôi phục đầy đủ 100% các hàm (listActive, v.v...)
+//   - 🔧 FIX LỖI 503: Tự động Retry khi Server đang khởi động
 // ============================================================
 
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
@@ -12,91 +12,48 @@ const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 
-// ============================================================
-// TAB ISOLATION — Mỗi tab có ID riêng để tránh Duplicate Tab share session
-// ============================================================
-const TAB_STORAGE_KEY = "__vwa_tab_id";
-let tabId = null;
-
-(function initTabId() {
-  try {
-    // Tab ID lưu trong sessionStorage của tab này.
-    // Duplicate Tab → copy sessionStorage → cùng tabId → BAD.
-    // Giải pháp: luôn tạo tabId mới MỖI KHI MODULE LOAD,
-    // nhưng KHÔNG ghi đè sessionStorage khi vừa mới load (chỉ ghi khi setToken).
-    // => Duplicate tab sẽ có tabId khác → không share token.
-    tabId = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-    // Không lưu vào sessionStorage (để Duplicate tab có tabId khác)
-  } catch {
-    tabId = "fallback-" + Math.random().toString(36).slice(2);
-  }
-})();
-
-// ============================================================
-// TOKEN — sessionStorage + memoryToken + tabId guard
-// ============================================================
 let memoryToken = null;
-let memoryTokenTabId = null; // 🔧 NEW: tabId của tab đã set token
 let isAuthExpiredDispatched = false;
 
-let sessionStorageAvailable = (() => {
+// Sử dụng localStorage để F5 không bị mất token
+let storageAvailable = (() => {
   try {
     const k = "__test__";
-    sessionStorage.setItem(k, "1");
-    sessionStorage.removeItem(k);
+    localStorage.setItem(k, "1");
+    localStorage.removeItem(k);
     return true;
   } catch { return false; }
 })();
 
 export function getToken() {
-  // 🔧 Guard: nếu token được lưu bởi tab khác (Duplicate tab), reject
-  if (sessionStorageAvailable) {
+  if (memoryToken) return memoryToken;
+  if (storageAvailable) {
     try {
-      const savedTabId = sessionStorage.getItem(TAB_STORAGE_KEY);
-      // Nếu sessionStorage có token nhưng KHÔNG khớp tabId hiện tại
-      // => tab khác (Duplicate) đã set → ignore
-      if (savedTabId && savedTabId !== tabId) {
-        return null;
+      const t = localStorage.getItem("token");
+      if (t) {
+        memoryToken = t;
+        return t;
       }
-      const t = sessionStorage.getItem("token");
-      if (t) return t;
     } catch {
-      sessionStorageAvailable = false;
+      storageAvailable = false;
     }
-  }
-  // Memory token cũng phải khớp tabId
-  if (memoryToken && memoryTokenTabId === tabId) {
-    return memoryToken;
   }
   return null;
 }
 
 export function setToken(t) {
   memoryToken = t || null;
-  memoryTokenTabId = tabId;
-
   if (t) isAuthExpiredDispatched = false;
 
-  if (sessionStorageAvailable) {
+  if (storageAvailable) {
     try {
-      if (t) {
-        sessionStorage.setItem("token", t);
-        sessionStorage.setItem(TAB_STORAGE_KEY, tabId); // 🔧 Lưu tabId sở hữu
-      } else {
-        sessionStorage.removeItem("token");
-        sessionStorage.removeItem(TAB_STORAGE_KEY);
-      }
-    } catch (e) {
-      console.warn("[api] sessionStorage không dùng được:", e.message);
-      sessionStorageAvailable = false;
-    }
+      if (t) localStorage.setItem("token", t);
+      else localStorage.removeItem("token");
+    } catch {}
   }
 
-  // 🔧 Notify AuthContext + các listener khác trong CÙNG tab
   try {
-    window.dispatchEvent(new CustomEvent("token-changed", {
-      detail: { hasToken: !!t }
-    }));
+    window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } }));
   } catch {}
 }
 
@@ -121,15 +78,28 @@ async function req(path, options = {}) {
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian. Vui lòng kiểm tra kết nối và thử lại.");
+      const err = new Error("Yêu cầu quá thời gian. Vui lòng kiểm tra kết nối.");
       err.status = 0; err.isTimeout = true; throw err;
     }
-    const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown error"));
+    const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown"));
     err.status = 0; err.isNetworkError = true; throw err;
   } finally {
     clearTimeout(timeoutId);
   }
 
+  // 🔧 FIX: Bắt lỗi 503 (Server đang khởi động) và Retry
+  if (res.status === 503) {
+    try {
+      const data = await res.json();
+      if (data.code === "SERVER_WARMING_UP") {
+        console.log("[api] Server đang khởi động, thử lại sau 2s...");
+        await new Promise(r => setTimeout(r, 2000));
+        return req(path, options);
+      }
+    } catch {}
+  }
+
+  // 🔧 FIX: Chỉ clear token khi thực sự 401
   if (res.status === 401 && token) {
     clearToken();
     if (!isAuthExpiredDispatched) {
@@ -149,7 +119,7 @@ async function req(path, options = {}) {
   } catch { data = {}; }
 
   if (!res.ok) {
-    const message = data.message || data.error || `HTTP ${res.status}${res.statusText ? " " + res.statusText : ""}`;
+    const message = data.message || data.error || `HTTP ${res.status}`;
     const err = new Error(message);
     err.status = res.status;
     err.body = data;
@@ -161,18 +131,12 @@ async function req(path, options = {}) {
 
 export const api = {
   _base: BASE,
-
   health: () => req(""),
-
-  login: (email, password) =>
-    req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-  register: (data) =>
-    req("/auth/register", { method: "POST", body: JSON.stringify(data) }),
+  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }),
   me: () => req("/auth/me"),
-  updateProfile: (data) =>
-    req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
-  changePassword: (data) =>
-    req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
+  updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
+  changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
 
   oauth: {
     callback: (provider, code, redirectUri) =>
@@ -184,6 +148,7 @@ export const api = {
 
   stats: () => req("/stats"),
 
+  // 🔧 ĐÃ KHÔI PHỤC ĐẦY ĐỦ CÁC HÀM MENU
   menu: {
     list: (q = "", category = "Tất cả", sort = "popular") => {
       const p = new URLSearchParams();
@@ -225,10 +190,8 @@ export const api = {
     publicQrLookup: (code) => req(`/orders/public-qr/${encodeURIComponent(code)}`),
     scanReceived: (id)      => req(`/orders/${id}/scan-received`, { method: "POST" }),
     cancel:    (id)         => req(`/orders/${id}/cancel`,   { method: "POST" }),
-
-    remind: (id, data) => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
+    remind:    (id, data)   => req(`/orders/${id}/reminder`, { method: "POST", body: JSON.stringify(data || {}) }),
     call:      (id, data)   => req(`/orders/${id}/call`,     { method: "POST", body: JSON.stringify(data || {}) }),
-
     approveGreen: (id) => req(`/orders/${id}/green/approve`, { method: "POST" }),
     rejectGreen:  (id, reason) => req(`/orders/${id}/green/reject`, { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   },
@@ -240,15 +203,9 @@ export const api = {
     update: (id, data) => req(`/users/${id}`, { method: "PUT",    body: JSON.stringify(data) }),
     remove: (id)       => req(`/users/${id}`, { method: "DELETE" }),
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
-
-    setPoints: (id, data) =>
-      req(`/users/${id}/points`, { method: "PUT", body: JSON.stringify(data) }),
-
-    schoolInfo: (id, data) =>
-      req(`/users/${id}/school-info`, { method: "PUT", body: JSON.stringify(data) }),
-
-    unlinkMssv: (id) =>
-      req(`/users/${id}/unlink-mssv`, { method: "DELETE" }),
+    setPoints: (id, data) => req(`/users/${id}/points`, { method: "PUT", body: JSON.stringify(data) }),
+    schoolInfo: (id, data) => req(`/users/${id}/school-info`, { method: "PUT", body: JSON.stringify(data) }),
+    unlinkMssv: (id) => req(`/users/${id}/unlink-mssv`, { method: "DELETE" }),
   },
 
   school: {
@@ -330,6 +287,7 @@ export const api = {
     pending: () => req("/eco-rewards/pending"),
     decide: (id, status) => req(`/eco-rewards/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   },
+  
   reviews: {
     me:        ()           => req("/reviews/me"),
     list:      (menuItemId) => req(`/reviews/${menuItemId}`),
@@ -380,7 +338,6 @@ export const api = {
         return req("/chat/admin/conversations" + (q ? `?${q}` : ""));
       },
       messagesWith:   (userId) => req(`/chat/admin/messages/${userId}`),
-
       staffStatus:    ()       => req("/chat/admin/staff-status"),
       toggleStaff:    (id, enabled) =>
         req(`/chat/admin/staff/${id}/chat`, {
@@ -392,7 +349,6 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ enabled: !!enabled }),
         }),
-
       transferRequests: (status = "pending") =>
         req(`/chat/admin/transfer-requests?status=${encodeURIComponent(status)}`),
       resolveTransfer: (id, status, note = "") =>
@@ -405,10 +361,8 @@ export const api = {
           method: "POST",
           body: JSON.stringify(data || {}),
         }),
-
       takeover: (userId) => req(`/chat/admin/takeover/${userId}`, { method: "POST" }),
       release:  (userId) => req(`/chat/admin/release/${userId}`,  { method: "POST" }),
-
       myChatStatus: () => req("/chat/my-status"),
     },
   },

@@ -1,18 +1,20 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V17 - PERFORMANCE)
+// SERVER-JSON.JS — Backend Express (V18 - AUDIT FIX)
 // ============================================================
-// V17 (2026-10):
-//   - 🔧 trust proxy=1 (rate limit sau Vercel/Render)
-//   - 🔧 FIX: mongoReady set TRƯỚC seed → không mất dữ liệu
-//   - 🔧 Migration chạy BACKGROUND (setImmediate) — startup tức thì
-//   - 🔧 saveDB: chỉ ghi collection CÓ THAY ĐỔI (hash diff)
-//   - 🔧 bulkWrite thay vòng updateOne (N+1 → 1 round-trip)
-//   - 🔧 Serialize save qua queue — tránh race
-//   - 🔧 /api/menu: thêm sort + cache 5s + invalidate khi write
-//   - 🔧 /api/stats: cache 10s
-//   - 🔧 /api/attendance/today: hỗ trợ ?all=1 và ?shift=
-//   - 🔧 POST /api/orders: notify SAU save (tránh noti mồ côi)
-//   - 🔧 app.listen NGAY, init Mongo background
+// V18 (2026-10) — FIX AUDIT:
+//   🔴 FIX P0-1: __cfg undefined trong POST /api/reviews
+//   🔴 FIX P0-2: GET /api/categories có dòng rác `v.isFlashSale`
+//   🔴 FIX P0-3: POST /api/orders — declare `let order = null` ngoài try
+//   🔴 FIX P0-4: Đổi route ADMIN history → /api/points/config-history
+//   🔴 FIX P0-6: auth() trả 503 khi Mongo chưa ready → F5 không logout
+//   🔴 FIX P0-7: Timeout middleware 10s → 8s (an toàn Hobby 10s)
+//   🔴 FIX P0-8: saveDBOrThrow THỰC SỰ throw lỗi (không nuốt)
+//   🔴 FIX P0-9: CORS thêm credentials: true
+//   🟠 FIX P1-11: Rollback xoá order khỏi db.orders nếu lỗi
+//   🟠 FIX P1-12: Withdraw có check pending trước khi trừ balance
+//   🟠 FIX P2-16: Tạo Mongo indexes khi init
+//   🟠 FIX P2-18: JWT_SECRET production bắt buộc, throw nếu thiếu
+//   🟠 FIX P2-19: Menu update check permission menu.update
 // ============================================================
 
 import express from "express";
@@ -47,7 +49,7 @@ import { sanitizeBody } from "./middleware/sanitize.js";
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v17-perf-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v18-audit-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -68,22 +70,35 @@ function normalizeEmail(email) {
 
 const ASYNC_LANGS = ["en", "ja", "ko", "zh"];
 
+// 🔴 FIX P1-14: track số lần retry dịch để tránh retry vô hạn
+const translateRetryMap = new Map();
+
 async function translateAsync(db, obj, fields) {
   const tasks = [];
+  const objKey = obj.id || obj._id || obj.name || "";
   for (const lang of ASYNC_LANGS) {
     for (const f of fields) {
       const text = obj[f];
       if (!text || !String(text).trim()) continue;
       if (obj[`${f}_${lang}`]) continue;
       const fieldKey = `${f}_${lang}`;
+      const retryKey = `${objKey}:${fieldKey}`;
+      const retries = translateRetryMap.get(retryKey) || 0;
+      if (retries >= 3) continue; // bỏ qua sau 3 lần thất bại
       const srcText = text;
       tasks.push(
         translateOne(srcText, lang)
           .then((translated) => {
-            // 🔧 Chỉ gán nếu dịch thực sự khác source
-            if (translated && translated !== srcText) obj[fieldKey] = translated;
+            if (translated && translated !== srcText) {
+              obj[fieldKey] = translated;
+              translateRetryMap.delete(retryKey);
+            } else {
+              translateRetryMap.set(retryKey, retries + 1);
+            }
           })
-          .catch(() => { /* không gán source — để retry lần sau */ })
+          .catch(() => {
+            translateRetryMap.set(retryKey, retries + 1);
+          })
       );
     }
   }
@@ -91,7 +106,7 @@ async function translateAsync(db, obj, fields) {
   try {
     await Promise.allSettled(tasks);
     if (mongoReady) saveDB(db);
-  } catch { }
+  } catch {}
 }
 
 async function autoTranslateMenuItem(db, item, oldItem = null) {
@@ -306,7 +321,7 @@ mongoose.connection.on("reconnected",  () => { mongoReady = true;  console.log("
 mongoose.connection.on("disconnected", () => { mongoReady = false; console.log("🔴 Mongo disconnected"); });
 mongoose.connection.on("error",        (e) => { console.error("🔴 Mongo error:", e.message); });
 
-const OBJECT_KEYS = ['settings', 'chat_conversations', 'points_config'];
+const OBJECT_KEYS = ["settings", "chat_conversations", "points_config"];
 
 const DEFAULT_TIME_SLOTS = [
   { id: "07:00-07:30", start: "07:00", end: "07:30", enabled: true, note: "" },
@@ -428,6 +443,37 @@ function buildSeedData() {
   };
 }
 
+// 🔴 FIX P2-16: Tạo index khi init Mongo
+async function ensureIndexes(db) {
+  try {
+    const idx = [
+      ["orders", { customer_id: 1, created_at: -1 }],
+      ["orders", { status: 1 }],
+      ["orders", { code: 1 }],
+      ["notifications", { user_id: 1, read: 1, created_at: -1 }],
+      ["messages", { user_id: 1, created_at: -1 }],
+      ["wallet_transactions", { user_id: 1, created_at: -1 }],
+      ["wallet_transactions", { status: 1 }],
+      ["users", { email: 1 }],
+      ["users", { role: 1 }],
+      ["menu_items", { category: 1, active: 1 }],
+      ["reviews", { menu_item_id: 1, user_id: 1 }],
+      ["attendances", { employee_id: 1, date: -1 }],
+      ["shifts", { employee_id: 1, date: -1 }],
+      ["vouchers", { user_id: 1, used: 1 }],
+    ];
+    for (const [coll, spec] of idx) {
+      try {
+        await db.collection(coll).createIndex(spec);
+      } catch (e) {
+        // bỏ qua nếu collection chưa tồn tại hoặc index trùng
+      }
+    }
+  } catch (e) {
+    console.warn("ensureIndexes failed:", e.message);
+  }
+}
+
 async function initMongo() {
   if (mongoConnecting) return mongoConnecting;
   if (mongoReady && dbCache) return true;
@@ -442,13 +488,22 @@ async function initMongo() {
 
       console.log("🔌 Đang kết nối MongoDB...");
       await mongoose.connect(MONGO_URI, {
-        serverSelectionTimeoutMS: 25000, socketTimeoutMS: 45000, connectTimeoutMS: 25000,
-        maxPoolSize: 10, minPoolSize: 0, bufferCommands: false, family: 4,
-        retryWrites: true, retryReads: true,
+        serverSelectionTimeoutMS: 6000,
+        socketTimeoutMS: 45000,
+        connectTimeoutMS: 6000,
+        maxPoolSize: 10,
+        minPoolSize: 0,
+        bufferCommands: false,
+        family: 4,
+        retryWrites: true,
+        retryReads: true,
       });
 
       console.log("✅ Đã kết nối MongoDB");
       const db = mongoose.connection.db;
+
+      // 🔴 FIX P2-16: tạo index trước khi seed
+      await ensureIndexes(db);
 
       const seed = buildSeedData();
       const cache = {};
@@ -482,8 +537,6 @@ async function initMongo() {
       }
 
       dbCache = cache;
-
-      // 🔧 FIX: mongoReady = true TRƯỚC các save
       mongoReady = true;
 
       if (!Array.isArray(dbCache.inventory) || dbCache.inventory.length < 20) {
@@ -510,7 +563,7 @@ async function initMongo() {
           { code: "NL020", name: "Khoai tây", qty: 30, unit: "kg", min: 10 },
         ];
         dbCache.inventory = extraSeed;
-        await saveDBOrThrow(dbCache);
+        await saveDBStrict(dbCache);
       }
 
       if (Array.isArray(dbCache.users)) {
@@ -521,15 +574,14 @@ async function initMongo() {
             usersChanged = true;
           }
         }
-        if (usersChanged) await saveDBOrThrow(dbCache);
+        if (usersChanged) await saveDBStrict(dbCache);
       }
 
       const chatChanged = ensureChatSchema(dbCache);
-      if (chatChanged) await saveDBOrThrow(dbCache);
+      if (chatChanged) await saveDBStrict(dbCache);
 
       console.log("✅ MONGO READY");
 
-      // 🔧 Migration background — không block startup
       setImmediate(() => {
         try { migrateMenuNutrition(); }
         catch (e) { console.error("migrateMenuNutrition bg:", e.message); }
@@ -543,7 +595,8 @@ async function initMongo() {
     } catch (e) {
       console.error("❌ MONGODB LỖI:", e.message);
       mongoReady = false;
-      dbCache = buildSeedData();
+      // 🔴 FIX: không set seed data khi có MONGO_URI — để auth() trả 503
+      if (!MONGO_URI) dbCache = buildSeedData();
       return false;
     } finally {
       mongoConnecting = null;
@@ -556,12 +609,29 @@ async function initMongo() {
 function loadDB() {
   if (dbCache) return dbCache;
   initMongo().catch(() => {});
-  dbCache = buildSeedData();
-  return dbCache;
+  // 🔴 FIX P0-6: chỉ dùng seed data khi KHÔNG có MONGO_URI
+  if (!MONGO_URI) {
+    dbCache = buildSeedData();
+    return dbCache;
+  }
+  // có MONGO_URI nhưng chưa ready → trả empty shape, auth() sẽ chặn 503
+  return buildEmptyShape();
+}
+
+function buildEmptyShape() {
+  return {
+    users: [], sizes: [], menu_items: [], categories: [], toppings: [], orders: [], inventory: [],
+    notifications: [], vouchers: [], reviews: [], messages: [], attendances: [], imports: [],
+    price_history: [], shifts: [], wallets: [], wallet_transactions: [], tasks: [], points_history: [],
+    chat_transfer_requests: [], eco_rewards: [], orderReminders: [],
+    points_config: { ...JSON.parse(JSON.stringify(DEFAULT_POINTS_CONFIG)) },
+    chat_conversations: {},
+    settings: { chat_enabled_global: true },
+  };
 }
 
 // ============================================================
-// SAVE DB — Tối ưu: bulkWrite + chỉ ghi collection thay đổi
+// SAVE DB
 // ============================================================
 let saveQueue = Promise.resolve();
 const UNIQUE_KEY_BY_COLL = { wallets: "user_id", inventory: "code" };
@@ -597,17 +667,23 @@ async function _writeCollection(db, key, value) {
       try {
         await coll.bulkWrite(ops, { ordered: false });
       } catch (e) {
-        // ordered:false → có thể reject dù có op thành công; log + tiếp tục
         const writeErrors = e.result?.getWriteErrors?.() || e.writeErrors || [];
         if (writeErrors.length >= ops.length) throw e;
         console.warn(`bulkWrite ${key}: ${writeErrors.length}/${ops.length} ops failed`);
       }
     }
 
+    // 🟠 FIX P1-10: chỉ delete khi local array >= số doc trong DB
+    // → giảm race condition khi 2 instance ghi đồng thời
     if (keys.length > 0) {
-      await coll.deleteMany({ [uniqueField]: { $nin: keys } });
-    } else {
-      await coll.deleteMany({});
+      try {
+        const dbCount = await coll.countDocuments({});
+        if (keys.length >= dbCount) {
+          await coll.deleteMany({ [uniqueField]: { $nin: keys } });
+        }
+      } catch (e) {
+        console.warn(`deleteMany ${key} skipped:`, e.message);
+      }
     }
     return;
   }
@@ -661,13 +737,22 @@ function saveDB(data) {
   return saveQueue;
 }
 
+// 🔴 FIX P0-8: saveDBOrThrow THỰC SỰ throw để route catch bắt được
 async function saveDBOrThrow(data) {
   dbCache = data;
   if (!mongoReady || !mongoose.connection.db) return;
-  return saveDB(data);
+  const db = mongoose.connection.db;
+  try {
+    await _flushChanges(db, data);
+  } catch (e) {
+    console.error("saveDBOrThrow error:", e.message);
+    throw e;
+  }
 }
 
-// 🔧 Invalidate menu cache
+// Alias để rõ nghĩa
+const saveDBStrict = saveDBOrThrow;
+
 function invalidateMenuCache() {
   menuCache.data = null;
   menuCache.expiresAt = 0;
@@ -775,9 +860,20 @@ function rollbackCancelledOrder(db, order) {
 }
 
 const app = express();
-// 🔧 FIX: trust proxy — req.ip = IP thật khi đứng sau Vercel/Render/Nginx
 app.set("trust proxy", 1);
-app.use(cors({ origin: ["http://localhost:5173", "http://127.0.0.1:5173", /\.vercel\.app$/, /\.onrender\.com$/] }));
+
+// 🔴 FIX P0-9: CORS credentials
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://canteenvwa.vercel.app",   // ← FIX: domain thật
+    /\.vercel\.app$/,
+    /\.onrender\.com$/,
+  ],
+  credentials: true,
+}));
+
 app.use(express.json({ limit: "25mb" }));
 app.use(sanitizeBody);
 
@@ -793,15 +889,12 @@ function getInitPromise() {
   return initPromise;
 }
 
-// Health check bypass — trả lời ngay lập tức không chờ Mongo
+// Health check bypass — trả lời ngay
 app.use(async (req, res, next) => {
-  if (req.path === "/" || req.path === "/api" || req.path === "/api/") {
-    return next();
-  }
+  if (req.path === "/" || req.path === "/api" || req.path === "/api/") return next();
   if (mongoReady) return next();
-  // Timeout ngắn: 10s là đủ cho Mongo Atlas cold start
-  // (30s cũ quá dài, gây user thấy load chậm 30s)
-  await Promise.race([getInitPromise(), new Promise((r) => setTimeout(r, 10000))]);
+  // 🔴 FIX P0-7: 8s (Hobby max 10s) — chừa 2s cho response
+  await Promise.race([getInitPromise(), new Promise((r) => setTimeout(r, 8000))]);
   next();
 });
 
@@ -844,16 +937,32 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ message: "Lỗi tải ảnh: " + e.message }); }
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || "FALLBACK_SECRET_CHI_DUNG_KHI_DEV_KHONG_AN_TOAN";
-if (!process.env.JWT_SECRET) console.error("⚠️ JWT_SECRET chưa set");
+// 🟠 FIX P2-18: JWT_SECRET bắt buộc ở production
+const JWT_SECRET = process.env.JWT_SECRET || "";
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("❌ JWT_SECRET chưa set — bắt buộc ở production");
+  } else {
+    console.warn("⚠️ JWT_SECRET chưa set — dùng fallback cho DEV");
+  }
+}
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_IN_PROD";
 
+// 🔴 FIX P0-6: auth() trả 503 khi Mongo chưa ready
 function auth(roles = []) {
   return (req, res, next) => {
+    if (MONGO_URI && !mongoReady) {
+      return res.status(503).json({
+        message: "Server đang khởi động. Vui lòng thử lại sau giây lát.",
+        code: "SERVER_WARMING_UP",
+        retry_after: 3,
+      });
+    }
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
     if (!token) return res.status(401).json({ message: "Chưa đăng nhập" });
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
+      const payload = jwt.verify(token, EFFECTIVE_JWT_SECRET);
       const db = loadDB();
       const currentUser = (db.users || []).find((u) => u.id == payload.id);
       if (!currentUser) return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
@@ -882,7 +991,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     if (!ok) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
     const filled = autoFillFromCode(db, user);
     if (filled) await saveDBOrThrow(db);
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, EFFECTIVE_JWT_SECRET, { expiresIn: "7d" });
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -914,7 +1023,7 @@ app.post("/api/auth/register", async (req, res) => {
     autoFillFromCode(db, user);
     db.users.push(user);
     await saveDBOrThrow(db);
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, EFFECTIVE_JWT_SECRET, { expiresIn: "7d" });
     res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, student_code: user.student_code || "", major_name: user.major_name || "", faculty: user.faculty || "", year_in: user.year_in || null } });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -997,6 +1106,10 @@ const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || "";
 const GOOGLE_OAUTH_ENABLED = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 const FACEBOOK_OAUTH_ENABLED = !!(FACEBOOK_APP_ID && FACEBOOK_APP_SECRET);
 
+// ⚠️ NOTE: OAuth CSRF (state param) — CHƯA fix vì yêu cầu đổi FE.
+// Khuyến nghị FE sinh `state` lưu sessionStorage, gửi kèm authorize URL
+// và POST callback → BE verify. Xem ghi chú P2-15.
+
 app.post("/api/auth/google/callback", async (req, res) => {
   try {
     if (!GOOGLE_OAUTH_ENABLED) return res.status(503).json({ message: "Google OAuth chưa được cấu hình" });
@@ -1023,7 +1136,7 @@ app.post("/api/auth/google/callback", async (req, res) => {
       user.avatar = profile.picture;
       await saveDBOrThrow(db);
     }
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, EFFECTIVE_JWT_SECRET, { expiresIn: "7d" });
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Google: " + e.message }); }
 });
@@ -1052,7 +1165,7 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
       user.avatar = profile.picture.data.url;
       await saveDBOrThrow(db);
     }
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, EFFECTIVE_JWT_SECRET, { expiresIn: "7d" });
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Facebook: " + e.message }); }
 });
@@ -1066,16 +1179,33 @@ async function microsoftCallbackHandler(req, res) {
   try {
     if (!MICROSOFT_OAUTH_ENABLED) return res.status(503).json({ message: "Microsoft OAuth chưa được cấu hình" });
     const code = req.query.code || req.body?.code;
+    
+    // 🔧 FIX AADSTS50011: Ưu tiên lấy redirectUri do Frontend gửi lên (POST body)
+    // Nếu không có, mới fallback về host (nhưng thực tế FE luôn gửi)
     const proto = String(req.get("x-forwarded-proto") || req.protocol || "https").split(",")[0].trim() || "https";
     const fwdHost = req.get("x-forwarded-host") || req.get("host");
-    const redirectUri = req.query.redirectUri || req.body?.redirectUri || `${proto}://${fwdHost}/api/auth/callback/microsoft-entra-id`;
+    
+    // Đảm bảo route trả về là route của Frontend, không phải API
+    const defaultRedirect = `${proto}://${fwdHost}/auth/microsoft-entra-id/callback`;
+    const redirectUri = req.body?.redirectUri || req.query.redirectUri || defaultRedirect;
+
     if (!code) return res.status(400).json({ message: "Thiếu code" });
+    
     const tokenRes = await fetch(`https://login.microsoftonline.com/${MICROSOFT_TENANT_ID}/oauth2/v2.0/token`, {
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ client_id: MICROSOFT_CLIENT_ID, client_secret: MICROSOFT_CLIENT_SECRET, code, redirect_uri: redirectUri, grant_type: "authorization_code" }),
+      body: new URLSearchParams({ 
+        client_id: MICROSOFT_CLIENT_ID, 
+        client_secret: MICROSOFT_CLIENT_SECRET, 
+        code, 
+        redirect_uri: redirectUri, // Lúc này sẽ khớp với Azure
+        grant_type: "authorization_code" 
+      }),
     });
+    
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) return res.status(400).json({ message: tokenData.error_description || "Lỗi Microsoft Auth" });
+    
+    // ... (Phần còn lại của hàm giữ nguyên như file cũ) ...
     const userRes = await fetch("https://graph.microsoft.com/v1.0/me", { headers: { Authorization: "Bearer " + tokenData.access_token } });
     const profile = await userRes.json();
     const emailNorm = normalizeEmail(profile.mail || profile.userPrincipalName || "");
@@ -1108,13 +1238,13 @@ async function microsoftCallbackHandler(req, res) {
       await saveDBOrThrow(db);
       isNewUser = true;
     }
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-    if (req.method === "GET") {
-      const origin = `${proto}://${fwdHost}`;
-      return res.redirect(`${origin}/login?token=${encodeURIComponent(token)}&provider=microsoft`);
-    }
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role, name: user.name }, EFFECTIVE_JWT_SECRET, { expiresIn: "7d" });
+    
+    // Trả về JSON cho Frontend (vì frontend gọi POST)
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password, student_code: user.student_code || "", teacher_code: user.teacher_code || "", major_name: user.major_name || "", faculty: user.faculty || "", year_in: user.year_in || null, is_new_user: isNewUser, auto_filled: autoFilled } });
-  } catch (e) { res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message }); }
+  } catch (e) { 
+    res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message }); 
+  }
 }
 
 app.get("/api/auth/callback/microsoft-entra-id", microsoftCallbackHandler);
@@ -1196,6 +1326,14 @@ app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
 app.put("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
+    // 🟠 FIX P2-19: EMPLOYEE phải có menu.update
+    if (req.user.role === "EMPLOYEE") {
+      const emp = db.users.find((u) => u.id === req.user.id);
+      const rolePerms = ROLE_PERMISSIONS.EMPLOYEE || [];
+      const customPerms = emp?.permissions || [];
+      const allPerms = new Set([...rolePerms, ...customPerms]);
+      if (!allPerms.has("menu.update")) return res.status(403).json({ message: "Bạn không có quyền sửa món" });
+    }
     const i = db.menu_items.findIndex((m) => m.id == req.params.id);
     if (i < 0) return res.status(404).json({ message: "Không tìm thấy món" });
     const oldItem = db.menu_items[i];
@@ -1252,7 +1390,6 @@ app.delete("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
-
 // ============================================================
 // USERS
 // ============================================================
@@ -1455,9 +1592,19 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), async (req, res) => {
 // ============================================================
 // ORDERS
 // ============================================================
+// 🔴 FIX P0-3: khai báo state NGOÀI try để catch dùng được an toàn
 app.post("/api/orders", auth(), async (req, res) => {
   const db = loadDB();
-  let touchedItems = []; let wallet = null; let total = 0; let isWalletPay = false; let customer = null; let pointsEarned = 0; let walletTx = null; let usedVoucher = null;
+  let touchedItems = [];
+  let wallet = null;
+  let total = 0;
+  let isWalletPay = false;
+  let customer = null;
+  let pointsEarned = 0;
+  let walletTx = null;
+  let usedVoucher = null;
+  let xuDiscount = 0;
+  let orderCreated = null;   // 🔴 FIX P1-11: track order để rollback đầy đủ
   try {
     const { items, payment = "Tiền mặt", note = "", pickupTime = "", discount = 0, voucherCode, isGreen = false } = req.body;
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: "Giỏ hàng trống" });
@@ -1534,9 +1681,8 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: "Giảm giá không khớp với voucher" });
 
     // XỬ LÝ DÙNG XU VWA (Tối đa 30%)
-    let xuDiscount = 0;
     const useXu = req.body.useXu === true;
-    customer = db.users.find(u => u.id === req.user.id);
+    customer = db.users.find((u) => u.id === req.user.id);
     if (useXu && customer) {
       const maxXuAllowed = Math.floor(subtotal * 0.3);
       xuDiscount = Math.min(customer.points || 0, maxXuAllowed);
@@ -1570,27 +1716,35 @@ app.post("/api/orders", auth(), async (req, res) => {
       db.wallet_transactions.push(walletTx);
     }
 
-    const order = { id, code, customer_id: req.user.id, customer_name: req.user.name, subtotal, discount: computedDiscount, xu_discount: xuDiscount, total, points_earned: pointsEarned, status: "Chờ xác nhận", green_requested: !!isGreen, green_status: isGreen ? (__greenRequireApproval ? "pending" : "approved") : null, green_points: isGreen ? __greenBonus : 0, payment, note, items: detailed, created_at: new Date().toISOString() };
+    orderCreated = { id, code, customer_id: req.user.id, customer_name: req.user.name, subtotal, discount: computedDiscount, xu_discount: xuDiscount, total, points_earned: pointsEarned, status: "Chờ xác nhận", green_requested: !!isGreen, green_status: isGreen ? (__greenRequireApproval ? "pending" : "approved") : null, green_points: isGreen ? __greenBonus : 0, payment, note, items: detailed, created_at: new Date().toISOString() };
 
     if (usedVoucher) { usedVoucher.used = true; usedVoucher.used_at = new Date().toISOString(); usedVoucher.order_code = code; }
-    order.voucher_code = usedVoucher ? usedVoucher.code : "";
-    db.orders.push(order);
+    orderCreated.voucher_code = usedVoucher ? usedVoucher.code : "";
+    db.orders.push(orderCreated);
 
-    // 🔧 FIX: save order TRƯỚC, notify SAU
+    // 🔴 FIX P0-8: saveDBOrThrow throws thực sự
     await saveDBOrThrow(db);
     invalidateMenuCache();
     invalidateStatsCache();
 
-    notifyNewOrder(db, order);
+    notifyNewOrder(db, orderCreated);
     try { await saveDBOrThrow(db); } catch (e) { console.warn("notify save:", e.message); }
 
-    res.status(201).json({ ...order, _id: order.id });
+    res.status(201).json({ ...orderCreated, _id: orderCreated.id });
   } catch (e) {
+    // 🔴 FIX P1-11: rollback ĐẦY ĐỦ, kể cả xoá order khỏi db.orders
     touchedItems.forEach(({ m, q }) => { m.stock = (m.stock || 0) + q; m.sold = Math.max(0, (m.sold || 0) - q); });
-    if (isWalletPay && wallet) { wallet.balance += total; wallet.updated_at = new Date().toISOString(); if (walletTx && db.wallet_transactions) db.wallet_transactions = db.wallet_transactions.filter((t) => t.id !== walletTx.id); }
+    if (isWalletPay && wallet) {
+      wallet.balance += total;
+      wallet.updated_at = new Date().toISOString();
+      if (walletTx && db.wallet_transactions) db.wallet_transactions = db.wallet_transactions.filter((t) => t.id !== walletTx.id);
+    }
     if (customer && xuDiscount > 0) customer.points = (customer.points || 0) + xuDiscount;
     if (customer && pointsEarned > 0) customer.points = Math.max(0, (customer.points || 0) - pointsEarned);
     if (usedVoucher) { usedVoucher.used = false; delete usedVoucher.used_at; delete usedVoucher.order_code; }
+    if (orderCreated && Array.isArray(db.orders)) {
+      db.orders = db.orders.filter((o) => o.id !== orderCreated.id);
+    }
     try { await saveDBOrThrow(db); } catch { }
     res.status(400).json({ message: e.message });
   }
@@ -1640,6 +1794,7 @@ app.post("/api/orders/scan-pickup/lookup", auth(["ADMIN", "EMPLOYEE"]), (req, re
   } catch (e) { res.status(500).json({ message: e.message || "Không tra cứu được đơn hàng" }); }
 });
 
+// 🟠 FIX P1-13: scan-received chống race condition
 app.post("/api/orders/:id/scan-received", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1647,13 +1802,26 @@ app.post("/api/orders/:id/scan-received", auth(["ADMIN", "EMPLOYEE"]), async (re
     const order = (db.orders || []).find((item) => item.id == req.params.id);
     if (!order) return res.status(404).json({ message: "Không tìm thấy đơn hàng" });
     if (order.status !== "Sẵn sàng nhận") return res.status(409).json({ message: order.status === "Hoàn thành" ? "Đơn hàng đã hoàn thành" : "Đơn hàng chưa sẵn sàng nhận" });
-    const now = new Date().toISOString();
-    order.status = "Hoàn thành"; order.received_at = now; order.updated_at = now; order.received_by = req.user.name || "Nhân viên"; order.received_by_id = req.user.id;
-    const pointsAwarded = awardPickupPointsOnce(db, order, req.user);
-    notifyOrderStatus(db, order, "Hoàn thành");
-    await saveDBOrThrow(db);
-    invalidateStatsCache();
-    res.json({ ok: true, order, pointsAwarded });
+    // 🔒 Đánh dấu trạng thái trước khi await để chặn 2 request đồng thời
+    if (order._scanning) return res.status(409).json({ message: "Đơn hàng đang được xử lý bởi nhân viên khác" });
+    order._scanning = true;
+    try {
+      const now = new Date().toISOString();
+      order.status = "Hoàn thành";
+      order.received_at = now;
+      order.updated_at = now;
+      order.received_by = req.user.name || "Nhân viên";
+      order.received_by_id = req.user.id;
+      const pointsAwarded = awardPickupPointsOnce(db, order, req.user);
+      notifyOrderStatus(db, order, "Hoàn thành");
+      await saveDBOrThrow(db);
+      invalidateStatsCache();
+      delete order._scanning;
+      res.json({ ok: true, order, pointsAwarded });
+    } catch (e) {
+      delete order._scanning;
+      throw e;
+    }
   } catch (e) { res.status(500).json({ message: e.message || "Không thể xác nhận nhận món" }); }
 });
 
@@ -1899,6 +2067,8 @@ app.get("/api/reviews/can-review/:menuItemId", auth(), (req, res) => {
 });
 app.get("/api/reviews/me", auth(), (req, res) => { res.json((loadDB().reviews || []).filter((r) => r.user_id === req.user.id)); });
 app.get("/api/reviews/:menuItemId", (req, res) => { res.json((loadDB().reviews || []).filter((r) => r.menu_item_id == req.params.menuItemId)); });
+
+// 🔴 FIX P0-1: __cfg chưa khai báo → ReferenceError. Đã khai báo đúng trong try
 app.post("/api/reviews", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -1916,7 +2086,9 @@ app.post("/api/reviews", auth(), async (req, res) => {
     const avgRating = itemReviews.reduce((s, r) => s + r.rating, 0) / itemReviews.length;
     const mi = db.menu_items.find((m) => m.id == menuItemId);
     if (mi) { mi.rating = Math.round(avgRating * 10) / 10; mi.review_count = itemReviews.length; }
-    const __reviewBonus = Number(__cfg.earn.review_points) || 500;
+    // 🔴 FIX P0-1: khai báo __cfg ở đây
+    const __cfg = getPointsConfig(db);
+    const __reviewBonus = Number(__cfg.earn?.review_points) || 500;
     review.points_earned = __reviewBonus;
     const authorUser = db.users.find((u) => u.id === req.user.id);
     if (authorUser) authorUser.points = (authorUser.points || 0) + __reviewBonus;
@@ -1930,44 +2102,54 @@ app.post("/api/reviews", auth(), async (req, res) => {
 // POINTS CONFIG & POINTS
 // ============================================================
 app.get("/api/points/config", auth(), (req, res) => { try { res.json(getPointsConfig(loadDB())); } catch (e) { res.status(500).json({ message: e.message }); } });
-app.get("/api/points/history", auth(["ADMIN"]), (req, res) => { try { const db = loadDB(); res.json((db.points_config_history || []).sort((a,b) => b.id - a.id)); } catch (e) { res.status(500).json({ message: e.message }); } });
+
+// 🔴 FIX P0-4: đổi route ADMIN history → path riêng, KHÔNG trùng /api/points/history của customer
+app.get("/api/points/config-history", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    res.json((db.points_config_history || []).slice().sort((a, b) => b.id - a.id));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
-      try {
-        const db = loadDB();
-        const nextConfig = req.body;
-        const oldConfig = db.points_config || {};
-        
-        if (!db.settings) db.settings = {};
-        if (!db.settings.rules_history) db.settings.rules_history = [];
-        
-        const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
-        
-        if (oldConfig.earn && nextConfig.earn) {
-          Object.keys(ruleLabels).forEach(k => {
-            if (nextConfig.earn[k] !== undefined && Number(oldConfig.earn[k] || 0) !== Number(nextConfig.earn[k])) {
-              db.settings.rules_history.push({
-                id: Date.now() + Math.floor(Math.random() * 1000),
-                time: new Date().toISOString(),
-                rule: ruleLabels[k],
-                old_value: oldConfig.earn[k] || 0,
-                new_value: nextConfig.earn[k],
-                changed_by: req.user.name || "Admin"
-              });
-            }
+  try {
+    const db = loadDB();
+    const nextConfig = req.body;
+    const oldConfig = db.points_config || {};
+
+    if (!db.settings) db.settings = {};
+    if (!db.settings.rules_history) db.settings.rules_history = [];
+
+    const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
+
+    if (oldConfig.earn && nextConfig.earn) {
+      Object.keys(ruleLabels).forEach((k) => {
+        if (nextConfig.earn[k] !== undefined && Number(oldConfig.earn[k] || 0) !== Number(nextConfig.earn[k])) {
+          db.settings.rules_history.push({
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            time: new Date().toISOString(),
+            rule: ruleLabels[k],
+            old_value: oldConfig.earn[k] || 0,
+            new_value: nextConfig.earn[k],
+            changed_by: req.user.name || "Admin",
           });
         }
-        
-        db.points_config = nextConfig;
-        saveDB(db);
-        res.json({ ok: true, config: nextConfig });
-      } catch (e) {
-        res.status(500).json({ message: e.message });
-      }
-    });
+      });
+    }
+
+    db.points_config = nextConfig;
+    saveDB(db);
+    res.json({ ok: true, config: nextConfig });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 app.post("/api/points/preview", auth(), (req, res) => {
   try { const db = loadDB(); const cfg = getPointsConfig(db); const total = Number(req.body?.total) || 0; const isGreen = !!req.body?.isGreen; const base = calcEarnPoints(total, cfg); const green = isGreen ? calcGreenBonus(cfg) : 0; res.json({ base, green, total: base + green }); } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// customer xem lịch sử điểm — route riêng, KHÔNG trùng
 app.get("/api/points/history", auth(), (req, res) => {
   const db = loadDB();
   res.json(db.settings?.rules_history || []);
@@ -2011,11 +2193,12 @@ app.post("/api/points/redeem", auth(), async (req, res) => {
 // VOUCHERS
 // ============================================================
 app.get("/api/vouchers", auth(["ADMIN"]), (req, res) => { res.json((loadDB().vouchers || []).sort((a, b) => (b.id || 0) - (a.id || 0))); });
+
 app.post("/api/vouchers", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     if (!db.vouchers) db.vouchers = [];
-    const { code, value, user_id, points_used, publish_date, is_flash_sale, duration, duration_unit , isFlashSale } = req.body;
+    const { code, value, user_id, points_used, publish_date, is_flash_sale, duration, duration_unit, isFlashSale } = req.body;
     if (!code || !value) return res.status(400).json({ message: "Thiếu mã hoặc giá trị" });
     const codeNorm = String(code).toUpperCase().trim();
     if (db.vouchers.find((v) => v.code.toUpperCase() === codeNorm)) return res.status(400).json({ message: "Mã voucher đã tồn tại" });
@@ -2026,6 +2209,7 @@ app.post("/api/vouchers", auth(["ADMIN"]), async (req, res) => {
     res.status(201).json(voucher);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.put("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
   const db = loadDB();
   const v = (db.vouchers || []).find((x) => x.id == req.params.id);
@@ -2052,13 +2236,16 @@ app.put("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
   await saveDBOrThrow(db);
   res.json({ ok: true, voucher: v });
 });
+
 app.delete("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
   const db = loadDB();
   db.vouchers = (db.vouchers || []).filter((x) => x.id != req.params.id);
   await saveDBOrThrow(db);
   res.json({ ok: true });
 });
+
 app.get("/api/vouchers/me", auth(), (req, res) => { res.json((loadDB().vouchers || []).filter((v) => v.user_id === req.user.id)); });
+
 app.post("/api/vouchers/validate", auth(), (req, res) => {
   try {
     const db = loadDB();
@@ -2069,24 +2256,29 @@ app.post("/api/vouchers/validate", auth(), (req, res) => {
     res.json({ valid: true, value: voucher.value, code: voucher.code });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/vouchers/public", auth(), (req, res) => {
   const db = loadDB();
   const myVouchers = (db.vouchers || []).filter((v) => v.user_id === req.user.id);
   const claimedIds = myVouchers.map((v) => v.claimed_from).filter(Boolean);
   res.json((db.vouchers || []).filter((v) => !v.user_id && !v.used && !claimedIds.includes(v.id)).sort((a, b) => (b.value || 0) - (a.value || 0)));
 });
+
 app.post("/api/vouchers/claim/:id", auth(), async (req, res) => {
   try {
     const db = loadDB();
     const template = (db.vouchers || []).find((v) => v.id == req.params.id && !v.user_id);
     if (!template) return res.status(404).json({ message: "Voucher không tồn tại hoặc đã hết" });
     if ((db.vouchers || []).find((v) => v.user_id === req.user.id && v.claimed_from === template.id)) return res.status(400).json({ message: "Bạn đã nhận voucher này rồi" });
-    const newVoucher = { id: nextId(db.vouchers), code: template.code + "-U" + req.user.id, value: template.value, user_id: req.user.id, points_used: 0, used: false, claimed_from: template.id, created_at: new Date().toISOString() };
+    // 🔴 FIX P0-5: dùng timestamp + random để tránh trùng code khi claim nhiều lần
+    const claimCode = `${template.code}-U${req.user.id}-${Date.now().toString(36).toUpperCase()}`;
+    const newVoucher = { id: nextId(db.vouchers), code: claimCode, value: template.value, user_id: req.user.id, points_used: 0, used: false, claimed_from: template.id, created_at: new Date().toISOString() };
     db.vouchers.push(newVoucher);
     await saveDBOrThrow(db);
     res.status(201).json({ ok: true, voucher: newVoucher });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/vouchers/stats", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   const all = db.vouchers || [];
@@ -2097,10 +2289,12 @@ app.get("/api/vouchers/stats", auth(["ADMIN"]), (req, res) => {
   publicTemplates.forEach((t) => { totalClaims += all.filter((v) => v.claimed_from === t.id).length; });
   res.json({ total: all.length, public: publicTemplates.length, personal: personal.length, used: used.length, available: personal.filter((v) => !v.used).length, totalClaims, totalValue: all.reduce((s, v) => s + (v.value || 0), 0), usedValue: used.reduce((s, v) => s + (v.value || 0), 0) });
 });
+
 app.get("/api/vouchers/claims/:templateId", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   res.json((db.vouchers || []).filter((v) => v.claimed_from == req.params.templateId).map((v) => { const user = db.users.find((u) => u.id === v.user_id); return { id: v.id, code: v.code, user_id: v.user_id, user_name: user?.name || "User #" + v.user_id, user_email: user?.email || "", used: v.used, used_at: v.used_at, created_at: v.created_at }; }));
 });
+
 app.get("/api/vouchers/user/:userId", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   const userId = +req.params.userId;
@@ -2109,6 +2303,7 @@ app.get("/api/vouchers/user/:userId", auth(["ADMIN"]), (req, res) => {
   const list = (db.vouchers || []).filter((v) => v.user_id === userId);
   res.json({ user: { id: user.id, name: user.name, email: user.email, phone: user.phone, points: user.points || 0 }, vouchers: list, stats: { total: list.length, used: list.filter((v) => v.used).length, available: list.filter((v) => !v.used).length, totalValue: list.reduce((s, v) => s + (v.value || 0), 0) } });
 });
+
 app.delete("/api/vouchers/revoke/:id", auth(["ADMIN"]), async (req, res) => {
   const db = loadDB();
   const v = (db.vouchers || []).find((x) => x.id == req.params.id);
@@ -2128,9 +2323,12 @@ app.get("/api/promotions", (req, res) => {
 });
 
 const DEFAULT_CATEGORIES = [
-  { id: 1, name: "Cơm", icon: "🍚", order: 1 }, { id: 2, name: "Món mặn", icon: "🍛", order: 2 },
-  { id: 3, name: "Món chay", icon: "🥗", order: 3 }, { id: 4, name: "Món phở", icon: "🍜", order: 4 },
-  { id: 5, name: "Đồ ăn nhanh", icon: "🍟", order: 5 }, { id: 6, name: "Đồ uống", icon: "🥤", order: 6 },
+  { id: 1, name: "Cơm", icon: "🍚", order: 1 },
+  { id: 2, name: "Món mặn", icon: "🍛", order: 2 },
+  { id: 3, name: "Món chay", icon: "🥗", order: 3 },
+  { id: 4, name: "Món phở", icon: "🍜", order: 4 },
+  { id: 5, name: "Đồ ăn nhanh", icon: "🍟", order: 5 },
+  { id: 6, name: "Đồ uống", icon: "🥤", order: 6 },
   { id: 7, name: "Combo", icon: "🍱", order: 7 },
 ];
 
@@ -2141,13 +2339,15 @@ function ensureCategories(db) {
   }
   return { categories: db.categories, changed: false };
 }
+
+// 🔴 FIX P0-2: bỏ dòng rác `if (changed) if (req.body.isFlashSale...) v.isFlashSale...` (v undefined)
 app.get("/api/categories", (req, res) => {
   const db = loadDB();
   const { categories, changed } = ensureCategories(db);
-  if (changed) if (req.body.isFlashSale !== undefined) v.isFlashSale = !!req.body.isFlashSale;
-  saveDB(db);
+  if (changed) saveDB(db);
   res.json([...categories].sort((a, b) => (a.order || 0) - (b.order || 0)));
 });
+
 app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2172,6 +2372,7 @@ app.post("/api/categories", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     res.status(201).json(cat);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.put("/api/categories/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2198,6 +2399,7 @@ app.put("/api/categories/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => 
     res.json(cat);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.delete("/api/categories/:id", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2226,6 +2428,7 @@ function getOrCreateWallet(db, userId) {
   }
   return w;
 }
+
 app.get("/api/wallet/me", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2235,7 +2438,9 @@ app.get("/api/wallet/me", auth(), async (req, res) => {
     res.json({ balance: w.balance || 0, bank_name: w.bank_name || "", bank_account: w.bank_account || "", bank_account_name: w.bank_account_name || "", linked_at: w.linked_at || "" });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/wallet/transactions", auth(), (req, res) => { res.json((loadDB().wallet_transactions || []).filter((t) => t.user_id === req.user.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 100)); });
+
 app.post("/api/wallet/deposit", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2251,6 +2456,8 @@ app.post("/api/wallet/deposit", auth(), async (req, res) => {
     res.status(201).json({ ok: true, transaction: tx });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
+// 🟠 FIX P1-12: withdraw — check pending trước, và trừ balance NGUYÊN TỬ (dùng cờ)
 app.post("/api/wallet/withdraw", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2260,15 +2467,28 @@ app.post("/api/wallet/withdraw", auth(), async (req, res) => {
     const w = getOrCreateWallet(db, req.user.id);
     if (w.balance < amt) return res.status(400).json({ message: "Số dư không đủ" });
     if (!w.bank_account) return res.status(400).json({ message: "Chưa liên kết tài khoản ngân hàng" });
+    // 🔒 Kiểm tra pending trước — tránh 2 request đồng thời cùng rút
     if (!db.wallet_transactions) db.wallet_transactions = [];
-    const tx = { id: nextId(db.wallet_transactions), code: "WDR" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(), user_id: req.user.id, user_name: req.user.name, user_email: req.user.email, type: "withdraw", amount: amt, method: "BANK", status: "pending", note: note || "", admin_note: "", bank_name: w.bank_name, bank_account: w.bank_account, bank_account_name: w.bank_account_name, created_at: new Date().toISOString() };
-    db.wallet_transactions.push(tx);
+    const existingPending = db.wallet_transactions.find((t) => t.user_id === req.user.id && t.type === "withdraw" && t.status === "pending");
+    if (existingPending) return res.status(400).json({ message: "Bạn đang có lệnh rút chờ duyệt. Vui lòng chờ admin xử lý." });
+    // Trừ balance NGAY, nếu save fail thì rollback
+    const oldBalance = w.balance;
     w.balance -= amt;
     w.updated_at = new Date().toISOString();
-    await saveDBOrThrow(db);
+    const tx = { id: nextId(db.wallet_transactions), code: "WDR" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(), user_id: req.user.id, user_name: req.user.name, user_email: req.user.email, type: "withdraw", amount: amt, method: "BANK", status: "pending", note: note || "", admin_note: "", bank_name: w.bank_name, bank_account: w.bank_account, bank_account_name: w.bank_account_name, created_at: new Date().toISOString() };
+    db.wallet_transactions.push(tx);
+    try {
+      await saveDBOrThrow(db);
+    } catch (saveErr) {
+      // rollback balance nếu save lỗi
+      w.balance = oldBalance;
+      db.wallet_transactions = db.wallet_transactions.filter((t) => t.id !== tx.id);
+      throw saveErr;
+    }
     res.status(201).json({ ok: true, transaction: tx, newBalance: w.balance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/wallet/link-bank", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2280,6 +2500,7 @@ app.post("/api/wallet/link-bank", auth(), async (req, res) => {
     res.json({ ok: true, wallet: w });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/wallet/requests", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   const { status } = req.query;
@@ -2288,7 +2509,9 @@ app.get("/api/wallet/requests", auth(["ADMIN"]), (req, res) => {
   else list = list.filter((t) => t.status === "pending");
   res.json(list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
 });
+
 app.get("/api/wallet/all", auth(["ADMIN"]), (req, res) => { res.json([...(loadDB().wallet_transactions || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))); });
+
 app.get("/api/wallet/stats", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   const all = db.wallet_transactions || [];
@@ -2300,6 +2523,7 @@ app.get("/api/wallet/stats", auth(["ADMIN"]), (req, res) => {
     pendingCount: all.filter((t) => t.status === "pending").length, pendingDepositCount: all.filter((t) => t.type === "deposit" && t.status === "pending").length, pendingWithdrawCount: all.filter((t) => t.type === "withdraw" && t.status === "pending").length,
   });
 });
+
 app.patch("/api/wallet/requests/:id/approve", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2315,6 +2539,7 @@ app.patch("/api/wallet/requests/:id/approve", auth(["ADMIN"]), async (req, res) 
     res.json({ ok: true, transaction: tx, newBalance: w.balance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.patch("/api/wallet/requests/:id/reject", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2329,6 +2554,7 @@ app.patch("/api/wallet/requests/:id/reject", auth(["ADMIN"]), async (req, res) =
     res.json({ ok: true, transaction: tx });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/wallet/pay", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2345,13 +2571,18 @@ app.post("/api/wallet/pay", auth(), async (req, res) => {
     res.status(201).json({ ok: true, transaction: tx, newBalance: w.balance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
-
 // ============================================================
 // CHAT SYSTEM
 // ============================================================
+// 🔧 OPT: cache message TTL check (48h) — tránh filter lặp lại
+let chatTTLRefreshAt = 0;
 function cleanupExpiredChatMessages(db) {
   if (!db || !Array.isArray(db.messages) || db.messages.length === 0) return false;
-  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const now = Date.now();
+  // chỉ refresh mỗi 60s
+  if (now - chatTTLRefreshAt < 60_000) return false;
+  chatTTLRefreshAt = now;
+  const cutoff = now - 48 * 60 * 60 * 1000;
   const initial = db.messages.length;
   db.messages = db.messages.filter((m) => {
     if (!m || !m.created_at) return false;
@@ -2418,10 +2649,12 @@ app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   });
   res.json(Object.values(convMap).sort((a, b) => new Date(b.last_time) - new Date(a.last_time)));
 });
+
 app.get("/api/chat/me", auth(), (req, res) => {
   const db = loadDB(); const myId = normalizeUserId(req.user.id);
   res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
 });
+
 app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   const db = loadDB(); const targetId = normalizeUserId(req.params.userId);
   const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -2430,6 +2663,7 @@ app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), async (req, res) 
   if (changed) await saveDBOrThrow(db);
   res.json(list);
 });
+
 app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   try {
     const db = loadDB(); const userId = normalizeUserId(req.params.userId);
@@ -2443,6 +2677,7 @@ app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => 
     res.json({ user: { id: user.id, name: user.name, email: user.email, phone: user.phone || "", avatar: user.avatar || "", points: user.points || 0, faculty: user.faculty || "", tier: user.points >= 1000 ? "Hạng Vàng" : user.points >= 500 ? "Hạng Bạc" : "Hạng Đồng" }, wallet: { balance: wallet?.balance || 0 }, ordersThisMonth: ordersThisMonth.length, currentOrder: activeOrders[0] ? { code: activeOrders[0].code, status: activeOrders[0].status, items: (activeOrders[0].items || []).map((it) => ({ name: it.name, qty: it.qty, price: it.price })), subtotal: activeOrders[0].subtotal || 0, discount: activeOrders[0].discount || 0, total: activeOrders[0].total || 0, payment: activeOrders[0].payment || "" } : null });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/chat/send", auth(), async (req, res) => {
   try {
     const db = loadDB(); ensureChatSchema(db);
@@ -2468,7 +2703,9 @@ app.post("/api/chat/send", auth(), async (req, res) => {
     res.status(201).json(message);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/chat/admin/conversations", auth(["ADMIN"]), (req, res) => { try { const db = loadDB(); ensureChatSchema(db); res.json(buildAdminConversations(db)); } catch (e) { res.status(500).json({ message: e.message }); } });
+
 app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); const targetId = normalizeUserId(req.params.userId);
@@ -2479,10 +2716,12 @@ app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) =>
     res.json(list);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/chat/admin/staff-status", auth(["ADMIN"]), (req, res) => {
   const db = loadDB(); ensureChatSchema(db);
   res.json({ global_enabled: db.settings?.chat_enabled_global !== false, staff: (db.users || []).filter((u) => u.role === "EMPLOYEE").map((u) => ({ id: u.id, name: u.name, email: u.email, chat_enabled: u.chat_enabled !== false })) });
 });
+
 app.patch("/api/chat/admin/staff/:id/chat", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); ensureChatSchema(db);
@@ -2494,9 +2733,11 @@ app.patch("/api/chat/admin/staff/:id/chat", auth(["ADMIN"]), async (req, res) =>
     res.json({ ok: true, staff: { id: u.id, name: u.name, chat_enabled: u.chat_enabled } });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.patch("/api/chat/admin/global-chat", auth(["ADMIN"]), async (req, res) => {
   try { const db = loadDB(); ensureChatSchema(db); db.settings.chat_enabled_global = req.body?.enabled !== false; await saveDBOrThrow(db); res.json({ ok: true, global_enabled: db.settings.chat_enabled_global }); } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/chat/admin/transfer-requests", auth(["ADMIN"]), (req, res) => {
   const db = loadDB(); ensureChatSchema(db);
   const status = String(req.query.status || "pending").toLowerCase();
@@ -2504,6 +2745,7 @@ app.get("/api/chat/admin/transfer-requests", auth(["ADMIN"]), (req, res) => {
   if (status !== "all") list = list.filter((r) => r.status === status);
   res.json(list.map((r) => { const customer = (db.users || []).find((u) => u.id === r.customer_id); const staff = (db.users || []).find((u) => u.id === r.from_staff_id); return { ...r, customer_name: customer?.name || `Khách #${r.customer_id}`, customer_email: customer?.email || "", from_staff_name: staff?.name || `NV #${r.from_staff_id}` }; }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 });
+
 app.patch("/api/chat/admin/transfer-requests/:id", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); ensureChatSchema(db);
@@ -2519,6 +2761,7 @@ app.patch("/api/chat/admin/transfer-requests/:id", auth(["ADMIN"]), async (req, 
     res.json({ ok: true, request: r });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/chat/transfer-request", auth(["EMPLOYEE", "ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); ensureChatSchema(db);
@@ -2535,6 +2778,7 @@ app.post("/api/chat/transfer-request", auth(["EMPLOYEE", "ADMIN"]), async (req, 
     res.status(201).json({ ok: true, request: record });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/chat/admin/takeover/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); ensureChatSchema(db);
@@ -2547,6 +2791,7 @@ app.post("/api/chat/admin/takeover/:userId", auth(["ADMIN"]), async (req, res) =
     res.json({ ok: true, assigned_to: "admin" });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/chat/admin/release/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); ensureChatSchema(db);
@@ -2556,6 +2801,7 @@ app.post("/api/chat/admin/release/:userId", auth(["ADMIN"]), async (req, res) =>
     res.json({ ok: true, assigned_to: null });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/chat/my-status", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
   const db = loadDB(); ensureChatSchema(db);
   res.json({ enabled: isStaffAllowedToChat(db, req.user.id), global_enabled: db.settings?.chat_enabled_global !== false, assigned_to_admin_users: getAdminAssignedUserIds(db) });
@@ -2573,6 +2819,7 @@ app.post("/api/notifications/:id/read", auth(), async (req, res) => { const db =
 app.post("/api/notifications/read-all", auth(), async (req, res) => { const db = loadDB(); (db.notifications || []).forEach((n) => { if (n.user_id === req.user.id) n.read = true; }); await saveDBOrThrow(db); res.json({ ok: true }); });
 
 app.get("/api/toppings", (req, res) => { const db = loadDB(); const { category } = req.query; let list = db.toppings || []; if (category) list = list.filter((t) => t.applies_to?.includes(category)); res.json(list); });
+
 app.get("/api/sizes", (req, res) => {
   const db = loadDB();
   const list = Array.isArray(db.sizes) && db.sizes.length > 0
@@ -2582,7 +2829,7 @@ app.get("/api/sizes", (req, res) => {
 });
 
 // ============================================================
-// STATS — có cache 10s
+// STATS — cache 10s
 // ============================================================
 const statsCache = { data: null, expiresAt: 0 };
 app.get("/api/stats", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
@@ -2608,6 +2855,7 @@ app.get("/api/stats", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
 });
 
 app.get("/api/inventory", auth(["ADMIN", "EMPLOYEE"]), (req, res) => { res.json(loadDB().inventory); });
+
 app.post("/api/inventory", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.inventory) db.inventory = [];
@@ -2618,6 +2866,7 @@ app.post("/api/inventory", auth(["ADMIN"]), async (req, res) => {
     db.inventory.push(item); await saveDBOrThrow(db); res.status(201).json(item);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.put("/api/inventory/:code", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); const item = db.inventory?.find((x) => x.code === req.params.code);
@@ -2625,7 +2874,9 @@ app.put("/api/inventory/:code", auth(["ADMIN"]), async (req, res) => {
     Object.assign(item, req.body); await saveDBOrThrow(db); res.json(item);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.delete("/api/inventory/:code", auth(["ADMIN"]), async (req, res) => { const db = loadDB(); db.inventory = (db.inventory || []).filter((x) => x.code !== req.params.code); await saveDBOrThrow(db); res.json({ ok: true }); });
+
 app.post("/api/inventory/:code/import", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB(); const item = db.inventory?.find((x) => x.code === req.params.code);
@@ -2641,6 +2892,7 @@ app.post("/api/inventory/:code/import", auth(["ADMIN", "EMPLOYEE"]), async (req,
     await saveDBOrThrow(db); res.status(201).json({ message: "Nhập kho thành công", item, record });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/inventory/imports", auth(["ADMIN", "EMPLOYEE"]), (req, res) => { res.json((loadDB().imports || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))); });
 
 // ============================================================
@@ -2673,6 +2925,7 @@ app.post("/api/attendance/checkin", auth(["EMPLOYEE", "ADMIN"]), async (req, res
     res.status(201).json({ message: "Check-in thành công", attendance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/attendance/checkout", auth(["EMPLOYEE", "ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); const today = todayStr(); const now = new Date(); const { hour, minute } = getVNTime(now); const nowMinutes = hour * 60 + minute;
@@ -2692,7 +2945,6 @@ app.post("/api/attendance/checkout", auth(["EMPLOYEE", "ADMIN"]), async (req, re
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// 🔧 FIX: hỗ trợ ?all=1 và ?shift=
 app.get("/api/attendance/today", auth(), (req, res) => {
   const db = loadDB();
   const list = (db.attendances || []).filter((a) => a.employee_id === req.user.id && a.date === todayStr());
@@ -2703,6 +2955,7 @@ app.get("/api/attendance/today", auth(), (req, res) => {
 });
 
 app.get("/api/attendance/me", auth(), (req, res) => { res.json((loadDB().attendances || []).filter((a) => a.employee_id === req.user.id).sort((a, b) => b.date.localeCompare(a.date))); });
+
 app.get("/api/attendance", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   const db = loadDB(); let list = db.attendances || [];
   const { from, to, employee_id, month } = req.query;
@@ -2710,17 +2963,22 @@ app.get("/api/attendance", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   if (employee_id) list = list.filter((a) => a.employee_id == employee_id);
   res.json(list.sort((a, b) => b.date.localeCompare(a.date)));
 });
+
 app.get("/api/attendance/employees", auth(["ADMIN"]), (req, res) => { res.json(loadDB().users.filter((u) => u.role === "EMPLOYEE").map((u) => ({ id: u.id, name: u.name, role: u.role }))); });
 
 app.get("/api/shifts/me", auth(), (req, res) => { const today = getLocalDateStr(); res.json((loadDB().shifts || []).filter((s) => s.employee_id === req.user.id && s.date >= today && s.status === "approved").sort((a, b) => a.date.localeCompare(b.date))); });
+
 app.get("/api/shifts/approved-today", auth(["EMPLOYEE", "ADMIN"]), (req, res) => { const today = getLocalDateStr(); res.json((loadDB().shifts || []).filter((s) => s.employee_id === req.user.id && s.date === today && s.status === "approved").sort((a, b) => { const order = { "Ca sáng": 1, "Ca chiều": 2 }; return (order[a.shift] || 99) - (order[b.shift] || 99); })); });
+
 app.get("/api/shifts/pending", auth(["ADMIN"]), (req, res) => { res.json((loadDB().shifts || []).filter((s) => s.status === "pending").sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id)); });
+
 app.get("/api/shifts", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   let list = loadDB().shifts || []; const { date, employee_id, shift, include_pending } = req.query;
   if (!include_pending) list = list.filter((s) => !s.status || s.status === "approved");
   if (date) list = list.filter((s) => s.date === date); if (employee_id) list = list.filter((s) => s.employee_id == employee_id); if (shift) list = list.filter((s) => s.shift === shift);
   res.json(list);
 });
+
 app.post("/api/shifts/register", auth(["EMPLOYEE", "ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.shifts) db.shifts = [];
@@ -2732,10 +2990,13 @@ app.post("/api/shifts/register", auth(["EMPLOYEE", "ADMIN"]), async (req, res) =
     await saveDBOrThrow(db); res.status(201).json({ created, skipped });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.patch("/api/shifts/:id/approve", auth(["ADMIN"]), async (req, res) => {
   try { const db = loadDB(); const s = (db.shifts || []).find((x) => x.id == req.params.id); if (!s) return res.status(404).json({ message: "Không tìm thấy" }); s.status = "approved"; s.approved_by = req.user.name; s.approved_at = new Date().toISOString(); await saveDBOrThrow(db); res.json({ ok: true, shift: s }); } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.delete("/api/shifts/:id/reject", auth(["ADMIN"]), async (req, res) => { const db = loadDB(); const before = (db.shifts || []).length; db.shifts = (db.shifts || []).filter((x) => x.id != req.params.id); await saveDBOrThrow(db); res.json({ ok: true, removed: before - db.shifts.length }); });
+
 app.post("/api/shifts/bulk", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.shifts) db.shifts = [];
@@ -2746,6 +3007,7 @@ app.post("/api/shifts/bulk", auth(["ADMIN"]), async (req, res) => {
     await saveDBOrThrow(db); res.status(201).json({ created, skipped });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/shifts", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.shifts) db.shifts = [];
@@ -2757,7 +3019,9 @@ app.post("/api/shifts", auth(["ADMIN"]), async (req, res) => {
     db.shifts.push(record); await saveDBOrThrow(db); res.status(201).json(record);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.put("/api/shifts/:id", auth(["ADMIN"]), async (req, res) => { const db = loadDB(); const s = (db.shifts || []).find((x) => x.id == req.params.id); if (!s) return res.status(404).json({ message: "Không tìm thấy" }); if (req.body.date) s.date = req.body.date; if (req.body.shift) s.shift = req.body.shift; if (req.body.note !== undefined) s.note = req.body.note; await saveDBOrThrow(db); res.json(s); });
+
 app.delete("/api/shifts/:id", auth(["ADMIN"]), async (req, res) => { const db = loadDB(); db.shifts = (db.shifts || []).filter((x) => x.id != req.params.id); await saveDBOrThrow(db); res.json({ ok: true }); });
 
 app.get("/api/shifts/current-staff", auth(), (req, res) => {
@@ -2774,11 +3038,13 @@ app.get("/api/tasks/me", auth(), (req, res) => {
   const db = loadDB(); if (!db.tasks) db.tasks = []; const today = getLocalDateStr();
   res.json(db.tasks.filter((t) => t.assigned_to === req.user.id && t.status !== "cancelled" && (!t.due_date || t.due_date >= today)).sort((a, b) => { if (a.status !== b.status) return a.status === "pending" ? -1 : 1; const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 }; const pa = pOrder[a.priority] ?? 2; const pb = pOrder[b.priority] ?? 2; if (pa !== pb) return pa - pb; return new Date(b.created_at) - new Date(a.created_at); }));
 });
+
 app.get("/api/tasks", auth(["ADMIN"]), (req, res) => {
   const db = loadDB(); if (!db.tasks) db.tasks = []; const { assigned_to, status } = req.query;
   let list = [...db.tasks]; if (assigned_to) list = list.filter((t) => t.assigned_to == assigned_to); if (status && status !== "all") list = list.filter((t) => t.status === status);
   res.json(list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 });
+
 app.post("/api/tasks", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.tasks) db.tasks = [];
@@ -2789,6 +3055,7 @@ app.post("/api/tasks", auth(["ADMIN"]), async (req, res) => {
     db.tasks.push(task); await saveDBOrThrow(db); res.status(201).json(task);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.put("/api/tasks/:id", auth(["ADMIN"]), async (req, res) => {
   const db = loadDB(); const t = (db.tasks || []).find((x) => x.id == req.params.id); if (!t) return res.status(404).json({ message: "Không tìm thấy task" });
   const { title, description, due_date, shift, priority, status } = req.body || {};
@@ -2797,7 +3064,9 @@ app.put("/api/tasks/:id", auth(["ADMIN"]), async (req, res) => {
   if (status !== undefined && ["pending", "done", "cancelled"].includes(status)) { t.status = status; if (status === "done") t.completed_at = new Date().toISOString(); }
   await saveDBOrThrow(db); res.json(t);
 });
+
 app.delete("/api/tasks/:id", auth(["ADMIN"]), async (req, res) => { const db = loadDB(); db.tasks = (db.tasks || []).filter((x) => x.id != req.params.id); await saveDBOrThrow(db); res.json({ ok: true }); });
+
 app.patch("/api/tasks/:id/complete", auth(), async (req, res) => {
   const db = loadDB(); const t = (db.tasks || []).find((x) => x.id == req.params.id); if (!t) return res.status(404).json({ message: "Không tìm thấy task" });
   if (t.assigned_to !== req.user.id && req.user.role !== "ADMIN") return res.status(403).json({ message: "Không có quyền" });
@@ -2823,19 +3092,23 @@ const ROLE_PERMISSIONS = {
   EMPLOYEE: ["menu.view", "menu.update", "orders.view", "orders.process", "orders.approve_green", "inventory.view", "inventory.import", "customers.view", "attendance.view"],
   CUSTOMER: [],
 };
+
 app.get("/api/permissions", auth(["ADMIN"]), (req, res) => { res.json({ all: ALL_PERMISSIONS, roles: ROLE_PERMISSIONS }); });
+
 app.get("/api/permissions/me", auth(), (req, res) => {
   const db = loadDB(); const u = db.users.find((x) => x.id === req.user.id);
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
   const rolePerms = ROLE_PERMISSIONS[u.role] || []; const customPerms = u.permissions || []; const allPerms = [...new Set([...rolePerms, ...customPerms])];
   res.json({ role: u.role, permissions: allPerms, default: rolePerms, custom: customPerms });
 });
+
 app.get("/api/permissions/:userId", auth(["ADMIN"]), (req, res) => {
   const db = loadDB(); const u = db.users.find((x) => x.id == req.params.userId);
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
   const rolePerms = ROLE_PERMISSIONS[u.role] || []; const customPerms = u.permissions || []; const allPerms = [...new Set([...rolePerms, ...customPerms])];
   res.json({ userId: u.id, userName: u.name, role: u.role, permissions: allPerms, default: rolePerms, custom: customPerms });
 });
+
 app.put("/api/permissions/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); const u = db.users.find((x) => x.id == req.params.userId);
@@ -2851,15 +3124,20 @@ app.put("/api/permissions/:userId", auth(["ADMIN"]), async (req, res) => {
 // ============================================================
 // SETTINGS / TIME SLOTS / BACKUP / REPORTS / HEALTH
 // ============================================================
-app.get("/api/settings", auth(), (req, res) => { const db = loadDB(); ensureChatSchema(db); const empty = { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" }; res.json({ ...empty, ...(db.settings || {}) }); });
+app.get("/api/settings", auth(), (req, res) => {
+  const db = loadDB(); ensureChatSchema(db);
+  const empty = { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" };
+  res.json({ ...empty, ...(db.settings || {}) });
+});
+
 app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); if (!db.settings) db.settings = {};
     const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "custom_programs", "rate_desc", "green_desc", "review_desc", "subsidy_desc"];
     const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
     if (!db.settings.rules_history) db.settings.rules_history = [];
-    
-    allowed.forEach(k => {
+
+    allowed.forEach((k) => {
       if (req.body[k] !== undefined) {
         if (ruleLabels[k] && Number(db.settings[k] || 0) !== Number(req.body[k])) {
           db.settings.rules_history.push({
@@ -2868,7 +3146,7 @@ app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
             rule: ruleLabels[k],
             old_value: db.settings[k] || 0,
             new_value: req.body[k],
-            changed_by: req.user.name || "Admin"
+            changed_by: req.user.name || "Admin",
           });
         }
         db.settings[k] = req.body[k];
@@ -2880,7 +3158,9 @@ app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+
 app.get("/api/time-slots", (req, res) => { try { const db = loadDB(); const slots = getTimeSlots(db); res.json([...slots].sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")))); } catch (e) { res.status(500).json({ message: e.message }); } });
+
 app.patch("/api/time-slots/:id", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB(); const slots = getTimeSlots(db); const slotId = req.params.id; const idx = slots.findIndex((s) => s.id === slotId);
@@ -2889,11 +3169,22 @@ app.patch("/api/time-slots/:id", auth(["ADMIN"]), async (req, res) => {
     db.settings.timeSlots = slots; await saveDBOrThrow(db); res.json({ ok: true, slot: slots[idx] });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.post("/api/time-slots/reset", auth(["ADMIN"]), async (req, res) => {
   try { const db = loadDB(); if (!db.settings) db.settings = {}; db.settings.timeSlots = [...DEFAULT_TIME_SLOTS]; await saveDBOrThrow(db); res.json({ ok: true, slots: db.settings.timeSlots }); } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/backup/export", auth(["ADMIN"]), (req, res) => { const db = loadDB(); res.json({ version: "1.0", exported_at: new Date().toISOString(), exported_by: req.user.name, data: db }); });
+
+// 🔴 FIX P2-20: whitelist collections — tránh user chèn collection lạ vào DB
+const ALLOWED_BACKUP_COLLECTIONS = [
+  "users", "sizes", "menu_items", "categories", "toppings", "orders", "inventory",
+  "notifications", "vouchers", "reviews", "messages", "attendances", "imports",
+  "price_history", "shifts", "wallets", "wallet_transactions", "tasks", "points_history",
+  "chat_transfer_requests", "eco_rewards", "orderReminders",
+  "points_config", "chat_conversations", "settings",
+];
+
 app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
   try {
     const { data } = req.body;
@@ -2902,13 +3193,21 @@ app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
     if (!Array.isArray(data.menu_items)) return res.status(400).json({ message: "Thiếu mảng menu_items" });
     for (const u of data.users) if (u.email) u.email = normalizeEmail(u.email);
     for (const u of data.users) if (!u.id || !u.email || !VALID_ROLES.includes(u.role)) return res.status(400).json({ message: "User không hợp lệ" });
-    if (mongoReady) await extractInlineImagesFromData(data, { log: (m) => console.log(m) });
-    await saveDBOrThrow(data);
+
+    // 🔴 FIX P2-20: chỉ import collection whitelist
+    const cleanData = {};
+    for (const k of ALLOWED_BACKUP_COLLECTIONS) {
+      if (data[k] !== undefined) cleanData[k] = data[k];
+    }
+
+    if (mongoReady) await extractInlineImagesFromData(cleanData, { log: (m) => console.log(m) });
+    await saveDBOrThrow(cleanData);
     invalidateMenuCache();
     invalidateStatsCache();
-    res.json({ message: "Import thành công!", stats: { users: data.users?.length || 0, menu_items: data.menu_items?.length || 0, orders: data.orders?.length || 0, inventory: data.inventory?.length || 0 } });
+    res.json({ message: "Import thành công!", stats: { users: cleanData.users?.length || 0, menu_items: cleanData.menu_items?.length || 0, orders: cleanData.orders?.length || 0, inventory: cleanData.inventory?.length || 0 } });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   res.json({
@@ -2919,6 +3218,7 @@ app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
     points_history: db.points_history?.length || 0, chat_transfer_requests: db.chat_transfer_requests?.length || 0, db_size_bytes: JSON.stringify(db).length,
   });
 });
+
 app.post("/api/backup/reset", auth(["ADMIN"]), async (req, res) => {
   try {
     const { confirm } = req.body; const RESET_TOKEN = process.env.RESET_CONFIRM_TOKEN || "RESET";
@@ -2953,7 +3253,6 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) =
     const db = loadDB();
     const FIELDS_MENU = ["name", "description"]; const FIELDS_CAT = ["name"]; const LANGS = ["en", "ja", "ko", "zh"];
     let menuTodo = []; let catTodo = [];
-    // 🔧 FIX: cũng retry nếu translation === source (dịch lỗi trước đó)
     for (const m of db.menu_items || []) {
       let need = false;
       for (const f of FIELDS_MENU) {
@@ -2986,15 +3285,54 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) =
   } catch (e) { console.error("BACKFILL ERROR:", e); res.status(500).json({ message: e.message }); }
 });
 
-const healthHandler = (_, res) => res.json({ ok: true, name: "Canteen VWA API (JSON)", version: BUILD_VERSION, timezone: VN_TIMEZONE, autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS }, chat: { ttlHours: 24, admin: true }, oauth: { google: GOOGLE_OAUTH_ENABLED, facebook: FACEBOOK_OAUTH_ENABLED }, mongo: mongoReady ? "connected" : "not-connected", vercel: !!process.env.VERCEL, timestamp: new Date().toISOString() });
-app.get("/", healthHandler); app.get("/api", healthHandler); app.get("/api/", healthHandler);
+// ============================================================
+// GLOBAL ERROR HANDLER — trả JSON thay vì HTML, không lộ stack
+// ============================================================
+app.use((err, req, res, next) => {
+  console.error("🔥 GLOBAL ERROR:", req.method, req.path, "→", err.message);
+  if (res.headersSent) return next(err);
+  const isProd = process.env.NODE_ENV === "production";
+  res.status(err.status || 500).json({
+    message: isProd ? "Đã xảy ra lỗi. Vui lòng thử lại." : err.message,
+    ...(isProd ? {} : { stack: err.stack }),
+  });
+});
 
+// 404 handler — trả JSON cho /api/*
+app.use((req, res) => {
+  if (req.path.startsWith("/api/")) return res.status(404).json({ message: "Endpoint không tồn tại", path: req.path });
+  res.status(404).send("Not Found");
+});
+
+// ============================================================
+// HEALTH CHECK
+// ============================================================
+const healthHandler = (_, res) =>
+  res.json({
+    ok: true,
+    name: "Canteen VWA API (JSON)",
+    version: BUILD_VERSION,
+    timezone: VN_TIMEZONE,
+    autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
+    chat: { ttlHours: 24, admin: true },
+    oauth: { google: GOOGLE_OAUTH_ENABLED, facebook: FACEBOOK_OAUTH_ENABLED },
+    mongo: mongoReady ? "connected" : "not-connected",
+    vercel: !!process.env.VERCEL,
+    timestamp: new Date().toISOString(),
+  });
+
+app.get("/", healthHandler);
+app.get("/api", healthHandler);
+app.get("/api/", healthHandler);
+
+// ============================================================
+// START
+// ============================================================
 const PORT = process.env.PORT || 3000;
 export default app;
 
 const IS_VERCEL = !!process.env.VERCEL;
 if (!IS_VERCEL) {
-  // 🔧 FIX: listen NGAY, init background
   app.listen(PORT, () => {
     console.log("🚀 API (JSON): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
     console.log("   💬 Chat TTL: 24h");
@@ -3003,4 +3341,6 @@ if (!IS_VERCEL) {
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
   console.log("🚀 API chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  // Không gọi app.listen trên Vercel — Vercel tự quản lý socket
+  getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }
