@@ -97,6 +97,8 @@ export default function OwnerMenu() {
   const [slotsLoading, setSlotsLoading] = useState(true);
   const [slotsError, setSlotsError] = useState("");
   const [openSlots, setOpenSlots] = useState(false);
+  const [expandedSession, setExpandedSession] = useState(null);
+  const [slotModal, setSlotModal] = useState(null);
   const [togglingSlotId, setTogglingSlotId] = useState(null);
   const [confirmSlotReset, setConfirmSlotReset] = useState(false);
   const [resettingSlots, setResettingSlots] = useState(false);
@@ -826,24 +828,24 @@ export default function OwnerMenu() {
 
               <button
                 type="button"
-                onClick={() => setConfirmSlotReset(true)}
-                disabled={slotsLoading || resettingSlots}
+                onClick={() => setSlotModal({ manage: true })}
                 style={{
                   padding: "8px 12px",
-                  background: "var(--card-bg, #fff)",
-                  border: "1px solid #f59e0b",
-                  color: "#f59e0b",
+                  background: "#2634d5",
+                  border: "1px solid #2634d5",
+                  color: "#fff",
                   borderRadius: 8,
-                  cursor:
-                    slotsLoading || resettingSlots ? "not-allowed" : "pointer",
+                  cursor: "pointer",
                   fontSize: 12,
                   fontWeight: 600,
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
+                  position: "relative",
+                  zIndex: 99
                 }}
               >
-                <RotateCcw size={13} /> Reset
+                <Edit size={13} /> Chỉnh sửa
               </button>
 
             <ChevronDown
@@ -925,10 +927,10 @@ export default function OwnerMenu() {
               const enabledCount = group.slots.filter((s) => s.enabled).length;
 
               return (
-                <div
+                <div onClick={() => setExpandedSession(expandedSession === group.id ? null : group.id)}
                   key={group.id}
                   style={{
-                    background: "var(--bg-tertiary, #f8fafc)",
+                    cursor: "pointer", background: "var(--bg-tertiary, #f8fafc)",
                     border: "1px solid var(--border-color, #eef2f7)",
                     borderRadius: 10,
                     padding: 14,
@@ -981,7 +983,7 @@ export default function OwnerMenu() {
 
                   <div
                     style={{
-                      display: "grid",
+                      display: expandedSession === group.id ? "grid" : "none",
                       gridTemplateColumns:
                         "repeat(auto-fill, minmax(150px, 1fr))",
                       gap: 8,
@@ -2062,6 +2064,61 @@ export default function OwnerMenu() {
         onConfirm={resetSlots}
         onClose={() => !resettingSlots && setConfirmSlotReset(false)}
       />
+    
+      {slotModal && slotModal.manage && (
+        <Modal onClose={() => setSlotModal(null)} maxWidth={600}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h3 style={{ margin: 0 }}>Quản lý khung giờ</h3>
+            <button onClick={() => setSlotModal(null)} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light)" }}><X size={20} /></button>
+          </div>
+          <div style={{ background: "var(--bg-tertiary)", padding: 16, borderRadius: 10, marginBottom: 20 }}>
+            <h4 style={{ margin: "0 0 12px 0", fontSize: 14 }}>Thêm khung giờ mới</h4>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              const start = f.get("start"); const end = f.get("end");
+              if (start >= end) return toast("Giờ kết thúc phải lớn hơn giờ bắt đầu", "error");
+              try {
+                await api.timeSlots.create({ start, end });
+                toast("Đã thêm khung giờ", "success");
+                e.target.reset(); loadSlots();
+              } catch (err) { toast(err.message, "error"); }
+            }} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <input name="start" type="time" required defaultValue="07:00" style={{ ...inputStyle, width: "auto", margin: 0 }} />
+              <span>đến</span>
+              <input name="end" type="time" required defaultValue="07:30" style={{ ...inputStyle, width: "auto", margin: 0 }} />
+              <button type="submit" style={{ padding: "10px 16px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><Plus size={16} /> Thêm</button>
+            </form>
+          </div>
+          <h4 style={{ margin: "0 0 12px 0", fontSize: 14 }}>Danh sách khung giờ hiện tại</h4>
+          <div style={{ maxHeight: "40vh", overflowY: "auto", paddingRight: 8 }}>
+            {groupedSlots.map(group => (
+              <div key={group.id} style={{ marginBottom: 16 }}>
+                <b style={{ fontSize: 13, color: "var(--text-muted)" }}>{group.label}</b>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8, marginTop: 8 }}>
+                  {group.slots.map(slot => (
+                    <div key={slot.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--card-bg)", border: "1px solid var(--border-color)", padding: "6px 10px", borderRadius: 8 }}>
+                      <span style={{ fontSize: 13, fontFamily: "monospace" }}>{slot.id}</span>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button type="button" onClick={() => {
+                          const ns = window.prompt("Nhập giờ bắt đầu mới (HH:MM):", slot.start);
+                          const ne = window.prompt("Nhập giờ kết thúc mới (HH:MM):", slot.end);
+                          if (ns && ne) {
+                            if (ns >= ne) return toast("Giờ kết thúc phải lớn hơn giờ bắt đầu", "error");
+                            api.timeSlots.update(slot.id, { start: ns, end: ne }).then(() => { toast("Đã sửa khung giờ", "success"); loadSlots(); }).catch(err => toast(err.message, "error"));
+                          }
+                        }} style={{ background: "transparent", border: 0, color: "#f59e0b", cursor: "pointer", padding: 2 }} title="Sửa"><Edit size={14} /></button>
+                        <button type="button" onClick={() => { if(window.confirm("Xóa khung giờ này?")) api.timeSlots.remove(slot.id).then(() => { toast("Đã xóa", "success"); loadSlots(); }).catch(err => toast(err.message, "error")) }} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 2 }} title="Xóa"><Trash2 size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
     </>
   );
 }

@@ -3679,6 +3679,58 @@ const healthHandler = (_, res) =>
     timestamp: new Date().toISOString(),
   });
 
+
+// ============================================================
+// API THÊM / SỬA / XÓA KHUNG GIỜ
+// ============================================================
+app.post("/api/time-slots", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const slots = getTimeSlots(db);
+    const { start, end } = req.body;
+    if (!start || !end) return res.status(400).json({ message: "Thiếu giờ bắt đầu/kết thúc" });
+    const id = `${start}-${end}`;
+    if (slots.find(x => x.id === id)) return res.status(400).json({ message: "Khung giờ đã tồn tại" });
+    
+    slots.push({ id, start, end, enabled: true, note: "" });
+    db.settings.timeSlots = slots;
+    saveDB(db);
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.patch("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const slots = getTimeSlots(db);
+    const idx = slots.findIndex(s => s.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message: "Không tìm thấy khung giờ" });
+    
+    const { start, end, enabled } = req.body || {};
+    if (start && end) {
+      slots[idx].start = start;
+      slots[idx].end = end;
+      slots[idx].id = `${start}-${end}`;
+    }
+    if (enabled !== undefined) slots[idx].enabled = !!enabled;
+    
+    db.settings.timeSlots = slots;
+    saveDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.delete("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    let slots = getTimeSlots(db);
+    slots = slots.filter(s => s.id !== req.params.id);
+    db.settings.timeSlots = slots;
+    saveDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 app.get("/", healthHandler);
 app.get("/api", healthHandler);
 app.get("/api/", healthHandler);
