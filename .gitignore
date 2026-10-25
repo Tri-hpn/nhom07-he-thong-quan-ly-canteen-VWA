@@ -130,3 +130,4 @@ build/
 .DS_Store
 Thumbs.db
 .vscode/
+canteen-db.json
