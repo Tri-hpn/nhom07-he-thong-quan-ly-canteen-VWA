@@ -32,14 +32,15 @@ export function setToken(t) {
 export function clearToken() { setToken(null); }
 export function resetAuthExpiredFlag() { isAuthExpiredDispatched = false; }
 
-const authChannel = typeof window !== "undefined" && "BroadcastChannel" in window ? new BroadcastChannel("vwa_auth") : null;
-function broadcastAuthEvent(type) { try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {} }
+// 🔴 ĐÃ TẮT: BroadcastChannel cross-tab auth.
+//    Mỗi tab tự quản lý session riêng — logout/login 1 tab không ảnh hưởng tab khác.
+//    Nếu sau này cần "logout all devices", cần thêm endpoint riêng.
 
 function dispatchAuthExpired() {
   if (isAuthExpiredDispatched) return;
   isAuthExpiredDispatched = true;
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-  broadcastAuthEvent("logout");
+  // 🔴 BỎ broadcastAuthEvent("logout") — không kick tab khác
 }
 
 async function tryRefresh() {
@@ -112,20 +113,20 @@ export const api = {
   _base: BASE,
   health: () => req(""),
   login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }).then((r) => {
-    if (r.token) setToken(r.token); resetAuthExpiredFlag(); broadcastAuthEvent("login"); return r;
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
   }),
   register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then((r) => {
-    if (r.token) setToken(r.token); resetAuthExpiredFlag(); broadcastAuthEvent("login"); return r;
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
   }),
   logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => {
-    clearToken(); broadcastAuthEvent("logout");
+    clearToken();
   }),
   me: () => req("/auth/me"),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {
     callback: (provider, code, redirectUri) => req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }).then((r) => {
-      if (r.token) setToken(r.token); resetAuthExpiredFlag(); broadcastAuthEvent("login"); return r;
+      if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
     }),
   },
   stats: () => req("/stats"),
@@ -321,15 +322,4 @@ export const api = {
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },
 };
 
-if (typeof window !== "undefined" && authChannel) {
-  authChannel.onmessage = (e) => {
-    const type = e.data?.type;
-    if (type === "logout" || type === "logout-all") {
-      clearToken();
-      try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-    } else if (type === "login") {
-      try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: true } })); } catch {}
-    }
-  };
-}
 export default api;
