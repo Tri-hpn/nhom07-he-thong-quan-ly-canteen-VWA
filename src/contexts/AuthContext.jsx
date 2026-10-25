@@ -1,6 +1,14 @@
 // src/contexts/AuthContext.jsx
-import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { api, setToken, getToken, clearToken } from "../api";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
+import { api, clearToken } from "../api";
 
 const AuthContext = createContext(null);
 
@@ -10,13 +18,20 @@ export function AuthProvider({ children }) {
   const meReqIdRef = useRef(0);
   const mountedRef = useRef(true);
 
-  const mustChangePassword = useMemo(() => !!user?.must_change_password, [user]);
+  const mustChangePassword = useMemo(
+    () => !!user?.must_change_password,
+    [user]
+  );
 
   const setUser = useCallback((updater) => {
-    setUserState((prev) => (typeof updater === "function" ? updater(prev) : updater));
+    setUserState((prev) =>
+      typeof updater === "function" ? updater(prev) : updater
+    );
   }, []);
 
-  const refreshUser = useCallback(async () => {
+  // ── restoreSession: F5 / cross-tab login → luôn gọi /auth/me
+  // (server đọc HttpOnly cookie, không cần token FE)
+  const restoreSession = useCallback(async () => {
     const myReqId = ++meReqIdRef.current;
     try {
       const me = await api.me();
@@ -25,14 +40,16 @@ export function AuthProvider({ children }) {
       return me;
     } catch (e) {
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
-      // 🔴 Bỏ qua lỗi 401 và 503 khi refresh ngầm
       if (e.status === 401) {
         setUserState(null);
         clearToken();
       }
+      // 503 (Vercel cold start) → giữ session
       return null;
     }
   }, []);
+
+  const refreshUser = restoreSession; // alias backward-compat
 
   const login = useCallback(async (email, password) => {
     const res = await api.login(email, password);
@@ -43,7 +60,9 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     meReqIdRef.current++;
-    try { await api.logout(); } catch {}
+    try {
+      await api.logout();
+    } catch {}
     clearToken();
     setUserState(null);
     try {
@@ -54,47 +73,39 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
+  // ── Bootstrap: F5 → restoreSession (không check token FE)
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
-
     (async () => {
-      const token = getToken();
-      if (!token) {
-        if (!cancelled) { setUserState(null); setLoading(false); }
-        return;
-      }
-      try {
-        const myReqId = ++meReqIdRef.current;
-        const me = await api.me();
-        if (!cancelled && myReqId === meReqIdRef.current) setUserState(me);
-      } catch (e) {
-        // 🔴 [QUAN TRỌNG] Nếu lỗi 401 (hết hạn token) thì mới xóa. 
-        // Nếu 503 (Vercel đang khởi động) thì GIỮ NGUYÊN session.
-        if (!cancelled && e.status === 401) {
-          setUserState(null);
-          clearToken();
-        } else if (e.status === 503) {
-          console.warn("[AuthContext] Server đang khởi động, giữ nguyên session.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      await restoreSession();
+      if (!cancelled) setLoading(false);
     })();
-
     return () => {
       cancelled = true;
       mountedRef.current = false;
     };
-  }, []);
+  }, [restoreSession]);
 
+  // ── Cross-tab: nghe window events do api.js dispatch
   useEffect(() => {
     const onTokenChanged = (e) => {
-      if (e?.detail?.hasToken) refreshUser();
-      else { meReqIdRef.current++; setUserState(null); }
+      if (e?.detail?.hasToken) restoreSession();
+      else {
+        meReqIdRef.current++;
+        setUserState(null);
+      }
     };
-    const onAuthExpired = () => { meReqIdRef.current++; setUserState(null); clearToken(); };
-    const onLogout = () => { meReqIdRef.current++; setUserState(null); clearToken(); };
+    const onAuthExpired = () => {
+      meReqIdRef.current++;
+      setUserState(null);
+      clearToken();
+    };
+    const onLogout = () => {
+      meReqIdRef.current++;
+      setUserState(null);
+      clearToken();
+    };
 
     window.addEventListener("token-changed", onTokenChanged);
     window.addEventListener("auth-expired", onAuthExpired);
@@ -104,11 +115,29 @@ export function AuthProvider({ children }) {
       window.removeEventListener("auth-expired", onAuthExpired);
       window.removeEventListener("logout", onLogout);
     };
-  }, [refreshUser]);
+  }, [restoreSession]);
 
   const value = useMemo(
-    () => ({ user, loading, mustChangePassword, login, logout, setUser, refreshUser }),
-    [user, loading, mustChangePassword, login, logout, setUser, refreshUser]
+    () => ({
+      user,
+      loading,
+      mustChangePassword,
+      login,
+      logout,
+      setUser,
+      refreshUser,
+      restoreSession,
+    }),
+    [
+      user,
+      loading,
+      mustChangePassword,
+      login,
+      logout,
+      setUser,
+      refreshUser,
+      restoreSession,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

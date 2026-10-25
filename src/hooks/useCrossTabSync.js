@@ -1,17 +1,21 @@
+// src/hooks/useCrossTabSync.js
 // ============================================================
-// useCrossTabSync.js — Sync state giữa các tab qua localStorage
-// ============================================================
-// V3 (2026-10):
-//   - 🔧 FIX: bỏ side-effect localStorage khỏi updater của setValue
-//     (StrictMode gọi updater 2 lần → ghi 2 lần). Chuyển sang
-//     useEffect persist, có skip flag cho lần mount + storage event.
-//   - Giữ guard SSR + defaultValue ổn định qua ref.
+// Sync state giữa các tab qua BroadcastChannel + localStorage fallback
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
 const isBrowser =
   typeof window !== "undefined" && typeof localStorage !== "undefined";
+
+const CHANNEL_PREFIX = "vwa_crosstab:";
+const tabId = (() => {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return "tab_" + Math.random().toString(36).slice(2);
+  }
+})();
 
 function readInitial(key, fallback) {
   if (!isBrowser) return fallback;
@@ -24,24 +28,45 @@ function readInitial(key, fallback) {
 }
 
 export function useCrossTabSync(key, defaultValue = null) {
-  // Giữ defaultValue ổn định qua ref — tránh effect re-run khi caller
-  // truyền `[]` hoặc `{}` literal mỗi render.
   const defaultRef = useRef(defaultValue);
   useEffect(() => {
     defaultRef.current = defaultValue;
   }, [defaultValue]);
 
-  const [value, setValue] = useState(() => readInitial(key, defaultRef.current));
+  const [value, setValue] = useState(() =>
+    readInitial(key, defaultRef.current)
+  );
 
-  // Cờ: bỏ qua persist ngay sau mount (value đã có trong localStorage)
   const didMountRef = useRef(false);
-  // Cờ: bỏ qua persist ngay sau khi nhận storage event (tránh echo)
   const skipPersistRef = useRef(false);
+  const channelRef = useRef(null);
 
-  // Sync khi tab khác đổi localStorage
+  // BroadcastChannel — realtime
+  useEffect(() => {
+    if (!isBrowser || !("BroadcastChannel" in window)) return;
+    try {
+      const ch = new BroadcastChannel(CHANNEL_PREFIX + key);
+      ch.onmessage = (e) => {
+        const msg = e.data || {};
+        if (msg.tabId === tabId) return;
+        skipPersistRef.current = true;
+        setValue(msg.value === undefined ? defaultRef.current : msg.value);
+      };
+      channelRef.current = ch;
+      return () => {
+        try {
+          ch.close();
+        } catch {}
+        channelRef.current = null;
+      };
+    } catch {
+      /* no-op */
+    }
+  }, [key]);
+
+  // localStorage event — fallback Safari cũ / tab không subscribe
   useEffect(() => {
     if (!isBrowser) return;
-
     const handler = (e) => {
       if (e.key !== key) return;
       let next;
@@ -60,11 +85,19 @@ export function useCrossTabSync(key, defaultValue = null) {
   // Reset khi auth-expired / logout
   useEffect(() => {
     if (!isBrowser) return;
-
     const reset = () => {
-      try { localStorage.removeItem(key); } catch {}
-      skipPersistRef.current = true; // không cần ghi lại default
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+      skipPersistRef.current = true;
       setValue(defaultRef.current);
+      try {
+        channelRef.current?.postMessage({
+          type: "update",
+          value: defaultRef.current,
+          tabId,
+        });
+      } catch {}
     };
     window.addEventListener("auth-expired", reset);
     window.addEventListener("logout", reset);
@@ -74,27 +107,26 @@ export function useCrossTabSync(key, defaultValue = null) {
     };
   }, [key]);
 
-  // 🔧 FIX: persist bằng useEffect — không nằm trong updater
+  // Persist + broadcast khi value đổi
   useEffect(() => {
     if (!isBrowser) return;
-
-    // Lần mount đầu: value đã đọc từ localStorage rồi → skip
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
-    // Vừa nhận storage event / reset → skip để tránh echo
     if (skipPersistRef.current) {
       skipPersistRef.current = false;
       return;
     }
-
     try {
       if (value === null || value === undefined) {
         localStorage.removeItem(key);
       } else {
         localStorage.setItem(key, JSON.stringify(value));
       }
+      try {
+        channelRef.current?.postMessage({ type: "update", value, tabId });
+      } catch {}
     } catch (err) {
       console.error("[useCrossTabSync] " + key + ":", err);
     }

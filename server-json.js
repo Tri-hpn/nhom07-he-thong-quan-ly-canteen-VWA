@@ -48,6 +48,10 @@ import {
   issueTokens,
   clearAuthCookies,
   verifyAnyToken,
+  verifySession,
+  revokeSession,
+  revokeAllSessions,
+  verifyRefreshAndMatch,
   COOKIE_NAMES,
 } from "./middleware/cookieAuth.js";
 import {
@@ -930,9 +934,9 @@ const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_
 // ============================================================
 function auth(roles = []) {
   return async (req, res, next) => {
-    // 🔴 [FIX] Chờ Mongo khởi động tối đa 8s (Vercel cold start)
+    // Vercel cold start
     if (MONGO_URI && !mongoReady) {
-      const deadline = Date.now() + 5000; 
+      const deadline = Date.now() + 5000;
       while (!mongoReady && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 200));
       }
@@ -944,7 +948,7 @@ function auth(roles = []) {
       }
     }
 
-    // 🔴 [FIX] SSE — đọc token từ query (EventSource không gửi Header được)
+    // SSE: token qua query
     if (req.query.token && !req.headers.authorization) {
       req.headers.authorization = `Bearer ${req.query.token}`;
     }
@@ -958,14 +962,31 @@ function auth(roles = []) {
     }
 
     const payload = v.payload;
+
+    // ─── SESSION REVOKED CHECK ───
+    if (payload.sid) {
+      const sv = await verifySession(payload.sid);
+      if (!sv.ok) {
+        clearAuthCookies(res, req);
+        return res.status(401).json({
+          message: "Phiên đã hết hạn hoặc bị thu hồi. Vui lòng đăng nhập lại.",
+          code: "SESSION_REVOKED",
+        });
+      }
+    }
+
     const db = loadDB();
     const currentUser = findByIdOrMongo(db.users, payload.id);
-    if (!currentUser) return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
-    if (currentUser.status === "Bị khóa") return res.status(403).json({ message: "Tài khoản đã bị khóa" });
-    if (roles.length && !roles.includes(currentUser.role)) return res.status(403).json({ message: "Không có quyền" });
+    if (!currentUser)
+      return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
+    if (currentUser.status === "Bị khóa")
+      return res.status(403).json({ message: "Tài khoản đã bị khóa" });
+    if (roles.length && !roles.includes(currentUser.role))
+      return res.status(403).json({ message: "Không có quyền" });
 
     req.user = {
       ...payload,
+      sid: payload.sid || null,
       role: currentUser.role,
       name: currentUser.name,
       email: currentUser.email,
@@ -984,22 +1005,25 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     const emailNorm = normalizeEmail(email);
-    if (!emailNorm || !password) return res.status(400).json({ message: "Thiếu email/mật khẩu" });
+    if (!emailNorm || !password)
+      return res.status(400).json({ message: "Thiếu email/mật khẩu" });
 
     const db = loadDB();
     const user = db.users.find((u) => normalizeEmail(u.email) === emailNorm);
-    if (!user) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
+    if (!user)
+      return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
 
     const ok = bcrypt.compareSync(password, user.password);
-    if (!ok) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
+    if (!ok)
+      return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
 
     const filled = autoFillFromCode(db, user);
     if (filled) await saveDBOrThrow(db);
 
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
+    // Không trả token trong body — dùng HttpOnly Cookie
+    await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
 
     res.json({
-      token: accessToken,
       user: {
         id: user.id,
         email: user.email,
@@ -1009,7 +1033,9 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
         must_change_password: !!user.must_change_password,
       },
     });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -1040,35 +1066,77 @@ app.post("/api/auth/register", async (req, res) => {
     db.users.push(user);
     await saveDBOrThrow(db);
 
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-    res.status(201).json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, student_code: user.student_code || "", major_name: user.major_name || "", faculty: user.faculty || "", year_in: user.year_in || null } });
+       await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.status(201).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        student_code: user.student_code || "",
+        major_name: user.major_name || "",
+        faculty: user.faculty || "",
+        year_in: user.year_in || null,
+      },
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.post("/api/auth/refresh", async (req, res) => {
   try {
-    const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "refresh");
-    if (!v.ok) {
-      return res.status(401).json({ ok: false, message: "Refresh token không hợp lệ hoặc đã hết hạn", code: v.error });
+    const r = await verifyRefreshAndMatch(req, EFFECTIVE_JWT_SECRET);
+    if (!r.ok) {
+      clearAuthCookies(res, req);
+      return res.status(401).json({
+        ok: false,
+        message: "Refresh token không hợp lệ hoặc đã bị thu hồi",
+        code: r.error,
+      });
     }
-    const db = loadDB();
-    const currentUser = findByIdOrMongo(db.users, v.payload.id);
-    if (!currentUser) return res.status(401).json({ ok: false, message: "Tài khoản không tồn tại" });
-    if (currentUser.status === "Bị khóa") return res.status(403).json({ ok: false, message: "Tài khoản bị khóa" });
 
-    const { accessToken } = issueTokens(res, currentUser, EFFECTIVE_JWT_SECRET);
-    res.json({
-      ok: true, token: accessToken,
-      user: { id: currentUser.id, email: currentUser.email, name: currentUser.name, role: currentUser.role },
+    const db = loadDB();
+    const currentUser = findByIdOrMongo(db.users, r.payload.id);
+    if (!currentUser) {
+      clearAuthCookies(res, req);
+      return res.status(401).json({ ok: false, message: "Tài khoản không tồn tại" });
+    }
+    if (currentUser.status === "Bị khóa") {
+      clearAuthCookies(res, req);
+      return res.status(403).json({ ok: false, message: "Tài khoản bị khóa" });
+    }
+
+    // Rotate: revoke old session + issue new
+    await issueTokens(res, currentUser, EFFECTIVE_JWT_SECRET, {
+      req,
+      rotateFromJti: r.jti,
     });
-  } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
+
+    res.json({
+      ok: true,
+      user: {
+        id: currentUser.id,
+        email: currentUser.email,
+        name: currentUser.name,
+        role: currentUser.role,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e.message });
+  }
 });
 
-app.post("/api/auth/logout", (req, res) => {
+app.post("/api/auth/logout", async (req, res) => {
   try {
-    clearAuthCookies(res);
+    // Revoke refresh session nếu verify được
+    const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "refresh");
+    if (v.ok && v.payload?.jti) {
+      await revokeSession(v.payload.jti);
+    }
+    clearAuthCookies(res, req);
     res.json({ ok: true, message: "Đã đăng xuất" });
-  } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e.message });
+  }
 });
 
 app.put("/api/auth/password", auth(), async (req, res) => {
@@ -1081,10 +1149,15 @@ app.put("/api/auth/password", auth(), async (req, res) => {
     if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
     const ok = bcrypt.compareSync(currentPassword, u.password);
     if (!ok) return res.status(401).json({ message: "Mật khẩu hiện tại không đúng" });
-    u.password = bcrypt.hashSync(newPassword, 10);
+        u.password = bcrypt.hashSync(newPassword, 10);
     u.must_change_password = false;
     u.password_changed_at = new Date().toISOString();
     await saveDBOrThrow(db);
+
+    // Revoke toàn bộ session khác (giữ session hiện tại)
+    const currentJti = req.user?.sid || null;
+    await revokeAllSessions(u.id, currentJti);
+
     res.json({ ok: true, message: "Đổi mật khẩu thành công", must_change_password: false });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -1175,8 +1248,17 @@ app.post("/api/auth/google/callback", async (req, res) => {
       user.avatar = profile.picture;
       await saveDBOrThrow(db);
     }
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-    res.json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
+        await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+      },
+    });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Google: " + e.message }); }
 });
 
@@ -1204,8 +1286,17 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
       user.avatar = profile.picture.data.url;
       await saveDBOrThrow(db);
     }
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-    res.json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
+    await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+      },
+    });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Facebook: " + e.message }); }
 });
 
@@ -1264,9 +1355,24 @@ async function microsoftCallbackHandler(req, res) {
       await saveDBOrThrow(db);
       isNewUser = true;
     }
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-
-    res.json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password, student_code: user.student_code || "", teacher_code: user.teacher_code || "", major_name: user.major_name || "", faculty: user.faculty || "", year_in: user.year_in || null, is_new_user: isNewUser, auto_filled: autoFilled } });
+        await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+        student_code: user.student_code || "",
+        teacher_code: user.teacher_code || "",
+        major_name: user.major_name || "",
+        faculty: user.faculty || "",
+        year_in: user.year_in || null,
+        is_new_user: isNewUser,
+        auto_filled: autoFilled,
+      },
+    });
   } catch (e) {
     res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message });
   }
