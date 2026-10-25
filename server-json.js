@@ -458,8 +458,6 @@ function buildSeedData() {
 
 async function ensureIndexes(db) {
   try {
-    // 🔴 FIX: Đảm bảo KHÔNG có unique index trên sessions.user_id
-    // (nếu có unique index → insert session thứ 2 sẽ fail → user bị out)
     try {
       const sessColl = db.collection("sessions");
       const sessIndexes = await sessColl.indexes().catch(() => []);
@@ -469,7 +467,6 @@ async function ensureIndexes(db) {
           await sessColl.dropIndex(idx.name).catch(() => {});
         }
       }
-      // Tạo index không unique cho query nhanh
       await sessColl.createIndex({ jti: 1 }, { unique: true }).catch(() => {});
       await sessColl.createIndex({ user_id: 1 }).catch(() => {});
       await sessColl.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }).catch(() => {});
@@ -3049,118 +3046,61 @@ function normalizeUserId(id) { if (id === undefined || id === null) return null;
 app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
     if (mongoReady && mongoose.connection.db) {
       const coll = mongoose.connection.db.collection("messages");
       const pipeline = [
         { $match: { created_at: { $gte: cutoff } } },
         { $sort: { created_at: -1 } },
-        {
-          $group: {
-            _id: "$user_id",
-            user_name: { $first: "$user_name" },
-            last_message: { $first: "$content" },
-            last_time: { $first: "$created_at" },
-            unread: {
-              $sum: {
-                $cond: [{ $and: [{ $eq: ["$from", "customer"] }, { $eq: ["$read", false] }] }, 1, 0],
-              },
-            },
-          },
-        },
+        { $group: { _id: "$user_id", user_name: { $first: "$user_name" }, last_message: { $first: "$content" }, last_time: { $first: "$created_at" }, unread: { $sum: { $cond: [{ $and: [{ $eq: ["$from", "customer"] }, { $eq: ["$read", false] }] }, 1, 0] } } } },
         { $sort: { last_time: -1 } },
       ];
       const docs = await coll.aggregate(pipeline).toArray();
-      return res.json(
-        docs.map((d) => ({
-          user_id: d._id,
-          user_name: d.user_name || "Khách",
-          last_message: d.last_message,
-          last_time: d.last_time,
-          unread: d.unread || 0,
-        }))
-      );
+      return res.json(docs.map((d) => ({ user_id: d._id, user_name: d.user_name || "Khách", last_message: d.last_message, last_time: d.last_time, unread: d.unread || 0 })));
     }
-    const db = loadDB();
-    ensureChatSchema(db);
-    const convMap = {};
+    const db = loadDB(); ensureChatSchema(db); const convMap = {};
     (db.messages || []).forEach((m) => {
       if (!isRecentMessage(m)) return;
-      const uid = normalizeUserId(m.user_id);
-      if (uid === null) return;
-      if (!convMap[uid])
-        convMap[uid] = { user_id: uid, user_name: m.user_name || "Khách", last_message: m.content, last_time: m.created_at, unread: 0 };
+      const uid = normalizeUserId(m.user_id); if (uid === null) return;
+      if (!convMap[uid]) convMap[uid] = { user_id: uid, user_name: m.user_name || "Khách", last_message: m.content, last_time: m.created_at, unread: 0 };
       if (m.from === "customer" && !m.read) convMap[uid].unread += 1;
-      if (new Date(m.created_at) > new Date(convMap[uid].last_time)) {
-        convMap[uid].last_message = m.content;
-        convMap[uid].last_time = m.created_at;
-        convMap[uid].user_name = m.user_name || convMap[uid].user_name;
-      }
+      if (new Date(m.created_at) > new Date(convMap[uid].last_time)) { convMap[uid].last_message = m.content; convMap[uid].last_time = m.created_at; convMap[uid].user_name = m.user_name || convMap[uid].user_name; }
     });
     res.json(Object.values(convMap).sort((a, b) => new Date(b.last_time) - new Date(a.last_time)));
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 
 app.get("/api/chat/me", auth(), async (req, res) => {
   try {
     const myId = normalizeUserId(req.user.id);
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-
     if (mongoReady && mongoose.connection.db) {
       const coll = mongoose.connection.db.collection("messages");
-      const list = await coll
-        .find({ user_id: myId, created_at: { $gte: cutoff } })
-        .sort({ created_at: 1 })
-        .toArray();
+      const list = await coll.find({ user_id: myId, created_at: { $gte: cutoff } }).sort({ created_at: 1 }).toArray();
       return res.json(list.map(({ _id, ...rest }) => rest));
     }
-    // Fallback dbCache
     const db = loadDB();
-    res.json(
-      (db.messages || [])
-        .filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m))
-        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-    );
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
+    res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const targetId = normalizeUserId(req.params.userId);
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-
     if (mongoReady && mongoose.connection.db) {
       const coll = mongoose.connection.db.collection("messages");
-      const list = await coll
-        .find({ user_id: targetId, created_at: { $gte: cutoff } })
-        .sort({ created_at: 1 })
-        .toArray();
-      await coll.updateMany(
-        { user_id: targetId, from: "customer", read: false },
-        { $set: { read: true } }
-      );
+      const list = await coll.find({ user_id: targetId, created_at: { $gte: cutoff } }).sort({ created_at: 1 }).toArray();
+      await coll.updateMany({ user_id: targetId, from: "customer", read: false }, { $set: { read: true } });
       return res.json(list.map(({ _id, ...rest }) => rest));
     }
     const db = loadDB();
-    const list = (db.messages || [])
-      .filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m))
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     let changed = false;
-    (db.messages || []).forEach((m) => {
-      if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) {
-        m.read = true;
-        changed = true;
-      }
-    });
+    (db.messages || []).forEach((m) => { if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) { m.read = true; changed = true; } });
     if (changed) await saveDBOrThrow(db);
     res.json(list);
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
@@ -3179,121 +3119,77 @@ app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => 
 
 app.post("/api/chat/send", auth(), async (req, res) => {
   try {
-    const db = loadDB();
-    ensureChatSchema(db);
+    const db = loadDB(); ensureChatSchema(db);
     const { content, toUserId } = req.body;
-    if (!content?.trim())
-      return res.status(400).json({ message: "Tin nhắn trống" });
-
+    if (!content?.trim()) return res.status(400).json({ message: "Tin nhắn trống" });
     const isStaff = req.user.role === "ADMIN" || req.user.role === "EMPLOYEE";
     let userId, userName;
-
     if (isStaff) {
       userId = normalizeUserId(toUserId);
-      if (userId === null) {
-        return res.status(400).json({
-          message: "Lỗi: Tài khoản nhân viên/admin gửi tin nhắn thiếu ID người nhận (toUserId).",
-        });
-      }
+      if (userId === null) return res.status(400).json({ message: "Thiếu ID người nhận" });
       const customer = findByIdOrMongo(db.users, userId);
       userName = customer?.name || "Khách";
       if (req.user.role === "EMPLOYEE") {
-        if (!isStaffAllowedToChat(db, req.user.id))
-          return res.status(403).json({ message: "Admin đã tắt quyền chat của bạn.", code: "CHAT_DISABLED" });
+        if (!isStaffAllowedToChat(db, req.user.id)) return res.status(403).json({ message: "Admin đã tắt quyền chat của bạn.", code: "CHAT_DISABLED" });
         const meta = db.chat_conversations?.[String(userId)];
-        if (meta && meta.assigned_to === "admin")
-          return res.status(403).json({ message: "Admin đang xử lý hội thoại này.", code: "CHAT_HELD_BY_ADMIN" });
+        if (meta && meta.assigned_to === "admin") return res.status(403).json({ message: "Admin đang xử lý hội thoại này.", code: "CHAT_HELD_BY_ADMIN" });
       }
-    } else {
-      userId = normalizeUserId(req.user.id);
-      userName = req.user.name;
-    }
-
-    const message = {
-      id: nextId(db.messages || []),
-      user_id: userId,
-      user_name: userName,
-      from: isStaff ? "staff" : "customer",
-      from_name: req.user.name,
-      from_role: isStaff ? req.user.role : "CUSTOMER",
-      content: content.trim(),
-      read: false,
-      created_at: new Date().toISOString(),
-    };
-
-    // 🔴 FIX: INSERT TRỰC TIẾP MONGO — không qua saveDBOrThrow (tránh deleteMany xóa tin)
+    } else { userId = normalizeUserId(req.user.id); userName = req.user.name; }
+    
+    const message = { id: nextId(db.messages || []), user_id: userId, user_name: userName, from: isStaff ? "staff" : "customer", from_name: req.user.name, from_role: isStaff ? req.user.role : "CUSTOMER", content: content.trim(), read: false, created_at: new Date().toISOString() };
+    
     if (mongoReady && mongoose.connection.db) {
       const coll = mongoose.connection.db.collection("messages");
-      // Đảm bảo id unique (đọc max từ Mongo)
       const maxDoc = await coll.find({}).sort({ id: -1 }).limit(1).toArray();
-      const maxId = Number(maxDoc[0]?.id) || 0;
-      message.id = maxId + 1;
+      message.id = (Number(maxDoc[0]?.id) || 0) + 1;
       const { _id, ...doc } = message;
       await coll.insertOne(doc);
-      // Cập nhật dbCache để tránh lệch
       if (Array.isArray(db.messages)) db.messages.push(message);
     } else {
-      // Fallback không có Mongo → dùng dbCache
       if (!db.messages) db.messages = [];
       db.messages.push(message);
       await saveDBOrThrow(db);
     }
-
     res.status(201).json(message);
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/chat/admin/conversations", auth(["ADMIN"]), async (req, res) => {
   try {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
     if (mongoReady && mongoose.connection.db) {
       const coll = mongoose.connection.db.collection("messages");
       const pipeline = [
         { $match: { created_at: { $gte: cutoff } } },
         { $sort: { created_at: -1 } },
-        {
-          $group: {
-            _id: "$user_id",
-            user_name: { $first: "$user_name" },
-            last_message: { $first: "$content" },
-            last_time: { $first: "$created_at" },
-            unread: {
-              $sum: {
-                $cond: [{ $and: [{ $eq: ["$from", "customer"] }, { $eq: ["$read", false] }] }, 1, 0],
-              },
-            },
-          },
-        },
+        { $group: { _id: "$user_id", user_name: { $first: "$user_name" }, last_message: { $first: "$content" }, last_time: { $first: "$created_at" }, unread: { $sum: { $cond: [{ $and: [{ $eq: ["$from", "customer"] }, { $eq: ["$read", false] }] }, 1, 0] } } } },
         { $sort: { last_time: -1 } },
       ];
       const docs = await coll.aggregate(pipeline).toArray();
       const db = loadDB();
-      return res.json(
-        docs.map((d) => {
-          const meta = db.chat_conversations?.[String(d._id)] || {};
-          const pendingReq = findPendingTransferForCustomer(db, d._id);
-          return {
-            user_id: d._id,
-            user_name: d.user_name || "Khách",
-            last_message: d.last_message,
-            last_time: d.last_time,
-            unread: d.unread || 0,
-            assigned_to: meta.assigned_to || null,
-            assigned_admin_id: meta.assigned_admin_id || null,
-            has_pending_transfer: !!pendingReq,
-          };
-        })
-      );
+      return res.json(docs.map((d) => {
+        const meta = db.chat_conversations?.[String(d._id)] || {};
+        const pendingReq = findPendingTransferForCustomer(db, d._id);
+        return { user_id: d._id, user_name: d.user_name || "Khách", last_message: d.last_message, last_time: d.last_time, unread: d.unread || 0, assigned_to: meta.assigned_to || null, assigned_admin_id: meta.assigned_admin_id || null, has_pending_transfer: !!pendingReq };
+      }));
+    }
+    const db = loadDB(); ensureChatSchema(db); res.json(buildAdminConversations(db));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {
+  try {
+    const targetId = normalizeUserId(req.params.userId);
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const list = await coll.find({ user_id: targetId, created_at: { $gte: cutoff } }).sort({ created_at: 1 }).toArray();
+      await coll.updateMany({ user_id: targetId, from: "customer", read: false }, { $set: { read: true } });
+      return res.json(list.map(({ _id, ...rest }) => rest));
     }
     const db = loadDB();
-    ensureChatSchema(db);
-    res.json(buildAdminConversations(db));
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
+    res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {

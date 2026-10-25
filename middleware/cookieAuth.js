@@ -1,11 +1,4 @@
 // middleware/cookieAuth.js
-// ============================================================
-// V3 (FIX OAUTH MULTI-DEVICE):
-//   - Bỏ `partitioned` (Safari <17 + Firefox <127 không support CHIPS)
-//   - Throw nếu insert session fail (không silent)
-//   - Tự dọn sessions cũ của user trước khi insert mới
-// ============================================================
-
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import mongoose from "mongoose";
@@ -25,8 +18,6 @@ function isProd() {
 
 function cookieOpts(maxAgeMs) {
   const prod = isProd();
-  // 🔴 FIX: KHÔNG dùng partitioned (Safari/Firefox cũ reject)
-  // 🔴 FIX: sameSite="none" bắt buộc khi secure (cross-domain vercel.app)
   return {
     httpOnly: true,
     secure: prod,
@@ -51,61 +42,26 @@ function sha256(str) {
 }
 
 function getSessionsColl() {
-  try {
-    if (!mongoose.connection?.db) return null;
-    return mongoose.connection.db.collection(SESSION_COLLECTION);
-  } catch {
-    return null;
-  }
+  if (!mongoose.connection?.db) return null;
+  return mongoose.connection.db.collection(SESSION_COLLECTION);
 }
 
-function cacheRevoked(jti, expiresAtMs) {
-  if (!jti) return;
-  REVOKED_CACHE.set(jti, expiresAtMs || Date.now() + REVOKED_TTL_MS);
-}
-
-function isCachedRevoked(jti) {
-  if (!jti) return false;
-  const exp = REVOKED_CACHE.get(jti);
-  if (!exp) return false;
-  if (Date.now() > exp) {
-    REVOKED_CACHE.delete(jti);
-    return false;
-  }
-  return true;
-}
-
-export async function issueTokens(res, userPayload, jwtSecret, { req, rotateFromJti = null } = {}) {
+export async function issueTokens(res, userPayload, jwtSecret, { req } = {}) {
   if (!jwtSecret) throw new Error("JWT_SECRET missing");
 
-  const base = {
-    id: userPayload.id,
-    email: userPayload.email,
-    role: userPayload.role,
-    name: userPayload.name,
-  };
-
+  const base = { id: userPayload.id, email: userPayload.email, role: userPayload.role, name: userPayload.name };
   const jti = crypto.randomUUID();
   const sid = jti;
 
-  const accessToken = jwt.sign(
-    { ...base, typ: "access", sid },
-    jwtSecret,
-    { expiresIn: ACCESS_TOKEN_TTL }
-  );
-  const refreshToken = jwt.sign(
-    { ...base, typ: "refresh", jti },
-    jwtSecret,
-    { expiresIn: REFRESH_TOKEN_TTL }
-  );
+  const accessToken = jwt.sign({ ...base, typ: "access", sid }, jwtSecret, { expiresIn: ACCESS_TOKEN_TTL });
+  const refreshToken = jwt.sign({ ...base, typ: "refresh", jti }, jwtSecret, { expiresIn: REFRESH_TOKEN_TTL });
 
-  // 🔴 FIX: Nếu có session DB → phải insert thành công, KHÔNG catch silent
   const coll = getSessionsColl();
   if (coll) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    // Dọn sessions đã revoke + đã hết hạn của user (tránh rác)
+    // Dọn session rác
     try {
       await coll.deleteMany({
         user_id: userPayload.id,
@@ -113,29 +69,21 @@ export async function issueTokens(res, userPayload, jwtSecret, { req, rotateFrom
       });
     } catch {}
 
+    // Ghi session mới
     try {
       await coll.insertOne({
         jti,
         user_id: userPayload.id,
         refresh_hash: sha256(refreshToken),
         ua: req?.headers?.["user-agent"] || "",
-        ip:
-          req?.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() ||
-          req?.ip ||
-          "",
+        ip: req?.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req?.ip || "",
         created_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
         revoked_at: null,
         last_used_at: now.toISOString(),
       });
     } catch (e) {
-      // 🔴 FIX: Nếu insert fail (VD: duplicate key) → phải throw để endpoint trả 500
-      // Tuyệt đối không silent bỏ qua, vì user sẽ bị out ngay sau khi login.
       throw new Error(`[issueTokens] Không thể tạo session: ${e.message}`);
-    }
-
-    if (rotateFromJti) {
-      try { await revokeSession(rotateFromJti); } catch {}
     }
   }
 
@@ -152,18 +100,13 @@ export function clearAuthCookies(res) {
 
 export async function verifySession(jti) {
   if (!jti) return { ok: false, error: "no-jti" };
-  if (isCachedRevoked(jti)) return { ok: false, error: "revoked" };
   const coll = getSessionsColl();
   if (!coll) return { ok: true };
   try {
     const doc = await coll.findOne({ jti });
     if (!doc) return { ok: false, error: "not-found" };
-    if (doc.revoked_at) {
-      cacheRevoked(jti);
-      return { ok: false, error: "revoked" };
-    }
-    const exp = new Date(doc.expires_at || 0).getTime();
-    if (exp && exp < Date.now()) return { ok: false, error: "expired" };
+    if (doc.revoked_at) return { ok: false, error: "revoked" };
+    if (new Date(doc.expires_at || 0).getTime() < Date.now()) return { ok: false, error: "expired" };
     return { ok: true, session: doc };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -172,18 +115,12 @@ export async function verifySession(jti) {
 
 export async function revokeSession(jti) {
   if (!jti) return false;
-  cacheRevoked(jti);
   const coll = getSessionsColl();
   if (!coll) return true;
   try {
-    const r = await coll.updateOne(
-      { jti, revoked_at: null },
-      { $set: { revoked_at: new Date().toISOString() } }
-    );
+    const r = await coll.updateOne({ jti, revoked_at: null }, { $set: { revoked_at: new Date().toISOString() } });
     return r.modifiedCount > 0;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 export async function revokeAllSessions(userId, exceptJti = null) {
@@ -192,12 +129,30 @@ export async function revokeAllSessions(userId, exceptJti = null) {
   try {
     const filter = { user_id: userId, revoked_at: null };
     if (exceptJti) filter.jti = { $ne: exceptJti };
-    const r = await coll.updateMany(filter, {
-      $set: { revoked_at: new Date().toISOString() },
-    });
+    const r = await coll.updateMany(filter, { $set: { revoked_at: new Date().toISOString() } });
     return r.modifiedCount || 0;
-  } catch {
-    return 0;
+  } catch { return 0; }
+}
+
+export function verifyAnyToken(req, jwtSecret, expectedType = "access") {
+  if (!jwtSecret) return { ok: false, error: "JWT_SECRET missing" };
+  let raw = null, source = null;
+
+  const header = req.headers?.authorization || "";
+  if (header.startsWith("Bearer ")) { raw = header.slice(7); source = "header"; }
+
+  if (!raw && req.cookies) {
+    const cookieName = expectedType === "refresh" ? REFRESH_COOKIE : ACCESS_COOKIE;
+    raw = req.cookies[cookieName]; if (raw) source = "cookie";
+  }
+
+  if (!raw) return { ok: false, error: "no-token" };
+  try {
+    const payload = jwt.verify(raw, jwtSecret);
+    if (payload.typ && payload.typ !== expectedType) return { ok: false, error: "wrong-token-type" };
+    return { ok: true, payload, source };
+  } catch (e) {
+    return { ok: false, error: e.name || "invalid" };
   }
 }
 
@@ -205,7 +160,7 @@ export async function verifyRefreshAndMatch(req, jwtSecret) {
   const v = verifyAnyToken(req, jwtSecret, "refresh");
   if (!v.ok) return { ok: false, error: v.error };
   const jti = v.payload.jti;
-  const rawCookie = req.cookies?.[REFRESH_COOKIE];
+  const rawCookie = req.cookies?.[REFRESH_COOKIE] || req.headers?.authorization?.slice(7);
   if (!jti || !rawCookie) return { ok: false, error: "no-refresh-token" };
   const sv = await verifySession(jti);
   if (!sv.ok) return { ok: false, error: sv.error };
@@ -216,41 +171,4 @@ export async function verifyRefreshAndMatch(req, jwtSecret) {
   return { ok: true, jti, payload: v.payload, session: sv.session };
 }
 
-export function verifyAnyToken(req, jwtSecret, expectedType = "access") {
-  if (!jwtSecret) return { ok: false, error: "JWT_SECRET missing" };
-
-  let raw = null;
-  let source = null;
-
-  // 🔴 Ưu tiên Bearer (sessionStorage từng tab)
-  const header = req.headers?.authorization || "";
-  if (header.startsWith("Bearer ")) {
-    raw = header.slice(7);
-    source = "header";
-  }
-
-  // Fallback Cookie
-  if (!raw && req.cookies) {
-    const cookieName = expectedType === "refresh" ? REFRESH_COOKIE : ACCESS_COOKIE;
-    raw = req.cookies[cookieName];
-    if (raw) source = "cookie";
-  }
-
-  if (!raw) return { ok: false, error: "no-token" };
-
-  try {
-    const payload = jwt.verify(raw, jwtSecret);
-    if (payload.typ && payload.typ !== expectedType) {
-      return { ok: false, error: "wrong-token-type" };
-    }
-    return { ok: true, payload, source };
-  } catch (e) {
-    return { ok: false, error: e.name || "invalid" };
-  }
-}
-
-export const COOKIE_NAMES = {
-  ACCESS: ACCESS_COOKIE,
-  REFRESH: REFRESH_COOKIE,
-  SESSION_COLLECTION,
-};
+export const COOKIE_NAMES = { ACCESS: ACCESS_COOKIE, REFRESH: REFRESH_COOKIE, SESSION_COLLECTION };
