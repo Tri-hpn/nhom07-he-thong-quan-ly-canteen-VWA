@@ -925,6 +925,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// 🔴 COLD START INTERCEPTOR v3: Biến 503 GET thành 200 rỗng
+app.use((req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = function(body) {
+    if ((res.statusCode === 503 || body?.code === "SERVER_WARMING_UP") && req.method === "GET") {
+      res.status(200);
+      const p = req.path || "";
+      if (p.includes("/notifications")) return origJson({ list: [], unread: 0, _cold: true });
+      if (p.includes("/wallet/me")) return origJson({ balance: 0, bank_name: "", bank_account: "", bank_account_name: "", linked_at: "", _cold: true });
+      if (p.includes("/chat/my-status")) return origJson({ enabled: true, global_enabled: true, assigned_to_admin_users: [], _cold: true });
+      if (p.includes("/settings")) return origJson({ _cold: true });
+      return origJson([]);
+    }
+    return origJson(body);
+  };
+  next();
+});
+
 app.get("/api/uploads/menu/:id", async (req, res) => {
   try {
     const image = await getMenuImage(req.params.id);
