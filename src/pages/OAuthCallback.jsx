@@ -47,22 +47,18 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
 
     const redirectUri = window.location.origin + `/auth/${provider}/callback`;
 
-    // 🔴 FIX: Bỏ setToken(token) vì backend đã dùng HttpOnly Cookie.
-    // api.oauth.callback đã tự xử lý setToken và broadcastAuthEvent.
     api.oauth
       .callback(provider, code, redirectUri)
       .then(({ user }) => {
-        setUser(user); 
+        setUser(user);
         toast(`${t("Xin chào")} ${user.name}!`, "success");
         if (onLoginSuccess) onLoginSuccess(user);
 
-        // Xử lý returnUrl (Deep link) nếu user bấm login OAuth từ 1 link share
         let target = homePathForRole(user.role);
         try {
           const savedReturnUrl = sessionStorage.getItem("oauth_return_url");
           if (savedReturnUrl) {
             sessionStorage.removeItem("oauth_return_url");
-            // Validate an toàn (chống Open Redirect)
             if (savedReturnUrl.startsWith("/") && !savedReturnUrl.startsWith("//")) {
               target = savedReturnUrl;
             }

@@ -11,8 +11,39 @@ import "./styles-employee.css";
 import "./styles-admin.css";
 import "./styles-customer.css";
 
-function registerPWA() {
+// ============================================================
+// 🔴 FORCE CLEAN SW: Unregister các Service Worker cũ (nếu có)
+// chỉ chạy 1 lần/phiên, để deploy mới không bị dính cache auth
+// ============================================================
+async function cleanupOldServiceWorkers() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    const flagKey = "vwa_sw_cleaned_v3";
+    if (sessionStorage.getItem(flagKey) === "1") return;
+    sessionStorage.setItem(flagKey, "1");
+
+    for (const reg of regs) {
+      try { await reg.unregister(); } catch {}
+    }
+    // Xóa các cache cũ có prefix vwa-* hoặc workbox-*
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((k) => /^vwa-|^workbox-|^api-|^runtime-/i.test(k))
+          .map((k) => caches.delete(k).catch(() => {}))
+      );
+    }
+  } catch (e) {
+    console.warn("[SW cleanup] failed:", e);
+  }
+}
+
+async function registerPWA() {
   if (!("serviceWorker" in navigator) || !import.meta.env.PROD) return;
+
+  await cleanupOldServiceWorkers();
 
   import("virtual:pwa-register")
     .then(({ registerSW }) => {
@@ -42,8 +73,6 @@ if (document.readyState === "complete") {
 } else {
   window.addEventListener("load", registerPWA);
 }
-
-// [ĐÃ XÓA BroadcastChannel Ở ĐÂY VÌ api.js ĐÃ QUẢN LÝ]
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -99,7 +128,6 @@ if (rootElement) {
     <StrictMode>
       <ErrorBoundary>
         <AuthProvider>
-          {/* [FIX] Thêm future flags để tắt cảnh báo React Router v7 */}
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <App />
           </BrowserRouter>

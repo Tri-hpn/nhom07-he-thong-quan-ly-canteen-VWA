@@ -1,6 +1,9 @@
 // middleware/cookieAuth.js
 // ============================================================
-// HttpOnly Cookie + Session DB + Dual Auth (Bearer ưu tiên)
+// V3 (FIX OAUTH MULTI-DEVICE):
+//   - Bỏ `partitioned` (Safari <17 + Firefox <127 không support CHIPS)
+//   - Throw nếu insert session fail (không silent)
+//   - Tự dọn sessions cũ của user trước khi insert mới
 // ============================================================
 
 import jwt from "jsonwebtoken";
@@ -16,37 +19,30 @@ const SESSION_COLLECTION = "sessions";
 const REVOKED_CACHE = new Map();
 const REVOKED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-function isLocalhost(req) {
-  if (!req) return false;
-  const host = req.hostname || req.headers?.host || "";
-  return host.includes("localhost") || host.includes("127.0.0.1");
+function isProd() {
+  return process.env.NODE_ENV === "production" || !!process.env.VERCEL;
 }
 
-function cookieOpts(req, maxAgeMs) {
-  const isLocal = isLocalhost(req);
-  const isProd = !isLocal && (process.env.NODE_ENV === "production" || !!process.env.VERCEL);
-  
-  const sameSite = isProd ? "none" : "lax";
+function cookieOpts(maxAgeMs) {
+  const prod = isProd();
+  // 🔴 FIX: KHÔNG dùng partitioned (Safari/Firefox cũ reject)
+  // 🔴 FIX: sameSite="none" bắt buộc khi secure (cross-domain vercel.app)
   return {
     httpOnly: true,
-    secure: isProd, 
-    sameSite,
+    secure: prod,
+    sameSite: prod ? "none" : "lax",
     path: "/",
     maxAge: maxAgeMs,
-    partitioned: isProd,
   };
 }
 
-function clearOpts(req) {
-  const isLocal = isLocalhost(req);
-  const isProd = !isLocal && (process.env.NODE_ENV === "production" || !!process.env.VERCEL);
-  const sameSite = isProd ? "none" : "lax";
+function clearOpts() {
+  const prod = isProd();
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite,
+    secure: prod,
+    sameSite: prod ? "none" : "lax",
     path: "/",
-    partitioned: isProd,
   };
 }
 
@@ -103,39 +99,55 @@ export async function issueTokens(res, userPayload, jwtSecret, { req, rotateFrom
     { expiresIn: REFRESH_TOKEN_TTL }
   );
 
+  // 🔴 FIX: Nếu có session DB → phải insert thành công, KHÔNG catch silent
   const coll = getSessionsColl();
   if (coll) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    // Dọn sessions đã revoke + đã hết hạn của user (tránh rác)
+    try {
+      await coll.deleteMany({
+        user_id: userPayload.id,
+        $or: [{ revoked_at: { $ne: null } }, { expires_at: { $lt: now.toISOString() } }],
+      });
+    } catch {}
+
     try {
       await coll.insertOne({
         jti,
         user_id: userPayload.id,
         refresh_hash: sha256(refreshToken),
         ua: req?.headers?.["user-agent"] || "",
-        ip: req?.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req?.ip || "",
+        ip:
+          req?.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() ||
+          req?.ip ||
+          "",
         created_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
         revoked_at: null,
         last_used_at: now.toISOString(),
       });
-      if (rotateFromJti) {
-        await revokeSession(rotateFromJti);
-      }
     } catch (e) {
-      console.warn("[cookieAuth] insert session failed:", e.message);
+      // 🔴 FIX: Nếu insert fail (VD: duplicate key) → phải throw để endpoint trả 500
+      // Tuyệt đối không silent bỏ qua, vì user sẽ bị out ngay sau khi login.
+      throw new Error(`[issueTokens] Không thể tạo session: ${e.message}`);
+    }
+
+    if (rotateFromJti) {
+      try { await revokeSession(rotateFromJti); } catch {}
     }
   }
 
-  res.cookie(ACCESS_COOKIE, accessToken, cookieOpts(req, 30 * 60 * 1000));
-  res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts(req, 7 * 24 * 60 * 60 * 1000));
+  res.cookie(ACCESS_COOKIE, accessToken, cookieOpts(30 * 60 * 1000));
+  res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
 
   return { accessToken, refreshToken, jti, sid };
 }
 
-export function clearAuthCookies(res, req) {
-  res.clearCookie(ACCESS_COOKIE, clearOpts(req));
-  res.clearCookie(REFRESH_COOKIE, clearOpts(req));
+export function clearAuthCookies(res) {
+  res.clearCookie(ACCESS_COOKIE, clearOpts());
+  res.clearCookie(REFRESH_COOKIE, clearOpts());
 }
 
 export async function verifySession(jti) {
@@ -210,14 +222,14 @@ export function verifyAnyToken(req, jwtSecret, expectedType = "access") {
   let raw = null;
   let source = null;
 
-  // 🔴 ƯU TIÊN 1: Bearer Token (Từ sessionStorage của từng tab)
+  // 🔴 Ưu tiên Bearer (sessionStorage từng tab)
   const header = req.headers?.authorization || "";
   if (header.startsWith("Bearer ")) {
     raw = header.slice(7);
     source = "header";
   }
 
-  // 🔴 ƯU TIÊN 2: HttpOnly Cookie (Fallback)
+  // Fallback Cookie
   if (!raw && req.cookies) {
     const cookieName = expectedType === "refresh" ? REFRESH_COOKIE : ACCESS_COOKIE;
     raw = req.cookies[cookieName];

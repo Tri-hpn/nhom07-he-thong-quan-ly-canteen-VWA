@@ -3,7 +3,7 @@
   "name": "Canteen VWA - Quản lý Canteen",
   "short_name": "Canteen VWA",
   "description": "Hệ thống đặt món và quản lý Canteen VWA",
-  "start_url": "/?source=pwa",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
