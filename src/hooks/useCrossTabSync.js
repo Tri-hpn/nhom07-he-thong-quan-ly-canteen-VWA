@@ -1,21 +1,12 @@
 // src/hooks/useCrossTabSync.js
 // ============================================================
-// Sync state giữa các tab qua BroadcastChannel + localStorage fallback
+// Sync state giữa các tab qua localStorage (Đã tắt Sync để test Multi-Tab)
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
 const isBrowser =
   typeof window !== "undefined" && typeof localStorage !== "undefined";
-
-const CHANNEL_PREFIX = "vwa_crosstab:";
-const tabId = (() => {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return "tab_" + Math.random().toString(36).slice(2);
-  }
-})();
 
 function readInitial(key, fallback) {
   if (!isBrowser) return fallback;
@@ -39,50 +30,8 @@ export function useCrossTabSync(key, defaultValue = null) {
 
   const didMountRef = useRef(false);
   const skipPersistRef = useRef(false);
-  const channelRef = useRef(null);
 
-  // BroadcastChannel — realtime
-  useEffect(() => {
-    if (!isBrowser || !("BroadcastChannel" in window)) return;
-    try {
-      const ch = new BroadcastChannel(CHANNEL_PREFIX + key);
-      ch.onmessage = (e) => {
-        const msg = e.data || {};
-        if (msg.tabId === tabId) return;
-        skipPersistRef.current = true;
-        setValue(msg.value === undefined ? defaultRef.current : msg.value);
-      };
-      channelRef.current = ch;
-      return () => {
-        try {
-          ch.close();
-        } catch {}
-        channelRef.current = null;
-      };
-    } catch {
-      /* no-op */
-    }
-  }, [key]);
-
-  // localStorage event — fallback Safari cũ / tab không subscribe
-  useEffect(() => {
-    if (!isBrowser) return;
-    const handler = (e) => {
-      if (e.key !== key) return;
-      let next;
-      try {
-        next = e.newValue ? JSON.parse(e.newValue) : defaultRef.current;
-      } catch {
-        next = defaultRef.current;
-      }
-      skipPersistRef.current = true;
-      setValue(next);
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, [key]);
-
-  // Reset khi auth-expired / logout
+  // Reset khi auth-expired / logout (chỉ trong tab hiện tại)
   useEffect(() => {
     if (!isBrowser) return;
     const reset = () => {
@@ -91,13 +40,6 @@ export function useCrossTabSync(key, defaultValue = null) {
       } catch {}
       skipPersistRef.current = true;
       setValue(defaultRef.current);
-      try {
-        channelRef.current?.postMessage({
-          type: "update",
-          value: defaultRef.current,
-          tabId,
-        });
-      } catch {}
     };
     window.addEventListener("auth-expired", reset);
     window.addEventListener("logout", reset);
@@ -107,7 +49,7 @@ export function useCrossTabSync(key, defaultValue = null) {
     };
   }, [key]);
 
-  // Persist + broadcast khi value đổi
+  // Vẫn ghi vào localStorage (để F5 không mất data)
   useEffect(() => {
     if (!isBrowser) return;
     if (!didMountRef.current) {
@@ -124,9 +66,6 @@ export function useCrossTabSync(key, defaultValue = null) {
       } else {
         localStorage.setItem(key, JSON.stringify(value));
       }
-      try {
-        channelRef.current?.postMessage({ type: "update", value, tabId });
-      } catch {}
     } catch (err) {
       console.error("[useCrossTabSync] " + key + ":", err);
     }

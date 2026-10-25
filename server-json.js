@@ -1020,10 +1020,10 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     const filled = autoFillFromCode(db, user);
     if (filled) await saveDBOrThrow(db);
 
-    // Không trả token trong body — dùng HttpOnly Cookie
-    await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
 
     res.json({
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN CHO FRONTEND
       user: {
         id: user.id,
         email: user.email,
@@ -1066,8 +1066,9 @@ app.post("/api/auth/register", async (req, res) => {
     db.users.push(user);
     await saveDBOrThrow(db);
 
-       await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+       await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });    const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.status(201).json({
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN
       user: {
         id: user.id,
         email: user.email,
@@ -1105,14 +1106,14 @@ app.post("/api/auth/refresh", async (req, res) => {
       return res.status(403).json({ ok: false, message: "Tài khoản bị khóa" });
     }
 
-    // Rotate: revoke old session + issue new
-    await issueTokens(res, currentUser, EFFECTIVE_JWT_SECRET, {
+    const { accessToken } = await issueTokens(res, currentUser, EFFECTIVE_JWT_SECRET, {
       req,
       rotateFromJti: r.jti,
     });
 
     res.json({
       ok: true,
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN
       user: {
         id: currentUser.id,
         email: currentUser.email,
@@ -1248,8 +1249,9 @@ app.post("/api/auth/google/callback", async (req, res) => {
       user.avatar = profile.picture;
       await saveDBOrThrow(db);
     }
-        await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+            const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN
       user: {
         id: user.id,
         email: user.email,
@@ -1355,8 +1357,9 @@ async function microsoftCallbackHandler(req, res) {
       await saveDBOrThrow(db);
       isNewUser = true;
     }
-        await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+            const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN
       user: {
         id: user.id,
         email: user.email,

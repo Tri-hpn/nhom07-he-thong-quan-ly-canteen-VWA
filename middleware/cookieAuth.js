@@ -1,6 +1,6 @@
 // middleware/cookieAuth.js
 // ============================================================
-// HttpOnly Cookie + Session DB + Dual Auth (Cookie ưu tiên)
+// HttpOnly Cookie + Session DB + Dual Auth (Bearer ưu tiên)
 // ============================================================
 
 import jwt from "jsonwebtoken";
@@ -16,17 +16,14 @@ const SESSION_COLLECTION = "sessions";
 const REVOKED_CACHE = new Map();
 const REVOKED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Hàm kiểm tra xem có phải đang chạy localhost không
 function isLocalhost(req) {
   if (!req) return false;
   const host = req.hostname || req.headers?.host || "";
   return host.includes("localhost") || host.includes("127.0.0.1");
 }
 
-// Tự động điều chỉnh cookie dựa trên môi trường thực tế
 function cookieOpts(req, maxAgeMs) {
   const isLocal = isLocalhost(req);
-  // Nếu là localhost -> luôn là false. Nếu không phải localhost -> dựa vào env
   const isProd = !isLocal && (process.env.NODE_ENV === "production" || !!process.env.VERCEL);
   
   const sameSite = isProd ? "none" : "lax";
@@ -130,7 +127,6 @@ export async function issueTokens(res, userPayload, jwtSecret, { req, rotateFrom
     }
   }
 
-  // 🔴 Đã sửa: Truyền req vào cookieOpts để tự động tắt secure trên localhost
   res.cookie(ACCESS_COOKIE, accessToken, cookieOpts(req, 30 * 60 * 1000));
   res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts(req, 7 * 24 * 60 * 60 * 1000));
 
@@ -138,7 +134,6 @@ export async function issueTokens(res, userPayload, jwtSecret, { req, rotateFrom
 }
 
 export function clearAuthCookies(res, req) {
-  // 🔴 Đã sửa: Truyền req vào clearOpts
   res.clearCookie(ACCESS_COOKIE, clearOpts(req));
   res.clearCookie(REFRESH_COOKIE, clearOpts(req));
 }
@@ -215,18 +210,18 @@ export function verifyAnyToken(req, jwtSecret, expectedType = "access") {
   let raw = null;
   let source = null;
 
-  if (req.cookies) {
+  // 🔴 ƯU TIÊN 1: Bearer Token (Từ sessionStorage của từng tab)
+  const header = req.headers?.authorization || "";
+  if (header.startsWith("Bearer ")) {
+    raw = header.slice(7);
+    source = "header";
+  }
+
+  // 🔴 ƯU TIÊN 2: HttpOnly Cookie (Fallback)
+  if (!raw && req.cookies) {
     const cookieName = expectedType === "refresh" ? REFRESH_COOKIE : ACCESS_COOKIE;
     raw = req.cookies[cookieName];
     if (raw) source = "cookie";
-  }
-
-  if (!raw) {
-    const header = req.headers?.authorization || "";
-    if (header.startsWith("Bearer ")) {
-      raw = header.slice(7);
-      source = "header";
-    }
   }
 
   if (!raw) return { ok: false, error: "no-token" };

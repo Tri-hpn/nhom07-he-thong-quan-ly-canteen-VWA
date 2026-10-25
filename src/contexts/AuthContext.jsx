@@ -8,7 +8,7 @@ import {
   useRef,
   useMemo,
 } from "react";
-import { api, clearToken } from "../api";
+import { api, clearToken, getToken } from "../api";
 
 const AuthContext = createContext(null);
 
@@ -29,10 +29,17 @@ export function AuthProvider({ children }) {
     );
   }, []);
 
-  // ── restoreSession: F5 / cross-tab login → luôn gọi /auth/me
-  // (server đọc HttpOnly cookie, không cần token FE)
+  // ── restoreSession: F5 → lấy token từ sessionStorage của tab hiện tại
   const restoreSession = useCallback(async () => {
     const myReqId = ++meReqIdRef.current;
+    
+    // 🔴 CHECK TOKEN RIÊNG CỦA TAB
+    const token = getToken();
+    if (!token) {
+      setUserState(null);
+      return null;
+    }
+
     try {
       const me = await api.me();
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
@@ -73,7 +80,7 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
-  // ── Bootstrap: F5 → restoreSession (không check token FE)
+  // ── Bootstrap: F5 → restoreSession
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -87,15 +94,8 @@ export function AuthProvider({ children }) {
     };
   }, [restoreSession]);
 
-  // ── Cross-tab: nghe window events do api.js dispatch
+  // 🔴 TẮT CROSS-TAB SYNC: Bỏ onTokenChanged
   useEffect(() => {
-    const onTokenChanged = (e) => {
-      if (e?.detail?.hasToken) restoreSession();
-      else {
-        meReqIdRef.current++;
-        setUserState(null);
-      }
-    };
     const onAuthExpired = () => {
       meReqIdRef.current++;
       setUserState(null);
@@ -107,15 +107,13 @@ export function AuthProvider({ children }) {
       clearToken();
     };
 
-    window.addEventListener("token-changed", onTokenChanged);
     window.addEventListener("auth-expired", onAuthExpired);
     window.addEventListener("logout", onLogout);
     return () => {
-      window.removeEventListener("token-changed", onTokenChanged);
       window.removeEventListener("auth-expired", onAuthExpired);
       window.removeEventListener("logout", onLogout);
     };
-  }, [restoreSession]);
+  }, []);
 
   const value = useMemo(
     () => ({

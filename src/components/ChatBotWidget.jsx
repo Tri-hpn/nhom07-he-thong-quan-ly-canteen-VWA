@@ -1,12 +1,5 @@
 // ============================================================
-// CHATBOTWIDGET.JSX — Chat popup nổi (V5 - FINAL)
-// ============================================================
-// V5 (2026-10):
-//   - ✅ FIX #3: Reset lastAiCountRef + lastStaffCountRef khi mở lại panel
-//     → scroll lần đầu hoạt động đúng
-//   - ✅ FIX #20: MSSV fallback "—" thay vì hardcode "K21-CNTT04"
-//   - ✅ Q3:C: Giữ nguyên mode hiện tại khi đóng/mở lại
-//   - Giữ nguyên: C3, L19, M11, D1-D5, i18n source-text
+// CHATBOTWIDGET.JSX — Chat popup nổi (V6 - FIX RACE CONDITION)
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -139,6 +132,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffError, setStaffError] = useState("");
   const [orderSupportRequest, setOrderSupportRequest] = useState(null);
+  
   // DIRECT ORDER SUPPORT PROP
   useEffect(() => {
     if (!supportRequest?.message) return;
@@ -171,6 +165,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   const aiBottomRef = useRef(null);
   const staffBottomRef = useRef(null);
   const lastUserIdRef = useRef(user?.id);
+  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
 
   // ============================================================
   // LOAD MENU + SETTINGS
@@ -245,8 +240,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   }, [user?.id]);
 
   // ============================================================
-  // ✅ FIX #3: RESET SCROLL REFS KHI MỞ LẠI PANEL
-  // (giữ nguyên mode hiện tại — Q3:C)
+  // RESET SCROLL REFS KHI MỞ LẠI PANEL
   // ============================================================
   useEffect(() => {
     if (open) {
@@ -288,6 +282,9 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   // ============================================================
   const loadStaff = useCallback(
     async (silent = true) => {
+      // 🔴 FIX: Chặn Polling nếu đang gửi tin
+      if (silent && isSendingRef.current) return;
+
       const myReqId = ++staffReqIdRef.current;
 
       if (!silent) {
@@ -473,15 +470,21 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       return;
     }
 
+    isSendingRef.current = true; // 🔴
     setStaffSending(true);
     try {
       const msg = await api.chat.send({ content: val });
       setStaffText("");
-      setStaffMessages((m) => [...m, msg]);
+      setStaffMessages((m) => {
+        // 🔴 Chống trùng lặp key
+        if (m.some((x) => x.id === msg.id)) return m;
+        return [...m, msg];
+      });
     } catch (e) {
       toast(e.message || t("Không gửi được tin nhắn"), "error");
     } finally {
       setStaffSending(false);
+      isSendingRef.current = false; // 🔴
     }
   }, [staffText, staffSending, t]);
 
@@ -493,6 +496,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
     if (orderSupportSentRef.current === request.requestId) return;
 
     orderSupportSentRef.current = request.requestId;
+    isSendingRef.current = true; // 🔴
     setStaffSending(true);
 
     try {
@@ -513,7 +517,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       setOrderSupportRequest((current) =>
         current?.requestId === request.requestId ? null : current
       );
-      await loadStaff(true);
+      // loadStaff(true); -> Đã bỏ vì đã tự cập nhật state
       toast(t("Đã gửi yêu cầu kiểm tra đơn tới quầy bếp."), "success");
     } catch (e) {
       orderSupportSentRef.current = null;
@@ -524,8 +528,11 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       );
     } finally {
       setStaffSending(false);
+      isSendingRef.current = false; // 🔴
     }
-  }, [orderSupportRequest, staffSending, loadStaff, t]);
+  }, [orderSupportRequest, staffSending, t]);
+
+  // ============================================================
   // QUICK ADD
   // ============================================================
   const quickAdd = useCallback(
@@ -821,7 +828,6 @@ function LeftSidebar({ user, t, onPromptClick }) {
           </div>
           <div className="chatbot-profile__info">
             <b>{user?.name || t("Khách")}</b>
-            {/* ✅ FIX #20: MSSV fallback "—" thay vì hardcode */}
             <span>
               {t("MSSV:")} {user?.studentId || "—"}
             </span>
