@@ -1102,46 +1102,12 @@ app.post("/api/auth/register", async (req, res) => {
 });
 
 app.post("/api/auth/refresh", async (req, res) => {
-  try {
-    const r = await verifyRefreshAndMatch(req, EFFECTIVE_JWT_SECRET);
-    if (!r.ok) {
-      clearAuthCookies(res, req);
-      return res.status(401).json({
-        ok: false,
-        message: "Refresh token không hợp lệ hoặc đã bị thu hồi",
-        code: r.error,
-      });
-    }
-
-    const db = loadDB();
-    const currentUser = findByIdOrMongo(db.users, r.payload.id);
-    if (!currentUser) {
-      clearAuthCookies(res, req);
-      return res.status(401).json({ ok: false, message: "Tài khoản không tồn tại" });
-    }
-    if (currentUser.status === "Bị khóa") {
-      clearAuthCookies(res, req);
-      return res.status(403).json({ ok: false, message: "Tài khoản bị khóa" });
-    }
-
-    const { accessToken } = await issueTokens(res, currentUser, EFFECTIVE_JWT_SECRET, {
-      req,
-      rotateFromJti: r.jti,
-    });
-
-    res.json({
-      ok: true,
-      token: accessToken, // 🔴 TRẢ LẠI TOKEN
-      user: {
-        id: currentUser.id,
-        email: currentUser.email,
-        name: currentUser.name,
-        role: currentUser.role,
-      },
-    });
-  } catch (e) {
-    res.status(500).json({ ok: false, message: e.message });
-  }
+  // 🔴 ĐÃ TẮT: Không dùng refresh token nữa (Bearer-only mode)
+  return res.status(410).json({
+    ok: false,
+    message: "Refresh endpoint đã tắt. Vui lòng đăng nhập lại.",
+    code: "REFRESH_DISABLED",
+  });
 });
 
 app.post("/api/auth/logout", async (req, res) => {

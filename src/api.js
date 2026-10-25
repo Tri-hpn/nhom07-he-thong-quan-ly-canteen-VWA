@@ -6,7 +6,6 @@ const MAX_RETRY_503 = 5;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
-let refreshInFlight = null;
 
 let storageAvailable = (() => {
   try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; } catch { return false; }
@@ -32,29 +31,10 @@ export function setToken(t) {
 export function clearToken() { setToken(null); }
 export function resetAuthExpiredFlag() { isAuthExpiredDispatched = false; }
 
-// 🔴 ĐÃ TẮT: BroadcastChannel cross-tab auth.
-//    Mỗi tab tự quản lý session riêng — logout/login 1 tab không ảnh hưởng tab khác.
-//    Nếu sau này cần "logout all devices", cần thêm endpoint riêng.
-
 function dispatchAuthExpired() {
   if (isAuthExpiredDispatched) return;
   isAuthExpiredDispatched = true;
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-  // 🔴 BỎ broadcastAuthEvent("logout") — không kick tab khác
-}
-
-async function tryRefresh() {
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = (async () => {
-    try {
-      const res = await fetch(BASE + "/auth/refresh", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
-      if (!res.ok) return false;
-      const data = await res.json().catch(() => ({}));
-      if (data.token) setToken(data.token);
-      return true;
-    } catch { return false; } finally { refreshInFlight = null; }
-  })();
-  return refreshInFlight;
 }
 
 async function req(path, options = {}, _retryCount = 0) {
@@ -70,7 +50,13 @@ async function req(path, options = {}, _retryCount = 0) {
 
   let res;
   try {
-    res = await fetch(BASE + path, { ...options, headers, cache: "no-store", credentials: "include", signal: controller.signal });
+    res = await fetch(BASE + path, {
+      ...options,
+      headers,
+      cache: "no-store",
+      credentials: "omit", // 🔴 KHÔNG gửi cookie nữa
+      signal: controller.signal,
+    });
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === "AbortError") { const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err; }
@@ -86,13 +72,13 @@ async function req(path, options = {}, _retryCount = 0) {
     return req(path, options, _retryCount + 1);
   }
 
-  if (res.status === 401 && (token || getToken())) {
-    const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/refresh") || path.includes("/auth/logout") || path.includes("/auth/me");
-    if (!isAuthEndpoint && _retryCount < 2) {
-      const refreshed = await tryRefresh();
-      if (refreshed) return req(path, options, _retryCount + 1);
+  // 🔴 KHÔNG tự động refresh nữa — 401 là hết phiên
+  if (res.status === 401 && token) {
+    const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/refresh") || path.includes("/auth/logout") || path.includes("/auth/me") || path.includes("/auth/");
+    if (!isAuthEndpoint) {
+      clearToken();
+      dispatchAuthExpired();
     }
-    if (!isAuthEndpoint) { clearToken(); dispatchAuthExpired(); }
   }
 
   const contentType = res.headers.get("content-type") || "";
@@ -118,9 +104,7 @@ export const api = {
   register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then((r) => {
     if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
   }),
-  logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => {
-    clearToken();
-  }),
+  logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => clearToken()),
   me: () => req("/auth/me"),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
