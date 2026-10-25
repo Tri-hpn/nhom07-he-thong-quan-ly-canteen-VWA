@@ -2463,7 +2463,11 @@ app.post("/api/points/redeem", auth(), async (req, res) => {
     if (!check.ok) return res.status(400).json({ message: check.reason });
     u.points = (Number(u.points) || 0) - pointsToRedeem;
     const voucherId = nextId(db.vouchers);
-    const voucher = { id: voucherId, code: "VOUCHER" + String(voucherId).padStart(4, "0"), user_id: req.user.id, value: check.value, points_used: pointsToRedeem, used: false, created_at: new Date().toISOString() };
+    const voucher = { id: voucherId, code: "VOUCHER" + String(voucherId).padStart(4, "0"), user_id: req.user.id, value: check.value, points_used: pointsToRedeem, used: false, created_at: new Date().toISOString(),
+      expires_at: req.body.expires_at || null,
+      max_claims: +req.body.max_claims || 0,
+      is_flash_sale: !!req.body.is_flash_sale
+    };
     db.vouchers.push(voucher);
     await saveDBOrThrow(db);
     res.status(201).json(voucher);

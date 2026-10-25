@@ -1848,9 +1848,12 @@ export default function EmployeeChat() {
                   >
                     <MessageSquareMore size={18} />
                   </button>
-                  <button
-                    type="button"
-                    className="chat-input-tool chat-input-tool--voucher"
+                  <button type="button" onClick={() => { 
+      const uid = selected?.user_id; 
+      const uname = selected?.user_name; 
+      if(uid) { window.location.href = `/owner/vouchers?action=create&userId=${uid}&userName=${encodeURIComponent(uname)}`; } 
+      else { alert("Vui lòng chọn khách hàng trước!"); }
+    }} className="chat-input-tool chat-input-tool--voucher"
                     title={t("Tặng Voucher")}
                     aria-label={t("Tặng Voucher")}
                   >

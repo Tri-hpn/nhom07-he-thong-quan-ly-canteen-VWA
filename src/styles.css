@@ -5051,3 +5051,17 @@ form input, form select, form textarea {
      border-radius: 16px !important; */
   overflow: hidden !important;
 }
+
+/* ============================================================
+   DEAL SỐC - NỀN VÀNG & VIỀN CAM
+   ============================================================ */
+tr.deal-soc-row {
+  background-color: #fef3c7 !important;
+  border-left: 4px solid #f59e0b !important;
+}
+tr.deal-soc-row:hover {
+  background-color: #fde68a !important;
+}
+tr.deal-soc-row td {
+  background-color: transparent !important;
+}
