@@ -30,7 +30,7 @@ import {
   Users, Filter, ChevronLeft, ChevronRight, ClipboardList, Calendar,
   Sun, Sunrise, Sunset, CheckCircle2, Clock, AlertTriangle, Flag,
   Briefcase, CheckSquare, Check, CalendarDays, Bell, Edit, UserX,
-} from "lucide-react";
+CheckCircle } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -152,7 +152,12 @@ function OwnerEmployeesInner() {
   const [adding, setAdding] = useState(false);
 
   // ---------- Assign task modal ----------
-  const [assignModal, setAssignModal] = useState(null); // { employee }
+  const [assignModal, setAssignModal] = useState(null);
+  const [assignShiftModal, setAssignShiftModal] = useState(null);
+  const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const [pendingShifts, setPendingShifts] = useState([]);
+  const [viewShiftsModal, setViewShiftsModal] = useState(null);
+  const [chartWeekOffset, setChartWeekOffset] = useState(0); // { employee }
   const [assigning, setAssigning] = useState(false);
 
   // ---------- Task list modal ----------
@@ -194,14 +199,25 @@ function OwnerEmployeesInner() {
   }, []);
 
   // Load ca làm hôm nay (map theo employee_id)
+  const loadPendingShifts = async () => {
+    try {
+      const data = await api.shifts.all({ include_pending: 1 });
+      setPendingShifts(data.filter(s => s.status === "pending"));
+    } catch (e) { toast("Lỗi tải danh sách ca", "error"); }
+  };
+
   const loadTodayShifts = useCallback(async () => {
     try {
-      const data = await api.shifts.approvedToday();
+      const data = await api.shifts.all();
+      const today = new Date().toISOString().split("T")[0];
       const map = {};
-      (Array.isArray(data) ? data : []).forEach((s) => {
-        if (!map[s.employee_id]) map[s.employee_id] = [];
-        map[s.employee_id].push(s.shift);
-      });
+      for (const s of data) {
+        // Lấy ca từ hôm nay trở đi và đã được duyệt
+        if (s.date >= today && (!s.status || s.status === "approved")) {
+          if (!map[s.employee_id]) map[s.employee_id] = [];
+          map[s.employee_id].push(s);
+        }
+      }
       setTodayShiftsMap(map);
     } catch {
       setTodayShiftsMap({});
@@ -706,7 +722,11 @@ function OwnerEmployeesInner() {
           </div>
 
           {/* Add button */}
-          <button
+          <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={() => { setPendingModalOpen(true); loadPendingShifts(); }} style={{ padding: "10px 16px", borderRadius: 10, background: "#2634d5", color: "#fff", border: "none", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+          <CheckCircle size={16} /> Duyệt ca làm
+        </button>
+        <button
             onClick={() => setAddModal(true)}
             style={{
               display: "inline-flex",
@@ -725,6 +745,7 @@ function OwnerEmployeesInner() {
           >
             <Plus size={16} /> {t("Thêm nhân viên")}
           </button>
+      </div>
         </div>
 
         {/* ============ RESULT INFO ============ */}
@@ -834,6 +855,17 @@ function OwnerEmployeesInner() {
                   onDelete={() => remove(emp)}
                   onPermissions={() => setPermModal(emp)}
                   onAssign={() => openAssign(emp)}
+                  onAssignShift={() => setAssignShiftModal({ employeeId: emp.id, employeeName: emp.name })}
+                  onViewShifts={async () => {
+                  setChartWeekOffset(0);
+                  try {
+                    const data = await api.shifts.all();
+                    const empShifts = data.filter(s => String(s.employee_id) === String(emp.id) && s.status !== 'rejected');
+                    setViewShiftsModal({ employee: emp, shifts: empShifts });
+                  } catch(e) {
+                    toast("Lỗi tải danh sách ca làm", "error");
+                  }
+                }}
                   onViewTasks={() => openTaskList(emp)}
                   t={t}
                 />
@@ -1701,7 +1733,10 @@ function OwnerEmployeesInner() {
                   </div>
                 );
               })}
-            </div>
+            
+      
+    
+</div>
           )}
 
           <button onClick={closeTaskList} style={{ ...btnPrimaryStyle, width: "100%" }}>
@@ -1737,7 +1772,215 @@ function OwnerEmployeesInner() {
           onClose={closeConfirm}
         />
       )}
-    </>
+    
+      {/* PHÂN CA MODAL */}
+      {assignShiftModal && (
+        <ShiftAssignModal
+          modal={assignShiftModal}
+          employees={list || []}
+          weekDays={[]}
+          shifts={[]}
+          onSave={async (formData) => {
+            try {
+              const { employeeId, dateShifts, note } = formData;
+              for (const [date, shiftList] of Object.entries(dateShifts)) {
+                if (!shiftList?.length) continue;
+                await api.shifts.bulk({ employee_id: employeeId, dates: [date], shifts: shiftList, note });
+              }
+              toast(t("Đã phân ca thành công"), "success");
+              setAssignShiftModal(null);
+              loadTodayShifts();
+            } catch(e) { toast(e.message || "Lỗi phân ca", "error"); }
+          }}
+          onClose={() => setAssignShiftModal(null)}
+          t={t}
+        />
+      )}
+
+
+      {/* SHIFT DETAIL MODAL */}
+      {viewShiftsModal && (() => {
+        // Hàm lấy giờ từ SHIFT_DEFS
+        const getShiftTime = (shiftId) => {
+          const def = typeof SHIFT_DEFS !== 'undefined' ? SHIFT_DEFS.find(d => d.id === shiftId || d.name === shiftId) : null;
+          if (def) {
+            if (def.time) return def.time;
+            if (def.start && def.end) return `${def.start} - ${def.end}`;
+            if (def.startTime && def.endTime) return `${def.startTime} - ${def.endTime}`;
+          }
+          // Fallback nếu không tìm thấy
+          if (shiftId === "Ca sáng") return "06:30 - 12:30";
+          if (shiftId === "Ca chiều") return "12:30 - 18:30";
+          if (shiftId === "Ca tối") return "18:30 - 22:30";
+          return "";
+        };
+
+        const today = new Date();
+        const day = today.getDay();
+        const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(today.setDate(diff));
+        monday.setDate(monday.getDate() + (chartWeekOffset * 7));
+        
+        const weekDays = Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date(monday);
+          d.setDate(monday.getDate() + i);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return {
+            dateStr: `${yyyy}-${mm}-${dd}`,
+            dayName: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][i],
+            dateNum: `${dd}/${mm}`
+          };
+        });
+
+        const startDate = weekDays[0].dateNum;
+        const endDate = weekDays[6].dateNum;
+
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 99999 }}>
+            <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: "100%", maxWidth: 850 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 18, color: "var(--text-primary, #172033)" }}>Lịch làm việc - {viewShiftsModal.employee.name}</h3>
+                <button onClick={() => setViewShiftsModal(null)} style={{ background: "transparent", border: 0, cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, background: "var(--bg-tertiary, #f8fafc)", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color, #e5e9ef)" }}>
+                <button onClick={() => setChartWeekOffset(prev => prev - 1)} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
+                  &larr; Tuần trước
+                </button>
+                <div style={{ fontWeight: 700, color: "#2634d5", fontSize: 15 }}>
+                  {chartWeekOffset === 0 ? "Tuần này" : (chartWeekOffset > 0 ? `Tuần sau (+${chartWeekOffset})` : `Tuần trước (${chartWeekOffset})`)} ({startDate} - {endDate})
+                </div>
+                <button onClick={() => setChartWeekOffset(prev => prev + 1)} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
+                  Tuần sau &rarr;
+                </button>
+              </div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+                {weekDays.map((wd, idx) => {
+                  const shiftsInDay = viewShiftsModal.shifts.filter(s => {
+                    const shiftDateStr = s.date ? s.date.split('T')[0] : "";
+                    return shiftDateStr === wd.dateStr;
+                  }).sort((a, b) => {
+                    // Sắp xếp thứ tự: Ca sáng -> Ca chiều -> Ca tối
+                    const order = { "Ca sáng": 1, "Ca chiều": 2, "Ca tối": 3 };
+                    return (order[a.shift] || 99) - (order[b.shift] || 99);
+                  });
+                  
+                  return (
+                    <div key={idx} style={{ display: "flex", flexDirection: "column", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, overflow: "hidden", minHeight: 170, background: "var(--bg-tertiary, #f8fafc)" }}>
+                      <div style={{ padding: "10px 0", textAlign: "center", background: chartWeekOffset === 0 && idx === (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1) ? "#18a967" : "#2634d5", color: "#fff", fontWeight: 600, fontSize: 13 }}>
+                        <div>{wd.dayName}</div>
+                        <div style={{ fontSize: 11, opacity: 0.9 }}>{wd.dateNum}</div>
+                      </div>
+                      
+                      <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+                        {shiftsInDay.length === 0 ? (
+                          <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 10 }}>Trống</div>
+                        ) : (
+                          shiftsInDay.map(s => (
+                            <div key={s.id} style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: s.status === 'pending' ? "1px dashed #f59e0b" : "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 2 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontSize: 12, fontWeight: 600, color: s.status === 'pending' ? "#f59e0b" : "#172033" }}>{s.shift}</span>
+                                <button 
+                                  onClick={async () => {
+                                    if(!window.confirm("Bạn có chắc muốn hủy ca làm này?")) return;
+                                    try {
+                                      await api.shifts.remove(s.id);
+                                      toast("Đã hủy ca làm", "success");
+                                      const updatedShifts = viewShiftsModal.shifts.filter(x => x.id !== s.id);
+                                      setViewShiftsModal({ ...viewShiftsModal, shifts: updatedShifts });
+                                      loadTodayShifts();
+                                    } catch(e) { toast("Lỗi khi hủy ca", "error"); }
+                                  }}
+                                  style={{ background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "none", padding: 4, borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center" }}
+                                  title="Hủy ca này"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                              <div style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>
+                                {getShiftTime(s.shift)}
+                              </div>
+                              {s.status === 'pending' && <span style={{ fontSize: 10, color: "#f59e0b", fontStyle: "italic", marginTop: 2 }}>Chờ duyệt</span>}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <button onClick={() => setChartWeekOffset(0)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f8fafc)", border: "1px solid var(--border-color, #e5e9ef)", color: "var(--text-primary, #172033)", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Về tuần này</button>
+                <button onClick={() => setViewShiftsModal(null)} style={{ padding: "8px 24px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Đóng</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()})}
+
+      
+      {/* PENDING SHIFTS MODAL */}
+      {pendingModalOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 99999 }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 18 }}>Danh sách ca chờ duyệt</h3>
+              <button onClick={() => setPendingModalOpen(false)} style={{ background: "transparent", border: 0, cursor: "pointer" }}><X size={20} /></button>
+            </div>
+            
+            {pendingShifts.length === 0 ? (
+              <p style={{ textAlign: "center", color: "#64748b", padding: "20px 0" }}>Không có ca làm nào đang chờ duyệt.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {pendingShifts.map((s) => (
+                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 8, border: "1px solid var(--border-color, #e5e9ef)" }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary, #172033)" }}>{s.employee_name || "Nhân viên"} - {s.shift}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted, #64748b)", marginTop: 4 }}>
+                        Ngày làm: <b>{new Date(s.date).toLocaleDateString("vi-VN")}</b>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await api.shifts.approve(s.id);
+                            toast("Đã duyệt ca", "success");
+                            loadPendingShifts();
+                            loadTodayShifts();
+                          } catch(e) { toast("Lỗi duyệt ca", "error"); }
+                        }}
+                        style={{ background: "#10b981", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}
+                      >
+                        Duyệt
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          if(!window.confirm("Từ chối ca làm này?")) return;
+                          try {
+                            await api.shifts.reject(s.id);
+                            toast("Đã từ chối ca", "success");
+                            loadPendingShifts();
+                          } catch(e) { toast("Lỗi từ chối", "error"); }
+                        }}
+                        style={{ background: "#ef4444", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}
+                      >
+                        Từ chối
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    
+</>
   );
 }
 // ============================================================
@@ -1745,6 +1988,8 @@ function OwnerEmployeesInner() {
 // ============================================================
 
 function EmployeeCard({
+  onViewShifts,
+  onAssignShift,
   emp,
   todayShifts = [],
   todayAttendance,
@@ -1825,12 +2070,12 @@ function EmployeeCard({
         <div
           className={`admin-emp-card__chip ${
             hasShiftToday ? "admin-emp-card__chip--shift" : ""
-          }`}
+          }`} onClick={(e) => { e.stopPropagation(); onViewShifts(); }} style={{ cursor: "pointer", background: "rgba(38, 52, 213, 0.08)", color: "#2634d5", fontWeight: 600, padding: "4px 10px", borderRadius: 20 }}
         >
           {hasShiftToday ? <Sunrise size={11} /> : <Sun size={11} />}
           <span>
             {hasShiftToday
-              ? todayShifts.join(", ")
+              ? `Xem ca làm (${todayShifts.length})`
               : t("Chưa phân ca")}
           </span>
         </div>
@@ -1863,7 +2108,8 @@ function EmployeeCard({
 
       {/* Actions */}
       <div className="admin-emp-card__actions">
-        <button
+        <div style={{ display: "flex", gap: 8, width: "100%", marginTop: 8 }}>
+          <button style={{ flex: 1, justifyContent: "center" }}
           type="button"
           className="admin-emp-card__btn admin-emp-card__btn--primary"
           onClick={onAssign}
@@ -1872,6 +2118,17 @@ function EmployeeCard({
           <ClipboardList size={14} />
           <span>{t("Giao việc")}</span>
         </button>
+          <button
+          type="button"
+          className="admin-emp-card__btn admin-emp-card__btn--primary"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log("Đã bấm nút Phân ca"); onAssignShift(); }}
+          title={t("Phân ca làm việc")}
+          style={{ flex: 1, justifyContent: "center", margin: 0,     justifyContent: "center", display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
+        >
+          <Calendar size={14} />
+          <span>{t("Phân ca")}</span>
+        </button>
+        </div>
 
         <div className="admin-emp-card__icon-actions">
           {onPermissions && (
@@ -2878,7 +3135,7 @@ function OwnerShiftsInner() {
                       fontSize: 12,
                     }}
                   >
-                    {t("Chưa phân ca")}
+                    {t("Chưa có ca")}
                   </div>
                 ) : (
                   <div
@@ -4082,7 +4339,7 @@ function ShiftAssignModal({
         background: "rgba(0,0,0,0.5)",
         display: "grid",
         placeItems: "center",
-        zIndex: SHIFT_MODAL_Z,
+        zIndex: 99999,
         padding: 20,
         overflowY: "auto",
       }}

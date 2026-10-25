@@ -87,6 +87,7 @@ export default function OwnerMenu() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const [stallFilter, setStallFilter] = useState("Mọi Quầy");
   const [filterCat, setFilterCat] = useState("");
 
   // ---------- Pagination ----------
@@ -284,6 +285,9 @@ export default function OwnerMenu() {
       const s = q.toLowerCase().trim();
       result = result.filter((m) => m.name?.toLowerCase().includes(s));
     }
+    if (stallFilter !== "Mọi Quầy") {
+      result = result.filter((m) => m.stall === stallFilter || m.area === stallFilter);
+    }
     if (filterCat) {
       result = result.filter((m) => m.category === filterCat);
     }
@@ -301,7 +305,7 @@ export default function OwnerMenu() {
 
       return orderA - orderB;
     });
-  }, [list, q, filterCat]);
+  }, [list, q, filterCat, stallFilter]);
 
   // Reset page khi filter/search đổi
   useEffect(() => {
@@ -439,6 +443,7 @@ export default function OwnerMenu() {
       name,
       category,
       price,
+      stall: f.get("stall")?.trim() || "",
       original_price: original > 0 ? original : price,
       discount_percent: original > 0 ? d : 0,
       stock,
@@ -825,6 +830,7 @@ export default function OwnerMenu() {
                 )}
                 Làm mới
               </button>
+          
 
               <button
                 type="button"
@@ -1189,6 +1195,16 @@ export default function OwnerMenu() {
           >
             <FolderPlus size={16} /> Quản lý danh mục
           </button>
+          <select
+            value={stallFilter}
+            onChange={(e) => setStallFilter(e.target.value)}
+            style={{ padding: "0 16px", background: "#2634d5", border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", outline: "none", height: 38, appearance: "none", WebkitAppearance: "none", MozAppearance: "none", textAlign: "center", textAlignLast: "center" }}
+          >
+            <option value="Mọi Quầy" style={{ background: "#fff", color: "#172033" }}>Mọi Quầy</option>
+            <option value="Quầy Cơm Suất" style={{ background: "#fff", color: "#172033" }}>Quầy Cơm Suất</option>
+            <option value="Quầy Bún / Phở" style={{ background: "#fff", color: "#172033" }}>Quầy Bún / Phở</option>
+            <option value="Quầy Trà & Cafe" style={{ background: "#fff", color: "#172033" }}>Quầy Trà & Cafe</option>
+          </select>
         </div>
 
         {/* ============ RESULT INFO ============ */}
@@ -1641,6 +1657,14 @@ export default function OwnerMenu() {
                 ))}
               </select>
 
+              <label style={labelStyle}>Thuộc Quầy (Khu vực)</label>
+              <select name="stall" defaultValue={modal.stall || modal.area || ""} style={inputStyle} disabled={saving}>
+                <option value="">Không chọn quầy</option>
+                <option value="Quầy Cơm Suất">Quầy Cơm Suất</option>
+                <option value="Quầy Bún / Phở">Quầy Bún / Phở</option>
+                <option value="Quầy Trà & Cafe">Quầy Trà & Cafe</option>
+              </select>
+
               <div
                 style={{
                   display: "grid",
@@ -1759,6 +1783,73 @@ export default function OwnerMenu() {
                 disabled={saving}
               />
 
+              {/* ✅ CHECKBOX NUTRITION */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, marginTop: 10 }}>
+                {[
+                  { key: "is_cool", icon: "❄️", label: "Mát lạnh" },
+                  { key: "is_healthy", icon: "🥗", label: "Lành mạnh" },
+                  { key: "is_spicy", icon: "🌶️", label: "Cay" },
+                ].map((c) => (
+                  <label
+                    key={c.key}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "flex-start",
+                      gap: 8,
+                      padding: "6px 12px",
+                      borderRadius: 20,
+                      fontSize: 13,
+                      whiteSpace: "nowrap",
+                      cursor: saving ? "not-allowed" : "pointer",
+                      background: nutrition[c.key]
+                        ? "rgba(16, 185, 129, 0.12)"
+                        : "var(--bg-tertiary, #f8fafc)",
+                      border: nutrition[c.key]
+                        ? "1px solid rgba(16, 185, 129, 0.4)"
+                        : "1px solid var(--border-color, #e5e9ef)",
+                      transition: "all 0.2s",
+                      userSelect: "none"
+                    }}
+                  >
+                    {/* 1. Chữ */}
+                    <span style={{ fontWeight: 600, color: "var(--text-primary, #172033)" }}>
+                      {c.label}
+                    </span>
+                    {/* 2. Icon */}
+                    <span style={{ fontSize: 14 }}>{c.icon}</span>
+                    
+                    {/* 3. Ô vuông tự chế (Đảm bảo không bị CSS phá) */}
+                    <div style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      border: nutrition[c.key] ? "1px solid #10b981" : "1px solid #cbd5e1",
+                      background: nutrition[c.key] ? "#10b981" : "#fff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      marginLeft: 4
+                    }}>
+                      {nutrition[c.key] && <span style={{ color: "#fff", fontSize: 12, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                    </div>
+                    
+                    {/* Input thật bị ẩn đi, nhưng vẫn giữ chức năng click vào label */}
+                    <input
+                      type="checkbox"
+                      checked={!!nutrition[c.key]}
+                      onChange={(e) =>
+                        setNutrition((p) => ({ ...p, [c.key]: e.target.checked }))
+                      }
+                      disabled={saving}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                ))}
+              </div>
+        
+
               <label style={labelStyle}>Dinh dưỡng &amp; phục vụ</label>
               <div
                 style={{
@@ -1783,84 +1874,10 @@ export default function OwnerMenu() {
                     disabled={saving}
                   />
                 </div>
-                <div>
-                  <label style={{ ...labelStyle, marginTop: 0 }}>
-                    🔥 Năng lượng (kcal)
-                  </label>
-                  <input
-                    name="calories"
-                    type="number"
-                    min="0"
-                    step="10"
-                    defaultValue={modal.calories ?? ""}
-                    placeholder="VD: 520"
-                    style={{ ...inputStyle, marginBottom: 0 }}
-                    disabled={saving}
-                  />
-                </div>
+                
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  marginBottom: 14,
-                }}
-              >
-                {[
-                  { key: "is_cool", icon: "❄️", label: "Mát lạnh" },
-                  { key: "is_healthy", icon: "🥗", label: "Lành mạnh" },
-                  { key: "is_spicy", icon: "🌶️", label: "Cay" },
-                ].map((c) => (
-                  <label
-                    key={c.key}
-                    style={{
-                      display: "inline-flex",
-                      flexShrink: 0,
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 12px",
-                      borderRadius: 20,
-                      fontSize: 13,
-                      whiteSpace: "nowrap",
-                      cursor: saving ? "not-allowed" : "pointer",
-                      background: nutrition[c.key]
-                        ? "rgba(16, 185, 129, 0.12)"
-                        : "var(--bg-tertiary, #f8fafc)",
-                      border: nutrition[c.key]
-                        ? "1px solid rgba(16, 185, 129, 0.4)"
-                        : "1px solid var(--border-color, #e5e9ef)",
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    {/* 1. Chữ */}
-                    <span style={{ fontWeight: 600, color: "var(--text-primary, #172033)" }}>
-                      {c.label}
-                    </span>
-                    {/* 2. Icon */}
-                    <span style={{ fontSize: 14 }}>{c.icon}</span>
-                    {/* 3. Ô vuông tích (Ép hiển thị rõ ràng) */}
-                    <input
-                      type="checkbox"
-                      checked={!!nutrition[c.key]}
-                      onChange={(e) =>
-                        setNutrition((p) => ({ ...p, [c.key]: e.target.checked }))
-                      }
-                      disabled={saving}
-                      style={{
-                        width: 16,
-                        height: 16,
-                        margin: 0,
-                        accentColor: "#10b981",
-                        cursor: "inherit",
-                        display: "inline-block",
-                        appearance: "auto"
-                      }}
-                    />
-                  </label>
-                ))}
-              </div>
+              
 
               <div
                 style={{
@@ -1873,9 +1890,7 @@ export default function OwnerMenu() {
                   color: "var(--text-muted, #64748b)",
                 }}
               >
-                💡 Để trống Thời gian / Năng lượng → hệ thống tự gán mặc định theo
-                danh mục. Các tiêu chí này dùng cho bộ lọc "Tiêu chí ưu tiên" và
-                "Mức năng lượng" ở trang thực đơn của khách hàng.
+                💡 Để trống Thời gian làm — hệ thống tự gán mặc định theo danh mục. Tiêu chí này dùng cho bộ lọc "Tiêu chí ưu tiên" ở trang thực đơn của khách hàng.
               </div>
 
               <label style={labelStyle}>Lý do đổi giá (nếu có sửa giá)</label>
@@ -2253,8 +2268,7 @@ function AdminMenuCardRow({
           )}
           {item.calories > 0 && (
             <span className="admin-menu-card__meta-item">
-              <Flame size={12} color="#ef4444" />
-              {item.calories} kcal
+              
             </span>
           )}
           {item.prep_time > 0 && (
