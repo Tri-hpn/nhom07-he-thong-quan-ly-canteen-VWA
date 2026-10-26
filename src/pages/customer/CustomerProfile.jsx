@@ -90,6 +90,8 @@ function buildFormFromUser(u) {
     address: u?.address || "",
     avatar: u?.avatar || "",
     faculty: u?.faculty || "",
+    className: u?.class_name || u?.class || u?.className || "",
+    birthDate: u?.birth_date || u?.date_of_birth || u?.dob || "",
     gender: u?.gender || "nam",
     studentId: u?.student_code || "",
     teacherCode: u?.teacher_code || "",
@@ -312,6 +314,8 @@ export default function CustomerProfile({ user, setUser }) {
         name: form.name.trim(),
         phone: form.phone.trim(),
         address: form.address.trim(),
+        class_name: form.className.trim(),
+        birth_date: form.birthDate,
         avatar: form.avatar,
         faculty: form.faculty,
         gender: form.gender,
@@ -511,13 +515,6 @@ export default function CustomerProfile({ user, setUser }) {
           </div>
         </div>
 
-        <div className="profile-main-card__wallet">
-          <div className="profile-main-card__wallet-left">
-            <Wallet size={18} />
-            <span>{t("Số dư ví ăn:")}</span>
-          </div>
-          <b>185.000 ₫</b>
-        </div>
 
         <div className="profile-main-card__actions">
           {!editing ? (
@@ -602,6 +599,34 @@ export default function CustomerProfile({ user, setUser }) {
               icon={<Type size={16} />}
               label={t("Năm nhập học")}
               value={user?.year_in ? String(user.year_in) : "—"}
+            />
+            <InfoRow
+              icon={<GraduationCap size={16} />}
+              label={t("L\u1edbp")}
+              value={user?.class_name || user?.class || user?.className || "\u2014"}
+            />
+            <InfoRow
+              icon={<User size={16} />}
+              label={t("Gi\u1edbi t\u00ednh")}
+              value={
+                user?.gender === "nu" || user?.gender === "female"
+                  ? t("N\u1eef")
+                  : user?.gender === "khac" || user?.gender === "other"
+                    ? t("Kh\u00e1c")
+                    : user?.gender
+                      ? t("Nam")
+                      : "\u2014"
+              }
+            />
+            <InfoRow
+              icon={<Type size={16} />}
+              label={t("Ng\u00e0y sinh")}
+              value={user?.birth_date || user?.date_of_birth || user?.dob || "\u2014"}
+            />
+            <InfoRow
+              icon={<Globe size={16} />}
+              label={t("\u0110\u1ecba ch\u1ec9")}
+              value={user?.address || "\u2014"}
             />
           </div>
         </section>
@@ -837,7 +862,7 @@ export default function CustomerProfile({ user, setUser }) {
               </div>
             </div>
 
-            <div className="profile-form-field profile-form-field--full">
+            <div className="profile-form-field profile-form-field--trio">
               <label className="profile-form-label">
                 <span>{t("Giới tính")}</span>
               </label>
@@ -860,40 +885,38 @@ export default function CustomerProfile({ user, setUser }) {
                 ))}
               </div>
             </div>
-          </div>
-
-          <div className="profile-dietary">
-            <div className="profile-dietary__head">
-              <div className="profile-dietary__title">
-                <span>🍽️</span>
-                <h4>{t("Khẩu vị & Ghi chú dinh dưỡng cá nhân hóa")}</h4>
+            <div className="profile-form-field profile-form-field--trio">
+              <label className="profile-form-label" htmlFor="profile-class-edit">
+                <span>{t("L\u1edbp")}</span>
+              </label>
+              <div className="profile-form-input-wrap">
+                <input
+                  id="profile-class-edit"
+                  name="className"
+                  value={form.className}
+                  onChange={update("className")}
+                  placeholder={t("Nh\u1eadp l\u1edbp")}
+                  className="profile-form-input"
+                />
               </div>
-              <span className="profile-dietary__auto">
-                {t("Tự động gắn vào đơn hàng KDS bếp")}
-              </span>
             </div>
-            <div className="profile-dietary__grid">
-              {DIETARY_OPTIONS.map((opt) => (
-                <label key={opt.key} className="profile-dietary-card">
-                  <input
-                    type="checkbox"
-                    checked={!!dietary[opt.key]}
-                    onChange={() =>
-                      setDietary((d) => ({
-                        ...d,
-                        [opt.key]: !d[opt.key],
-                      }))
-                    }
-                  />
-                  <div>
-                    <b>{t(opt.title)}</b>
-                    <p>{t(opt.desc)}</p>
-                  </div>
-                </label>
-              ))}
+
+            <div className="profile-form-field profile-form-field--trio">
+              <label className="profile-form-label" htmlFor="profile-birth-edit">
+                <span>{t("Ng\u00e0y sinh")}</span>
+              </label>
+              <div className="profile-form-input-wrap">
+                <input
+                  id="profile-birth-edit"
+                  name="birthDate"
+                  type="date"
+                  value={form.birthDate}
+                  onChange={update("birthDate")}
+                  className="profile-form-input"
+                />
+              </div>
             </div>
-          </div>
-        </section>
+          </div></section>
       )}
 
       {/* MODALS */}
