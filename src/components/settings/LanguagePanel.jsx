@@ -1,18 +1,10 @@
 // ============================================================
-// LANGUAGEPANEL.JSX — Ngôn ngữ & Khu vực (V3 - FINAL)
+// LANGUAGEPANEL.JSX — Ngôn ngữ & Khu vực (V4 - MULTI-TAB ISOLATED)
 // ============================================================
-// V2 (2026-10):
-//   - 🔧 tự dispatch event + ghi localStorage + gọi setLocale
-//     → đổi ngôn ngữ có hiệu lực NGAY, không cần F5
-//
-// V3 (2026-10) - FINAL:
-//   - 🔧 FIX L12: BỎ bước dispatch "language-change" thủ công.
-//     Lý do: useSettings.setLanguage() đã dispatch event này
-//     (xem effect trong useSettings). Dispatch lại ở đây gây
-//     trùng event → i18n.setLocale bị gọi 2 lần / 1 click.
-//   - Vẫn giữ: gọi setI18nLocale (để i18n engine cập nhật ngay)
-//     + ghi localStorage (để cross-tab sync) + gọi setLanguage
-//     của useSettings (để state đồng bộ).
+// V4 (2026-10):
+//   - 🔴 BỎ localStorage.setItem trực tiếp (gây sync cross-tab)
+//   - Chỉ gọi setLanguage() (useSettings lo sessionStorage có role)
+//   - Chỉ gọi setI18nLocale() (lib/i18n tự lo storage)
 // ============================================================
 
 import { Check } from "lucide-react";
@@ -41,9 +33,8 @@ export default function LanguagePanel({ settings }) {
       console.warn("[LanguagePanel] setLocale failed:", e);
     }
 
-    // 2. Đồng bộ useSettings state (nếu có).
-    //    useSettings sẽ tự dispatch "language-change" qua useEffect
-    //    → i18n.js sync; do đó KHÔNG cần dispatch thủ công ở đây.
+    // 2. Đồng bộ useSettings state (useSettings sẽ ghi sessionStorage có role suffix)
+    //    → mỗi tab có key riêng: vwa_lang::ADMIN, vwa_lang::EMPLOYEE, vwa_lang::CUSTOMER
     if (typeof setLanguage === "function") {
       try {
         setLanguage(code);
@@ -52,12 +43,8 @@ export default function LanguagePanel({ settings }) {
       }
     }
 
-    // 3. Ghi localStorage cả 2 key — phòng trường hợp component
-    //    này được dùng mà không có useSettings (defensive).
-    try {
-      localStorage.setItem("vwa_lang", code);
-      localStorage.setItem("canteen_locale", code);
-    } catch {}
+    // 🔴 ĐÃ BỎ: localStorage.setItem("vwa_lang", code) + localStorage.setItem("canteen_locale", code)
+    //    Lý do: gây sync cross-tab. Giờ useSettings + lib/i18n tự quản lý sessionStorage riêng.
   };
 
   return (

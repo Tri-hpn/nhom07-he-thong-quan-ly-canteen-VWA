@@ -1,11 +1,5 @@
 // ============================================================
-// OWNERCHAT.JSX — Trang quản lý Chat cho Admin (V2)
-// ============================================================
-// Chức năng:
-//   - Xem tất cả hội thoại khách ↔ nhân viên (polling 3s)
-//   - Đọc nội dung tin nhắn realtime
-//   - Tiếp quản hội thoại (nhắn trực tiếp với khách)
-//   - Panel phải: Hồ sơ khách + Tặng voucher + toggle global chat
+// OWNERCHAT.JSX — Trang quản lý Chat cho Admin (V3 - FIX RACE CONDITION)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -134,6 +128,7 @@ export default function OwnerChat() {
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);
   const msgsReqIdRef = useRef(0);
+  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
   const lastMsgCountRef = useRef(0);
   const lastConvIdRef = useRef(null);
   const tabVisibleRef = useRef(
@@ -173,8 +168,11 @@ export default function OwnerChat() {
   const loadMessages = useCallback(
     async (userId, silent = false) => {
       if (!userId) return;
+      if (silent && isSendingRef.current) return; // 🔴 CHẶN POLLING
+
       const myReqId = ++msgsReqIdRef.current;
       if (!silent) setLoadingMsgs(true);
+      
       try {
         const data = await api.chat.admin.messagesWith(userId);
         if (myReqId !== msgsReqIdRef.current) return;
@@ -292,9 +290,9 @@ export default function OwnerChat() {
     const dist =
       container.scrollHeight - container.scrollTop - container.clientHeight;
 
-    if (isOwn || dist < 120) {
+    if (isOwn || dist < 30) {
       requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
       });
     }
 
@@ -312,8 +310,9 @@ export default function OwnerChat() {
       return;
     }
 
+    isSendingRef.current = true; // 🔴
     setSending(true);
-    const tempId = "tmp-" + Date.now();
+    const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
     const tempMsg = {
       id: tempId,
       from: "staff",
@@ -335,14 +334,15 @@ export default function OwnerChat() {
         from_name: msg?.from_name || t("Admin"),
       };
       setMessages((m) => m.map((x) => (x.id === tempId ? safeMsg : x)));
-      loadMessages(selected.user_id, true);
+      // loadMessages(selected.user_id, true); -> Đã bỏ
     } catch (e) {
       setMessages((m) => m.filter((x) => x.id !== tempId));
       toast(e.message || t("Không gửi được"), "error");
     } finally {
       setSending(false);
+      isSendingRef.current = false; // 🔴
     }
-  }, [text, selected, sending, loadMessages, t]);
+  }, [text, selected, sending, t]);
 
   const onKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {

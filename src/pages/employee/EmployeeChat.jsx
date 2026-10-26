@@ -1,10 +1,5 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V15 - FINAL)
-// ============================================================
-// V15 (2026-10):
-//   - ✅ FIX TTS: Dùng Google Translate TTS (không cần cài OS voice).
-//   - ✅ FIX TTS Fallback: Báo lỗi nếu thiếu giọng Việt, không đọc tiếng Anh.
-//   - ✅ Giữ nguyên: Nút chuyển đơn, giao diện đồng bộ, auto sync 3s.
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V16 - FIX RACE CONDITION)
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -30,7 +25,7 @@ import {
 
 const POLL_INTERVAL_MS = 3000;
 const PERMISSION_POLL_MS = 5000;
-const SCROLL_THRESHOLD_PX = 120;
+const SCROLL_THRESHOLD_PX = 30;
 const MAX_MESSAGE_LENGTH = 2000;
 const PINNED_STORAGE_KEY = "canteen.chat.pinned";
 const PRINT_NOTE_STORAGE_KEY = "canteen.chat.print_notes";
@@ -143,7 +138,6 @@ function writePrintNote(orderCode, note) {
   } catch {}
 }
 
-// 🔧 Hàm dự phòng: Dùng SpeechSynthesis của trình duyệt (nếu Google TTS lỗi)
 function fallbackBrowserTTS(text, langCode) {
   if (!("speechSynthesis" in window)) {
     toast("Trình duyệt không hỗ trợ tính năng đọc.", "warning");
@@ -154,7 +148,6 @@ function fallbackBrowserTTS(text, langCode) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // Ánh xạ mã ngôn ngữ
     const apiLangMap = {
       vi: "vi-VN",
       en: "en-US",
@@ -171,7 +164,6 @@ function fallbackBrowserTTS(text, langCode) {
     const doSpeak = () => {
       const voices = window.speechSynthesis.getVoices();
       
-      // Tìm giọng đọc chính xác
       let voice = null;
       if (langCode === "vi") {
         voice = voices.find((v) => v.lang === "vi-VN") || voices.find((v) => v.lang.startsWith("vi"));
@@ -183,10 +175,8 @@ function fallbackBrowserTTS(text, langCode) {
         utterance.voice = voice;
         window.speechSynthesis.speak(utterance);
       } else if (langCode === "vi") {
-        // Nếu là tiếng Việt mà máy không có giọng -> Báo lỗi, không đọc tiếng Anh
         toast("Máy tính chưa cài giọng đọc tiếng Việt. Vui lòng thêm gói ngôn ngữ trong Cài đặt Windows/Mac.", "warning", { duration: 5000 });
       } else {
-        // Các ngôn ngữ khác nếu không có giọng thì đọc mặc định
         window.speechSynthesis.speak(utterance);
       }
     };
@@ -204,7 +194,6 @@ function fallbackBrowserTTS(text, langCode) {
   }
 }
 
-// 🔧 Hàm đọc đa ngôn ngữ (Ưu tiên Google TTS để không cần cài gói ngôn ngữ)
 function speakCustomerCall(text, locale) {
   if (!text) return;
 
@@ -218,7 +207,6 @@ function speakCustomerCall(text, locale) {
   
   const targetLang = langMap[locale] || "vi";
 
-  // 1. Dùng Google Translate TTS (chất lượng cao, không cần cài OS voice)
   try {
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${targetLang}&client=tw-ob`;
     const audio = new Audio(url);
@@ -810,6 +798,7 @@ export default function EmployeeChat() {
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);
   const msgsReqIdRef = useRef(0);
+  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
 
   const lastMsgCountRef = useRef(0);
   const lastConvIdRef = useRef(null);
@@ -871,6 +860,7 @@ export default function EmployeeChat() {
   const loadMessages = useCallback(
     async (userId, silent = false) => {
       if (!userId) return;
+      if (silent && isSendingRef.current) return; // 🔴 CHẶN POLLING
 
       const myReqId = ++msgsReqIdRef.current;
       if (!silent) setLoadingMsgs(true);
@@ -1034,7 +1024,7 @@ export default function EmployeeChat() {
     if (isOwnMessage || isNearBottom) {
       requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({
-          behavior: "smooth",
+          behavior: "auto",
           block: "end",
         });
       });
@@ -1087,8 +1077,9 @@ export default function EmployeeChat() {
         return;
       }
 
+      isSendingRef.current = true; // 🔴
       setSending(true);
-      const tempId = "tmp-" + Date.now();
+      const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
 
       const tempMsg = {
         id: tempId,
@@ -1116,12 +1107,13 @@ export default function EmployeeChat() {
         };
 
         setMessages((m) => m.map((x) => (x.id === tempId ? safeMsg : x)));
-        loadMessages(selected.user_id, true);
+        // loadMessages(selected.user_id, true); -> Đã bỏ vì không cần thiết
       } catch (e) {
         setMessages((m) => m.filter((x) => x.id !== tempId));
         toast(e.message || t("Không gửi được"), "error");
       } finally {
         setSending(false);
+        isSendingRef.current = false; // 🔴
       }
     },
     [text, selected, sending, loadMessages, t, chatPermission.enabled, isSelectedHeldByAdmin]
@@ -1194,13 +1186,11 @@ export default function EmployeeChat() {
     const customerName = selected.user_name || t("Khách");
     const counterNum = selected.table || currentOrder?.station || "01"; 
 
-    // 🔧 Xây dựng câu thông báo đa ngôn ngữ
     const announceTemplate = t("Xin mời khách hàng {name} đến quầy số {counter} nhận đồ.");
     const announceText = announceTemplate
       .replace("{name}", customerName)
       .replace("{counter}", counterNum);
 
-    // Gọi hàm đọc đa ngôn ngữ
     speakCustomerCall(announceText, locale);
 
     toast(

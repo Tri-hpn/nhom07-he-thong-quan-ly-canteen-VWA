@@ -1,15 +1,9 @@
-// ============================================================
-// VITE.CONFIG.JS — Vite configuration (V6 - FINAL)
-// ============================================================
-// V6 (2026-10):
-//   - 🔧 __dirname chuẩn ESM (fileURLToPath) — không phụ thuộc shim
-//   - 🔧 Giữ nguyên logic proxy V5 (changeOrigin + x-forwarded-*)
-// ============================================================
-
+// vite.config.js
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { VitePWA } from "vite-plugin-pwa";
 import i18nPlugin from "./vite-plugin-i18n.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,8 +14,78 @@ export default defineConfig(({ mode }) => {
   const isProd = mode === "production";
 
   return {
-    plugins: [react(), i18nPlugin()],
-
+    plugins: [
+      react(),
+      i18nPlugin(),
+      VitePWA({
+        registerType: "autoUpdate",
+        manifest: false,
+        injectRegister: null,
+        devOptions: { enabled: true, type: "module" },
+        workbox: {
+          globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          navigateFallback: "index.html",
+          navigateFallbackAllowlist: [/^(?!\/api).*/],
+          runtimeCaching: [
+            // ① KHÔNG CACHE auth + telemetry (tránh lộ session)
+            {
+              urlPattern: /^\/api\/(auth|telemetry)\//i,
+              handler: "NetworkOnly",
+            },
+            // ② Ảnh menu — cache mạnh
+            {
+              urlPattern: /^\/api\/uploads\/menu\/.*/i,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "vwa-menu-images",
+                expiration: {
+                  maxEntries: 200,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            // ③ Menu/categories — StaleWhileRevalidate
+            {
+              urlPattern: /^\/api\/(menu|categories|toppings|sizes)/i,
+              handler: "StaleWhileRevalidate",
+              options: {
+                cacheName: "vwa-api-menu",
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 24 * 60 * 60,
+                },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            // ④ Dynamic (KHÔNG còn auth)
+            {
+              urlPattern:
+                /^\/api\/(orders|wallet|points|vouchers|chat|notifications)/i,
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "vwa-api-dynamic",
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            // ⑤ Mọi API khác
+            {
+              urlPattern: /^\/api\/.*/i,
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "vwa-api-misc",
+                networkTimeoutSeconds: 5,
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
+        },
+      }),
+    ],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
@@ -30,8 +94,7 @@ export default defineConfig(({ mode }) => {
         "@data": path.resolve(__dirname, "./src/data"),
       },
     },
-
-    server: {
+        server: {
       port: 5173,
       host: true,
       strictPort: true,
@@ -39,24 +102,26 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": {
           target: env.VITE_BACKEND_URL || "http://localhost:3000",
-          changeOrigin: env.VITE_KEEP_ORIGIN_HOST !== "1",
+          changeOrigin: true, // Bắt buộc phải là true
           secure: false,
+          cookieDomainRewrite: "localhost", // 🔴 THÊM DÒNG NÀY ĐỂ FIX LỖI COOKIE
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq, req) => {
               if (env.VITE_KEEP_ORIGIN_HOST !== "1") return;
               const host = req.headers.host;
               if (host) {
                 proxyReq.setHeader("x-forwarded-host", host);
-                proxyReq.setHeader("x-forwarded-proto", req.connection?.encrypted ? "https" : "http");
+                proxyReq.setHeader(
+                  "x-forwarded-proto",
+                  req.connection?.encrypted ? "https" : "http"
+                );
               }
             });
           },
         },
       },
     },
-
     preview: { port: 4173, host: true },
-
     build: {
       outDir: "dist",
       sourcemap: !isProd,
@@ -78,13 +143,10 @@ export default defineConfig(({ mode }) => {
         ? { drop: ["debugger"], pure: ["console.log", "console.debug", "console.trace"] }
         : {},
     },
-
     optimizeDeps: {
       include: ["react", "react-dom", "react-router-dom", "lucide-react"],
     },
-
     css: { devSourcemap: true },
-
     define: {
       __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "1.0.0"),
     },

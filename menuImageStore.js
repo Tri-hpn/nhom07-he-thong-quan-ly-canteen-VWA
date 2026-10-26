@@ -1,15 +1,22 @@
 // ============================================================
-// MENUIMAGESTORE.JS — Tách ảnh món ăn ra khỏi document chính
-// V3 (2026-10):
-//   - ✅ Cache CẢ redirectTo (URL ngoài) trong 60s — tránh hit DB
-//     mỗi request khi user dán link ngoài.
-//   - ✅ Thêm clearRedirectCache() để gọi khi update/delete.
+// MENUIMAGESTORE.JS — Tách ảnh món ăn khỏi document chính
+// V4 (2026-10):
+//   ✅ Tích hợp Cloudinary cho ảnh MỚI (thay base64 inline)
+//   ✅ Fallback menu_images collection nếu Cloudinary chưa config
+//   ✅ Xoá ảnh Cloudinary cũ khi update ảnh
+//   ✅ Giữ nguyên các hàm migrate/CLI cũ (backward-compat)
 // ============================================================
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import {
+  uploadBase64Image,
+  isCloudinaryEnabled,
+  isCloudinaryUrl,
+  deleteCloudinaryImage,
+} from "./services/cloudinaryUpload.js";
 
 dotenv.config();
 
@@ -65,7 +72,7 @@ export function countInlineMenuImages(data) {
   );
 }
 
-// ---------- Model ----------
+// ---------- Model (legacy) ----------
 const menuImageSchema = new mongoose.Schema(
   {
     _id: { type: String },
@@ -80,14 +87,13 @@ const menuImageSchema = new mongoose.Schema(
 export const MenuImageModel =
   mongoose.models.MenuImage || mongoose.model("MenuImage", menuImageSchema);
 
-// ---------- Cache RAM ----------
+// ---------- Cache RAM (legacy cho menu_images) ----------
 const IMAGE_CACHE_LIMIT_BYTES = 64 * 1024 * 1024;
 const imageCache = new Map();
 let imageCacheBytes = 0;
 
-// ✅ Cache URL ngoài 60s
 const REDIRECT_TTL_MS = 60 * 1000;
-const redirectCache = new Map(); // key -> { url, expiresAt }
+const redirectCache = new Map();
 
 export function clearMenuImageCache() {
   imageCache.clear();
@@ -96,7 +102,11 @@ export function clearMenuImageCache() {
 }
 
 export function menuImageCacheStats() {
-  return { entries: imageCache.size, bytes: imageCacheBytes, redirects: redirectCache.size };
+  return {
+    entries: imageCache.size,
+    bytes: imageCacheBytes,
+    redirects: redirectCache.size,
+  };
 }
 
 function cacheGet(key) {
@@ -126,7 +136,10 @@ function cacheSet(key, entry) {
 function redirectGet(key) {
   const hit = redirectCache.get(key);
   if (!hit) return null;
-  if (hit.expiresAt < Date.now()) { redirectCache.delete(key); return null; }
+  if (hit.expiresAt < Date.now()) {
+    redirectCache.delete(key);
+    return null;
+  }
   return hit.url;
 }
 
@@ -140,7 +153,6 @@ export async function getMenuImage(id) {
   if (!key) return null;
   if (!mongoose.connection?.db) return null;
 
-  // Check redirect cache trước (không cần hit DB)
   const cachedUrl = redirectGet(key);
   if (cachedUrl) return { redirectTo: cachedUrl };
 
@@ -180,7 +192,14 @@ export async function putMenuImage(id, dataUrl) {
   const rev = Date.now();
   await MenuImageModel.updateOne(
     { _id: key },
-    { $set: { image: dataUrl, contentType: decoded.contentType, rev, updatedAt: new Date() } },
+    {
+      $set: {
+        image: dataUrl,
+        contentType: decoded.contentType,
+        rev,
+        updatedAt: new Date(),
+      },
+    },
     { upsert: true }
   );
 
@@ -214,40 +233,98 @@ export async function deleteMenuImage(id) {
   }
 }
 
+// ============================================================
+// 🔴 PATCH CHÍNH — Tích hợp Cloudinary
+// ============================================================
 export async function applyMenuImageToItem(item, incomingImage, { persist = true } = {}) {
   if (!item) return "";
   const c = classifyImageValue(incomingImage);
 
+  // 1. Ảnh mới base64 inline → upload Cloudinary (ưu tiên) hoặc fallback
   if (c.kind === "inline") {
-    if (!persist) { item.image = c.value; return item.image; }
+    if (!persist) {
+      item.image = c.value;
+      return item.image;
+    }
+
+    if (isCloudinaryEnabled()) {
+      try {
+        const uploaded = await uploadBase64Image(c.value, {
+          folder: "canteen-vwa/menu",
+          publicId: `item_${item.id}`,
+        });
+        // Xoá ảnh Cloudinary cũ nếu có (khác URL mới)
+        if (item.image && isCloudinaryUrl(item.image) && item.image !== uploaded.url) {
+          await deleteCloudinaryImage(item.image).catch(() => {});
+        }
+        item.image = uploaded.url;
+        return item.image;
+      } catch (e) {
+        console.warn("[applyMenuImageToItem] Cloudinary fail, fallback menu_images:", e.message);
+      }
+    }
+
+    // Fallback: lưu vào menu_images collection (legacy path — dev / chưa config Cloudinary)
     const url = await putMenuImage(item.id, c.value);
     item.image = url || "";
     return item.image;
   }
 
+  // 2. URL ngoài / path nội bộ / Cloudinary URL → lưu nguyên
   if (c.kind === "path" || c.kind === "external") {
+    // Nếu thay thế ảnh Cloudinary cũ bằng ảnh khác → xoá ảnh cũ
+    if (persist && item.image && isCloudinaryUrl(item.image) && item.image !== c.value) {
+      await deleteCloudinaryImage(item.image).catch(() => {});
+    }
     item.image = c.value;
     return item.image;
   }
 
+  // 3. Xoá ảnh
+  if (persist && item.image && isCloudinaryUrl(item.image)) {
+    await deleteCloudinaryImage(item.image).catch(() => {});
+  }
   item.image = "";
   if (persist) await deleteMenuImage(item.id);
   return "";
 }
 
+// ============================================================
+// Migration helpers (giữ nguyên)
+// ============================================================
 export async function extractInlineImagesFromData(data, { log = () => {} } = {}) {
   const items = Array.isArray(data?.menu_items) ? data.menu_items : [];
   let moved = 0;
   for (const item of items) {
     if (!isInlineImage(item?.image)) continue;
+
+    // Ưu tiên Cloudinary
+    if (isCloudinaryEnabled()) {
+      try {
+        const uploaded = await uploadBase64Image(item.image, {
+          folder: "canteen-vwa/menu",
+          publicId: `item_${item.id}`,
+        });
+        item.image = uploaded.url;
+        moved++;
+        continue;
+      } catch (e) {
+        log(`⚠️ Cloudinary fail item ${item.id}: ${e.message} → fallback local`);
+      }
+    }
+
+    // Fallback local
     const url = await putMenuImage(item.id, item.image);
-    if (url) { item.image = url; moved++; }
+    if (url) {
+      item.image = url;
+      moved++;
+    }
   }
-  if (moved) log(`🖼️ Đã tách ${moved} ảnh base64 sang ${MENU_IMAGES_COLLECTION}`);
+  if (moved) log(`🖼️ Đã tách ${moved} ảnh base64 khỏi menu_items`);
   return moved;
 }
 
-// ---------- Migration ----------
+// ---------- Migration document chính (giữ nguyên) ----------
 const INLINE_STATS_PIPELINE = [
   { $match: { _id: MAIN_DOC_ID } },
   {
@@ -257,7 +334,12 @@ const INLINE_STATS_PIPELINE = [
           $filter: {
             input: { $ifNull: ["$data.menu_items", []] },
             as: "m",
-            cond: { $eq: [{ $substrCP: [{ $ifNull: ["$$m.image", ""] }, 0, 5] }, "data:"] },
+            cond: {
+              $eq: [
+                { $substrCP: [{ $ifNull: ["$$m.image", ""] }, 0, 5] },
+                "data:",
+              ],
+            },
           },
         },
       },
@@ -279,7 +361,15 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
   const { inline, bytes: beforeBytes } = await readInlineStats(coll);
 
   if (!inline) {
-    return { ok: true, needed: false, inline: 0, stored: 0, moved: 0, beforeBytes, afterBytes: beforeBytes };
+    return {
+      ok: true,
+      needed: false,
+      inline: 0,
+      stored: 0,
+      moved: 0,
+      beforeBytes,
+      afterBytes: beforeBytes,
+    };
   }
 
   const mb = (b) => (b / 1048576).toFixed(2) + " MB";
@@ -288,34 +378,61 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
   let backupCollection = "";
   if (backup) {
     try {
-      await coll.aggregate([
-        { $match: { _id: MAIN_DOC_ID } },
-        { $addFields: { backup_of: MAIN_DOC_ID, backed_up_at: "$$NOW" } },
-        { $merge: { into: IMAGE_BACKUP_COLLECTION, on: "_id", whenMatched: "replace", whenNotMatched: "insert" } },
-      ]).toArray();
+      await coll
+        .aggregate([
+          { $match: { _id: MAIN_DOC_ID } },
+          { $addFields: { backup_of: MAIN_DOC_ID, backed_up_at: "$$NOW" } },
+          {
+            $merge: {
+              into: IMAGE_BACKUP_COLLECTION,
+              on: "_id",
+              whenMatched: "replace",
+              whenNotMatched: "insert",
+            },
+          },
+        ])
+        .toArray();
       backupCollection = IMAGE_BACKUP_COLLECTION;
       log(`💾 Đã sao lưu document gốc → ${IMAGE_BACKUP_COLLECTION} (server-side)`);
     } catch (e) {
-      log(`⚠️ Không sao lưu được (${e.message}) — vẫn tiếp tục vì ảnh được copy trước khi sửa`);
+      log(`⚠️ Không sao lưu được (${e.message}) — vẫn tiếp tục`);
     }
   }
 
-  await coll.aggregate([
-    { $match: { _id: MAIN_DOC_ID } },
-    { $project: { items: { $ifNull: ["$data.menu_items", []] } } },
-    { $unwind: "$items" },
-    { $match: { "items.image": { $regex: "^data:" } } },
-    { $project: { _id: { $toString: "$items.id" }, image: "$items.image", rev: { $literal: 1 }, updatedAt: "$$NOW" } },
-    { $merge: { into: MENU_IMAGES_COLLECTION, on: "_id", whenMatched: "replace", whenNotMatched: "insert" } },
-  ]).toArray();
+  await coll
+    .aggregate([
+      { $match: { _id: MAIN_DOC_ID } },
+      { $project: { items: { $ifNull: ["$data.menu_items", []] } } },
+      { $unwind: "$items" },
+      { $match: { "items.image": { $regex: "^data:" } } },
+      {
+        $project: {
+          _id: { $toString: "$items.id" },
+          image: "$items.image",
+          rev: { $literal: 1 },
+          updatedAt: "$$NOW",
+        },
+      },
+      {
+        $merge: {
+          into: MENU_IMAGES_COLLECTION,
+          on: "_id",
+          whenMatched: "replace",
+          whenNotMatched: "insert",
+        },
+      },
+    ])
+    .toArray();
 
-  const expectedIds = await coll.aggregate([
-    { $match: { _id: MAIN_DOC_ID } },
-    { $project: { items: { $ifNull: ["$data.menu_items", []] } } },
-    { $unwind: "$items" },
-    { $match: { "items.image": { $regex: "^data:" } } },
-    { $project: { _id: { $toString: "$items.id" } } },
-  ]).toArray();
+  const expectedIds = await coll
+    .aggregate([
+      { $match: { _id: MAIN_DOC_ID } },
+      { $project: { items: { $ifNull: ["$data.menu_items", []] } } },
+      { $unwind: "$items" },
+      { $match: { "items.image": { $regex: "^data:" } } },
+      { $project: { _id: { $toString: "$items.id" } } },
+    ])
+    .toArray();
 
   const expectedIdSet = new Set(expectedIds.map((r) => r._id));
 
@@ -334,58 +451,117 @@ export async function migrateInlineMenuImages({ log = () => {}, backup = true } 
     if (missingIds.length > 0) {
       const error = `Chỉ copy được ${storedIdSet.size}/${expectedIdSet.size} ảnh (thiếu ${missingIds.length}) → dừng để tránh mất ảnh`;
       log("❌ " + error);
-      return { ok: false, needed: true, inline, stored: storedIdSet.size, moved: 0, beforeBytes, error };
+      return {
+        ok: false,
+        needed: true,
+        inline,
+        stored: storedIdSet.size,
+        moved: 0,
+        beforeBytes,
+        error,
+      };
     }
     log(`📦 Đã copy ${storedIdSet.size} ảnh sang ${MENU_IMAGES_COLLECTION}`);
   }
 
-  await coll.aggregate([
-    { $match: { _id: MAIN_DOC_ID } },
-    {
-      $set: {
-        "data.menu_items": {
-          $map: {
-            input: { $ifNull: ["$data.menu_items", []] },
-            as: "m",
-            in: {
-              $cond: [
-                { $eq: [{ $substrCP: [{ $ifNull: ["$$m.image", ""] }, 0, 5] }, "data:"] },
-                { $mergeObjects: ["$$m", { image: { $concat: [MENU_IMAGE_PREFIX, { $toString: "$$m.id" }, "?v=1"] } }] },
-                "$$m",
-              ],
+  await coll
+    .aggregate([
+      { $match: { _id: MAIN_DOC_ID } },
+      {
+        $set: {
+          "data.menu_items": {
+            $map: {
+              input: { $ifNull: ["$data.menu_items", []] },
+              as: "m",
+              in: {
+                $cond: [
+                  {
+                    $eq: [
+                      { $substrCP: [{ $ifNull: ["$$m.image", ""] }, 0, 5] },
+                      "data:",
+                    ],
+                  },
+                  {
+                    $mergeObjects: [
+                      "$$m",
+                      {
+                        image: {
+                          $concat: [
+                            MENU_IMAGE_PREFIX,
+                            { $toString: "$$m.id" },
+                            "?v=1",
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                  "$$m",
+                ],
+              },
             },
           },
         },
       },
-    },
-    { $merge: { into: MAIN_COLLECTION, on: "_id", whenMatched: "merge", whenNotMatched: "fail" } },
-  ]).toArray();
+      {
+        $merge: {
+          into: MAIN_COLLECTION,
+          on: "_id",
+          whenMatched: "merge",
+          whenNotMatched: "fail",
+        },
+      },
+    ])
+    .toArray();
 
   const after = await readInlineStats(coll);
   const ok = after.inline === 0;
-  log((ok ? "✅" : "❌") + ` Document chính: ${mb(beforeBytes)} → ${mb(after.bytes)}` + (ok ? "" : ` (còn ${after.inline} ảnh base64)`));
+  log(
+    (ok ? "✅" : "❌") +
+      ` Document chính: ${mb(beforeBytes)} → ${mb(after.bytes)}` +
+      (ok ? "" : ` (còn ${after.inline} ảnh base64)`)
+  );
 
-  return { ok, needed: true, inline, stored, moved: inline - after.inline, beforeBytes, afterBytes: after.bytes, remaining: after.inline, backupCollection };
+  return {
+    ok,
+    needed: true,
+    inline,
+    stored,
+    moved: inline - after.inline,
+    beforeBytes,
+    afterBytes: after.bytes,
+    remaining: after.inline,
+    backupCollection,
+  };
 }
 
 // ---------- CLI ----------
 const isDirectRun =
-  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isDirectRun) {
   const noBackup = process.argv.includes("--no-backup");
   const uri = process.env.MONGO_URI;
-  if (!uri) { console.error("❌ Thiếu MONGO_URI trong .env"); process.exit(1); }
+  if (!uri) {
+    console.error("❌ Thiếu MONGO_URI trong .env");
+    process.exit(1);
+  }
 
   try {
     await mongoose.connect(uri, { serverSelectionTimeoutMS: 15000 });
     console.log("✅ Đã kết nối MongoDB:", mongoose.connection.db.databaseName);
-    const r = await migrateInlineMenuImages({ log: (m) => console.log(m), backup: !noBackup });
+    const r = await migrateInlineMenuImages({
+      log: (m) => console.log(m),
+      backup: !noBackup,
+    });
     console.log("─".repeat(52));
     if (!r.needed) console.log("✨ Không cần di trú");
-    else if (r.ok) console.log("🎉 Hoàn tất! Ảnh đã nằm riêng trong " + MENU_IMAGES_COLLECTION);
+    else if (r.ok)
+      console.log("🎉 Hoàn tất! Ảnh đã nằm riêng trong " + MENU_IMAGES_COLLECTION);
     else console.log("⚠️ Chưa hoàn tất: " + (r.error || "còn ảnh base64"));
-    console.log(`   document chính: ${(r.beforeBytes / 1048576).toFixed(2)} MB → ${(r.afterBytes / 1048576).toFixed(2)} MB`);
+    console.log(
+      `   document chính: ${(r.beforeBytes / 1048576).toFixed(2)} MB → ${(r.afterBytes / 1048576).toFixed(2)} MB`
+    );
     if (r.backupCollection) console.log(`   bản sao lưu: ${r.backupCollection}`);
     await mongoose.disconnect();
     process.exit(r.ok ? 0 : 1);

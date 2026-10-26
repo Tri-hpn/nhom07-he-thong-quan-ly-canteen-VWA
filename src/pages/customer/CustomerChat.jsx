@@ -1,11 +1,5 @@
 // ============================================================
-// CUSTOMERCHAT.JSX — Chat khách hàng (V3)
-// ============================================================
-// ✅ V3:
-//   - Badge ngày ở giữa chat (Hôm nay/Hôm qua/X ngày/dd/mm)
-//   - Smart scroll: KHÔNG tự cuộn khi user đang kéo tay
-//   - Immediate lần đầu, smooth khi có tin mới (chỉ khi ở gần cuối)
-//   - pendingScrollRef: chỉ scroll khi user vừa gửi tin
+// CUSTOMERCHAT.JSX — Chat khách hàng (V4 - FIX RACE CONDITION)
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -33,7 +27,7 @@ const BOT_AVATAR = "/bot-avatar.svg";
 const POLL_MS = 3000;
 const AI_REPLY_DELAY_MS = 600;
 const MAX_MESSAGE_LENGTH = 2000;
-const SCROLL_THRESHOLD_PX = 120;
+const SCROLL_THRESHOLD_PX = 30;
 
 // ============================================================
 // HELPERS
@@ -230,6 +224,7 @@ export default function CustomerChat({ cart, setCart, user }) {
 
   const staffReqIdRef = useRef(0);
   const aiTimerRef = useRef(null);
+  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
 
   // ✅ Refs cho smart scroll
   const lastAiCountRef = useRef(0);
@@ -262,6 +257,9 @@ export default function CustomerChat({ cart, setCart, user }) {
   // Load staff
   const loadStaff = useCallback(
     async (silent = false) => {
+      // 🔴 FIX: Chặn Polling nếu đang gửi tin
+      if (silent && isSendingRef.current) return;
+
       const myReqId = ++staffReqIdRef.current;
 
       if (!silent) setLoading(true);
@@ -293,39 +291,20 @@ export default function CustomerChat({ cart, setCart, user }) {
   // ============================================================
   // AI SCROLL — SMART V3
   // ============================================================
-  // Quy tắc:
-  //   1. Lần đầu vào tab AI → scroll IMMEDIATE xuống cuối
-  //   2. User vừa gửi tin → scroll SMOOTH xuống cuối
-  //   3. Có tin mới + user gần cuối + user KHÔNG đang chạm → scroll SMOOTH
-  //   4. Mọi trường hợp khác → KHÔNG scroll
-
-  // --- AI: listener chạm feed ---
   useEffect(() => {
     if (tab !== "ai") return;
     const container = aiScrollRef.current;
     if (!container) return;
 
-    const onTouchStart = () => {
-      aiTouchingRef.current = true;
-    };
-    const onTouchEnd = () => {
-      setTimeout(() => {
-        aiTouchingRef.current = false;
-      }, 300);
-    };
+    const onTouchStart = () => { aiTouchingRef.current = true; };
+    const onTouchEnd = () => { setTimeout(() => { aiTouchingRef.current = false; }, 300); };
     const onWheel = () => {
       aiTouchingRef.current = true;
       clearTimeout(onWheel._t);
-      onWheel._t = setTimeout(() => {
-        aiTouchingRef.current = false;
-      }, 300);
+      onWheel._t = setTimeout(() => { aiTouchingRef.current = false; }, 300);
     };
-    const onMouseDown = () => {
-      aiTouchingRef.current = true;
-    };
-    const onMouseUp = () => {
-      aiTouchingRef.current = false;
-    };
+    const onMouseDown = () => { aiTouchingRef.current = true; };
+    const onMouseUp = () => { aiTouchingRef.current = false; };
 
     container.addEventListener("touchstart", onTouchStart, { passive: true });
     container.addEventListener("touchend", onTouchEnd, { passive: true });
@@ -351,7 +330,6 @@ export default function CustomerChat({ cart, setCart, user }) {
 
     const isInitialLoad = !aiInitializedRef.current;
 
-    // Rule 1: lần đầu → immediate
     if (isInitialLoad && aiMessages.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -370,36 +348,26 @@ export default function CustomerChat({ cart, setCart, user }) {
       return;
     }
 
-    // Rule 2: user vừa gửi → scroll
     if (aiPendingScrollRef.current) {
       aiPendingScrollRef.current = false;
       requestAnimationFrame(() => {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: "smooth",
-        });
+        container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
       });
       lastAiCountRef.current = aiMessages.length;
       return;
     }
 
-    // Rule 3: user đang chạm → không scroll
     if (aiTouchingRef.current) {
       lastAiCountRef.current = aiMessages.length;
       return;
     }
 
-    // Rule 4: gần cuối → scroll
-    const dist =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
     const nearBottom = dist < SCROLL_THRESHOLD_PX;
 
     if (nearBottom || aiTyping) {
       requestAnimationFrame(() => {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: "smooth",
-        });
+        container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
       });
     }
 
@@ -416,27 +384,15 @@ export default function CustomerChat({ cart, setCart, user }) {
     const container = staffScrollRef.current;
     if (!container) return;
 
-    const onTouchStart = () => {
-      staffTouchingRef.current = true;
-    };
-    const onTouchEnd = () => {
-      setTimeout(() => {
-        staffTouchingRef.current = false;
-      }, 300);
-    };
+    const onTouchStart = () => { staffTouchingRef.current = true; };
+    const onTouchEnd = () => { setTimeout(() => { staffTouchingRef.current = false; }, 300); };
     const onWheel = () => {
       staffTouchingRef.current = true;
       clearTimeout(onWheel._t);
-      onWheel._t = setTimeout(() => {
-        staffTouchingRef.current = false;
-      }, 300);
+      onWheel._t = setTimeout(() => { staffTouchingRef.current = false; }, 300);
     };
-    const onMouseDown = () => {
-      staffTouchingRef.current = true;
-    };
-    const onMouseUp = () => {
-      staffTouchingRef.current = false;
-    };
+    const onMouseDown = () => { staffTouchingRef.current = true; };
+    const onMouseUp = () => { staffTouchingRef.current = false; };
 
     container.addEventListener("touchstart", onTouchStart, { passive: true });
     container.addEventListener("touchend", onTouchEnd, { passive: true });
@@ -483,10 +439,7 @@ export default function CustomerChat({ cart, setCart, user }) {
     if (staffPendingScrollRef.current) {
       staffPendingScrollRef.current = false;
       requestAnimationFrame(() => {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: "smooth",
-        });
+        container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
       });
       lastStaffCountRef.current = messages.length;
       return;
@@ -497,16 +450,12 @@ export default function CustomerChat({ cart, setCart, user }) {
       return;
     }
 
-    const dist =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
     const nearBottom = dist < SCROLL_THRESHOLD_PX;
 
     if (nearBottom) {
       requestAnimationFrame(() => {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: "smooth",
-        });
+        container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
       });
     }
 
@@ -527,24 +476,27 @@ export default function CustomerChat({ cart, setCart, user }) {
     if (!val || sending) return;
 
     if (val.length > MAX_MESSAGE_LENGTH) {
-      toast(
-        t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH),
-        "error"
-      );
+      toast(t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH), "error");
       return;
     }
 
+    isSendingRef.current = true; // 🔴
     staffPendingScrollRef.current = true;
     setSending(true);
+    
     try {
       const msg = await api.chat.send({ content: val });
       setText("");
-      setMessages((m) => [...m, msg]);
+      setMessages((m) => {
+        if (m.some((x) => x.id === msg.id)) return m;
+        return [...m, msg];
+      });
     } catch (e) {
       toast(e.message || t("Không gửi được tin nhắn"), "error");
       staffPendingScrollRef.current = false;
     } finally {
       setSending(false);
+      isSendingRef.current = false; // 🔴
     }
   };
 
@@ -553,10 +505,7 @@ export default function CustomerChat({ cart, setCart, user }) {
     if (!val || aiTyping) return;
 
     if (val.length > MAX_MESSAGE_LENGTH) {
-      toast(
-        t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH),
-        "error"
-      );
+      toast(t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH), "error");
       return;
     }
 
@@ -621,10 +570,7 @@ export default function CustomerChat({ cart, setCart, user }) {
     const existing = cart[key];
     const maxStock = typeof m.stock === "number" ? Math.max(1, m.stock) : 99;
     if (existing && existing.qty >= maxStock) {
-      toast(
-        t("Chỉ còn {n} phần trong kho").replace("{n}", maxStock),
-        "error"
-      );
+      toast(t("Chỉ còn {n} phần trong kho").replace("{n}", maxStock), "error");
       return;
     }
 

@@ -77,7 +77,7 @@ export default function SettingsModal({
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const settings = useSettings();
+  const settings = useSettings(role);
 
   const [currentPanel, setCurrentPanel] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);

@@ -1,12 +1,11 @@
 // ============================================================
-// USESETTINGS.JS — Hook quản lý cài đặt người dùng (V3 - FINAL)
+// USESETTINGS.JS — Hook cài đặt NGƯỜI DÙNG (V4 - MULTI-TAB ISOLATED)
 // ============================================================
-// V3 (2026-10):
-//   - 🔧 FIX: listen "language-change" để sync state khi cùng tab
-//     có ai gọi setLang() từ i18n (storage event chỉ fire tab khác).
-//   - 🔧 Pattern cleanup theme an toàn (array cleanup).
-//   - Giữ fix L13: resetAll không removeItem — các effect persist
-//     tự ghi lại DEFAULT.
+// V4 (2026-10):
+//   - 🔴 ĐỔI localStorage → sessionStorage: mỗi TAB độc lập
+//   - 🔴 Thêm suffix ROLE vào key: vwa_theme::ADMIN / ::EMPLOYEE / ::CUSTOMER
+//   - 🔴 BỎ storage event listener (không sync cross-tab nữa)
+//   - Giữ: language-change same-tab, theme apply DOM, font scale
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -48,11 +47,14 @@ const VALID_LANGS = ["vi", "en", "ja", "ko", "zh"];
 const VALID_FONT_SIZES = [1, 2, 3];
 
 // ---------- Helpers ----------
+const roleSuffix = (role) => (role ? `::${role}` : "");
+const keyWithRole = (base, role) => `${base}${roleSuffix(role)}`;
+
 function safeGetItem(key) {
-  try { return localStorage.getItem(key); } catch { return null; }
+  try { return sessionStorage.getItem(key); } catch { return null; }
 }
 function safeSetItem(key, value) {
-  try { localStorage.setItem(key, value); } catch {}
+  try { sessionStorage.setItem(key, value); } catch {}
 }
 function readLocalJson(key, fallback) {
   try {
@@ -68,31 +70,38 @@ function readLocalJson(key, fallback) {
 function writeLocalJson(key, value) {
   try { safeSetItem(key, JSON.stringify(value)); } catch {}
 }
-function readTheme() {
+
+function readTheme(role) {
   if (typeof window === "undefined") return "light";
-  const saved = safeGetItem(LS_KEYS.THEME);
+  const saved = safeGetItem(keyWithRole(LS_KEYS.THEME, role));
   return VALID_THEMES.includes(saved) ? saved : "light";
 }
-function readLanguage() {
+function readLanguage(role) {
   if (typeof window === "undefined") return "vi";
-  const saved = safeGetItem(LS_KEYS.LANG);
+  const saved = safeGetItem(keyWithRole(LS_KEYS.LANG, role));
   return VALID_LANGS.includes(saved) ? saved : "vi";
 }
-function readFontSize() {
+function readFontSize(role) {
   if (typeof window === "undefined") return 1;
-  const n = parseInt(safeGetItem(LS_KEYS.FONT_SIZE) || "1", 10);
+  const n = parseInt(safeGetItem(keyWithRole(LS_KEYS.FONT_SIZE, role)) || "1", 10);
   return VALID_FONT_SIZES.includes(n) ? n : 1;
 }
 
 // ---------- Main hook ----------
-export function useSettings() {
-  const [theme, setThemeState] = useState(readTheme);
-  const [language, setLanguageState] = useState(readLanguage);
-  const [fontSize, setFontSizeState] = useState(readFontSize);
+export function useSettings(role = "CUSTOMER") {
+  const [theme, setThemeState] = useState(() => readTheme(role));
+  const [language, setLanguageState] = useState(() => readLanguage(role));
+  const [fontSize, setFontSizeState] = useState(() => readFontSize(role));
 
-  const [dietary, setDietaryState] = useState(() => readLocalJson(LS_KEYS.DIETARY, DEFAULT_DIETARY));
-  const [notiPrefs, setNotiPrefsState] = useState(() => readLocalJson(LS_KEYS.NOTI_PREFS, DEFAULT_NOTI_PREFS));
-  const [mealSlots, setMealSlotsState] = useState(() => readLocalJson(LS_KEYS.MEAL_SLOTS, DEFAULT_MEAL_SLOTS));
+  const [dietary, setDietaryState] = useState(() =>
+    readLocalJson(keyWithRole(LS_KEYS.DIETARY, role), DEFAULT_DIETARY)
+  );
+  const [notiPrefs, setNotiPrefsState] = useState(() =>
+    readLocalJson(keyWithRole(LS_KEYS.NOTI_PREFS, role), DEFAULT_NOTI_PREFS)
+  );
+  const [mealSlots, setMealSlotsState] = useState(() =>
+    readLocalJson(keyWithRole(LS_KEYS.MEAL_SLOTS, role), DEFAULT_MEAL_SLOTS)
+  );
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -100,12 +109,12 @@ export function useSettings() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Apply theme → DOM + localStorage + event
+  // Apply theme → DOM + sessionStorage + event (same tab)
   useEffect(() => {
     if (typeof document === "undefined") return;
 
     const applyTheme = () => {
-      safeSetItem(LS_KEYS.THEME, theme);
+      safeSetItem(keyWithRole(LS_KEYS.THEME, role), theme);
       document.documentElement.classList.remove("dark-mode");
       if (theme === "dark") {
         document.documentElement.classList.add("dark-mode");
@@ -123,7 +132,6 @@ export function useSettings() {
       window.dispatchEvent(new CustomEvent("theme-change", { detail: { theme } }));
     } catch {}
 
-    // 🔧 Cleanup array pattern
     const cleanups = [];
     if (theme === "auto") {
       try {
@@ -139,28 +147,27 @@ export function useSettings() {
       } catch {}
     }
     return () => cleanups.forEach((fn) => { try { fn(); } catch {} });
-  }, [theme]);
+  }, [theme, role]);
 
   // Apply font scale
   useEffect(() => {
     if (typeof document === "undefined") return;
     try {
-      safeSetItem(LS_KEYS.FONT_SIZE, String(fontSize));
+      safeSetItem(keyWithRole(LS_KEYS.FONT_SIZE, role), String(fontSize));
       const scale = 1 + (fontSize - 1) * 0.12;
       document.documentElement.style.setProperty("--app-font-scale", String(scale));
     } catch {}
-  }, [fontSize]);
+  }, [fontSize, role]);
 
-  // Apply language → dispatch event
+  // Apply language → dispatch event (chỉ trong tab hiện tại)
   useEffect(() => {
-    safeSetItem(LS_KEYS.LANG, language);
+    safeSetItem(keyWithRole(LS_KEYS.LANG, role), language);
     try {
       window.dispatchEvent(new CustomEvent("language-change", { detail: { lang: language } }));
     } catch {}
-  }, [language]);
+  }, [language, role]);
 
-  // 🔧 FIX: listen "language-change" để same-tab sync khi ai đó
-  // gọi setLang() từ i18n (storage event chỉ fire ở tab khác).
+  // Listen "language-change" (same-tab sync khi ai đó gọi setLang từ i18n)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onLang = (e) => {
@@ -173,32 +180,9 @@ export function useSettings() {
   }, []);
 
   // Persist dietary / noti / meal
-  useEffect(() => { writeLocalJson(LS_KEYS.DIETARY, dietary); }, [dietary]);
-  useEffect(() => { writeLocalJson(LS_KEYS.NOTI_PREFS, notiPrefs); }, [notiPrefs]);
-  useEffect(() => { writeLocalJson(LS_KEYS.MEAL_SLOTS, mealSlots); }, [mealSlots]);
-
-  // Listen storage (tab khác đổi)
-  useEffect(() => {
-    const handler = (e) => {
-      if (!mountedRef.current) return;
-      if (e.key === LS_KEYS.THEME && VALID_THEMES.includes(e.newValue)) {
-        setThemeState(e.newValue);
-      } else if (e.key === LS_KEYS.LANG && VALID_LANGS.includes(e.newValue)) {
-        setLanguageState(e.newValue);
-      } else if (e.key === LS_KEYS.FONT_SIZE) {
-        const n = parseInt(e.newValue || "1", 10);
-        if (VALID_FONT_SIZES.includes(n)) setFontSizeState(n);
-      } else if (e.key === LS_KEYS.DIETARY) {
-        setDietaryState(readLocalJson(LS_KEYS.DIETARY, DEFAULT_DIETARY));
-      } else if (e.key === LS_KEYS.NOTI_PREFS) {
-        setNotiPrefsState(readLocalJson(LS_KEYS.NOTI_PREFS, DEFAULT_NOTI_PREFS));
-      } else if (e.key === LS_KEYS.MEAL_SLOTS) {
-        setMealSlotsState(readLocalJson(LS_KEYS.MEAL_SLOTS, DEFAULT_MEAL_SLOTS));
-      }
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, []);
+  useEffect(() => { writeLocalJson(keyWithRole(LS_KEYS.DIETARY, role), dietary); }, [dietary, role]);
+  useEffect(() => { writeLocalJson(keyWithRole(LS_KEYS.NOTI_PREFS, role), notiPrefs); }, [notiPrefs, role]);
+  useEffect(() => { writeLocalJson(keyWithRole(LS_KEYS.MEAL_SLOTS, role), mealSlots); }, [mealSlots, role]);
 
   // Setters
   const setTheme = useCallback((value) => {
