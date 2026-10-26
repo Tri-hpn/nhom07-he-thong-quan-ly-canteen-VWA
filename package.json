@@ -39,11 +39,13 @@
     "merge-db": "node scripts/split.mjs merge"
   },
   "dependencies": {
+    "@upstash/ratelimit": "^2.2.0",
+    "@upstash/redis": "^1.40.0",
     "@zxing/browser": "^0.1.5",
     "bcryptjs": "^2.4.3",
-    "cloudinary": "^2.11.0",     
+    "cloudinary": "^2.11.0",
     "compression": "^1.7.4",
-    "cookie-parser": "^1.4.7",   
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.0.0",

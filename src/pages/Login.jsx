@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { api, setToken } from "../api";
+import { useAuth } from "../contexts/AuthContext";
 import { useI18n } from "../hooks/useI18n";
 import { toast } from "../components/Effects";
 import { LogoVWACompact } from "../components/LogoVWA";
@@ -127,6 +128,7 @@ function startMicrosoftOAuth(t) {
 // ── Component ───────────────────────────────────────────────
 export default function Login({ onLogin }) {
   const { t } = useI18n();
+  const { setUser } = useAuth(); // 🔧 FIX: cần cập nhật AuthContext sau ?token= flow
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -164,6 +166,11 @@ export default function Login({ onLogin }) {
     api
       .me()
       .then((user) => {
+        // 🔧 FIX: cập nhật AuthContext — trước đây chỉ dispatch "refresh-user"
+        // nhưng AuthContext KHÔNG listen event này → user bị null → App.jsx
+        // coi như chưa login → đá về /login mất phiên. Giờ set trực tiếp.
+        setUser(user);
+
         const tr = tRef.current;
         try {
           const hasMssv = !!user.student_code;
@@ -222,9 +229,7 @@ export default function Login({ onLogin }) {
         } catch {
           toast(`${tr("Xin chào")} ${user.name || ""}!`, "success");
         }
-        try {
-          window.dispatchEvent(new CustomEvent("refresh-user"));
-        } catch {}
+
         const saved = consumeOAuthReturnUrl();
         navigate(saved || homePathForRole(user.role), { replace: true });
       })
@@ -240,7 +245,7 @@ export default function Login({ onLogin }) {
       })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate]);
+  }, [navigate, setUser]);
 
   useEffect(() => {
     try {

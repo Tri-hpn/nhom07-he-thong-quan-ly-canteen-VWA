@@ -1,16 +1,14 @@
 // ============================================================
-// FOODDETAILMODAL.JSX — Modal chi tiết món ăn (V4 - FINAL)
+// FOODDETAILMODAL.JSX — Modal chi tiết món ăn (V5 - FINAL)
 // ============================================================
-// V4 (2026-10):
-//   - ✅ FIX #1: Edit mode dùng setCart thay onUpdate (prop không tồn tại)
-//     Xử lý đủ 3 trường hợp:
-//       • Key mới chưa có → xóa key cũ, thêm key mới
-//       • Key mới trùng key khác → cộng dồn qty, xóa key cũ
-//       • Key mới trùng chính editingKey (chỉ đổi qty) → ghi đè
-//   - ✅ FIX #7: Bỏ readOnly cứng ở ReviewSection → cho phép đánh giá
-//   - Giữ nguyên: M3 (getItemId thống nhất), C2 (không onUpdateStock)
-//
-// 🌐 i18n: source-text tiếng Việt, tự dịch
+// V5 (2026-11):
+//   - 🔧 FIX: getItemId ưu tiên `id` trước `_id` (khớp backend
+//     POST /api/orders dùng String(m.id)). Trước đây ưu tiên `_id`
+//     có thể gây 400 nếu Mongo trả về cả _id (ObjectId) và id (số).
+//   - 🔧 FIX: handleAddToCart edit mode refactor sạch — không còn
+//     side effect (gán biến ngoài) trong setCart updater, không còn
+//     dead code (check maxQty dư thừa).
+//   - Giữ nguyên: logic toppings/size, buy now, render UI.
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -46,8 +44,11 @@ function getMaxQty(item) {
   return DEFAULT_MAX_QTY;
 }
 
+// 🔧 FIX: ưu tiên `id` — khớp với backend
+// (backend menuById = Map(String(m.id)); KHÔNG dùng _id)
 function getItemId(item) {
-  return item?._id || item?.id;
+  if (!item) return undefined;
+  return item.id ?? item._id;
 }
 
 function sortToppings(toppings) {
@@ -152,123 +153,101 @@ export default function FoodDetailModal({
   if (!item) return null;
 
   // ---------- Build cart entry ----------
-  const buildCartEntry = (quantity) => ({
-    ...item,
-    name: buildName(),
-    price: Number(totalWithToppings) || Number(item.price) || 0,
-    qty: quantity,
-    stock: item.stock ?? DEFAULT_MAX_QTY,
-    _originalId: itemId,
-    _toppings: selectedToppings,
-    _size: selectedSize,
-  });
+  const buildCartEntry = useCallback(
+    (quantity) => ({
+      ...item,
+      name: buildName(),
+      price: Number(totalWithToppings) || Number(item.price) || 0,
+      qty: quantity,
+      stock: item.stock ?? DEFAULT_MAX_QTY,
+      _originalId: itemId,
+      _toppings: selectedToppings,
+      _size: selectedSize,
+    }),
+    [item, buildName, totalWithToppings, itemId, selectedToppings, selectedSize]
+  );
 
   // ============================================================
-  // HANDLE ADD TO CART — có xử lý edit mode (FIX #1)
+  // HANDLE ADD TO CART — edit mode + add mode
+  // 🔧 FIX: tách hẳn 2 nhánh, không side effect trong setCart updater
   // ============================================================
   const handleAddToCart = () => {
+    if (isOutOfStock) {
+      toast(t("Hết hàng"), "error");
+      return;
+    }
+    if (qty > maxQty) {
+      toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
+      return;
+    }
+
+    const newKey = buildKey();
+    const newEntry = buildCartEntry(qty);
+
     // ========== EDIT MODE ==========
     if (editingKey) {
-      if (isOutOfStock) {
-        toast(t("Hết hàng"), "error");
+      // A. Chỉ đổi qty (key mới = key cũ) → ghi đè
+      if (newKey === editingKey) {
+        setCart((c) => ({ ...c, [editingKey]: newEntry }));
+        toast(`${t("Đã cập nhật")} ${newEntry.name}`, "success");
+        onClose?.();
         return;
       }
-      if (qty > maxQty) {
-        toast(`${t("Chỉ còn")} ${maxQty} ${t("phần")}`, "error");
-        return;
-      }
 
-      const newKey = buildKey();
-      const newEntry = buildCartEntry(qty);
-      let finalQty = qty;
-      let mergedWithExisting = false;
+      const existing = cart?.[newKey];
 
-      setCart((c) => {
-        const next = { ...c };
-        const oldQty = Number(c[editingKey]?.qty) || 0;
-
-        // Trường hợp A: user chỉ đổi qty, key mới = key cũ → ghi đè
-        if (newKey === editingKey) {
-          next[editingKey] = newEntry;
-          return next;
-        }
-
-        // Trường hợp B: key mới đã tồn tại (món khác đang có sẵn)
-        const existingAtNewKey = next[newKey];
-        if (existingAtNewKey) {
-          const existQty = Number(existingAtNewKey.qty) || 0;
-          const combined = Math.min(maxQty, existQty + qty);
-          mergedWithExisting = true;
-          finalQty = combined;
-
-          // Nếu số tổng vẫn > maxQty → chặn
-          if (existQty + qty > maxQty) {
-            return next; // không thay đổi
-          }
-
-          next[newKey] = { ...existingAtNewKey, qty: combined };
-          delete next[editingKey];
-          return next;
-        }
-
-        // Trường hợp C: key mới chưa có → xóa key cũ, thêm key mới
-        delete next[editingKey];
-        next[newKey] = newEntry;
-        return next;
-      });
-
-      if (newKey !== editingKey) {
-        const existingQty =
-          Number(cart?.[newKey]?.qty) || 0;
-        if (existingQty + qty > maxQty) {
+      // B. Key mới đã tồn tại (món khác cùng cấu hình) → gộp
+      if (existing) {
+        const existQty = Number(existing.qty) || 0;
+        if (existQty + qty > maxQty) {
           toast(
-            `${t("Chỉ còn")} ${maxQty - existingQty} ${t("phần")}`,
+            `${t("Chỉ còn")} ${Math.max(0, maxQty - existQty)} ${t("phần")}`,
             "error"
           );
           return;
         }
+        const combined = existQty + qty;
+        setCart((c) => {
+          const next = { ...c };
+          next[newKey] = { ...existing, qty: combined };
+          delete next[editingKey];
+          return next;
+        });
+        toast(
+          `${t("Đã gộp")} ${combined} ${t("phần")} ${newEntry.name}`,
+          "success"
+        );
+        onClose?.();
+        return;
       }
 
-      toast(
-        mergedWithExisting
-          ? `${t("Đã gộp")} ${finalQty} ${t("phần")} ${newEntry.name}`
-          : `${t("Đã cập nhật")} ${newEntry.name}`,
-        "success"
-      );
+      // C. Key mới chưa có → xoá key cũ, thêm key mới
+      setCart((c) => {
+        const next = { ...c };
+        delete next[editingKey];
+        next[newKey] = newEntry;
+        return next;
+      });
+      toast(`${t("Đã cập nhật")} ${newEntry.name}`, "success");
       onClose?.();
       return;
     }
 
     // ========== ADD MODE ==========
-    if (isOutOfStock) {
-      toast(t("Hết hàng"), "error");
-      return;
-    }
-
-    const key = buildKey();
-    const existing = cart?.[key];
+    const existing = cart?.[newKey];
     const currentQty = Number(existing?.qty) || 0;
 
     if (currentQty + qty > maxQty) {
       toast(
-        `${t("Chỉ còn")} ${maxQty - currentQty} ${t("phần")}`,
+        `${t("Chỉ còn")} ${Math.max(0, maxQty - currentQty)} ${t("phần")}`,
         "error"
       );
       return;
     }
 
-    const name = buildName();
-
-    setCart((c) => {
-      const e = c[key];
-      const newQty = (Number(e?.qty) || 0) + qty;
-      return {
-        ...c,
-        [key]: buildCartEntry(newQty),
-      };
-    });
-
-    toast(`${t("Đã thêm")} ${name} ${t("vào giỏ")}`, "success");
+    const newQty = currentQty + qty;
+    setCart((c) => ({ ...c, [newKey]: buildCartEntry(newQty) }));
+    toast(`${t("Đã thêm")} ${newEntry.name} ${t("vào giỏ")}`, "success");
     onClose?.();
   };
 
@@ -286,12 +265,12 @@ export default function FoodDetailModal({
       return;
     }
 
-    // Truyen rieng mon mua ngay, khong thay doi gio hang.
     const buyNowItem = buildCartEntry(qty);
 
     onClose?.();
     navigate("/customer/checkout", { state: { buyNowItem } });
   };
+
   // ---------- Qty handlers ----------
   const handleQtyMinus = () => setQty((q) => Math.max(1, q - 1));
 
@@ -610,7 +589,7 @@ export default function FoodDetailModal({
           </b>
         </div>
 
-        {/* ===== REVIEWS — FIX #7: bỏ readOnly cứng ===== */}
+        {/* ===== REVIEWS ===== */}
         <ReviewSection menuItemId={itemId} currentUser={user} />
 
         {/* ===== ACTION BUTTONS ===== */}

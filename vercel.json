@@ -6,22 +6,25 @@
   "outputDirectory": "dist",
   "installCommand": "npm install --include=dev",
   "regions": ["sin1"],
+
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
       "memory": 1024
     }
   },
+
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api/index.js"
     },
     {
-      "source": "/((?!api/|assets/|sw\\.js|workbox-.*\\.js|manifest\\.webmanifest).*)",
+      "source": "/((?!api/|assets/|sw\\.js|workbox-.*\\.js|manifest\\.json).*)",
       "destination": "/index.html"
     }
   ],
+
   "headers": [
     {
       "source": "/(.*)",

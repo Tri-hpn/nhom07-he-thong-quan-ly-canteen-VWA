@@ -1,11 +1,12 @@
 ﻿// ============================================================
-// CUSTOMERCHECKOUT.JSX — Thanh toán (V5 - FINAL + i18n)
+// CUSTOMERCHECKOUT.JSX — Thanh toán (V6 - FINAL + i18n)
 // ============================================================
-// V5 (2026-10):
-//   - 🔧 FIX #28: EMPTY_ARRAY module-scoped constant, không re-create
-//                 mỗi render → useCrossTabSync không bị re-init
-//   - 🔧 FIX FONT: Sửa toàn bộ ký tự mojibake → UTF-8 đúng
-//   - Giữ nguyên toàn bộ logic khác
+// V6 (2026-11):
+//   - 🔧 FIX: copyToClipboard await writeText() + fallback execCommand
+//             (trước đây báo "Đã sao chép" ngay cả khi copy thất bại)
+//   - 🔧 DEAD CODE: xoá openPayment / paymentOrder / PaymentModal
+//     (không được gọi từ JSX → Modal chưa bao giờ mở)
+//   - Giữ nguyên toàn bộ logic đặt hàng khác
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -23,7 +24,6 @@ import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import { usePointsConfig } from "../../hooks/usePointsConfig";
 import { useCrossTabSync } from "../../hooks/useCrossTabSync";
-import PaymentModal from "../../components/PaymentModal";
 
 // ============================================================
 // CONSTANTS
@@ -38,7 +38,7 @@ const FALLBACK_TIME_SLOTS = [
   "17:00 - 17:30", "17:30 - 18:00", "18:00 - 18:30",
 ];
 
-// 🔧 FIX #28: Module-scoped frozen constant
+// Module-scoped frozen constant
 const EMPTY_ARRAY = Object.freeze([]);
 
 const COUNTDOWN_START = 585;
@@ -145,7 +145,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [initLoading, setInitLoading] = useState(true);
 
   const [submittingOrder, setSubmittingOrder] = useState(false);
-  const [paymentOrder, setPaymentOrder] = useState(null);
 
   const [paymentMethod, setPaymentMethod] = useState("qr");
   const [usePoints, setUsePoints] = useState(false);
@@ -155,8 +154,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const submittingRef = useRef(false);
   const prevSubtotalRef = useRef(null);
 
-  // 🔧 FIX #28: EMPTY_ARRAY là module-scoped frozen constant,
-  // không phải re-create mỗi render
   const [selectedKeys] = useCrossTabSync(SELECTED_CART_KEY, EMPTY_ARRAY);
 
   const lines = useMemo(() => {
@@ -297,7 +294,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     };
   }, []);
 
-  // Sync customer VietQR from latest Admin bank settings
   useEffect(() => {
     let cancelled = false;
     let requesting = false;
@@ -352,6 +348,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);
+
   useEffect(() => {
     if (user?.name) setName((cur) => (cur ? cur : user.name));
     if (user?.phone) setPhone((cur) => (cur ? cur : user.phone));
@@ -434,7 +431,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
   const buildItemsPayload = useCallback(() => {
     return lines.map((m) => ({
-      menuItem: m._originalId || m._id || m.id,
+      menuItem: m._originalId || m.id || m._id,
       qty: m.qty,
       toppings: Array.isArray(m._toppings) ? m._toppings : [],
       size: m._size || "S",
@@ -449,8 +446,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   }, [note, pickupTime, t]);
 
   const buildOrderDiscountPayload = useCallback(async () => {
-    // Cho phép dùng voucher và Xu VWA cùng một đơn.
-    // Voucher giảm giá được xác thực ở backend; Xu được trừ riêng.
     return {
       discount: Number(discount) || 0,
       voucherCode: appliedVoucher?.code || "",
@@ -474,14 +469,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
       try {
         const orderDiscountPayload = await buildOrderDiscountPayload();
-        if (!orderDiscountPayload) return;
 
         const order = await api.orders.create({
           items: buildItemsPayload(),
           payment: method,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-                    ...orderDiscountPayload,
+          ...orderDiscountPayload,
           isGreen,
           useXu: usePoints,
         });
@@ -518,45 +512,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       usePoints,
       appliedVoucher,
       buildOrderDiscountPayload,
-      t,
-    ]
-  );
-
-  const openPayment = useCallback(
-    (method) => {
-      if (submittingRef.current) return;
-      if (!lines.length) {
-        toast(t("Giỏ hàng trống"), "error");
-        return;
-      }
-      if (!validate()) {
-        toast(t("Kiểm tra lại thông tin"), "error");
-        return;
-      }
-
-      setPaymentOrder({
-        code: genPreviewOrderCode(),
-        total,
-        name,
-        phone,
-        pickupTime,
-        note,
-        discount: discount,
-        voucherCode: appliedVoucher?.code || "",
-          isGreen,
-        method,
-      });
-    },
-    [
-      lines,
-      total,
-      name,
-      phone,
-      pickupTime,
-      note,
-      discount,
-      pointsDiscount,
-      appliedVoucher,
+      isGreen,
       t,
     ]
   );
@@ -569,14 +525,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
       try {
         const orderDiscountPayload = await buildOrderDiscountPayload();
-        if (!orderDiscountPayload) return;
 
         const order = await api.orders.create({
           items: buildItemsPayload(),
           payment: paymentMethodArg,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-                    ...orderDiscountPayload,
+          ...orderDiscountPayload,
           isGreen,
           useXu: usePoints,
         });
@@ -590,7 +545,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           `${t("Đặt hàng thành công!")} ${t("Mã đơn")}: ${order.code}`,
           "success"
         );
-        setPaymentOrder(null);
 
         navigate("/customer/success", { state: { order } });
       } catch (e) {
@@ -614,18 +568,36 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       usePoints,
       appliedVoucher,
       buildOrderDiscountPayload,
+      isGreen,
       t,
     ]
   );
 
-  const copyToClipboard = (text) => {
+  // 🔧 FIX: await writeText + fallback execCommand cho trình duyệt cũ
+  const copyToClipboard = useCallback(async (text) => {
+    const s = String(text ?? "");
     try {
-      navigator.clipboard.writeText(text);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(s);
+        toast(t("Đã sao chép"), "success");
+        return;
+      }
+      // Fallback cho HTTP / trình duyệt cũ
+      const ta = document.createElement("textarea");
+      ta.value = s;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      if (!ok) throw new Error("execCommand failed");
       toast(t("Đã sao chép"), "success");
-    } catch {
+    } catch (err) {
+      console.error("[copyToClipboard] failed:", err);
       toast(t("Không sao chép được"), "error");
     }
-  };
+  }, [t]);
 
   if (!lines.length) {
     return (
@@ -643,9 +615,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const bankCode = settings?.bank || "VCB";
   const bankAccount = settings?.account || "";
   const bankAccountName = settings?.accountName || "CANTEEN VWA";
-  const transferContent = paymentOrder?.code
-    ? `CANTEEN ${paymentOrder.code}`
-    : "CANTEEN";
+  const transferContent = `CANTEEN ${genPreviewOrderCode()}`;
 
   const normalizedBankCode = String(bankCode || "").trim();
   const normalizedBankAccount = String(bankAccount || "").replace(/\s+/g, "");
@@ -856,7 +826,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   {t("Nạp thêm tiền")}
                 </Link>
               </div>
-
 
               <button
                 type="button"
@@ -1300,8 +1269,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   placeholder={t("VD: ít cay, không hành, gọi trước khi tới quầy...")}
                 />
               </label>
-
-
             </div>
 
             <p className="checkout-verify__hint">
@@ -1318,7 +1285,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   {t("Tóm tắt đơn hàng")} ({lines.length} {t("món")})
                 </b>
               </div>
-
             </div>
 
             <div className="checkout-pickup-badge">
@@ -1486,61 +1452,61 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               )}
             </div>
 
-              <label className="checkout-points-option">
-                <input
-                  type="checkbox"
-                  checked={usePoints}
-                  onChange={(e) => {
-                    setUsePoints(e.target.checked);
-                  }}
-                />
-                <div className="checkout-points-option__body">
-                  <span className="checkout-points-option__coin" aria-hidden="true">V</span>
-                  <span className="checkout-points-option__label">Dùng {Number(points || 0).toLocaleString("vi-VN")} VWA Xu</span>
-                </div>
-              </label>
+            <label className="checkout-points-option">
+              <input
+                type="checkbox"
+                checked={usePoints}
+                onChange={(e) => {
+                  setUsePoints(e.target.checked);
+                }}
+              />
+              <div className="checkout-points-option__body">
+                <span className="checkout-points-option__coin" aria-hidden="true">V</span>
+                <span className="checkout-points-option__label">Dùng {Number(points || 0).toLocaleString("vi-VN")} VWA Xu</span>
+              </div>
+            </label>
 
-              {/* SỐNG XANH HỌC ĐƯỜNG */}
-              <label
-                className="checkout-field checkout-field--full"
+            {/* SỐNG XANH HỌC ĐƯỜNG */}
+            <label
+              className="checkout-field checkout-field--full"
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "12px 16px",
+                margin: 0,
+                background: "#fff",
+                border: "1px solid #e2e8f0",
+                borderRadius: 10,
+                cursor: "pointer",
+              }}
+            >
+              <span
                 style={{
                   display: "flex",
-                  flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "12px 16px",
-                  margin: 0,
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 10,
-                  cursor: "pointer",
+                  gap: 8,
+                  minWidth: 0,
+                  color: "#26334a",
+                  fontSize: 13,
+                  fontWeight: 600,
                 }}
               >
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    minWidth: 0,
-                    color: "#26334a",
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  <Leaf size={17} color="#218653" style={{ flexShrink: 0 }} />
-                  <span>Mang hộp cơm/ bình nước</span>
-                </span>
-                <input
-                  type="checkbox"
-                  id="isGreen-tick"
-                  checked={isGreen}
-                  onChange={(e) => setIsGreen(e.target.checked)}
-                  style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#18a967" }}
-                />
-              </label>
+                <Leaf size={17} color="#218653" style={{ flexShrink: 0 }} />
+                <span>Mang hộp cơm/ bình nước</span>
+              </span>
+              <input
+                type="checkbox"
+                id="isGreen-tick"
+                checked={isGreen}
+                onChange={(e) => setIsGreen(e.target.checked)}
+                style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#18a967" }}
+              />
+            </label>
 
             <div className="checkout-summary__costs">
               <div className="checkout-cost-row">
@@ -1612,15 +1578,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           </div>
         </div>
       </div>
-
-      {paymentOrder && (
-        <PaymentModal
-          order={paymentOrder}
-          onClose={() => !submittingOrder && setPaymentOrder(null)}
-          onConfirm={confirmPayment}
-          walletBalance={walletBalance}
-        />
-      )}
 
       <style>{`
         @keyframes checkout-spin-anim {

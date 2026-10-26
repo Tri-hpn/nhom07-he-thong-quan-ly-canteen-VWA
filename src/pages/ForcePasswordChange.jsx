@@ -78,13 +78,16 @@ export default function ForcePasswordChange() {
 
       toast(t("Đổi mật khẩu thành công!"), "success", { center: true });
 
-      // Đăng xuất để đăng nhập lại bằng mật khẩu mới
-      logout();
-
+      // Xoá giỏ hàng & session storage liên quan
       try {
         localStorage.removeItem("canteen_cart");
         localStorage.removeItem("canteen_cart_selected");
       } catch {}
+
+      // 🔧 FIX: await logout() để setUserState(null) kịp chạy TRƯỚC navigate.
+      // Trước đây logout() không await → navigate("/") render lại FPC (flash bug),
+      // sau đó user mới bị set null → mới chuyển sang Login.
+      await logout();
 
       navigate("/", { replace: true });
       toast(t("Vui lòng đăng nhập lại bằng mật khẩu mới."), "info", {
@@ -99,8 +102,9 @@ export default function ForcePasswordChange() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
+  // 🔧 FIX: cũng await logout để tránh flash FPC trước khi Login render
+  const handleLogout = async () => {
+    await logout();
     navigate("/", { replace: true });
   };
 

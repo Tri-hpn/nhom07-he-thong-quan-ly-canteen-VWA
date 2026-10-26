@@ -1,12 +1,9 @@
 // ============================================================
-// CUSTOMERORDERS.JSX — Đơn hàng của tôi (V6 - FINAL + i18n)
+// CUSTOMERORDERS.JSX — Đơn hàng của tôi (V7 - FINAL + i18n)
 // ============================================================
-// V5 (2026-10):
-//   - 🔧 FIX #30: getRelativeDateLabel dùng source-text i18n
-// V6 (2026-10):
-//   - 🔧 FIX: Customer thấy status mới ngay khi tab quay lại
-//             (visibilitychange → fetch ngay, không chờ 15s)
-//   - Poll 15s khi tab visible
+// V7 (2026-11):
+//   - 🔧 FIX: banner bottom không hiển thị "#—" khi không có đơn active
+//   - 🔧 CLEANUP: xoá activeCounterId + counts (dead code)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -342,7 +339,6 @@ export default function CustomerOrders({ user, onOpenSupport }) {
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // 🔧 FIX: theo dõi tab visible để pause poll khi ẩn
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
   );
@@ -413,10 +409,6 @@ export default function CustomerOrders({ user, onOpenSupport }) {
     [t, reminderStorageKey, showOrderReadyNotice]
   );
 
-  // ============================================================
-  // Polling — tải lại danh sách đơn hàng định kỳ
-  // 🔧 FIX: pause khi tab ẩn (tránh spam request khi user ở tab khác)
-  // ============================================================
   useEffect(() => {
     load(false);
 
@@ -426,19 +418,11 @@ export default function CustomerOrders({ user, onOpenSupport }) {
     return () => clearInterval(interval);
   }, [load, tabVisible]);
 
-  // ============================================================
-  // 🔧 FIX: lắng nghe visibilitychange
-  //   - Khi tab customer bị ẩn → pause poll
-  //   - Khi tab quay lại visible → fetch NGAY lập tức (không chờ 15s)
-  //   Đây là cơ chế chính giúp customer thấy status mới
-  //   sau khi employee đổi status ở tab khác.
-  // ============================================================
   useEffect(() => {
     const handler = () => {
       const visible = !document.hidden;
       setTabVisible(visible);
       if (visible) {
-        // Fetch ngay khi tab quay lại
         load(true);
       }
     };
@@ -475,17 +459,8 @@ export default function CustomerOrders({ user, onOpenSupport }) {
   const liveOrder = useMemo(() => {
     return orders.find((o) => ACTIVE_STATUSES.includes(o.status)) || null;
   }, [orders]);
-const activeCounterId = (() => {
-    const counter = String(liveOrder?.counter_name || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
 
-    if (/\bq1\b|quay\s*0?1|com tru(a)?|com\s*&\s*healthy/.test(counter)) return "Q1";
-    if (/\bq2\b|quay\s*0?2|bun|mi|banh mi/.test(counter)) return "Q2";
-    if (/\bq3\b|quay\s*0?3|barista|trang mieng|do uong/.test(counter)) return "Q3";
-    return "";
-  })();
+  // 🔧 CLEANUP: đã xoá activeCounterId (không dùng)
 
   const completed7dAgo = useMemo(() => {
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -496,22 +471,7 @@ const activeCounterId = (() => {
     ).length;
   }, [orders]);
 
-  const counts = useMemo(() => {
-    const map = { all: orders.length };
-    for (const o of orders) {
-      const s = o.status;
-      if (s === "Đang chuẩn bị" || s === "Đã xác nhận" || s === "Chờ xác nhận") {
-        map.preparing = (map.preparing || 0) + 1;
-      } else if (s === "Sẵn sàng nhận") {
-        map.ready = (map.ready || 0) + 1;
-      } else if (s === "Hoàn thành") {
-        map.completed = (map.completed || 0) + 1;
-      } else if (s === "Đã hủy") {
-        map.cancelled = (map.cancelled || 0) + 1;
-      }
-    }
-    return map;
-  }, [orders]);
+  // 🔧 CLEANUP: đã xoá counts (không dùng — filter dùng activeTab string)
 
   const filtered = useMemo(() => {
     let list = orders.filter((o) => TAB_MAP[activeTab](o.status));
@@ -566,9 +526,7 @@ const activeCounterId = (() => {
 
       <section className="orders-header">
         <div className="orders-header__row">
-          <div className="orders-header__left">
-
-          </div>
+          <div className="orders-header__left"></div>
 
           <div className="orders-header__right">
             <div className="orders-sync-badge">
@@ -698,60 +656,60 @@ const activeCounterId = (() => {
       )}
 
       <section className="orders-filter-section">
-  <div className="orders-filter-bar orders-filter-bar--ordered">
-    <div className="orders-filter-controls orders-filter-controls--ordered">
-      <select
-        value={timeRange}
-        onChange={(e) => setTimeRange(e.target.value)}
-        className="orders-select"
-        aria-label={t("Lọc theo thời gian")}
-      >
-        {TIME_RANGE_OPTIONS.map((opt) => (
-          <option key={opt.id} value={opt.id}>
-            {t(opt.label)}
-          </option>
-        ))}
-      </select>
+        <div className="orders-filter-bar orders-filter-bar--ordered">
+          <div className="orders-filter-controls orders-filter-controls--ordered">
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              className="orders-select"
+              aria-label={t("Lọc theo thời gian")}
+            >
+              {TIME_RANGE_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {t(opt.label)}
+                </option>
+              ))}
+            </select>
 
-      <select
-        value={counterFilter}
-        onChange={(e) => setCounterFilter(e.target.value)}
-        className="orders-select"
-        aria-label={t("Lọc theo quầy")}
-      >
-        {COUNTER_OPTIONS.map((opt) => (
-          <option key={opt.id} value={opt.id}>
-            {t(opt.label)}
-          </option>
-        ))}
-      </select>
+            <select
+              value={counterFilter}
+              onChange={(e) => setCounterFilter(e.target.value)}
+              className="orders-select"
+              aria-label={t("Lọc theo quầy")}
+            >
+              {COUNTER_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {t(opt.label)}
+                </option>
+              ))}
+            </select>
 
-      <div className="orders-search">
-        <Clock size={14} className="orders-search__icon" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t("Tìm theo mã đơn hoặc món...")}
-          className="orders-search__input"
-        />
-      </div>
+            <div className="orders-search">
+              <Clock size={14} className="orders-search__icon" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t("Tìm theo mã đơn hoặc món...")}
+                className="orders-search__input"
+              />
+            </div>
 
-      <select
-        value={activeTab}
-        onChange={(e) => setActiveTab(e.target.value)}
-        className="orders-select orders-status-select"
-        aria-label={t("Lọc theo trạng thái đơn hàng")}
-      >
-        <option value="all">{t("Tất cả đơn")}</option>
-        <option value="preparing">{t("Đang chuẩn bị")}</option>
-        <option value="ready">{t("Chờ nhận món")}</option>
-        <option value="completed">{t("Đã hoàn thành")}</option>
-        <option value="cancelled">{t("Đã hủy")}</option>
-      </select>
-    </div>
-  </div>
-</section>
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value)}
+              className="orders-select orders-status-select"
+              aria-label={t("Lọc theo trạng thái đơn hàng")}
+            >
+              <option value="all">{t("Tất cả đơn")}</option>
+              <option value="preparing">{t("Đang chuẩn bị")}</option>
+              <option value="ready">{t("Chờ nhận món")}</option>
+              <option value="completed">{t("Đã hoàn thành")}</option>
+              <option value="cancelled">{t("Đã hủy")}</option>
+            </select>
+          </div>
+        </div>
+      </section>
 
       {loading && !orders.length && (
         <div className="orders-skeleton-list">
@@ -911,10 +869,16 @@ const activeCounterId = (() => {
                   {t("Văn hóa lấy món văn minh tại Canteen VWA")}
                 </h4>
                 <p className="orders-banner__desc">
+                  {/* 🔧 FIX: chỉ hiển thị "#PIN" khi có liveOrder.
+                      Trước đây getPickupPin(null) trả về "—" → hiển thị "#—" */}
                   {t("Khi hệ thống báo")}{" "}
                   <b>"{t("Sẵn sàng nhận món")}"</b>,{" "}
                   {t("bạn hãy di chuyển đến màn hình KDS tại quầy tương ứng, xuất trình mã PIN số")}{" "}
-                  <b>#{getPickupPin(liveOrder)}</b>{" "}
+                  {liveOrder ? (
+                    <b>#{getPickupPin(liveOrder)}</b>
+                  ) : (
+                    <b>{t("trong đơn hàng đang hoạt động")}</b>
+                  )}
                 </p>
               </div>
             </div>
@@ -964,43 +928,43 @@ const activeCounterId = (() => {
             }}
           >
             <header style={{
-  position: "relative",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  minHeight: 44,
-  marginBottom: 18
-}}>
-  <h3 style={{
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 800,
-    letterSpacing: "-.5px",
-    color: "#192D5B",
-    textAlign: "center"
-  }}>
-    {t("Sơ đồ quầy ăn")}
-  </h3>
-  <button
-    type="button"
-    onClick={() => setShowCounterMap(false)}
-    aria-label={t("Đóng")}
-    style={{
-      position: "absolute",
-      right: 0,
-      top: 0,
-      width: 40,
-      height: 40,
-      border: "1px solid #dbe4ef",
-      borderRadius: 13,
-      background: "#fff",
-      color: "#334155",
-      cursor: "pointer",
-      fontSize: 24,
-      lineHeight: 1
-    }}
-  >×</button>
-</header>
+              position: "relative",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              minHeight: 44,
+              marginBottom: 18
+            }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: 24,
+                fontWeight: 800,
+                letterSpacing: "-.5px",
+                color: "#192D5B",
+                textAlign: "center"
+              }}>
+                {t("Sơ đồ quầy ăn")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCounterMap(false)}
+                aria-label={t("Đóng")}
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: 0,
+                  width: 40,
+                  height: 40,
+                  border: "1px solid #dbe4ef",
+                  borderRadius: 13,
+                  background: "#fff",
+                  color: "#334155",
+                  cursor: "pointer",
+                  fontSize: 24,
+                  lineHeight: 1
+                }}
+              >×</button>
+            </header>
 
             <div style={{
               border: "1px solid #d9e3ec",
@@ -1010,16 +974,16 @@ const activeCounterId = (() => {
               boxShadow: "0 5px 18px rgba(25,55,85,.05)"
             }}>
               <img
-  src="/canteen-layout.jpg"
-  alt="Sơ đồ quầy ăn Canteen VWA"
-  style={{
-    display: "block",
-    width: "100%",
-    maxWidth: "100%",
-    height: "auto",
-    objectFit: "contain"
-  }}
-/>
+                src="/canteen-layout.jpg"
+                alt="Sơ đồ quầy ăn Canteen VWA"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  maxWidth: "100%",
+                  height: "auto",
+                  objectFit: "contain"
+                }}
+              />
             </div>
 
             <footer style={{
@@ -1313,40 +1277,40 @@ function LiveOrderCard({ order, onView, onOpenSupport, onRemindOrder, isReminder
               {t("Hóa đơn")}
             </button>
             <button
-  type="button"
-  className="orders-action-btn"
-  onClick={() => {
-    const orderItems = Array.isArray(order?.items) ? order.items : [];
-    const itemSummary = orderItems.slice(0, 5).map((item) => {
-      const name = item.name || item.food_name || item.item_name || "Món ăn";
-      const quantity = Number(item.qty ?? item.quantity ?? 1) || 1;
-      return `${name} x${quantity}`;
-    }).join(", ");
+              type="button"
+              className="orders-action-btn"
+              onClick={() => {
+                const orderItems = Array.isArray(order?.items) ? order.items : [];
+                const itemSummary = orderItems.slice(0, 5).map((item) => {
+                  const name = item.name || item.food_name || item.item_name || "Món ăn";
+                  const quantity = Number(item.qty ?? item.quantity ?? 1) || 1;
+                  return `${name} x${quantity}`;
+                }).join(", ");
 
-    const message = [
-      `Xin chào nhà hàng, mình cần hỗ trợ sớm về đơn #${order?.code || order?.id || "đang hiển thị"}.`,
-      `Trạng thái: ${order?.status || "đang xử lý"}.`,
-      `Món: ${itemSummary || "Vui lòng xem chi tiết đơn hàng trên hệ thống"}.`,
-      `Tổng thanh toán: ${money(total)}.`,
-      "Nhờ nhà hàng kiểm tra đơn này và phản hồi giúp mình sớm nhé."
-    ].join(" ");
+                const message = [
+                  `Xin chào nhà hàng, mình cần hỗ trợ sớm về đơn #${order?.code || order?.id || "đang hiển thị"}.`,
+                  `Trạng thái: ${order?.status || "đang xử lý"}.`,
+                  `Món: ${itemSummary || "Vui lòng xem chi tiết đơn hàng trên hệ thống"}.`,
+                  `Tổng thanh toán: ${money(total)}.`,
+                  "Nhờ nhà hàng kiểm tra đơn này và phản hồi giúp mình sớm nhé."
+                ].join(" ");
 
-    const supportDetail = {
-      requestId: `${order?.id || order?.code || "order"}-${Date.now()}`,
-      message
-    };
-    if (typeof onOpenSupport === "function") {
-      onOpenSupport(supportDetail);
-    } else {
-      window.dispatchEvent(new CustomEvent("canteen-open-chatbot", {
-        detail: supportDetail
-      }));
-    }
-  }}
->
-  <Headset size={15} />
-  {t("Hỗ trợ")}
-</button>
+                const supportDetail = {
+                  requestId: `${order?.id || order?.code || "order"}-${Date.now()}`,
+                  message
+                };
+                if (typeof onOpenSupport === "function") {
+                  onOpenSupport(supportDetail);
+                } else {
+                  window.dispatchEvent(new CustomEvent("canteen-open-chatbot", {
+                    detail: supportDetail
+                  }));
+                }
+              }}
+            >
+              <Headset size={15} />
+              {t("Hỗ trợ")}
+            </button>
             <button
               type="button"
               className="orders-action-btn orders-action-btn--primary"
