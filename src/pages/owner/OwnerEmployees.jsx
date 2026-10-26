@@ -35,9 +35,9 @@ import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useI18n } from "../../hooks/useI18n";
+import OwnerAttendance from "./OwnerAttendance";
 import EmployeePermissionsModal from '../../components/EmployeePermissionsModal';
-// ❌ ĐÃ XÓA: import OwnerShifts from "./OwnerShifts";
-
+// ❌ ĐÃ XÓA: 
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -123,6 +123,7 @@ function isOverdue(task) {
 
 function OwnerEmployeesInner() {
   const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState("employees");
 
   // ---------- Data ----------
   const [list, setList] = useState([]);
@@ -620,6 +621,17 @@ function OwnerEmployeesInner() {
   return (
     <>
       <div>
+        <div style={{ display: "inline-flex", background: "var(--bg-tertiary, #f5f7fb)", padding: 4, borderRadius: 10, gap: 4, marginBottom: 20 }}>
+          <button type="button" onClick={() => setActiveTab("employees")} style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", background: activeTab === "employees" ? "#2634d5" : "transparent", color: activeTab === "employees" ? "#fff" : "var(--text-muted, #64748b)" }}>
+            {t("Danh sách nhân viên")}
+          </button>
+          <button type="button" onClick={() => setActiveTab("shifts")} style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", background: activeTab === "shifts" ? "#2634d5" : "transparent", color: activeTab === "shifts" ? "#fff" : "var(--text-muted, #64748b)" }}>
+            {t("Quản lý ca & Chấm công")}
+          </button>
+        </div>
+
+        {activeTab === "employees" && (
+        <>
         {/* ============ TOOLBAR ============ */}
         <div
           style={{
@@ -723,9 +735,7 @@ function OwnerEmployeesInner() {
 
           {/* Add button */}
           <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={() => { setPendingModalOpen(true); loadPendingShifts(); }} style={{ padding: "10px 16px", borderRadius: 10, background: "#2634d5", color: "#fff", border: "none", fontWeight: 600, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-          <CheckCircle size={16} /> Duyệt ca làm
-        </button>
+        
         <button
             onClick={() => setAddModal(true)}
             style={{
@@ -855,7 +865,7 @@ function OwnerEmployeesInner() {
                   onDelete={() => remove(emp)}
                   onPermissions={() => setPermModal(emp)}
                   onAssign={() => openAssign(emp)}
-                  onAssignShift={() => setAssignShiftModal({ employeeId: emp.id, employeeName: emp.name })}
+                  
                   onViewShifts={async () => {
                   setChartWeekOffset(0);
                   try {
@@ -913,6 +923,10 @@ function OwnerEmployeesInner() {
             )}
           </>
         )}
+        </>
+        )}
+
+        {activeTab === "shifts" && <OwnerShiftsInner />}
       </div>
 
       {/* ============ DETAIL/EDIT MODAL ============ */}
@@ -1920,7 +1934,7 @@ function OwnerEmployeesInner() {
             </div>
           </div>
         );
-      })()})}
+      })()}
 
       
       {/* PENDING SHIFTS MODAL */}
@@ -2030,6 +2044,7 @@ function EmployeeCard({
       className={`admin-emp-card ${
         !isActive ? "admin-emp-card--locked" : ""
       }`}
+      style={{ display: "flex", flexDirection: "column", height: "100%" }}
     >
       {/* Avatar + Status */}
       <div className="admin-emp-card__header">
@@ -2107,30 +2122,18 @@ function EmployeeCard({
       </div>
 
       {/* Actions */}
-      <div className="admin-emp-card__actions">
-        <div style={{ display: "flex", gap: 8, width: "100%", marginTop: 8 }}>
-          <button style={{ flex: 1, justifyContent: "center" }}
-          type="button"
-          className="admin-emp-card__btn admin-emp-card__btn--primary"
-          onClick={onAssign}
-          title={t("Giao việc cho nhân viên")}
-        >
-          <ClipboardList size={14} />
-          <span>{t("Giao việc")}</span>
-        </button>
-          <button
-          type="button"
-          className="admin-emp-card__btn admin-emp-card__btn--primary"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log("Đã bấm nút Phân ca"); onAssignShift(); }}
-          title={t("Phân ca làm việc")}
-          style={{ flex: 1, justifyContent: "center", margin: 0,     justifyContent: "center", display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
-        >
-          <Calendar size={14} />
-          <span>{t("Phân ca")}</span>
-        </button>
-        </div>
+      <div className="admin-emp-card__actions" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto", paddingTop: 12 }}>
+          <button style={{ flex: 1, justifyContent: "center", margin: 0, padding: "8px 12px" }}
+            type="button"
+            className="admin-emp-card__btn admin-emp-card__btn--primary"
+            onClick={onAssign}
+            title={t("Giao việc cho nhân viên")}
+          >
+            <ClipboardList size={14} />
+            <span>{t("Giao việc")}</span>
+          </button>
 
-        <div className="admin-emp-card__icon-actions">
+          <div className="admin-emp-card__icon-actions">
           {onPermissions && (
             <button
               type="button"
@@ -2348,6 +2351,7 @@ const REFRESH_MS = 30000;
 
 function OwnerShiftsInner() {
   const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState("employees");
 
   const [tab, setTab] = useState("today");
 
@@ -3288,24 +3292,7 @@ function OwnerShiftsInner() {
               >
                 <ChevronRight size={18} />
               </button>
-              <button
-                onClick={openNew}
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 8,
-                  background: "#2634d5",
-                  color: "#fff",
-                  border: 0,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <Plus size={14} /> {t("Phân ca")}
-              </button>
+              
             </div>
           </div>
 
