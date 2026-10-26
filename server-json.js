@@ -3661,7 +3661,30 @@ app.get("/api/toppings", (req, res) => {
   if (category) list = list.filter((t) => t.applies_to?.includes(category));
   res.json(list);
 });
-
+// 🔧 THÊM MỚI: API Tạo Topping
+app.post("/api/toppings", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
+  try {
+    const db = loadDB();
+    const { name, price, applies_to } = req.body;
+    if (!name || !String(name).trim()) return res.status(400).json({ message: "Thiếu tên topping" });
+    
+    if (!db.toppings) db.toppings = [];
+    const id = "tp-" + Date.now(); // Tạo ID ngẫu nhiên
+    const newTopping = {
+      id,
+      name: String(name).trim(),
+      price: Math.max(0, Number(price) || 0),
+      applies_to: Array.isArray(applies_to) ? applies_to : [],
+      created_at: new Date().toISOString()
+    };
+    
+    db.toppings.push(newTopping);
+    await saveDBOrThrow(db);
+    res.status(201).json(newTopping);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 app.get("/api/sizes", (req, res) => {
   const db = loadDB();
   const list = Array.isArray(db.sizes) && db.sizes.length > 0

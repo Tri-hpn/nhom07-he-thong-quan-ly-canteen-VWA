@@ -377,7 +377,10 @@ export const api = {
   },
 
   // ── Taxonomy ───────────────────────────────────────────────
-  toppings: { list: (category) => req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`) },
+  toppings: { 
+    list: (category) => req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`),
+    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
+  },
   sizes: { list: () => req("/sizes") },
   categories: {
     list: () => req("/categories"),
@@ -409,7 +412,9 @@ export const api = {
   },
   timeSlots: {
     list: () => req("/time-slots"),
+    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
     update: (id, data) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }), // 🔧 BỔ SUNG
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },
