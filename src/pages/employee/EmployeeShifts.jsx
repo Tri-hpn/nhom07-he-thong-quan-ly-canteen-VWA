@@ -221,7 +221,12 @@ export default function EmployeeShifts() {
         setTodayShifts(Array.isArray(todayRes.value) ? todayRes.value : []);
       }
       if (mineRes.status === "fulfilled") {
-        setUpcoming(Array.isArray(mineRes.value) ? mineRes.value : []);
+        const fetched = Array.isArray(mineRes.value) ? mineRes.value : [];
+        setUpcoming(prev => {
+          const fetchedKeys = new Set(fetched.map(s => `${s.date}-${s.shift}`));
+          const localPending = prev.filter(s => s.status === 'pending' && !fetchedKeys.has(`${s.date}-${s.shift}`));
+          return [...fetched, ...localPending];
+        });
       }
       if (teamRes.status === "fulfilled") {
         setTeam(Array.isArray(teamRes.value) ? teamRes.value : []);
@@ -672,6 +677,55 @@ export default function EmployeeShifts() {
         </p>
       </div>
 
+            {/* ============ LỊCH SỬ ĐĂNG KÝ CA ============ */}
+      <div className="shifthist-card" style={{ marginBottom: 20 }}>
+        <div className="shifthist-card__head">
+          <h3 className="shifthist-card__title">
+            <CalendarDays size={16} />
+            {t("Lịch sử đăng ký ca làm")}
+          </h3>
+          <span className="shifthist-card__badge">
+            {upcoming.length} {t("ca")}
+          </span>
+        </div>
+        <div className="shifthist-card__body">
+          {upcoming.length === 0 ? (
+            <div className="shifthist-empty">
+              {t("Bạn chưa đăng ký ca làm nào.")}
+            </div>
+          ) : (
+            <div className="shifthist-table-wrap">
+              <table className="shifthist-table">
+                <thead>
+                  <tr>
+                    <th>{t("Ngày")}</th>
+                    <th>{t("Ca làm")}</th>
+                    <th>{t("Quầy")}</th>
+                    <th>{t("Trạng thái")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...upcoming].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((s) => (
+                    <tr key={s.id}>
+                      <td><b>{new Date(s.date).toLocaleDateString("vi-VN")}</b></td>
+                      <td>{s.shift}</td>
+                      <td>{s.station || "—"}</td>
+                      <td>
+                        <span className={`shifthist-pill shifthist-pill--${
+                          s.status === "approved" ? "success" : s.status === "rejected" ? "danger" : "warning"
+                        }`}>
+                          {s.status === "approved" ? t("Đã duyệt") : s.status === "rejected" ? t("Từ chối") : t("Chờ duyệt")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ============ NHẬT KÝ + KÍP TRỰC ============ */}
       <div className="staff-workspace">
         <div className="staff-workspace__kds">
@@ -892,6 +946,28 @@ export default function EmployeeShifts() {
                   : ""),
               "success"
             );
+
+            // Cập nhật ngay lập tức vào Lịch sử đăng ký
+            const newShifts = [];
+            Object.entries(data.dateShifts).forEach(([date, shiftList]) => {
+              shiftList.forEach(shift => {
+                newShifts.push({
+                  id: `temp-${Date.now()}-${Math.random()}`,
+                  date,
+                  shift,
+                  status: 'pending',
+                  employee_id: user?.id,
+                  station: null
+                });
+              });
+            });
+
+            setUpcoming(prev => {
+              const existing = new Set(prev.map(s => `${s.date}-${s.shift}`));
+              const uniqueNew = newShifts.filter(s => !existing.has(`${s.date}-${s.shift}`));
+              return [...prev, ...uniqueNew];
+            });
+
             setShowRegister(false);
             load(true);
           }}

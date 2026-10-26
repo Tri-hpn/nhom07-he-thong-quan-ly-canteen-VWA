@@ -1138,7 +1138,7 @@ export default function OwnerMenu() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Tìm món Ēn..."
+              placeholder="Tìm món ăn..."
               style={{
                 flex: 1,
                 border: 0,
