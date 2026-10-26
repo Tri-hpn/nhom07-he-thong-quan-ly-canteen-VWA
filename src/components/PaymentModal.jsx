@@ -1,13 +1,12 @@
 // ============================================================
-// PAYMENTMODAL.JSX — Modal chọn phương thức thanh toán (V2)
+// PAYMENTMODAL.JSX — Modal chọn phương thức thanh toán (V3)
 // ============================================================
-// V2 (2026-10):
-//   - 🔧 FIX #36: template string printQR dùng `<\/script>` có thể lỗi
-//                 parse khi inline trong JSX. → Escape đúng bằng `<\/script>`
-//                 (đã escape) + tách ra biến để tránh babel transform.
-//   - 🔧 FIX #54: useMemo vietQR phụ thuộc `settings` object → re-compute
-//                 mỗi render nếu settings được re-create. → Dùng
-//                 primitive deps (settings?.bank, settings?.account).
+// V2:
+//   - 🔧 FIX #36: template string printQR
+//   - 🔧 FIX #54: useMemo vietQR phụ thuộc primitive
+// V3 (Batch 13):
+//   - Import getToken + guard api.settings.get() chống spam 401
+//   - Không treo settingsLoading khi không có token
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -15,7 +14,7 @@ import {
   X, Banknote, QrCode, CreditCard, Printer, Check, Wallet, Loader2, AlertTriangle,
 } from "lucide-react";
 import { money } from "./UI";
-import { api } from "../api";
+import { api, getToken } from "../api";
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
 
@@ -64,7 +63,6 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-// 🔧 FIX #36: tách template thành hằng số — không cần escape \
 const buildPrintHTML = ({
   code,
   bank,
@@ -130,6 +128,12 @@ export default function PaymentModal({
   useEffect(() => {
     let cancelled = false;
 
+    // 🔧 Batch 13 FIX: guard chống spam 401
+    if (!getToken()) {
+      setSettingsLoading(false);
+      return;
+    }
+
     api.settings
       .get()
       .then((d) => {
@@ -178,7 +182,6 @@ export default function PaymentModal({
 
   const total = useMemo(() => Number(order?.total) || 0, [order?.total]);
 
-  // 🔧 FIX #54: dùng primitive deps (không dùng object settings)
   const bankCode = settings?.bank || "";
   const bankAccount = settings?.account || "";
   const bankAccountName = settings?.accountName || "";

@@ -1,9 +1,8 @@
 // ============================================================
-// OWNERCUSTOMERS.JSX — Quản lý khách hàng + Mã ngành (V4)
+// OWNERCUSTOMERS.JSX — Quản lý khách hàng + Mã ngành (V5)
 // ============================================================
-// V4 (2026-10):
-//   - ✅ Dùng api.school.* + api.users.* (thay vì fetch trực tiếp)
-//   - Giữ V3: Tab Mã ngành, cột MSSV, Set điểm, Gỡ MSSV, filter ngành
+// V5:
+//   - 🔧 Thêm getToken() guard chặn spam 401/403.
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
@@ -14,7 +13,7 @@ import {
   AlertCircle, Edit, Award, GraduationCap, Unlink, Plus, RefreshCw,
   Save, UserRound, ChevronDown, RotateCcw, Shield,
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api"; // 🔧 Thêm getToken
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -38,7 +37,6 @@ function validatePhone(phone, t) {
   return null;
 }
 
-// ✅ XẾP HẠNG THÀNH VIÊN THEO CHI TIÊU (VND)
 function getMemberTier(totalSpent) {
   const t = Number(totalSpent) || 0;
   if (t >= 10000000) return "Hạng Kim cương";
@@ -61,7 +59,7 @@ const TIER_THRESHOLDS = [
   { id: "Hạng Vàng",       label: "Hạng Vàng" },
   { id: "Hạng Kim cương",  label: "Hạng Kim cương" },
 ];
-// ✅ PHÂN LOẠI KHÁCH HÀNG THEO EMAIL
+
 function getCustomerType(email) {
   const e = String(email || "").toLowerCase().trim();
   if (e.endsWith("@vwa.edu.vn")) return "Giảng viên";
@@ -75,22 +73,15 @@ const TYPE_BADGE = {
   "Khách":      { color: "#f59e0b", bg: "#fef3c7", icon: "👤" },
 };
 
-// ============================================================
-// CONSTANTS
-// ============================================================
 const CUSTOMER_GRADIENT = "linear-gradient(135deg, #f59e0b, #ef4444)";
 const VOUCHER_GRADIENT = "linear-gradient(135deg, #8b5cf6, #ec4899)";
 const USED_GRADIENT = "linear-gradient(135deg, #94a3b8, #64748b)";
 const MODAL_Z = 2147483600;
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 export default function OwnerCustomers() {
   const { t } = useI18n();
 
-  // ---------- TAB STATE ----------
-  const [activeTab, setActiveTab] = useState("customers"); // "customers" | "majors"
+  const [activeTab, setActiveTab] = useState("customers");
 
   const STATUS_FILTERS = useMemo(
     () => [
@@ -111,7 +102,6 @@ export default function OwnerCustomers() {
     [t]
   );
 
-  // ---------- Customer list state ----------
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -125,15 +115,11 @@ export default function OwnerCustomers() {
   const [openType, setOpenType] = useState(false);
   const [openTier, setOpenTier] = useState(false);
 
-  // ---------- Detail modal ----------
   const [detail, setDetail] = useState(null);
-
-  // ---------- Edit modal ----------
   const [editModal, setEditModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
 
-  // ---------- Voucher modal ----------
   const [voucherModal, setVoucherModal] = useState(null);
   const [vouchers, setVouchers] = useState([]);
   const [voucherStats, setVoucherStats] = useState({
@@ -143,13 +129,11 @@ export default function OwnerCustomers() {
   const [voucherTab, setVoucherTab] = useState("active");
   const [copiedId, setCopiedId] = useState(null);
 
-  // ---------- Points modal ----------
   const [pointsModal, setPointsModal] = useState(null);
   const [pointsForm, setPointsForm] = useState({ points: "", reason: "" });
   const [pointsSaving, setPointsSaving] = useState(false);
   const [pointsError, setPointsError] = useState("");
 
-  // ---------- Majors tab state ----------
   const [majorsMap, setMajorsMap] = useState({});
   const [majorsLoading, setMajorsLoading] = useState(false);
   const [majorsQ, setMajorsQ] = useState("");
@@ -158,14 +142,12 @@ export default function OwnerCustomers() {
   const [majorSaving, setMajorSaving] = useState(false);
   const [majorError, setMajorError] = useState("");
 
-  // ---------- Confirm dialog ----------
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // ============================================================
-  // LOAD CUSTOMERS
-  // ============================================================
   const load = useCallback(async () => {
+    // 🔧 FIX: Guard
+    if (!getToken()) return;
     setLoading(true);
     setError("");
     try {
@@ -180,6 +162,7 @@ export default function OwnerCustomers() {
   }, [t]);
 
   const loadOrders = useCallback(async () => {
+    if (!getToken()) return; // 🔧 FIX
     try {
       const data = await api.orders.all("Tất cả");
       setOrders(Array.isArray(data) ? data : []);
@@ -188,10 +171,8 @@ export default function OwnerCustomers() {
     }
   }, []);
 
-  // ============================================================
-  // LOAD MAJORS MAP
-  // ============================================================
   const loadMajors = useCallback(async () => {
+    if (!getToken()) return; // 🔧 FIX
     setMajorsLoading(true);
     try {
       const res = await api.school.majorsMap();
@@ -215,7 +196,6 @@ export default function OwnerCustomers() {
     }
   }, [activeTab, majorsMap, loadMajors]);
 
-  // ESC
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
@@ -229,14 +209,12 @@ export default function OwnerCustomers() {
     return () => window.removeEventListener("keydown", handler);
   }, [editModal, voucherModal, detail, pointsModal, majorEditModal, saving, pointsSaving, majorSaving]);
 
-  // ---------- Stats ----------
   const statusCounts = useMemo(() => {
     const active = list.filter((c) => (c.status || "Hoạt động") === "Hoạt động").length;
     const locked = list.length - active;
     return { all: list.length, active, locked };
   }, [list]);
 
-  // ✅ Đếm số lượng theo phân loại
   const typeCounts = useMemo(() => {
     const counts = { all: list.length };
     for (const c of list) {
@@ -246,7 +224,6 @@ export default function OwnerCustomers() {
     return counts;
   }, [list]);
 
-  // ✅ Map user_id → tổng chi tiêu (đơn Hoàn thành)
   const tierSpentMap = useMemo(() => {
     const map = {};
     for (const o of orders) {
@@ -258,7 +235,6 @@ export default function OwnerCustomers() {
     return map;
   }, [orders]);
 
-  // ✅ Đếm số lượng theo hạng
   const tierCounts = useMemo(() => {
     const counts = { all: list.length };
     for (const c of list) {
@@ -279,7 +255,6 @@ export default function OwnerCustomers() {
     return Array.from(set).map((s) => JSON.parse(s));
   }, [list]);
 
-  // ---------- Filter + Search ----------
   const filtered = useMemo(() => {
     let result = list;
 
@@ -329,7 +304,6 @@ export default function OwnerCustomers() {
     setFilterTier("all");
   };
 
-  // ---------- Majors filter ----------
   const filteredMajors = useMemo(() => {
     const entries = Object.entries(majorsMap);
     if (!majorsQ.trim()) return entries;
@@ -341,7 +315,6 @@ export default function OwnerCustomers() {
     );
   }, [majorsMap, majorsQ]);
 
-  // ---------- Confirm helpers ----------
   const closeConfirm = useCallback(() => {
     if (confirmBusy) return;
     setConfirm(null);
@@ -357,9 +330,6 @@ export default function OwnerCustomers() {
     }
   }, [confirm, confirmBusy]);
 
-  // ============================================================
-  // CUSTOMER HANDLERS
-  // ============================================================
   const toggleLock = (c) => {
     const newStatus = c.status === "Hoạt động" ? "Bị khóa" : "Hoạt động";
     const isLocking = newStatus === "Bị khóa";
@@ -486,9 +456,6 @@ export default function OwnerCustomers() {
     });
   };
 
-  // ============================================================
-  // VOUCHER HANDLERS
-  // ============================================================
   const loadVouchers = async (customer) => {
     setVoucherModal(customer);
     setVoucherTab("active");
@@ -532,9 +499,6 @@ export default function OwnerCustomers() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
-  // ============================================================
-  // MAJORS HANDLERS
-  // ============================================================
   const openAddMajor = () => {
     setMajorError("");
     setMajorForm({ code: "", name: "", faculty: "", code_full: "" });
@@ -635,9 +599,6 @@ export default function OwnerCustomers() {
     });
   };
 
-  // ============================================================
-  // UTILS
-  // ============================================================
   const getInitials = (name) => (name || "?").slice(0, 2).toUpperCase();
   const fmtNumber = (n) => typeof n === "number" ? n.toLocaleString("vi-VN") : n ?? "—";
   const fmtMoney = (n) => fmtNumber(n) + "đ";
@@ -655,15 +616,9 @@ export default function OwnerCustomers() {
     [vouchers, voucherTab]
   );
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
     <>
       <div>
-        {/* ============================================================
-            TAB SWITCH
-            ============================================================ */}
         <div
           style={{
             display: "flex",
@@ -752,14 +707,8 @@ export default function OwnerCustomers() {
           </button>
         </div>
 
-        {/* ============================================================
-            TAB 1: CUSTOMERS
-            ============================================================ */}
         {activeTab === "customers" && (
           <>
-            {/* ============================================================
-                HỘP 1: Search + Counter + Clear
-                ============================================================ */}
             <div
               style={{
                 background: "var(--card-bg, #fff)",
@@ -865,9 +814,6 @@ export default function OwnerCustomers() {
               )}
             </div>
 
-            {/* ============================================================
-                HỘP 2: 3 cụm filter (Trạng thái | Phân loại | Hạng)
-                ============================================================ */}
             <div
               style={{
                 background: "var(--card-bg, #fff)",
@@ -881,7 +827,6 @@ export default function OwnerCustomers() {
                 alignItems: "start",
               }}
             >
-              {/* Cụm 1: Trạng thái */}
               <div>
                 <button
                   onClick={() => setOpenStatus((v) => !v)}
@@ -917,7 +862,6 @@ export default function OwnerCustomers() {
                 )}
               </div>
 
-              {/* Cụm 2: Phân loại */}
               <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
                 <button
                   onClick={() => setOpenType((v) => !v)}
@@ -953,7 +897,6 @@ export default function OwnerCustomers() {
                 )}
               </div>
 
-              {/* Cụm 3: Hạng */}
               <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
                 <button
                   onClick={() => setOpenTier((v) => !v)}
@@ -1189,9 +1132,6 @@ export default function OwnerCustomers() {
           </>
         )}
 
-        {/* ============================================================
-            TAB 2: MAJORS MAP
-            ============================================================ */}
         {activeTab === "majors" && (
           <>
             <div
@@ -1371,9 +1311,6 @@ export default function OwnerCustomers() {
           </>
         )}
 
-        {/* ============================================================
-            MODAL: CHI TIẾT KHÁCH HÀNG
-            ============================================================ */}
         {detail && (
           <Modal onClose={() => setDetail(null)} maxWidth={520}>
             <div style={{ textAlign: "center" }}>
@@ -1417,9 +1354,6 @@ export default function OwnerCustomers() {
           </Modal>
         )}
 
-        {/* ============================================================
-            MODAL: SỬA KHÁCH HÀNG
-            ============================================================ */}
         {editModal && (
           <Modal onClose={() => !saving && setEditModal(null)} maxWidth={480}>
             <h3 style={{ marginTop: 0, marginBottom: 20, color: "var(--text-primary, #172033)" }}>
@@ -1471,9 +1405,6 @@ export default function OwnerCustomers() {
           </Modal>
         )}
 
-        {/* ============================================================
-            MODAL: SET ĐIỂM
-            ============================================================ */}
         {pointsModal && (
           <Modal onClose={() => !pointsSaving && setPointsModal(null)} maxWidth={460}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
@@ -1547,9 +1478,6 @@ export default function OwnerCustomers() {
           </Modal>
         )}
 
-        {/* ============================================================
-            MODAL: SỬA / THÊM MÃ NGÀNH
-            ============================================================ */}
         {majorEditModal && (
           <Modal onClose={() => !majorSaving && setMajorEditModal(null)} maxWidth={520}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
@@ -1643,9 +1571,6 @@ export default function OwnerCustomers() {
           </Modal>
         )}
 
-        {/* ============================================================
-            MODAL: VÍ VOUCHER
-            ============================================================ */}
         {voucherModal && (
           <Modal onClose={() => setVoucherModal(null)} maxWidth={620}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -1795,9 +1720,6 @@ export default function OwnerCustomers() {
   );
 }
 
-// ============================================================
-// SUB-COMPONENTS
-// ============================================================
 function StatusBadge({ status, t }) {
   const active = status === "Hoạt động";
   return (
@@ -1864,9 +1786,6 @@ function Modal({ children, onClose, maxWidth = 480 }) {
   );
 }
 
-// ============================================================
-// STYLE CONSTANTS
-// ============================================================
 const thStyle = { padding: 11, textAlign: "left", fontSize: 12, color: "var(--text-muted, #64748b)", fontWeight: 600 , whiteSpace: "nowrap", minWidth: "100px" };
 const tdStyle = { padding: 11, color: "var(--text-primary, #172033)", fontSize: 13 , whiteSpace: "nowrap" };
 const modalCloseStyle = { background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 4, display: "grid", placeItems: "center" };

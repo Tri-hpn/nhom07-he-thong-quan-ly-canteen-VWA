@@ -1,8 +1,19 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+// ============================================================
+// EMPLOYEEPERMISSIONSMODAL.JSX — Phân quyền nhân viên (Admin)
+// ============================================================
+// 🔧 Batch 13 FIX:
+//   1. Import getToken + guard loadData() chống spam 401
+//   2. Fix message error (copy-paste sai "chấm công" → "phân quyền")
+//   3. btnToolbarStyle dùng đúng variant primary (nút "Sửa" có màu xanh)
+//   4. Mounted guard cho save()/resetCustom() tránh setState on unmounted
+//   5. Chặn đóng modal (X/Hủy) khi đang saving
+// ============================================================
+
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   Shield, Check, Save, RotateCcw, Loader2, AlertCircle, Utensils, ClipboardList, Warehouse, UserCog, UserRound, CalendarCheck, BarChart3, Database, Settings as SettingsIcon, Edit, X,
 } from "lucide-react";
-import { api } from "../api";
+import { api, getToken } from "../api";
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
 
@@ -18,12 +29,35 @@ const CATEGORY_META = [
   { prefix: "settings.",   label: "Cài đặt",    icon: SettingsIcon,   color: "#f97316" },
 ];
 
+// 🔧 Batch 13 FIX: dùng đúng variant primary
 const btnToolbarStyle = ({ disabled, primary, danger }) => ({
-  padding: "8px 14px", background: "var(--bg-tertiary, #f5f7fb)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, cursor: disabled ? "not-allowed" : "pointer", color: danger ? "#ef4444" : "var(--text-primary, #172033)", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 600, opacity: disabled ? 0.5 : 1,
+  padding: "8px 14px",
+  background: primary ? (disabled ? "#94a3b8" : "#2634d5") : "var(--bg-tertiary, #f5f7fb)",
+  border: primary ? 0 : "1px solid var(--border-color, #e5e9ef)",
+  borderRadius: 8,
+  cursor: disabled ? "not-allowed" : "pointer",
+  color: primary ? "#fff" : (danger ? "#ef4444" : "var(--text-primary, #172033)"),
+  fontSize: 12,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  fontWeight: 600,
+  opacity: disabled ? 0.5 : 1,
 });
 
 const btnSaveStyle = ({ disabled }) => ({
-  padding: "8px 14px", background: disabled ? "#94a3b8" : "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, opacity: disabled ? 0.5 : 1,
+  padding: "8px 14px",
+  background: disabled ? "#94a3b8" : "#2634d5",
+  color: "#fff",
+  border: 0,
+  borderRadius: 8,
+  fontWeight: 600,
+  cursor: disabled ? "not-allowed" : "pointer",
+  fontSize: 12,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  opacity: disabled ? 0.5 : 1,
 });
 
 export default function EmployeePermissionsModal({ user, onClose }) {
@@ -36,14 +70,26 @@ export default function EmployeePermissionsModal({ user, onClose }) {
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState("");
 
+  // 🔧 Batch 13 FIX: mounted guard tránh setState on unmounted
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const loadData = useCallback(async () => {
+    if (!getToken()) { // 🔧 Batch 13 FIX
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const [configRes, permsRes] = await Promise.all([
         api.permissions.all(),
-        api.permissions.ofUser(user.id)
+        api.permissions.ofUser(user.id),
       ]);
+      if (!mountedRef.current) return;
       setAllPermissions(configRes.all || []);
       setRoleDefaults(configRes.roles || {});
       setUserPerms({
@@ -51,9 +97,11 @@ export default function EmployeePermissionsModal({ user, onClose }) {
         permissions: permsRes.permissions || [],
       });
     } catch (e) {
-      setError(e.message || t("Không tải được dữ liệu chấm công"));
+      if (!mountedRef.current) return;
+      // 🔧 Batch 13 FIX: đúng message
+      setError(e.message || t("Không tải được dữ liệu phân quyền"));
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [user.id, t]);
 
@@ -107,13 +155,18 @@ export default function EmployeePermissionsModal({ user, onClose }) {
     setSaving(true);
     try {
       await api.permissions.update(user.id, userPerms.custom);
+      if (!mountedRef.current) return;
       toast(`${t("Đã cập nhật quyền cho")} ${user.name}`, "success");
       const res = await api.permissions.ofUser(user.id);
+      if (!mountedRef.current) return;
       setUserPerms({ custom: res.custom || [], permissions: res.permissions || [] });
       setIsEditing(false);
     } catch (e) {
+      if (!mountedRef.current) return;
       toast(e.message || t("Không lưu được"), "error");
-    } finally { setSaving(false); }
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
   };
 
   const resetCustom = async () => {
@@ -121,25 +174,43 @@ export default function EmployeePermissionsModal({ user, onClose }) {
     setSaving(true);
     try {
       await api.permissions.update(user.id, []);
+      if (!mountedRef.current) return;
       const res = await api.permissions.ofUser(user.id);
+      if (!mountedRef.current) return;
       setUserPerms({ custom: res.custom || [], permissions: res.permissions || [] });
       toast(t("Đã reset về quyền mặc định"), "success");
     } catch (e) {
+      if (!mountedRef.current) return;
       toast(e.message || t("Không reset được"), "error");
-    } finally { setSaving(false); }
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
+  };
+
+  // 🔧 Batch 13 FIX: chặn đóng khi đang saving
+  const handleClose = () => {
+    if (saving) return;
+    onClose?.();
   };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center", zIndex: 2147483605, padding: 20 }}>
       <div style={{ background: "var(--card-bg, #fff)", borderRadius: 14, width: "100%", maxWidth: 800, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        
+
         {/* Header */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-color, #eef2f7)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-tertiary, #f8fafc)" }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, color: "var(--text-primary, #172033)" }}>{t("Phân quyền nhân viên")}</h2>
             <span style={{ fontSize: 13, color: "var(--text-muted, #64748b)" }}>{user.name} ({user.email})</span>
           </div>
-          <button onClick={onClose} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-muted, #64748b)" }}><X size={24} /></button>
+          <button
+            onClick={handleClose}
+            disabled={saving}
+            style={{ background: "transparent", border: 0, cursor: saving ? "not-allowed" : "pointer", color: "var(--text-muted, #64748b)", opacity: saving ? 0.5 : 1 }}
+            aria-label={t("Đóng")}
+          >
+            <X size={24} />
+          </button>
         </div>
 
         {/* Toolbar */}

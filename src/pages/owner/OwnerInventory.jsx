@@ -3,6 +3,10 @@
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
 // 🔧 FIX #88: import history dùng Intl.DateTimeFormat cố định (VN, 24h)
+// 🔧 Batch 10 FIX:
+//   - Import getToken
+//   - Guard load() + loadImports() chống spam 401
+//   - Xóa cột "Chi phí" trùng + td rỗng trong bảng lịch sử nhập
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
@@ -10,7 +14,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Plus, Search, Pencil, Trash2, AlertTriangle, Package, History, X, Loader2, AlertCircle, PackageX, Boxes, Edit,
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -128,6 +132,7 @@ export default function OwnerInventory() {
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   const load = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     setLoading(true);
     setError("");
     try {
@@ -142,6 +147,7 @@ export default function OwnerInventory() {
   }, [t]);
 
   const loadImports = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     try {
       const data = await api.inventory.imports();
       setImports(Array.isArray(data) ? data : []);
@@ -343,7 +349,6 @@ export default function OwnerInventory() {
     return t("Còn hàng");
   };
 
-  // 🔧 FIX #88: helper format datetime VN
   const fmtImportTime = (iso) => {
     if (!iso) return "—";
     const d = new Date(iso);
@@ -726,11 +731,11 @@ export default function OwnerInventory() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
+                      {/* 🔧 Batch 10 FIX: đã xóa cột "Chi phí" trùng */}
                       <th style={thStyle}>{t("Thời gian")}</th>
                       <th style={thStyle}>{t("Nguyên liệu")}</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>{t("SL nhập")}</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>{t("Chi phí")}</th>
-                      <th style={{ ...thStyle, textAlign: "right" }}>Chi phí</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>{t("Tồn sau")}</th>
                       <th style={thStyle}>{t("Người nhập")}</th>
                       <th style={thStyle}>{t("Nhà cung cấp")}</th>
@@ -742,7 +747,6 @@ export default function OwnerInventory() {
                         key={r.id}
                         style={{ borderBottom: "1px solid var(--border-color, #eef2f7)" }}
                       >
-                        {/* 🔧 FIX #88: dùng formatter cố định VN */}
                         <td style={{ ...tdStyle, fontSize: 12, color: "var(--text-muted, #64748b)" }}>
                           {fmtImportTime(r.created_at)}
                         </td>
@@ -762,10 +766,9 @@ export default function OwnerInventory() {
                         >
                           +{r.qty} {r.unit}
                         </td>
+                        {/* 🔧 Batch 10 FIX: đã xóa <td> rỗng của cột "Chi phí" trùng */}
                         <td style={{ ...tdStyle, textAlign: "right", color: "#dc2626", fontWeight: 700 }}>
                           {r.cost ? r.cost.toLocaleString("vi-VN") + "đ" : "—"}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: "right", color: "#dc2626", fontWeight: 700 }}>
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           {r.after} {r.unit}
@@ -1049,11 +1052,11 @@ export default function OwnerInventory() {
         `}</style>
       </div>
 
-            {dishModal && (
+      {dishModal && (
         <DishModal item={dishModal} onClose={() => setDishModal(null)} />
       )}
 
-{confirm && (
+      {confirm && (
         <ConfirmDialog
           open
           title={confirm.title}
