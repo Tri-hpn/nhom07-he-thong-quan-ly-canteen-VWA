@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // CUSTOMERCHECKOUT.JSX — Thanh toán (V5 - FINAL + i18n)
 // ============================================================
 // V5 (2026-10):
@@ -1152,7 +1152,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             </div>
             <div className="checkout-security__right">
               <PhoneCall size={16} />
-              <span>{t("Hotline Canteen: 024 3775 1750")}</span>
+              <span>{t("Hotline Canteen: 1900 6868")}</span>
             </div>
           </div>
         </div>

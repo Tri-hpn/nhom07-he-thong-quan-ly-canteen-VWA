@@ -15,7 +15,7 @@ import { api } from "../../api";
 import { money } from "../UI";
 import { useI18n } from "../../hooks/useI18n";
 
-export default function WalletPanel({ user }) {
+export default function WalletPanel({ user, onClose }) {
   const { t } = useI18n();
   const navigate = useNavigate();
 
@@ -45,6 +45,7 @@ export default function WalletPanel({ user }) {
   const hasPin = !!wallet?.has_pin;
 
   const goWallet = () => {
+    onClose?.();
     navigate("/customer/wallet");
   };
 

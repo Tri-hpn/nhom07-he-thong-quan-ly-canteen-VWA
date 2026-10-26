@@ -599,7 +599,7 @@ async function _writeCollection(db, key, value) {
       } catch (e) {
         // ordered:false → có thể reject dù có op thành công; log + tiếp tục
         const writeErrors = e.result?.getWriteErrors?.() || e.writeErrors || [];
-        if (writeErrors.length >= ops.length) throw e;
+        if (writeErrors.length > 0) throw e;
         console.warn(`bulkWrite ${key}: ${writeErrors.length}/${ops.length} ops failed`);
       }
     }
@@ -650,23 +650,43 @@ async function _flushChanges(db, data) {
   if (hadError) throw hadError;
 }
 
-function saveDB(data) {
+function enqueueSaveDB(data) {
   dbCache = data;
-  if (!mongoReady || !mongoose.connection.db) return Promise.resolve();
-  const db = mongoose.connection.db;
-  saveQueue = saveQueue
+
+  if (!mongoReady || !mongoose.connection.db) {
+    return Promise.resolve();
+  }
+
+  const mongoDb = mongoose.connection.db;
+
+  const operation = saveQueue
     .catch(() => {})
-    .then(() => _flushChanges(db, data))
-    .catch((e) => console.error("Mongo save error:", e.message));
-  return saveQueue;
+    .then(() => _flushChanges(mongoDb, data));
+
+  saveQueue = operation.catch((e) => {
+    console.error("Mongo save error:", e.message);
+  });
+
+  return operation;
+}
+
+function saveDB(data) {
+  return enqueueSaveDB(data).catch((e) => {
+    console.error("Mongo save error:", e.message);
+  });
 }
 
 async function saveDBOrThrow(data) {
   dbCache = data;
-  if (!mongoReady || !mongoose.connection.db) return;
-  return saveDB(data);
-}
 
+  if (!mongoReady || !mongoose.connection.db) {
+    throw new Error(
+      "MongoDB chưa sẵn sàng; đơn hàng chưa được lưu. Vui lòng thử lại."
+    );
+  }
+
+  return enqueueSaveDB(data);
+}
 // 🔧 Invalidate menu cache
 function invalidateMenuCache() {
   menuCache.data = null;
@@ -726,6 +746,33 @@ function notifyOrderStatus(db, order, newStatus) {
   });
 }
 
+function recordPointsTransaction(db, user, delta, reason, extra = {}) {
+  if (!user || !Number.isFinite(Number(delta)) || Number(delta) === 0) return;
+  if (!Array.isArray(db.points_history)) db.points_history = [];
+
+  const change = Number(delta);
+  const newPoints = Number.isFinite(Number(extra.new_points))
+    ? Number(extra.new_points)
+    : (Number(user.points) || 0);
+  const oldPoints = Number.isFinite(Number(extra.old_points))
+    ? Number(extra.old_points)
+    : newPoints - change;
+  db.points_history.push({
+    id: nextId(db.points_history),
+    user_id: user.id,
+    user_name: user.name || "",
+    old_points: oldPoints,
+    new_points: newPoints,
+    delta: change,
+    reason,
+    order_code: extra.order_code || "",
+    voucher_code: extra.voucher_code || "",
+    source: extra.source || "",
+    changed_by: extra.changed_by || "Hệ thống",
+    changed_by_id: extra.changed_by_id ?? null,
+    created_at: extra.created_at || new Date().toISOString(),
+  });
+}
 function rollbackCancelledOrder(db, order) {
   if (!order || order._stock_rolled_back) return;
   (order.items || []).forEach((it) => {
@@ -734,16 +781,43 @@ function rollbackCancelledOrder(db, order) {
     m.stock = (m.stock || 0) + (it.qty || 0);
     m.sold = Math.max(0, (m.sold || 0) - (it.qty || 0));
   });
-  const earned = Number(order.points_earned) || 0;
-  if (earned > 0) {
-    const customer = (db.users || []).find((u) => u.id === order.customer_id);
-    if (customer) customer.points = Math.max(0, (customer.points || 0) - earned);
-    order.points_earned = 0;
+  const earned = Math.max(0, Number(order.points_earned) || 0);
+  const greenBonus = order.green_status === "approved"
+    ? Math.max(0, Number(order.green_points) || 0)
+    : 0;
+  const baseEarned = Math.max(0, earned - greenBonus);
+  const customer = (db.users || []).find(
+    (u) => String(u.id) === String(order.customer_id)
+  );
+
+  if (customer && baseEarned > 0) {
+    const before = Math.max(0, Number(customer.points) || 0);
+    customer.points = Math.max(0, before - baseEarned);
+    const actualDelta = customer.points - before;
+    if (actualDelta !== 0) {
+      recordPointsTransaction(
+        db, customer, actualDelta,
+        `Thu hồi xu tích lũy do hủy đơn ${order.code || order.id}`,
+        { order_code: order.code || "", source: "order_cancel_earn" }
+      );
+    }
   }
-  const __greenBonus = Number(order.green_points) || 0;
-  if (order.green_status === "approved" && __greenBonus > 0) {
-    const __cust = (db.users || []).find((u) => u.id === order.customer_id);
-    if (__cust) __cust.points = Math.max(0, (__cust.points || 0) - __greenBonus);
+
+  if (customer && greenBonus > 0) {
+    const before = Math.max(0, Number(customer.points) || 0);
+    customer.points = Math.max(0, before - greenBonus);
+    const actualDelta = customer.points - before;
+    if (actualDelta !== 0) {
+      recordPointsTransaction(
+        db, customer, actualDelta,
+        `Thu hồi thưởng VWA Green do hủy đơn ${order.code || order.id}`,
+        { order_code: order.code || "", source: "order_cancel_green" }
+      );
+    }
+  }
+
+  if (earned > 0) order.points_earned = 0;
+  if (order.green_status === "approved" && greenBonus > 0) {
     order.green_status = "cancelled";
     order.green_points = 0;
   }
@@ -947,6 +1021,7 @@ app.get("/api/auth/me", auth(), async (req, res) => {
     id: u.id, email: u.email, name: u.name, role: u.role, points: u.points || 0, phone: u.phone || "", address: u.address || "", avatar: u.avatar || "",
     student_code: u.student_code || "", teacher_code: u.teacher_code || "", year_in: u.year_in || null, major_code: u.major_code || "",
     major_code_full: u.major_code_full || "", major_name: u.major_name || "", faculty: u.faculty || "", unit_code: u.unit_code || "",
+    class_name: u.class_name || "", birth_date: u.birth_date || "", gender: u.gender || "",
     manual_override: !!u.manual_override, must_change_password: !!u.must_change_password,
   });
 });
@@ -956,7 +1031,7 @@ app.put("/api/auth/profile", auth(), async (req, res) => {
     const db = loadDB();
     const u = db.users.find((x) => x.id === req.user.id);
     if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
-    const { name, phone, avatar, address, email, student_code } = req.body;
+    const { name, phone, avatar, address, email, student_code, class_name, birth_date, gender } = req.body;
     if (student_code !== undefined) {
       const clean = String(student_code || "").trim();
       if (u.student_code && u.student_code !== clean) return res.status(403).json({ message: "MSSV đã liên kết, không thể thay đổi.", code: "MSSV_LOCKED" });
@@ -982,8 +1057,11 @@ app.put("/api/auth/profile", auth(), async (req, res) => {
     }
     if (avatar !== undefined) u.avatar = avatar;
     if (address !== undefined) u.address = address.trim();
-    await saveDBOrThrow(db);
-    res.json({ id: u.id, email: u.email, name: u.name, role: u.role, phone: u.phone, avatar: u.avatar, address: u.address, points: u.points, student_code: u.student_code || "", teacher_code: u.teacher_code || "", year_in: u.year_in || null, major_code: u.major_code || "", major_name: u.major_name || "", faculty: u.faculty || "" });
+    if (class_name !== undefined) u.class_name = String(class_name || "").trim();
+      if (birth_date !== undefined) u.birth_date = String(birth_date || "").trim();
+    if (gender !== undefined) u.gender = String(gender || "").trim();
+      await saveDBOrThrow(db);
+    res.json({ id: u.id, email: u.email, name: u.name, role: u.role, phone: u.phone, avatar: u.avatar, address: u.address, class_name: u.class_name || "", birth_date: u.birth_date || "", gender: u.gender || "", points: u.points, student_code: u.student_code || "", teacher_code: u.teacher_code || "", year_in: u.year_in || null, major_code: u.major_code || "", major_name: u.major_name || "", faculty: u.faculty || "" });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -1566,15 +1644,44 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (isWalletPay) { wallet.balance -= total; wallet.updated_at = new Date().toISOString(); }
 
     const __cfg = getPointsConfig(db);
-    pointsEarned = calcEarnPoints(total, __cfg);
+    const __basePointsEarned = calcEarnPoints(total, __cfg);
+    pointsEarned = __basePointsEarned;
     const __greenBonus = isGreen ? calcGreenBonus(__cfg) : 0;
     const __greenRequireApproval = isGreen && __cfg.earn.green_require_approval !== false;
-    if (isGreen && !__greenRequireApproval) pointsEarned += __greenBonus;
+    const __greenBonusAwarded = isGreen && !__greenRequireApproval ? __greenBonus : 0;
+    pointsEarned += __greenBonusAwarded;
     customer = db.users.find((u) => u.id === req.user.id);
     if (customer) customer.points = (customer.points || 0) + pointsEarned;
 
     const id = nextId(db.orders);
     const code = generateOrderCode(db);
+    const __pointsBeforeOrder = customer
+      ? (Number(customer.points) || 0) - pointsEarned + xuDiscount
+      : 0;
+
+    if (customer && xuDiscount > 0) {
+      recordPointsTransaction(
+        db, customer, -xuDiscount,
+        `Dùng ${xuDiscount} xu giảm giá đơn ${code}`,
+        { order_code: code, source: "order_redeem", old_points: __pointsBeforeOrder, new_points: __pointsBeforeOrder - xuDiscount }
+      );
+    }
+
+    if (customer && __basePointsEarned > 0) {
+      recordPointsTransaction(
+        db, customer, __basePointsEarned,
+        `Tích xu từ đơn hàng ${code}`,
+        { order_code: code, source: "order_earn", old_points: __pointsBeforeOrder - xuDiscount, new_points: __pointsBeforeOrder - xuDiscount + __basePointsEarned }
+      );
+    }
+
+    if (customer && __greenBonusAwarded > 0) {
+      recordPointsTransaction(
+        db, customer, __greenBonusAwarded,
+        `Thưởng VWA Green từ đơn hàng ${code}`,
+        { order_code: code, source: "green_bonus", old_points: __pointsBeforeOrder - xuDiscount + __basePointsEarned, new_points: __pointsBeforeOrder - xuDiscount + __basePointsEarned + __greenBonusAwarded }
+      );
+    }
 
     if (isWalletPay) {
       if (!db.wallet_transactions) db.wallet_transactions = [];
@@ -1874,7 +1981,24 @@ app.post("/api/orders/:id/green/approve", auth(["ADMIN", "EMPLOYEE"]), async (re
     const cfg = getPointsConfig(db);
     const bonus = Number(o.green_points) || calcGreenBonus(cfg);
     const customer = db.users.find((u) => u.id === o.customer_id);
-    if (customer) customer.points = (customer.points || 0) + bonus;
+    if (customer) {
+      const greenOldPoints = Number(customer.points) || 0;
+      customer.points = greenOldPoints + bonus;
+      if (bonus > 0) {
+        recordPointsTransaction(
+          db,
+          customer,
+          bonus,
+          `Thưởng VWA Green từ đơn hàng ${o.code}`,
+          {
+            order_code: o.code || "",
+            source: "green_bonus_approval",
+            old_points: greenOldPoints,
+            new_points: customer.points,
+          }
+        );
+      }
+    }
     o.green_status = "approved"; o.green_approved_by = req.user.id; o.green_approved_by_name = req.user.name; o.green_approved_at = new Date().toISOString(); o.points_earned = (o.points_earned || 0) + bonus;
     if (!db.notifications) db.notifications = [];
     db.notifications.push({ id: nextId(db.notifications), user_id: o.customer_id, title: "Sống Xanh đã được duyệt", content: "Bạn được cộng " + bonus + " điểm từ đơn " + o.code, type: "points", link: "/customer/profile", read: false, created_at: new Date().toISOString() });
@@ -1931,7 +2055,21 @@ app.post("/api/reviews", auth(), async (req, res) => {
     const __reviewBonus = Number(__cfg.earn.review_points) || 500;
     review.points_earned = __reviewBonus;
     const authorUser = db.users.find((u) => u.id === req.user.id);
-    if (authorUser) authorUser.points = (authorUser.points || 0) + __reviewBonus;
+    if (authorUser) {
+      const __reviewOldPoints = Number(authorUser.points) || 0;
+      authorUser.points = __reviewOldPoints + __reviewBonus;
+      recordPointsTransaction(
+        db,
+        authorUser,
+        __reviewBonus,
+        "Thưởng đánh giá món ăn",
+        {
+          source: "review_bonus",
+          old_points: __reviewOldPoints,
+          new_points: authorUser.points,
+        }
+      );
+    }
     await saveDBOrThrow(db);
     invalidateMenuCache();
     res.status(201).json({ ...review, pointsEarned: __reviewBonus });
@@ -1987,16 +2125,157 @@ app.get("/api/points/history", auth(), (req, res) => {
 
 app.get("/api/points/me", auth(), (req, res) => {
   const db = loadDB();
-  const u = db.users.find((x) => x.id === req.user.id);
+  const u = (db.users || []).find(
+    (x) => String(x.id) === String(req.user.id)
+  );
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
-  const orderHistory = (db.orders || []).filter((o) => o.customer_id === req.user.id && Number(o.points_earned) > 0 && !/(đã hủy|đã huỷ|cancel)/i.test(String(o.status || ""))).map((o) => ({ code: o.code || "", total: Number(o.total) || 0, points: Number(o.points_earned) || 0, date: o.created_at || "", type: "earn", title: "Tích điểm đơn hàng", detail: `Đơn hàng #${o.code || o.id || ""}` }));
-  const voucherHistory = (db.vouchers || []).filter((v) => v.user_id === req.user.id && Number(v.points_used) > 0).map((v) => ({ code: v.code || "", total: Number(v.value) || 0, points: -(Number(v.points_used) || 0), date: v.created_at || "", type: "redeem", title: "Đổi điểm lấy voucher", detail: `Voucher #${v.code || ""}` }));
-  const pickupHistory = (db.points_history || []).filter((h) => h.user_id === req.user.id && Number(h.delta) > 0 && /nhận món/i.test(String(h.reason || ""))).map((h) => ({ code: h.order_code || "", total: 0, points: Number(h.delta) || 0, date: h.created_at || "", type: "pickup", title: "Thưởng nhận món", detail: h.reason || "Thưởng nhận món" }));
-  const reviewHistory = (db.reviews || []).filter((r) => r.user_id === req.user.id && Number(r.points_earned) > 0).map((r) => ({ code: "", total: 0, points: Number(r.points_earned) || 0, date: r.created_at || "", type: "review", title: "Thưởng đánh giá món ăn", detail: r.comment || "Đánh giá món ăn" }));
-  const history = [...orderHistory, ...voucherHistory, ...pickupHistory, ...reviewHistory].sort((a, b) => { const dateA = new Date(a.date || 0).getTime() || 0; const dateB = new Date(b.date || 0).getTime() || 0; return dateB - dateA; });
+
+  const userId = String(req.user.id);
+  const ledger = (db.points_history || []).filter(
+    (h) => String(h.user_id) === userId && Number(h.delta) !== 0
+  );
+
+  const ledgerOrderCodes = new Set(
+    ledger
+      .filter((h) =>
+        ["order_earn", "order_redeem", "green_bonus", "green_bonus_approval", "order_cancel_earn", "order_cancel_green"]
+          .includes(String(h.source || ""))
+      )
+      .map((h) => String(h.order_code || ""))
+      .filter(Boolean)
+  );
+
+  const ledgerVoucherCodes = new Set(
+    ledger
+      .map((h) => String(h.voucher_code || ""))
+      .filter(Boolean)
+  );
+
+  const ledgerHistory = ledger.map((h) => {
+    const delta = Number(h.delta) || 0;
+    const reason = String(h.reason || "Điều chỉnh xu");
+    const source = String(h.source || "");
+    let type = delta < 0 ? "redeem" : "earn";
+    let title = reason;
+
+    if (/nhận món/i.test(reason)) {
+      type = "pickup";
+      title = "Thưởng nhận món";
+    } else if (source === "order_redeem") {
+      type = "redeem";
+      title = "Dùng xu giảm giá đơn hàng";
+    } else if (source === "order_earn") {
+      type = "earn";
+      title = "Tích xu đơn hàng";
+    } else if (source === "green_bonus") {
+      type = "green";
+      title = "Thưởng VWA Green";
+    } else if (source === "voucher_redeem") {
+      type = "redeem";
+      title = "Đổi xu lấy voucher";
+    } else if (source === "review_bonus") {
+      type = "review";
+      title = "Thưởng đánh giá món ăn";
+    } else if (source.startsWith("order_cancel_")) {
+      type = "reversal";
+      title = "Thu hồi xu do hủy đơn";
+    }
+
+    return {
+      id: h.id,
+      code: h.order_code || h.voucher_code || "",
+      total: 0,
+      points: delta,
+      date: h.created_at || "",
+      type,
+      title,
+      detail: reason,
+      old_points: Number.isFinite(Number(h.old_points)) ? Number(h.old_points) : null,
+      new_points: Number.isFinite(Number(h.new_points)) ? Number(h.new_points) : null,
+      source,
+    };
+  });
+
+  // Dữ liệu đơn hàng cũ: chỉ bổ sung nếu đơn chưa có giao dịch trong sổ lịch sử.
+  const orderHistory = (db.orders || [])
+    .filter((o) =>
+      String(o.customer_id) === userId &&
+      Number(o.points_earned) > 0 &&
+      !/(đã hủy|đã huỷ|cancel)/i.test(String(o.status || "")) &&
+      !ledgerOrderCodes.has(String(o.code || ""))
+    )
+    .map((o) => ({
+      code: o.code || "",
+      total: Number(o.total) || 0,
+      points: Number(o.points_earned) || 0,
+      date: o.created_at || "",
+      type: "earn",
+      title: "Tích xu đơn hàng",
+      detail: `Đơn hàng #${o.code || o.id || ""}`,
+    }));
+
+  // Dữ liệu voucher cũ: tránh lặp voucher đã có giao dịch trong sổ lịch sử.
+  const voucherHistory = (db.vouchers || [])
+    .filter((v) =>
+      String(v.user_id) === userId &&
+      Number(v.points_used) > 0 &&
+      !ledgerVoucherCodes.has(String(v.code || "")) &&
+      !ledger.some((h) =>
+        String(h.source || "") === "voucher_redeem" &&
+        String(h.reason || "").includes(String(v.code || ""))
+      )
+    )
+    .map((v) => ({
+      code: v.code || "",
+      total: Number(v.value) || 0,
+      points: -(Number(v.points_used) || 0),
+      date: v.created_at || "",
+      type: "redeem",
+      title: "Đổi xu lấy voucher",
+      detail: `Voucher #${v.code || ""}`,
+    }));
+
+  // Lịch sử đánh giá cũ: bổ sung nếu chưa có giao dịch thưởng đánh giá
+  // gần cùng thời điểm và cùng số xu trong sổ lịch sử.
+  const reviewHistory = (db.reviews || [])
+    .filter((r) => {
+      if (String(r.user_id) !== userId || Number(r.points_earned) <= 0) return false;
+
+      return !ledger.some((h) => {
+        if (String(h.source || "") !== "review_bonus") return false;
+        if (Number(h.delta) !== Number(r.points_earned)) return false;
+
+        const ledgerTime = new Date(h.created_at || 0).getTime();
+        const reviewTime = new Date(r.created_at || 0).getTime();
+
+        return Number.isFinite(ledgerTime) &&
+          Number.isFinite(reviewTime) &&
+          Math.abs(ledgerTime - reviewTime) <= 60000;
+      });
+    })
+    .map((r) => ({
+      code: "",
+      total: 0,
+      points: Number(r.points_earned) || 0,
+      date: r.created_at || "",
+      type: "review",
+      title: "Thưởng đánh giá món ăn",
+      detail: r.comment || "Đánh giá món ăn",
+    }));
+
+  const history = [
+    ...ledgerHistory,
+    ...orderHistory,
+    ...voucherHistory,
+    ...reviewHistory,
+  ].sort((a, b) => {
+    const dateA = new Date(a.date || 0).getTime() || 0;
+    const dateB = new Date(b.date || 0).getTime() || 0;
+    return dateB - dateA;
+  });
+
   res.json({ points: Number(u.points) || 0, history });
 });
-
 app.post("/api/points/redeem", auth(), async (req, res) => {
   try {
     const db = loadDB();
@@ -2014,6 +2293,13 @@ app.post("/api/points/redeem", auth(), async (req, res) => {
     const voucherId = nextId(db.vouchers);
     const voucher = { id: voucherId, code: "VOUCHER" + String(voucherId).padStart(4, "0"), user_id: req.user.id, value: check.value, points_used: pointsToRedeem, used: false, created_at: new Date().toISOString() };
     db.vouchers.push(voucher);
+    recordPointsTransaction(
+      db,
+      u,
+      -pointsToRedeem,
+      `Đổi ${pointsToRedeem} xu lấy voucher ${voucher.code}`,
+      { voucher_code: voucher.code, source: "voucher_redeem" }
+    );
     await saveDBOrThrow(db);
     res.status(201).json(voucher);
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -2034,6 +2320,7 @@ app.post("/api/vouchers", auth(["ADMIN"]), async (req, res) => {
     const id = nextId(db.vouchers);
     const voucher = { id, code: codeNorm, value: +value, user_id: user_id ? +user_id : null, points_used: +points_used || 0, used: false, isFlashSale: !!isFlashSale, is_flash_sale: !!(is_flash_sale || isFlashSale), created_at: new Date().toISOString() };
     db.vouchers.push(voucher);
+
     await saveDBOrThrow(db);
     res.status(201).json(voucher);
   } catch (e) { res.status(500).json({ message: e.message }); }

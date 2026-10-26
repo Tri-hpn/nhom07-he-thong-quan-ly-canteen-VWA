@@ -213,7 +213,7 @@ export default function SettingsModal({
           {/* BODY */}
           <div className="settings-body">
             {currentPanel && PanelComponent ? (
-              <PanelComponent settings={settings} user={user} />
+              <PanelComponent settings={settings} user={user} onClose={onClose} />
             ) : (
               <SettingsList
                 role={role}
