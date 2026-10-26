@@ -1920,7 +1920,7 @@ function OwnerEmployeesInner() {
             </div>
           </div>
         );
-      })()})}
+      })()})
 
       
       {/* PENDING SHIFTS MODAL */}

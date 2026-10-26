@@ -690,10 +690,15 @@ async function _writeCollection(db, key, value) {
     }
 
     if (keys.length > 0) {
-      await coll.deleteMany({ [uniqueField]: { $nin: keys } });
-    } else {
-      await coll.deleteMany({});
-    }
+          await coll.deleteMany({ [uniqueField]: { $nin: keys } });
+        } else {
+          const PROTECTED_COLLECTIONS = new Set(["users", "orders", "vouchers", "wallets", "menu_items", "points_history", "points_config", "settings", "reviews", "attendances"]);
+          if (PROTECTED_COLLECTIONS.has(key)) {
+            console.warn(`[SAFETY] TỪ CHỐI XOÁ SẠCH bảng ${key} vì mảng dữ liệu tải lên bị rỗng!`);
+          } else {
+            await coll.deleteMany({});
+          }
+        }
     return;
   }
 
