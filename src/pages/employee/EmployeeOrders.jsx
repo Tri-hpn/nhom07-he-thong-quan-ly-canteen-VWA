@@ -170,6 +170,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [advancingId, setAdvancingId] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [greenBusyId, setGreenBusyId] = useState(null);
   const [confirmReject, setConfirmReject] = useState(null);
   const [showStationMenu, setShowStationMenu] = useState(false);
@@ -352,9 +354,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
     sortOldestFirst(byStatus.ready);
 
     byStatus.completed.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
-    const completedTotal = byStatus.completed.length;
-    byStatus.completed = byStatus.completed.slice(0, COMPLETED_LIMIT);
-
+    const completedTotal = byStatus.completed.length;// [FIX v13] Đã bỏ slice ở data gốc — slice được xử lý trong filteredRows.completed
     return { ...byStatus, completedTotal };
   }, [orders]);
 
@@ -390,9 +390,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
     confirmed: applyFilter(rows.confirmed),
     prep: applyFilter(rows.prep),
     ready: applyFilter(rows.ready),
-    completed: applyFilter(rows.completed),
+    completed: showAllCompleted ? applyFilter(rows.completed) : applyFilter(rows.completed).slice(0, COMPLETED_LIMIT),
     completedTotal: rows.completedTotal,
-  }), [rows, applyFilter]);
+  }), [rows, applyFilter, showAllCompleted]);
 
   const kpi = useMemo(() => {
     const today = getLocalDateStr(new Date());
@@ -750,17 +750,189 @@ export default function EmployeeOrders({ isAdmin = false }) {
             );
           })()}
           {showRow5 && (
-            <KDSRow title={t("Gần Nhất")} subtitle={t("Hoàn thành")} variant="completed" empty={t("Chưa có đơn hoàn thành")} isStrip t={t}>
-              {filteredRows.completed.map((o) => (
-                <CompletedStripItem key={o._id || o.id} order={o} t={t} />
-              ))}
-              {filteredRows.completedTotal > COMPLETED_LIMIT && (
-                <button type="button" className="kds-completed__more">{t("Xem tất cả")} {filteredRows.completedTotal} {t("đơn →")}</button>
+          <div className="kds-row kds-row--completed" style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 16 }}>
+            {/* Header */}
+            <div className="kds-row__head" style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="kds-row__title-wrap" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 0 3px #d1fae5" }} />
+                <span style={{ fontWeight: 700, fontSize: 14, color: "#172033" }}>{t("Gần Nhất")}</span>
+                <span style={{ fontSize: 12, color: "#64748b", background: "#f1f5f9", padding: "2px 8px", borderRadius: 10 }}>{t("Hoàn thành")}</span>
+              </div>
+            </div>
+
+            {/* Danh sách đơn hàng */}
+            <div className="kds-row__body kds-row__body--strip" style={{ maxHeight: showAllCompleted ? "none" : 400, overflowY: "auto", padding: "0" }}>
+              {filteredRows.completed.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 13 }}>{t("Chưa có đơn hoàn thành")}</div>
+              ) : (
+                filteredRows.completed.map((o) => {
+                  const d = new Date(o.created_at || Date.now());
+                  const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                  const itemsStr = o.items?.map(i => `${i.qty}x ${i.name} (${i.size?.name || 'L'})`).join(", ") || "Không có món";
+                  
+                  return (
+                    <div key={o._id || o.id} onClick={() => setSelectedOrder(o)} style={{ display: "flex", alignItems: "center", padding: "16px", background: "#fff", borderBottom: "1px solid #e2e8f0", gap: "12px", width: "100%", boxSizing: "border-box", cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}>
+                      
+                      {/* 1. Mã đơn hàng */}
+                      <div style={{ flex: "0 0 160px", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", color: "#3b82f6", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Mã đơn hàng</div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#2634d5", marginBottom: 4 }}>{o.code}</div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            {timeStr} • {dateStr}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. Khách hàng */}
+                      <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Khách hàng</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#172033", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.customer_name}</div>
+                        </div>
+                      </div>
+
+                      {/* 3. Món ăn */}
+                      <div style={{ flex: "2", display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path></svg>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Món ăn</div>
+                          <div style={{ fontSize: 12, color: "#172033", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.items?.length || 0} món: {itemsStr}</div>
+                        </div>
+                      </div>
+
+                      {/* 4. Thanh toán */}
+                      <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Phương thức thanh toán</div>
+                          <div style={{ display: "inline-block", background: "#f0fdf4", color: "#10b981", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>{o.payment}</div>
+                        </div>
+                      </div>
+
+                      {/* 5. Điểm thưởng */}
+                      <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Điểm thưởng</div>
+                          <div style={{ display: "inline-block", background: "#f0fdf4", color: "#10b981", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                            +{o.green_points > 0 ? 300 : 100} Xu
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 6. Tổng tiền & Trạng thái */}
+                      <div style={{ flex: "1.2", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", color: "#3b82f6", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Tổng tiền</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: "#10b981", marginBottom: 4 }}>{Number(o.total).toLocaleString("vi-VN")}đ</div>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#f0fdf4", color: "#10b981", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Hoàn thành
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 7. Mũi tên xem chi tiết */}
+                      <div style={{ flex: "0 0 auto", color: "#94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                      </div>
+
+                    </div>
+                  );
+                })
               )}
-            </KDSRow>
-          )}
+            </div>
+
+            {/* Footer: Nút Xem tất cả / Thu gọn */}
+            <div style={{ padding: "12px", textAlign: "center", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+              <button 
+                type="button" 
+                onClick={() => setShowAllCompleted(!showAllCompleted)} 
+                style={{ width: "100%", padding: "10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontWeight: 700, color: "#2634d5", cursor: "pointer", transition: "all 0.2s" }} 
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f1f5f9"} 
+                onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}
+              >
+                {showAllCompleted ? "Thu gọn" : `Xem tất cả ${filteredRows.completedTotal ?? filteredRows.completed.length} đơn →`}
+              </button>
+            </div>
+          </div>
+        )}
         </div>
       </div>
+
+      
+      {/* POPUP CHI TIẾT ĐƠN HÀNG */}
+      {selectedOrder && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#172033" }}>Chi tiết đơn hàng</div>
+              <button onClick={() => setSelectedOrder(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Mã đơn hàng</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#2634d5" }}>{selectedOrder.code}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Thời gian</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#172033" }}>
+                    {new Date(selectedOrder.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} • {new Date(selectedOrder.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ height: 1, background: "#e2e8f0" }}></div>
+              <div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Khách hàng</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#172033" }}>{selectedOrder.customer_name}</div>
+              </div>
+              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 700 }}>Danh sách món ({selectedOrder.items?.length || 0})</div>
+                {selectedOrder.items?.map((item, idx) => (
+                  <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "#172033" }}>
+                    <span><b>{item.qty}x</b> {item.name} {item.size?.name ? `(${item.size.name})` : ''}</span>
+                    <span style={{ fontWeight: 600 }}>{Number(item.price * item.qty).toLocaleString("vi-VN")}đ</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b" }}>
+                  <span>Phương thức thanh toán</span>
+                  <span style={{ fontWeight: 700, color: "#172033" }}>{selectedOrder.payment}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b" }}>
+                  <span>Điểm thưởng</span>
+                  <span style={{ fontWeight: 700, color: "#10b981" }}>+{selectedOrder.points_earned || 0} Xu</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#172033" }}>Tổng tiền</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: "#10b981" }}>{Number(selectedOrder.total).toLocaleString("vi-VN")}đ</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog open={!!confirmReject} title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""} message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""} confirmText={t("Từ chối & Hoàn tiền")} cancelText={t("Giữ đơn")} danger loading={!!advancingId} onConfirm={executeReject} onClose={() => !advancingId && setConfirmReject(null)} />
     </>

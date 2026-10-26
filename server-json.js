@@ -1771,6 +1771,23 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), async (req, res) => {
 // ============================================================
 // [P7+P8] POST /api/orders — TRANSACTION + SSE BROADCAST
 // ============================================================
+
+function getCurrentMonth() {
+  return new Date().toISOString().slice(0, 7);
+}
+function getUserSubsidyStatus(user) {
+  const cm = getCurrentMonth();
+  if (!user.subsidy_month || user.subsidy_month !== cm) {
+    user.subsidy_remaining = 500000;
+    user.subsidy_used = 0;
+    user.subsidy_month = cm;
+  }
+  return {
+    remaining: user.subsidy_remaining ?? 500000,
+    used: user.subsidy_used ?? 0
+  };
+}
+
 app.post("/api/orders", auth(), async (req, res) => {
   try {
     const {
@@ -1886,8 +1903,18 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (!voucherCode && clientDiscount > 0) return res.status(400).json({ message: "Giảm giá không hợp lệ (không có voucher)" });
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: "Giảm giá không khớp với voucher" });
 
-    const useXu = useXuRaw === true;
+    const useSubsidy = req.body.useSubsidy === true;
     const customer = findByIdOrMongo(db.users, req.user.id);
+    let subsidyDiscount = 0;
+    if (useSubsidy && customer && subtotal >= 25000) {
+      const status = getUserSubsidyStatus(customer);
+      const subsidyCfg = getPointsConfig(db);
+      const subsidyMaxPerOrder = Number(subsidyCfg.earn?.subsidy_points) || 10000;
+      subsidyDiscount = Math.min(subsidyMaxPerOrder, status.remaining);
+    }
+    
+    const useXu = useXuRaw === true;
+    // [FIX v2] const customer = findByIdOrMongo(db.users, req.user.id); // ← đã khai báo ở block useSubsidy
     let xuDiscount = 0;
     if (useXu && customer) {
       const pointsConfig = getPointsConfig(db);
@@ -1898,7 +1925,7 @@ app.post("/api/orders", auth(), async (req, res) => {
       xuDiscount = Math.min(availableXu, maxXuAllowed);
     }
 
-    const total = Math.max(0, subtotal - computedDiscount - xuDiscount);
+    const total = Math.max(0, subtotal - computedDiscount - xuDiscount - subsidyDiscount);
     const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
 
     if (isWalletPay) {
@@ -1911,12 +1938,14 @@ app.post("/api/orders", auth(), async (req, res) => {
     const orderId = nextId(db.orders);
     const orderCode = generateOrderCode(db);
     const __cfg = getPointsConfig(db);
-    const basePointsEarned = calcEarnPoints(total, __cfg);
-    const __greenBonus = isGreen ? calcGreenBonus(__cfg) : 0;
-    const __greenRequireApproval = isGreen && __cfg.earn.green_require_approval !== false;
-    const finalPointsEarned = isGreen && !__greenRequireApproval ? basePointsEarned + __greenBonus : basePointsEarned;
+    const basePointsEarned = 100; // Ép cứng 100 Xu
+    const __greenBonus = isGreen ? 200 : 0; // Ép cứng 200 Xu nếu có Sống Xanh
+    const __greenRequireApproval = false; // Luôn tự động duyệt
+    const finalPointsEarned = isGreen ? basePointsEarned + __greenBonus : basePointsEarned; // Tổng: 100 hoặc 300
 
     const orderCreated = {
+      subsidy_discount: subsidyDiscount,
+      subsidy_applied: useSubsidy && subsidyDiscount > 0,
       id: orderId,
       code: orderCode,
       customer_id: req.user.id,
@@ -1979,6 +2008,19 @@ app.post("/api/orders", auth(), async (req, res) => {
           const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
           const ok = await atomicDecrement(mongoDb.collection("users"), userFilter, "points", xuDiscount, session);
           if (!ok) throw new Error("Điểm Xu không đủ (có thể do giao dịch đồng thời). Vui lòng thử lại.");
+        }
+
+        if (useSubsidy && subsidyDiscount > 0 && customer) {
+          const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+          await mongoDb.collection("users").updateOne(userFilter, 
+            { $set: { subsidy_remaining: customer.subsidy_remaining ?? 500000 } }, 
+            { session });
+          const upd = await mongoDb.collection("users").updateOne(
+            { ...userFilter, subsidy_remaining: { $gte: subsidyDiscount } },
+            { $inc: { subsidy_remaining: -subsidyDiscount, subsidy_used: subsidyDiscount }, $set: { subsidy_month: getCurrentMonth() } },
+            { session }
+          );
+          if (upd.modifiedCount !== 1) throw new Error("Hạn mức trợ giá không đủ. Vui lòng thử lại.");
         }
 
         if (finalPointsEarned > 0 && customer) {

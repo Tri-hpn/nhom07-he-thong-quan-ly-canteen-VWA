@@ -3,7 +3,7 @@
 // ============================================================
 // V4 (2026-10):
 //   - ✅ Dùng api.school.* + api.users.* (thay vì fetch trực tiếp)
-//   - Giữ V3: Tab Mã ngành, cột MSSV, Set điểm, Gỡ MSSV, filter ngành
+//   - Giữ V3: Tab Mã ngành, cột MSSV, Set xu, Gỡ MSSV, filter ngành
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
@@ -446,7 +446,7 @@ export default function OwnerCustomers() {
 
     const p = Number(pointsForm.points);
     if (!Number.isFinite(p) || p < 0) {
-      setPointsError(t("Điểm phải là số >= 0"));
+      setPointsError(t("Xu phải là số >= 0"));
       return;
     }
 
@@ -457,11 +457,11 @@ export default function OwnerCustomers() {
         reason: pointsForm.reason.trim(),
       });
 
-      toast(t("Đã set điểm thành công: {n} điểm").replace("{n}", String(p)), "success");
+      toast(t("Đã set xu thành công: {n} xu").replace("{n}", String(p)), "success");
       setPointsModal(null);
       load();
     } catch (e) {
-      setPointsError(e.message || t("Không set được điểm"));
+      setPointsError(e.message || t("Không set được xu"));
     } finally {
       setPointsSaving(false);
     }
@@ -646,7 +646,7 @@ export default function OwnerCustomers() {
     if (v.claimed_from)
       return { label: t("Nhận từ ƯĐ"), color: "#8b5cf6", bg: "#ede9fe", icon: Globe };
     if (v.points_used > 0)
-      return { label: t("Đổi điểm"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
+      return { label: t("Đổi xu"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
     return { label: t("Admin tặng"), color: "#2634d5", bg: "#eef2ff", icon: UserIcon };
   };
 
@@ -1002,7 +1002,7 @@ export default function OwnerCustomers() {
                 <SkeletonTable
                   columns={9}
                   rows={5}
-                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Điểm"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
+                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Xu"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
                 />
               )}
 
@@ -1047,7 +1047,7 @@ export default function OwnerCustomers() {
                         <th style={thStyle}>{t("Khách hàng")}</th>
                         <th style={thStyle}>{t("Liên hệ")}</th>
                         <th style={thStyle}>{t("MSSV · Ngành")}</th>
-                        <th style={thStyle}>{t("Điểm")}</th>
+                        <th style={thStyle}>{t("Xu")}</th>
                         <th style={thStyle}>{t("Hạng")}</th>
                         <th style={thStyle}>{t("Loại")}</th>
                         <th style={thStyle}>{t("Trạng thái")}</th>
@@ -1118,7 +1118,7 @@ export default function OwnerCustomers() {
 
                             <td style={tdStyle}>
                               <b style={{ color: "#f59e0b" }}>
-                                {fmtNumber(c.points || 0)} {t("điểm")}
+                                {fmtNumber(c.points || 0)} {t("xu")}
                               </b>
                             </td>
 
@@ -1145,7 +1145,7 @@ export default function OwnerCustomers() {
                                 <IconButton onClick={() => openEdit(c)} title={t("Sửa")}>
                                   <Edit size={15} />
                                 </IconButton>
-                                <IconButton onClick={() => openPointsModal(c)} title={t("Set điểm")} color="#f59e0b" bg="#fff4d8">
+                                <IconButton onClick={() => openPointsModal(c)} title={t("Set xu")} color="#f59e0b" bg="#fff4d8">
                                   <Award size={15} />
                                 </IconButton>
                                 {hasMssv && (
@@ -1393,7 +1393,7 @@ export default function OwnerCustomers() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 20, textAlign: "left" }}>
                 <InfoBlock label={t("Mã KH")} value={`KH${detail.id}`} />
                 <InfoBlock label={t("SĐT")} value={detail.phone || "—"} />
-                <InfoBlock label={t("Điểm tích lũy")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
+                <InfoBlock label={t("Xu tích lũy")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
                 <InfoBlock label={t("Trạng thái")} value={detail.status || t("Hoạt động")} />
 
                 {detail.student_code ? (
@@ -1482,7 +1482,7 @@ export default function OwnerCustomers() {
               </div>
               <div>
                 <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 16 }}>
-                  {t("Set điểm cho khách hàng")}
+                  {t("Set xu cho khách hàng")}
                 </h3>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted, #64748b)" }}>
                   {pointsModal.name} · {pointsModal.email}
@@ -1491,13 +1491,13 @@ export default function OwnerCustomers() {
             </div>
 
             <div style={{ background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}>{t("Điểm hiện tại")}:</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}>{t("Xu hiện tại")}:</span>
               <b style={{ color: "#f59e0b", fontSize: 16 }}>
-                {fmtNumber(pointsModal.points || 0)} {t("điểm")}
+                {fmtNumber(pointsModal.points || 0)} {t("xu")}
               </b>
             </div>
 
-            <label style={modalLabelStyle}>{t("Điểm mới")} *</label>
+            <label style={modalLabelStyle}>{t("Xu mới")} *</label>
             <input
               type="number"
               min={0}
@@ -1511,7 +1511,7 @@ export default function OwnerCustomers() {
             {Number(pointsForm.points) !== Number(pointsModal.points || 0) && (
               <div style={{ fontSize: 12, fontWeight: 700, marginTop: -10, marginBottom: 12, color: Number(pointsForm.points) > Number(pointsModal.points || 0) ? "#18a967" : "#ef4444" }}>
                 ({Number(pointsForm.points) > Number(pointsModal.points || 0) ? "+" : ""}
-                {Number(pointsForm.points) - Number(pointsModal.points || 0)} {t("điểm")})
+                {Number(pointsForm.points) - Number(pointsModal.points || 0)} {t("xu")})
               </div>
             )}
 
@@ -1540,7 +1540,7 @@ export default function OwnerCustomers() {
                 {pointsSaving ? (
                   <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang lưu...")}</>
                 ) : (
-                  <><Award size={14} /> {t("Lưu điểm")}</>
+                  <><Award size={14} /> {t("Lưu xu")}</>
                 )}
               </button>
             </div>

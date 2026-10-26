@@ -36,8 +36,8 @@ const FALLBACK_TEXT = {
     "Thanh toán: Tiền mặt · VietQR · Ví Canteen.",
   voucher:
     "🎁 Bạn có thể:\n" +
-    '• Xem điểm tích lũy ở trang "Khuyến mãi"\n' +
-    "• Đổi 100 điểm → voucher 10.000đ\n" +
+    '• Xem xu tích lũy ở trang "Khuyến mãi"\n' +
+    "• Đổi 100 xu → voucher 10.000đ\n" +
     "• Nhận voucher toàn hệ thống",
   bestSeller: "🔥 Top 3 món bán chạy nhất tại Canteen:",
   bestSellerEmpty: "Hiện chưa có dữ liệu bán chạy. Bạn xem thực đơn nhé!",

@@ -1516,7 +1516,7 @@ function ErrorBox({ message, onRetry, t }) {
 }
 
 // ============================================================
-// POINTS CONFIG MODAL — Sửa quy tắc tích/đổi điểm
+// POINTS CONFIG MODAL — Sửa quy tắc tích/đổi xu
 // ============================================================
 function PointsConfigTab({ initial, saving, onSave, t }) {
   const [subsidyPoints, setSubsidyPoints] = useState(initial?.earn?.subsidy_points || 10000);
@@ -1525,7 +1525,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
   const [subsidyEnabled, setSubsidyEnabled] = useState(initial?.earn?.subsidy_enabled ?? true);
   const [isEditing, setIsEditing] = useState(false);
     const [rateDesc, setRateDesc] = useState(initial?.earn?.rate_desc || "Điều kiện nhận thưởng: Đơn hàng được hoàn thành thành công.\nCách cộng Xu: Hệ thống tự động cộng Xu vào tài khoản sau khi đơn hàng hoàn thành.\nTrường hợp không được thưởng: Đơn hàng chưa hoàn thành hoặc đã bị hủy sẽ không được nhận Xu thưởng.\nKiểm tra Xu: Xem số Xu được cộng trong mục Lịch sử Xu.");
-  const [greenDesc, setGreenDesc] = useState(initial?.earn?.green_desc || "Điều kiện tham gia: Mang hộp đựng cá nhân khi mua đồ ăn mang về.\nCách nhận thưởng: Thông báo với nhân viên tại quầy để được kiểm tra và xác nhận hợp lệ. Sau khi được duyệt, bạn nhận Xu.\nGiới hạn thưởng: Mỗi đơn hàng chỉ được nhận thưởng Sống Xanh một lần.\nLưu ý: Mang hộp cá nhân nhưng chưa được nhân viên xác nhận thì chưa đủ điều kiện nhận Xu.");
+  const [greenDesc, setGreenDesc] = useState(initial?.earn?.green_desc || "Điều kiện tham gia: Mang hộp đựng cá nhân khi mua đồ ăn mang về.\nCách nhận thưởng: Thông báo với nhân viên tại quầy để được kiểm tra và xác nhận hợp lệ. Sau khi được duyệt, bạn nhận Xu.\nGiới hạn thưởng: Mỗi đơn hàng chỉ được nhận thưởng Sống Xanh Học Đường một lần.\nLưu ý: Sống Xanh Học Đường nhưng chưa được nhân viên xác nhận thì chưa đủ điều kiện nhận Xu.");
   const [reviewDesc, setReviewDesc] = useState(initial?.earn?.review_desc || "Điều kiện nhận thưởng: Đơn hàng đã hoàn thành và món ăn được đánh giá là món bạn đã mua.\nCách nhận thưởng: Chọn số sao và gửi nhận xét về món ăn thông qua chức năng đánh giá.\nMức thưởng: Nhận Xu cho mỗi lượt đánh giá hợp lệ.\nGiới hạn thưởng: Mỗi tài khoản chỉ được nhận thưởng một lần cho mỗi món ăn; đánh giá trùng lặp không được cộng thêm Xu.");
   const [subsidyDesc, setSubsidyDesc] = useState(initial?.earn?.subsidy_desc || "Chương trình hỗ trợ một phần chi phí bữa ăn cho sinh viên đủ điều kiện. Khoản trợ giá được tính bằng VNĐ và được trừ trực tiếp vào tiền suất ăn, không cộng vào số dư Xu.\nMức trợ giá: Hỗ trợ tối đa 10.000đ cho mỗi suất ăn đủ điều kiện.\nĐiều kiện áp dụng: Suất ăn có giá từ 25.000đ trở lên và thanh toán theo hình thức được chương trình quy định tại quầy.\nCách nhận trợ giá: Chọn suất ăn đủ điều kiện và thực hiện thanh toán tại quầy theo hướng dẫn của căng tin. Khoản trợ giá được áp dụng khi giao dịch đáp ứng điều kiện chương trình.\nHạn mức hỗ trợ: Số tiền trợ giá phụ thuộc vào ngân sách quỹ và số suất ăn còn được hỗ trợ trong kỳ.\nTheo dõi quyền lợi: Bạn có thể xem hạn mức trợ giá còn lại, số suất đã sử dụng trong tháng và tiến độ sử dụng trên giao diện chương trình.\nLưu ý: Trợ giá là khoản giảm trực tiếp bằng VNĐ, không phải Xu. Mức hỗ trợ thực tế không vượt quá 10.000đ cho mỗi suất ăn và phụ thuộc vào điều kiện, hạn mức còn lại của chương trình.");
   const [historyModal, setHistoryModal] = useState(false);
@@ -1591,7 +1591,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
       {/* HEADER + CÁC NÚT THAO TÁC */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary, #172033)", display: "flex", alignItems: "center", gap: 10 }}>
-          <Settings size={24} /> Quy tắc cộng Xu VWA
+          <Settings size={24} /> Quy tắc cộng Xu & Trợ giá VNĐ
         </div>
         
         <div style={{ display: "flex", gap: 8 }}>
@@ -1712,7 +1712,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
             {isEditing ? (
               <input type="number" value={subsidyPoints || 10000} onChange={(e) => setSubsidyPoints(e.target.value)} style={{ width: 80, padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", textAlign: "right" }} />
             ) : (
-              <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{Number(subsidyPoints || 10000).toLocaleString("vi-VN")} Xu</b>
+              <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{Number(subsidyPoints || 10000).toLocaleString("vi-VN")}đ</b>
             )}
             {isEditing ? (
                 <button type="button" onClick={() => setRateEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>

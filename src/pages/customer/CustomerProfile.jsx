@@ -670,7 +670,7 @@ export default function CustomerProfile({ user, setUser }) {
               <Check size={14} /> {t("Hiển thị ngành/khoa trên hồ sơ cá nhân")}
             </li>
             <li>
-              <Check size={14} /> {t("Đồng bộ điểm tích lũy và voucher sinh viên")}
+              <Check size={14} /> {t("Đồng bộ xu tích lũy và voucher sinh viên")}
             </li>
           </ul>
         </section>

@@ -832,7 +832,7 @@ const [items, setItems] = useState([]);
         </div>
         <div className="home-advisory-content">
           <h4 className="home-advisory-title">
-            {t("Lưu ý nhận món vào giờ cao điểm tại Căng tin VWA")}
+            {t("Lưu ý nhận món vào giờ cao xu tại Căng tin VWA")}
           </h4>
           <p className="home-advisory-desc">
             {t("Căng tin mở cửa từ")} <b>06:30 - 18:30</b>.{" "}

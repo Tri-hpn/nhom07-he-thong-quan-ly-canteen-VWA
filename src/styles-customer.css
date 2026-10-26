@@ -17052,3 +17052,10 @@ body.menu-v3-active .page-content {
 .checkout-summary__costs .checkout-cost-row:first-child {
   margin-top: 0 !important;
 }
+/* FIX: Nút gạt xanh cho Trợ giá sinh viên */
+.checkout-toggle-green:checked {
+  background: #18a967 !important;
+}
+.checkout-toggle-green:checked::after {
+  transform: translateX(14px) !important;
+}

@@ -44,7 +44,7 @@ const DEFAULT_CATEGORY_ICON = "🍽️";
 const MAX_DISCOUNT = 90;
 const MAX_STOCK = 100;
 const LOW_STOCK_THRESHOLD = 10;
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 6;
 
 // Time slot sessions
 const SESSIONS = [
@@ -286,7 +286,7 @@ export default function OwnerMenu() {
       result = result.filter((m) => m.name?.toLowerCase().includes(s));
     }
     if (stallFilter !== "Mọi Quầy") {
-      result = result.filter((m) => m.stall === stallFilter || m.area === stallFilter);
+      result = result.filter((m) => m.station === stallFilter || m.stall === stallFilter || m.area === stallFilter);
     }
     if (filterCat) {
       result = result.filter((m) => m.category === filterCat);
@@ -1658,7 +1658,7 @@ export default function OwnerMenu() {
               </select>
 
               <label style={labelStyle}>Thuộc Quầy (Khu vực)</label>
-              <select name="stall" defaultValue={modal.stall || modal.area || ""} style={inputStyle} disabled={saving}>
+              <select name="station" defaultValue={modal.station || modal.stall || modal.area || ""} style={inputStyle} disabled={saving}>
                 <option value="">Không chọn quầy</option>
                 <option value="Quầy Cơm Suất">Quầy Cơm Suất</option>
                 <option value="Quầy Bún / Phở">Quầy Bún / Phở</option>

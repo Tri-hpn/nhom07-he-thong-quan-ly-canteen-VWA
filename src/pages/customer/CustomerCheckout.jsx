@@ -204,10 +204,16 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       )
     : 0;
 
+    const [useSubsidy, setUseSubsidy] = useState(false);
+  const maxSubsidy = Math.min(10000, user?.subsidy_remaining ?? 500000);
+  const subsidyDiscount = useSubsidy && subtotal >= 25000 ? maxSubsidy : 0;
+
   const total = useMemo(
     () => Math.max(0, subtotal - discount - pointsDiscount),
     [subtotal, discount, pointsDiscount]
   );
+  const finalTotal = Math.max(0, total - subsidyDiscount);
+
 
   useEffect(() => {
     if (prevSubtotalRef.current === null) {
@@ -476,7 +482,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         const orderDiscountPayload = await buildOrderDiscountPayload();
         if (!orderDiscountPayload) return;
 
-        const order = await api.orders.create({
+        const order = await api.orders.create({ useSubsidy,
           items: buildItemsPayload(),
           payment: method,
           note: buildNotePayload(),
@@ -571,7 +577,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         const orderDiscountPayload = await buildOrderDiscountPayload();
         if (!orderDiscountPayload) return;
 
-        const order = await api.orders.create({
+        const order = await api.orders.create({ useSubsidy,
           items: buildItemsPayload(),
           payment: paymentMethodArg,
           note: buildNotePayload(),
@@ -865,7 +871,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 disabled={submittingOrder || total > walletBalance}
               >
                 <Check size={20} />
-                {t("Xác nhận trừ ví & Hoàn tất đơn")} ({money(total)})
+                {t("Xác nhận trừ ví & Hoàn tất đơn")} ({money(finalTotal)})
               </button>
             </div>
           )}
@@ -981,7 +987,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <div className="checkout-qr-info__row checkout-qr-info__row--amount">
                     <div>
                       <span>{t("SỐ TIỀN CHÍNH XÁC")}</span>
-                      <b className="mono blue large">{money(total)}</b>
+                      <b className="mono blue large">{money(finalTotal)}</b>
                     </div>
                     <button
                       type="button"
@@ -1101,15 +1107,15 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 </div>
                 <p>
                   {t("Vui lòng chuẩn bị sẵn đúng hoặc gần đủ số tiền")}{" "}
-                  <b>{money(total)}</b>{" "}
-                  {t("để giúp quầy phục vụ trưa nhanh chóng, tránh ùn tắc hàng chờ trong giờ cao điểm của học viện.")}
+                  <b>{money(finalTotal)}</b>{" "}
+                  {t("để giúp quầy phục vụ trưa nhanh chóng, tránh ùn tắc hàng chờ trong giờ cao xu của học viện.")}
                 </p>
 
                 <div className="checkout-cash-info__denoms">
                   <span>{t("Mệnh giá tiền dự kiến đưa:")}</span>
                   <div className="checkout-cash-info__denoms-row">
                     <button type="button">
-                      {t("Đúng")} {money(total)}
+                      {t("Đúng")} {money(finalTotal)}
                     </button>
                     <button type="button">
                       {t("Đưa 50.000 đ (Thối 15k)")}
@@ -1361,6 +1367,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               ))}
             </div>
 
+            
             <div
               className="checkout-voucher-panel"
               style={{
@@ -1548,6 +1555,27 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <b>{money(subtotal)}</b>
               </div>
 
+            {/* Trợ giá sinh viên (Toggle Switch) */}
+            {subtotal >= 25000 && (
+              <label className="checkout-points-option" style={{ marginTop: "10px", borderTop: "none" }}>
+                <div className="checkout-points-option__body">
+                  <span className="checkout-points-option__coin" style={{ borderColor: "#3b82f6", color: "#3b82f6" }}>★</span>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                    <span className="checkout-points-option__label">
+                      Sử dụng Trợ giá SV (Tối đa {new Intl.NumberFormat('vi-VN').format(subsidyDiscount || 10000)}đ)
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>
+                      Hạn mức còn: <b>{new Intl.NumberFormat('vi-VN').format(Math.max(0, (user?.subsidy_remaining ?? 500000) - (useSubsidy ? subsidyDiscount : 0)))}đ</b>
+                      
+                    </span>
+                  </div>
+                </div>
+                <input type="checkbox" className="checkout-toggle-green" checked={useSubsidy} onChange={(e) => setUseSubsidy(e.target.checked)} />
+              </label>
+            )}
+
+
+
               {discount > 0 && (
                 <div className="checkout-cost-row checkout-cost-row--discount">
                   <span>
@@ -1577,7 +1605,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   </small>
                 </div>
                 <div className="checkout-summary__total-value">
-                  {money(total)}
+                  {money(finalTotal)}
                 </div>
               </div>
             </div>

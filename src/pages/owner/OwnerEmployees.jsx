@@ -2123,7 +2123,7 @@ function EmployeeCard({
           className="admin-emp-card__btn admin-emp-card__btn--primary"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log("Đã bấm nút Phân ca"); onAssignShift(); }}
           title={t("Phân ca làm việc")}
-          style={{ flex: 1, justifyContent: "center", margin: 0,     justifyContent: "center", display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
+          style={{ flex: 1, justifyContent: "center", margin: 0, display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
         >
           <Calendar size={14} />
           <span>{t("Phân ca")}</span>

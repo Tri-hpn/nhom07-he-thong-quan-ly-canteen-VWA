@@ -3,7 +3,7 @@
 // ============================================================
 // V6 (2026-10):
 //   - ⏱ Tự động tick timer mỗi 1s (không phụ thuộc cha re-render).
-//   - 🔧 Fix hiển thị điểm Sống Xanh (điểm/Xu, không phải đ).
+//   - 🔧 Fix hiển thị Xu Sống Xanh Học Đường (điểm/Xu, không phải đ).
 //   - 🎯 Ngưỡng urgency dùng prep_time nếu có.
 //   - ♿ Thêm aria-label cho các nút action.
 //   - ⚡ useMemo cho items/total/paymentLabel.
@@ -225,7 +225,7 @@ export default function KDSTicket({
   const showReject = isPending && typeof onReject === "function";
   const isTall = layout === "tall";
 
-  // Điểm Sống Xanh — có thể là pending, approved hoặc legacy (chỉ có points)
+  // Xu Sống Xanh Học Đường — có thể là pending, approved hoặc legacy (chỉ có points)
   const hasGreen =
     order?.green_status === "pending" ||
     order?.green_status === "approved" ||
@@ -402,21 +402,18 @@ export default function KDSTicket({
               }}
             >
               <Leaf size={14} />
-              <span>
-                {order.green_status === "pending"
-                  ? t("Chờ duyệt Sống Xanh")
-                  : t("Đã duyệt Sống Xanh")}{" "}
-                +{greenPoints} {t("điểm")}
-              </span>
+              <span style={{ whiteSpace: "nowrap", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", padding: "2px 6px", borderRadius: 4 }}>
+  {t("Sống Xanh Học Đường")} (+{order.green_points || 10} {t("Xu")})
+</span>
             </div>
             {order.green_status === "pending" && (onApproveGreen || onRejectGreen) && (
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "none" }}>
                 {onApproveGreen && (
                   <button
                     type="button"
                     onClick={() => onApproveGreen(order)}
                     disabled={greenBusy || processing}
-                    aria-label={t("Duyệt điểm Sống Xanh")}
+                    aria-label={t("Duyệt Xu Sống Xanh Học Đường")}
                     style={{
                       flex: 1,
                       padding: "6px 10px",
@@ -447,7 +444,7 @@ export default function KDSTicket({
                     type="button"
                     onClick={() => onRejectGreen(order)}
                     disabled={greenBusy || processing}
-                    aria-label={t("Từ chối điểm Sống Xanh")}
+                    aria-label={t("Từ chối Xu Sống Xanh Học Đường")}
                     style={{
                       flex: 1,
                       padding: "6px 10px",
@@ -488,10 +485,10 @@ export default function KDSTicket({
             }}
           >
             <Leaf size={12} />
-            {/* FIX: dùng "điểm" thay vì "đ" (tiền) */}
-            <span>
-              {t("Khách mang đồ đựng")} (+{greenPoints || 10} {t("điểm")})
-            </span>
+            {/* FIX: dùng "Xu" thay vì "đ" (tiền) */}
+            <span style={{ whiteSpace: "nowrap", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", padding: "2px 6px", borderRadius: 4 }}>
+  {t("Sống Xanh Học Đường")} (+{order.green_points || 10} {t("Xu")})
+</span>
           </div>
         ))}
 

@@ -755,7 +755,7 @@ export default function CustomerWallet({ user }) {
                 <Sparkles size={18} />
                 <div>
                   <b>{t("Tự động áp dụng Trợ giá SV")}</b>
-                  <span>{t("Trừ ngay 10.000đ khi đủ điều kiện đơn")}</span>
+                  <span>Hạn mức: {new Intl.NumberFormat('vi-VN').format(user?.subsidy_remaining ?? 500000)}đ/tháng</span>
                 </div>
               </div>
               <input
