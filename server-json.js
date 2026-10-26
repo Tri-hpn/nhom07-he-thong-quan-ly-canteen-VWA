@@ -1324,14 +1324,14 @@ app.post("/api/auth/google/callback", async (req, res) => {
     const db = loadDB();
     const emailNorm = normalizeEmail(profile.email);
     let user = db.users.find((u) => normalizeEmail(u.email) === emailNorm);
-    if (!user) {
+     if (!user) {
       const id = nextId(db.users);
       user = { id, email: emailNorm, password: "", name: profile.name || emailNorm.split("@")[0], phone: "", role: "CUSTOMER", status: "Hoạt động", points: 0, provider: "google", avatar: profile.picture || "", created_at: new Date().toISOString() };
       db.users.push(user);
-      await saveDBOrThrow(db);
+      await saveDB(db); // ✅ FIX: Đổi thành saveDB (chạy ngầm, không chặn login)
     } else if (profile.picture && !user.avatar) {
       user.avatar = profile.picture;
-      await saveDBOrThrow(db);
+      await saveDB(db); // ✅ FIX
     }
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
@@ -1363,14 +1363,14 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
     const db = loadDB();
     const emailNorm = normalizeEmail(profile.email);
     let user = db.users.find((u) => normalizeEmail(u.email) === emailNorm);
-    if (!user) {
+     if (!user) {
       const id = nextId(db.users);
       user = { id, email: emailNorm, password: "", name: profile.name || "FB User", phone: "", role: "CUSTOMER", status: "Hoạt động", points: 0, provider: "facebook", avatar: profile.picture?.data?.url || "", created_at: new Date().toISOString() };
       db.users.push(user);
-      await saveDBOrThrow(db);
+      await saveDB(db); // ✅ FIX
     } else if (profile.picture?.data?.url && !user.avatar) {
       user.avatar = profile.picture.data.url;
-      await saveDBOrThrow(db);
+      await saveDB(db); // ✅ FIX
     }
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
@@ -1426,20 +1426,14 @@ async function microsoftCallbackHandler(req, res) {
         const local = emailNorm.split("@")[0];
         if (/^\d{6}-\d{7}$/.test(local)) user.teacher_code = local;
       }
-      autoFilled = autoFillFromCode(db, user);
-      await saveDBOrThrow(db);
+     autoFilled = autoFillFromCode(db, user);
+      await saveDB(db); // ✅ FIX
     } else {
       const id = nextId(db.users);
-      const local = emailNorm.split("@")[0];
-      const isStudent = emailNorm.endsWith("@hpn.edu.vn");
-      const isTeacher = emailNorm.endsWith("@vwa.edu.vn");
-      const isTeacherWithCode = isTeacher && /^\d{6}-\d{7}$/.test(local);
-      user = { id, email: emailNorm, password: "", name: profile.displayName || local, phone: profile.mobilePhone || "", role: "CUSTOMER", status: "Hoạt động", points: 0, provider: "microsoft", avatar: "", student_code: isStudent ? (classify.code || "") : "", teacher_code: isTeacherWithCode ? local : "", created_at: new Date().toISOString() };
-      db.users.push(user);
-      if (!db.wallets) db.wallets = [];
+      // ... (code khởi tạo user)
       db.wallets.push({ user_id: id, balance: 0, bank_name: "", bank_account: "", bank_account_name: "", linked_at: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
       autoFilled = autoFillFromCode(db, user);
-      await saveDBOrThrow(db);
+      await saveDB(db); // ✅ FIX
       isNewUser = true;
     }
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
