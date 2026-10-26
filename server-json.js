@@ -2574,7 +2574,11 @@ app.post("/api/points/redeem", auth(), async (req, res) => {
     if (!check.ok) return res.status(400).json({ message: check.reason });
     u.points = (Number(u.points) || 0) - pointsToRedeem;
     const voucherId = nextId(db.vouchers);
-    const voucher = { id: voucherId, code: "VOUCHER" + String(voucherId).padStart(4, "0"), user_id: req.user.id, value: check.value, points_used: pointsToRedeem, used: false, created_at: new Date().toISOString() };
+    const voucher = { id: voucherId, code: "VOUCHER" + String(voucherId).padStart(4, "0"), user_id: req.user.id, value: check.value, points_used: pointsToRedeem, used: false, created_at: new Date().toISOString(),
+      expires_at: req.body.expires_at || null,
+      max_claims: +req.body.max_claims || 0,
+      is_flash_sale: !!req.body.is_flash_sale
+    };
     db.vouchers.push(voucher);
     await saveDBOrThrow(db);
     res.status(201).json(voucher);
@@ -2590,12 +2594,12 @@ app.post("/api/vouchers", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     if (!db.vouchers) db.vouchers = [];
-    const { code, value, user_id, points_used, publish_date, is_flash_sale, duration, duration_unit, isFlashSale } = req.body;
+    const { code, value, user_id, points_used, publish_date, is_flash_sale, duration, duration_unit, isFlashSale, max_claims, expires_at } = req.body;
     if (!code || !value) return res.status(400).json({ message: "Thiếu mã hoặc giá trị" });
     const codeNorm = String(code).toUpperCase().trim();
     if (db.vouchers.find((v) => v.code.toUpperCase() === codeNorm)) return res.status(400).json({ message: "Mã voucher đã tồn tại" });
     const id = nextId(db.vouchers);
-    const voucher = { id, code: codeNorm, value: +value, user_id: user_id ? +user_id : null, points_used: +points_used || 0, used: false, isFlashSale: !!isFlashSale, is_flash_sale: !!(is_flash_sale || isFlashSale), created_at: new Date().toISOString() };
+    const voucher = { id, code: codeNorm, value: +value, user_id: user_id ? +user_id : null, points_used: +points_used || 0, used: false, isFlashSale: !!isFlashSale, is_flash_sale: !!(is_flash_sale || isFlashSale), max_claims: Number(max_claims) || 0, expires_at: expires_at || null, created_at: new Date().toISOString() };
     db.vouchers.push(voucher);
     await saveDBOrThrow(db);
     res.status(201).json(voucher);
@@ -2610,15 +2614,11 @@ app.put("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
   if (req.body.publish_date !== undefined) v.publish_date = req.body.publish_date;
   if (req.body.is_flash_sale !== undefined) v.is_flash_sale = !!req.body.is_flash_sale;
   if (req.body.isFlashSale !== undefined) v.isFlashSale = !!req.body.isFlashSale;
+  if (req.body.max_claims !== undefined) v.max_claims = Number(req.body.max_claims) || 0;
+  if (req.body.expires_at !== undefined) v.expires_at = req.body.expires_at;
   if (req.body.duration !== undefined) v.duration = Number(req.body.duration);
   if (req.body.duration_unit !== undefined) v.duration_unit = req.body.duration_unit;
-  if (v.is_flash_sale) {
-    const d = new Date(v.publish_date || Date.now());
-    const ms = v.duration_unit === "hours" ? v.duration * 60 * 60 * 1000 : v.duration * 60 * 1000;
-    v.expires_at = new Date(d.getTime() + ms).toISOString();
-  } else {
-    v.expires_at = null;
-  }
+
   if (req.body.used !== undefined) v.used = req.body.used;
   if (req.body.code) {
     const codeNorm = req.body.code.toUpperCase();

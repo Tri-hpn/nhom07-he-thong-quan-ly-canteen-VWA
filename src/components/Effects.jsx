@@ -1,3 +1,12 @@
+
+const formatDateSafe = (dateStr, type = "date") => {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  if (type === "date") return d.toLocaleDateString("vi-VN");
+  if (type === "time") return d.toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' });
+  return "—";
+};
 // ============================================================
 // EFFECTS.JSX — Hiệu ứng toàn cục + Toast system (V4 - FINAL)
 // ============================================================
