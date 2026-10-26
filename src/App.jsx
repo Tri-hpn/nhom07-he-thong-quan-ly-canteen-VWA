@@ -40,7 +40,7 @@ import EmployeeChat from "./pages/employee/EmployeeChat";
 import EmployeeShifts from "./pages/employee/EmployeeShifts";
 
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
-import OwnerEmployees from "./pages/owner/OwnerEmployees";
+import OwnerEmployees from './pages/owner/OwnerEmployees';
 import OwnerAttendance from "./pages/owner/OwnerAttendance";
 import OwnerCustomers from "./pages/owner/OwnerCustomers";
 import OwnerMenu from "./pages/owner/OwnerMenu";
@@ -467,10 +467,7 @@ export default function App() {
               <OwnerEmployees />
             )}
           />
-          <Route
-            path="/owner/shifts"
-            element={<Navigate to="/owner/employees" replace />}
-          />
+          )} />
           <Route
             path="/owner/attendance"
             element={wrap(

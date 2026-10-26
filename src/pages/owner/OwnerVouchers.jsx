@@ -17,6 +17,12 @@ import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import RulesModal from "../../components/RulesModal";
 
+
+const safeISOString = (dateVal) => {
+  if (!dateVal) return null;
+  const d = new Date(dateVal);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -82,6 +88,62 @@ function readStoredFilters() {
 // MAIN COMPONENT
 // ============================================================
 
+
+
+function Countdown({ targetDate }) {
+  const [timeLeft, setTimeLeft] = useState("");
+  const [isExpired, setIsExpired] = useState(false);
+  useEffect(() => {
+    if (!targetDate) return;
+    try {
+      const targetTime = new Date(targetDate).getTime();
+      if (isNaN(targetTime)) return; // Bỏ qua nếu ngày lỗi
+      const updateTimer = () => {
+        const now = new Date().getTime();
+        const distance = targetTime - now;
+        if (distance < 0) {
+          setTimeLeft("Đã hết hạn");
+          setIsExpired(true);
+          return;
+        }
+        const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((distance % (1000 * 60)) / 1000);
+        setTimeLeft(`Còn ${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
+        setIsExpired(false);
+      };
+      updateTimer();
+      const timer = setInterval(updateTimer, 1000);
+      return () => clearInterval(timer);
+    } catch (e) {
+      return;
+    }
+  }, [targetDate]);
+  if (!targetDate) return null;
+  const isValid = !isNaN(new Date(targetDate).getTime());
+  if (!isValid) return null;
+  return (
+    <span style={{ padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: isExpired ? "#fee2e2" : "#fef3c7", color: isExpired ? "#ef4444" : "#d97706", display: "inline-flex", alignItems: "center", gap: 4 }}>
+      {isExpired ? "Hết hạn" : `⏱ ${timeLeft}`}
+    </span>
+  );
+}
+
+
+
+const formatDateSafe = (dateStr, type = "date") => {
+  if (!dateStr) return "—";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "—";
+    if (type === "date") return d.toLocaleDateString("vi-VN");
+    if (type === "time") return d.toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
+    if (type === "datetime") return d.toLocaleString("vi-VN");
+  } catch (e) {
+    return "—";
+  }
+  return "—";
+};
+
 export default function OwnerVouchers() {
   const { t } = useI18n();
   const [searchParams] = useSearchParams();
@@ -98,9 +160,11 @@ export default function OwnerVouchers() {
 
   const STATUS_FILTERS = useMemo(
     () => [
-      { id: "all",    label: t("Tất cả TT") },
-      { id: "unused", label: t("Chưa dùng") },
-      { id: "used",   label: t("Đã dùng") },
+      { id: "all",          label: t("Tất cả") },
+      { id: "active",       label: t("Đang hoạt động") },
+      { id: "expired",      label: t("Hết hạn") },
+      { id: "out_of_stock", label: t("Hết lượt") },
+      { id: "paused",       label: t("Đã tạm ngưng") },
     ],
     [t]
   );
@@ -131,11 +195,19 @@ export default function OwnerVouchers() {
   const [isFlashSale, setIsFlashSale] = useState(false);
   const [duration, setDuration] = useState(30);
   const [durationUnit, setDurationUnit] = useState("minutes");
-  const [selectedUserId, setSelectedUserId] = useState(""); // ✅ V5: Controlled select
+  const [maxClaims, setMaxClaims] = useState(0);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [targetAudience, setTargetAudience] = useState("all"); // ✅ V5: Controlled select
 
   // ✅ V3: Khởi tạo filter từ localStorage
-  const [filters, setFilters] = useState(() => readStoredFilters());
-  const { q, source: filterSource, status: filterStatus, sortBy } = filters;
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const [filters, setFilters] = useState({ q: "", source: "all", status: "all", flash: "all", sortBy: "newest" });
+  const { q, source: filterSource, status: filterStatus, flash: filterFlash, sortBy } = filters;
 
   const [selected, setSelected] = useState([]);
   const [copiedId, setCopiedId] = useState(null);
@@ -159,13 +231,7 @@ export default function OwnerVouchers() {
   const reqIdRef = useRef(0);
 
   // ---------- ✅ V3: Persist filters vào localStorage ----------
-  useEffect(() => {
-    try {
-      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
-    } catch {
-      // Bỏ qua nếu localStorage bị chặn
-    }
-  }, [filters]);
+  
 
   // ---------- Load ----------
 
@@ -219,8 +285,9 @@ export default function OwnerVouchers() {
       setFormIsFlashSale(!!modal.isFlashSale);
       setFormIsFlashSale(modal.is_flash_sale || false);
       setPublishDate(modal.publish_date ? modal.publish_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
-      setExpiryDate(modal.expires_at ? modal.expires_at.slice(0, 10) : "");
-      setSelectedUserId(modal.user_id ? String(modal.user_id) : ""); // ✅ V5
+      setExpiryDate(modal.expires_at ? modal.expires_at.slice(0, 16) : "");
+      setSelectedUserId(modal.user_id ? String(modal.user_id) : "");
+      setTargetAudience(modal.user_id ? "specific" : "all"); // ✅ V5
     }
   }, [modal]);
 
@@ -251,8 +318,21 @@ export default function OwnerVouchers() {
     return map;
   }, [customers]);
 
+  const claimsCountMap = useMemo(() => {
+    const map = new Map();
+    for (const v of list) {
+      if (v.claimed_from) {
+        map.set(v.claimed_from, (map.get(v.claimed_from) || 0) + 1);
+      }
+    }
+    return map;
+  }, [list]);
+
   const filtered = useMemo(() => {
     let result = [...list];
+
+    // FIX: Loai voucher da claim khoi danh sach chinh (chi hien trong popup Xem luot nhan)
+    result = result.filter((v) => !v.claimed_from);
 
     // Search Nâng cao: Bắt mọi trường (Mã, Tên, Tiền, Nguồn, Trạng thái, Ngày)
     if (q.trim()) {
@@ -269,7 +349,7 @@ export default function OwnerVouchers() {
         
         const statusStr = v.used ? "đã dùng used" : "chưa dùng unused";
         const sourceStr = !v.user_id ? "hệ thống toàn hệ thống public" : "cá nhân personal";
-        const dateStr = v.created_at ? new Date(v.created_at).toLocaleDateString("vi-VN") : "";
+        const dateStr = v.created_at ? formatDateSafe(v.created_at, "date") : "";
 
         // Kiểm tra tất cả các trường
         return codeStr.includes(s) ||
@@ -282,16 +362,35 @@ export default function OwnerVouchers() {
       });
     }
 
-    // Status filter
-    if (filterStatus === "used") result = result.filter((v) => v.used);
-    if (filterStatus === "unused") result = result.filter((v) => !v.used);
+    
+    // Flash Sale filter
+    if (filterFlash === "flash") {
+      result = result.filter((v) => v.is_flash_sale || v.isFlashSale);
+    } else if (filterFlash === "normal") {
+      result = result.filter((v) => !v.is_flash_sale && !v.isFlashSale);
+    }
 
-            // Source filter
-        if (filterSource === "all" || filterSource === "public") {
-          result = result.filter((v) => !v.user_id && !v.claimed_from);
-        } else if (filterSource === "personal") {
-          result = result.filter((v) => v.user_id);
-        }
+    // Status filter
+    const checkIsExpiredFilter = (v) => v.expires_at && new Date(v.expires_at).getTime() < now.getTime();
+    const checkIsMaxedFilter = (v) => Number(v.max_claims) > 0 && Number(claimsCountMap.get(v.id) || 0) >= Number(v.max_claims);
+
+    if (filterStatus === "paused") {
+      result = result.filter((v) => v.used);
+    } else if (filterStatus === "out_of_stock") {
+      result = result.filter((v) => !v.used && checkIsMaxedFilter(v));
+    } else if (filterStatus === "expired") {
+      result = result.filter((v) => !v.used && checkIsExpiredFilter(v) && !checkIsMaxedFilter(v));
+    } else if (filterStatus === "active") {
+      result = result.filter((v) => !v.used && !checkIsExpiredFilter(v) && !checkIsMaxedFilter(v));
+    }
+
+    // Source filter
+    if (filterSource === "public") {
+      result = result.filter((v) => !v.user_id && !v.claimed_from);
+    } else if (filterSource === "personal") {
+      result = result.filter((v) => v.user_id);
+    }
+    // Nếu filterSource === "all" thì không lọc gì cả, giữ nguyên tất cả
 
     // Sort
     switch (sortBy) {
@@ -310,7 +409,7 @@ export default function OwnerVouchers() {
     }
 
     return result;
-  }, [list, q, filterStatus, filterSource, sortBy, customers]);
+  }, [list, q, filterStatus, filterSource, filterFlash, sortBy, customers]);
 
   const suggestions = useMemo(() => {
     if (!q.trim() || !showSuggestions) return [];
@@ -352,15 +451,7 @@ export default function OwnerVouchers() {
   }, [list]);
 
   // Đếm claims theo template_id — map 1 lần
-  const claimsCountMap = useMemo(() => {
-    const map = new Map();
-    for (const v of list) {
-      if (v.claimed_from) {
-        map.set(v.claimed_from, (map.get(v.claimed_from) || 0) + 1);
-      }
-    }
-    return map;
-  }, [list]);
+  
 
   const allSelected =
     filtered.length > 0 && selected.length === filtered.length;
@@ -388,11 +479,10 @@ export default function OwnerVouchers() {
   // ---------- Handlers ----------
 
   const getSource = (v) => {
-    if (v.claimed_from)
-      return { label: t("Đã nhận từ ƯĐ"), color: "#8b5cf6", bg: "#ede9fe" };
-    if (!v.user_id)
-      return { label: t("Toàn hệ thống"), color: "#ec4899", bg: "#fce7f3" };
-    return { label: t("Cá nhân"), color: "#2634d5", bg: "#eef2ff" };
+    if (!v.user_id) {
+      return { label: "Toàn hệ thống", color: "#ec4899", bg: "#fce7f3" };
+    }
+    return { label: "Cá nhân", color: "#2634d5", bg: "#eef2ff" };
   };
 
   const generateCode = () => {
@@ -434,7 +524,7 @@ export default function OwnerVouchers() {
 
   // ---------- CRUD ----------
 
-  const saveVoucher = async (e) => {
+ const saveVoucher = async (e) => {
     e.preventDefault();
     if (saving) return;
 
@@ -443,29 +533,30 @@ export default function OwnerVouchers() {
     const value = Number(formValue);
     const userId = selectedUserId ? Number(selectedUserId) : null;
 
-    // Validate cơ bản
     if (!code) return toast(t("Vui lòng nhập mã voucher"), "error");
     if (!value || value <= 0) return toast(t("Giá trị phải lớn hơn 0"), "error");
-    if (value > 10_000_000)
-      return toast(t("Giá trị tối đa 10 triệu"), "error");
+    if (value > 10_000_000) return toast(t("Giá trị tối đa 10 triệu"), "error");
 
-    // ✅ V1: Validate trùng mã (case-insensitive, bỏ qua chính nó khi edit)
     const currentId = modal?.id;
     const dup = list.find(
-      (v) =>
-        v.id !== currentId &&
-        (v.code || "").toUpperCase() === code
+      (v) => v.id !== currentId && (v.code || "").toUpperCase() === code
     );
     if (dup) {
-      return toast(
-        `${t("Đã có voucher mã")} "${dup.code}" — ${t("vui lòng đặt mã khác")}`,
-        "error"
-      );
+      return toast(`${t("Đã có voucher mã")} "${dup.code}" - ${t("vui lòng đặt mã khác")}`, "error");
     }
 
     setSaving(true);
     try {
-      const data = { code, value, user_id: userId, points_used: Number(f.get("points_used")) || 0, isFlashSale: !!formIsFlashSale };
+      const data = {
+        code, 
+        value, 
+        user_id: userId, 
+        points_used: Number(f.get("points_used")) || 0,
+        is_flash_sale: !!formIsFlashSale,
+        max_claims: Number(maxClaims) || 0,
+        expires_at: expiryDate ? expiryDate : null
+      };
+      
       if (modal?.id) {
         await api.vouchers.update(modal.id, data);
         toast(t("Đã cập nhật voucher"), "success");
@@ -533,24 +624,34 @@ export default function OwnerVouchers() {
 
   const toggleUsed = (v) => {
     const newUsed = !v.used;
-    const action = newUsed ? t("đã dùng") : t("chưa dùng");
-
+    const action = newUsed ? "Tắt" : "Mở lại";
+    
     setConfirm({
-      title: `${t("Đánh dấu")} "${v.code}" ${t("là")} ${action}?`,
+      title: `${action} voucher "${v.code}"?`,
       message: newUsed
-        ? t("Voucher sẽ được đánh dấu là đã sử dụng. Khách hàng sẽ không dùng được nữa.")
-        : t("Voucher sẽ được khôi phục về trạng thái chưa dùng."),
-      confirmText: `${t("Đánh dấu")} ${action}`,
-      cancelText: t("Hủy"),
+        ? "Voucher sẽ bị vô hiệu hóa, khách hàng sẽ không thể nhìn thấy hoặc sử dụng voucher này nữa."
+        : "Voucher sẽ được khôi phục về trạng thái chưa dùng.",
+      confirmText: newUsed ? "Tắt voucher" : "Mở lại",
+      cancelText: "Hủy",
       danger: newUsed,
       onConfirm: async () => {
         try {
-          await api.vouchers.update(v.id, { used: newUsed });
-          toast(`${t("Đã đánh dấu")} ${action}`, "success");
+          const payload = { used: newUsed };
+          
+          // Ngầm sửa lỗi ngày tháng nếu có (Tránh lỗi Invalid time value)
+          if (v.expires_at && isNaN(new Date(v.expires_at).getTime())) {
+            payload.expires_at = null;
+          }
+          if (v.created_at && isNaN(new Date(v.created_at).getTime())) {
+            payload.created_at = new Date().toISOString();
+          }
+
+          await api.vouchers.update(v.id, payload);
+          toast(`Đã ${newUsed ? "tắt" : "mở lại"} voucher`, "success");
           setConfirm(null);
           load();
         } catch (e) {
-          toast(e.message || t("Không cập nhật được"), "error");
+          toast("Đã xảy ra lỗi khi cập nhật. Vui lòng thử lại!", "error");
         }
       },
     });
@@ -599,7 +700,7 @@ export default function OwnerVouchers() {
             customerName,
             v.used ? t("Đã dùng") : t("Chưa dùng"),
             v.created_at
-              ? new Date(v.created_at).toLocaleString("vi-VN")
+              ? formatDateSafe(v.created_at, "datetime")
               : "",
           ];
         }),
@@ -770,6 +871,16 @@ export default function OwnerVouchers() {
             ))}
           </select>
 
+          <select
+            value={filterFlash}
+            onChange={(e) => setFilterField("flash", e.target.value)}
+            style={selectStyle}
+          >
+            <option value="all">Tất cả loại</option>
+            <option value="flash">🔥 Deal Sốc</option>
+            <option value="normal">Thường</option>
+          </select>
+
           {/* Sort */}
           
 
@@ -840,7 +951,7 @@ export default function OwnerVouchers() {
             color: "var(--text-light, #8993a3)",
           }}
         >
-          {t("Hiển thị")} <b>{filtered.length}</b> / {list.length} {t("voucher")}
+          {t("Hiển thị")} <b>{filtered.length}</b> / {list.filter((v) => !v.claimed_from).length} {t("voucher")}
         </div>
       </div>
 
@@ -904,35 +1015,39 @@ export default function OwnerVouchers() {
                   const src = getSource(v);
                   const isTemplate = !v.user_id && !v.claimed_from;
                   const claimCount = isTemplate ? (claimsCountMap.get(v.id) || 0) : 0;
+                  
+                  const isFlash = v.is_flash_sale || v.isFlashSale;
+                  const isExpired = v.expires_at && new Date(v.expires_at).getTime() < now.getTime();
+                  const isMaxed = Number(v.max_claims) > 0 && Number(claimsCountMap.get(v.id) || 0) >= Number(v.max_claims);
                   const isSelected = selected.includes(v.id);
                   const isCopied = copiedId === v.id;
-
+                  
                   return (
                     <tr
                       key={v.id}
-                      onClick={() => openClaims(v)}
+                      className={isFlash ? "deal-soc-row" : ""}
                       style={{
-                        cursor: "pointer",
                         borderBottom: "1px solid var(--border-color, #eef2f7)",
-                        background: v.isFlashSale
-                          ? "rgba(245, 158, 11, 0.10)"
-                          : isSelected
-                          ? "rgba(38, 52, 213, 0.04)"
-                          : "transparent",
-                        borderLeft: v.isFlashSale ? "3px solid #f59e0b" : "3px solid transparent",
-                        transition: "background 0.2s ease",
+                        opacity: (isExpired || isMaxed) ? 0.5 : 1,
+                        filter: (isExpired || isMaxed) ? "grayscale(100%)" : "none",
+                        background: isSelected ? "rgba(38, 52, 213, 0.06)" : "transparent",
+                        transition: "all 0.2s"
                       }}
                     >
-                      {/* 1. Checkbox */}
-                      <td style={tdStyle} onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(v.id)} style={{ cursor: "pointer" }} aria-label={`Chọn ${v.code}`} />
+                      <td style={tdStyle}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(v.id)}
+                          style={{ cursor: "pointer" }}
+                        />
                       </td>
-                      {/* 2. Mã */}
+
                       <td style={tdStyle}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <b style={{ color: "#2634d5", fontFamily: "monospace", fontSize: 12 }}>{v.code}</b>
                           <button
-                            onClick={(e) => { e.stopPropagation(); copyCode(v); }}
+                            onClick={() => copyCode(v)}
                             title="Sao chép mã"
                             style={{ background: "transparent", border: 0, cursor: "pointer", color: isCopied ? "#18a967" : "var(--text-light, #94a3b8)", padding: 2, display: "grid", placeItems: "center" }}
                           >
@@ -940,53 +1055,56 @@ export default function OwnerVouchers() {
                           </button>
                         </div>
                       </td>
-                      {/* 3. Giá trị */}
+
                       <td style={tdStyle}>
                         <b style={{ color: "#18a967" }}>{money(v.value)}</b>
                       </td>
-                      {/* 4. Nguồn */}
+
                       <td style={tdStyle}>
                         <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: src.bg, color: src.color, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
                           {isTemplate ? <Globe size={10} /> : <UserIcon size={10} />}
                           {src.label}
                         </span>
                       </td>
-                      {/* 5. Deal Sốc — huy hiệu vuông bo góc màu cam */}
+
                       <td style={{ ...tdStyle, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-                        {v.isFlashSale && (
-                          <div style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
-                            background: "#f59e0b",
-                            color: "#fff",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            boxShadow: "0 2px 5px rgba(245, 158, 11, 0.35)"
-                          }}>
+                        {isFlash ? (
+                          <div style={{ width: 28, height: 28, borderRadius: 6, background: "#f59e0b", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 5px rgba(245, 158, 11, 0.35)", margin: "0 auto" }}>
                             <Check size={16} strokeWidth={3} />
                           </div>
+                        ) : (
+                          <span style={{ color: "var(--text-light, #cbd5e1)", fontSize: 12 }}>—</span>
                         )}
                       </td>
-                      {/* 6. Lượt nhận */}
+
                       <td style={{ ...tdStyle, fontSize: 12 }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: claimCount > 0 || v.user_id ? "#2634d5" : "var(--text-light, #94a3b8)", fontWeight: claimCount > 0 || v.user_id ? 700 : 400 }}>
                           <Users size={12} />
-                          {v.user_id ? "1 khách đã nhận" : claimCount > 0 ? `${claimCount} khách đã nhận` : "Chưa ai nhận"}
+                          {v.user_id ? "1 khách đã nhận" : (Number(v.max_claims) > 0 ? `${claimCount}/${v.max_claims} khách đã nhận` : claimCount > 0 ? `${claimCount} khách đã nhận` : "Chưa ai nhận")}
                         </span>
                       </td>
-                      {/* 7. Trạng thái */}
+
                       <td style={tdStyle}>
-                        <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: v.used ? "#fee2e2" : "#e8f9f1", color: v.used ? "#ef4444" : "#18a967", whiteSpace: "nowrap" }}>
-                          {v.used ? "Đã dùng" : "Chưa dùng"}
-                        </span>
+                        {v.used ? (
+                          <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: "#fef3c7", color: "#d97706", whiteSpace: "nowrap" }}>Tạm ngưng</span>
+                        ) : isMaxed ? (
+                          <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: "#fee2e2", color: "#ef4444", whiteSpace: "nowrap" }}>Hết lượt</span>
+                        ) : isExpired ? (
+                          <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: "#e2e8f0", color: "#475569", whiteSpace: "nowrap" }}>Hết hạn</span>
+                        ) : (
+                          <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: "#e8f9f1", color: "#18a967", whiteSpace: "nowrap" }}>Hoạt động</span>
+                        )}
                       </td>
-                      {/* 8. Ngày */}
+
                       <td style={{ ...tdStyle, fontSize: 11, color: "var(--text-muted, #64748b)", whiteSpace: "nowrap" }}>
-                        {v.created_at ? new Date(v.created_at).toLocaleDateString("vi-VN") : "—"}
+                        {formatDateSafe(v.created_at, "date")}
+                        {v.expires_at && (
+                          <div style={{ fontSize: 9, color: "#ef4444", marginTop: 2, fontWeight: 700 }}>
+                            Hết hạn: {v.expires_at && v.expires_at.includes("T") ? v.expires_at.split("T")[1].slice(0, 5) : (v.expires_at || "")}
+                          </div>
+                        )}
                       </td>
-                      {/* 9. Thao tác */}
+
                       <td style={{ ...tdStyle, textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
                           {isTemplate && (
@@ -994,7 +1112,11 @@ export default function OwnerVouchers() {
                               <Eye size={14} />
                             </IconButton>
                           )}
-                          <IconButton onClick={() => toggleUsed(v)} title={v.used ? "Đánh dấu chưa dùng" : "Đánh dấu đã dùng"} color={v.used ? "#18a967" : "#f59e0b"}>
+                          <IconButton
+                            onClick={() => toggleUsed(v)}
+                            title={v.used ? "Mở lại voucher" : "Tắt voucher"}
+                            color={v.used ? "#18a967" : "#f59e0b"}
+                          >
                             <Power size={14} />
                           </IconButton>
                           <IconButton onClick={() => setModal(v)} title="Sửa">
@@ -1076,57 +1198,153 @@ export default function OwnerVouchers() {
               style={inputStyle}
             />
 
-            <label style={labelStyle}>{t("Ngày hết hạn")}</label>
-            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} disabled={saving} style={inputStyle} />
-            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 20, marginTop: 8 }}>
-              (Để trống nếu voucher không có ngày hết hạn)
+            <label style={labelStyle}>{t("Thời gian hết hạn (Ngày & Giờ)")}</label>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "nowrap" }}>
+              <input
+                type="date"
+                value={expiryDate ? expiryDate.split("T")[0] : ""}
+                onChange={(e) => {
+                  const d = e.target.value;
+                  const nowT = new Date();
+                  const curT = String(nowT.getHours()).padStart(2, '0') + ':' + String(nowT.getMinutes()).padStart(2, '0');
+                  const t = expiryDate && expiryDate.includes("T") ? expiryDate.split("T")[1] : curT;
+                  setExpiryDate(d ? d + "T" + t : "");
+                }}
+                disabled={saving}
+                style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, width: "auto" }}
+              />
+              <input
+                type="time"
+                value={expiryDate && expiryDate.includes("T") ? expiryDate.split("T")[1] : ""}
+                onChange={(e) => {
+                  const t = e.target.value;
+                  const d = expiryDate && expiryDate.includes("T") ? expiryDate.split("T")[0] : new Date().toISOString().slice(0, 10);
+                  const nowT = new Date();
+                  const curT = String(nowT.getHours()).padStart(2, '0') + ':' + String(nowT.getMinutes()).padStart(2, '0');
+                  setExpiryDate(t ? d + "T" + t : (d ? d + "T" + curT : ""));
+                }}
+                disabled={saving}
+                style={{ ...inputStyle, marginBottom: 0, width: 130, flexShrink: 0 }}
+              />
+            </div>
+            {expiryDate && (
+              <div style={{ fontSize: 13, color: "#2634d5", fontWeight: 700, marginBottom: 12, marginTop: 4 }}>
+                Mốc thời gian bạn đã chọn: {expiryDate.split("T")[0].split("-").reverse().join("/")} {expiryDate.split("T")[1]}
+              </div>
+            )}
+            {expiryDate ? (
+              <div style={{ fontSize: 12, color: "#d97706", fontWeight: 600, marginBottom: 20, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                <AlertCircle size={14} />
+                Voucher sẽ hết hạn sau {(() => {
+                  const dStr = expiryDate.length === 10 ? expiryDate + "T23:59:59" : expiryDate;
+                  const diff = new Date(dStr).getTime() - now.getTime();
+                  if (diff <= 0) return "0 phút (Đã hết hạn)";
+                  const m = Math.floor(diff / 60000);
+                  const h = Math.floor(m / 60);
+                  const d = Math.floor(h / 24);
+                  if (d > 0) return d + " ngày " + (h % 24) + " giờ";
+                  if (h > 0) return h + " giờ " + (m % 60) + " phút";
+                  return m + " phút";
+                })()}.
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 20, marginTop: 4 }}>
+                (Để trống nếu voucher không có ngày hết hạn)
+              </div>
+            )}
+
+            <div style={{ marginBottom: 20, padding: 16, background: "var(--bg-tertiary, #f8fafc)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", flexWrap: "nowrap" }}>
+                <div style={{ margin: 0, fontWeight: 600, color: "var(--text-muted, #475569)", whiteSpace: "nowrap", flexShrink: 0, width: 70 }}>Giới hạn:</div>
+                <input
+                  name="max_claims"
+                  type="number"
+                  min="0"
+                  value={maxClaims}
+                  onChange={(e) => setMaxClaims(e.target.value)}
+                  placeholder="0"
+                  style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, fontWeight: 700 }}
+                  disabled={saving}
+                />
+                <div style={{ fontSize: 13, color: "var(--text-muted)", flex: 1 }}>lượt sử dụng</div>
+              </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", boxSizing: "border-box", marginTop: 16, marginBottom: 12, padding: "12px 16px", background: "rgba(245, 158, 11, 0.05)", borderRadius: 10, border: formIsFlashSale ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid var(--border-color, #e5e9ef)" }}>
-              <div style={{ margin: 0, fontWeight: 700, color: formIsFlashSale ? "#f59e0b" : "var(--text-primary)", display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
-                <Zap size={18} /> Kích hoạt Deal Sốc (Flash Sale)
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", boxSizing: "border-box", marginTop: 0, marginBottom: 16, padding: "12px 16px", background: "rgba(245, 158, 11, 0.05)", borderRadius: 10, border: formIsFlashSale ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid var(--border-color, #e5e9ef)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: 0, fontWeight: 700, color: formIsFlashSale ? "#f59e0b" : "var(--text-primary, #172033)", minWidth: 0 }}>
+                <Zap size={18} style={{ flexShrink: 0 }} />
+                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Kích hoạt Deal Sốc (Flash Sale)</span>
               </div>
-              <input type="checkbox" checked={formIsFlashSale} onChange={(e) => setFormIsFlashSale(e.target.checked)} disabled={saving} style={{ width: 28, height: 28, accentColor: "#f59e0b", cursor: saving ? "not-allowed" : "pointer", margin: 0, flexShrink: 0 }} />
+              <input type="checkbox" checked={formIsFlashSale} onChange={(e) => setFormIsFlashSale(e.target.checked)} disabled={saving} style={{ width: 20, height: 20, accentColor: "#f59e0b", cursor: saving ? "not-allowed" : "pointer", margin: 0, flexShrink: 0 }} />
             </div>
 
             {formIsFlashSale && (
               <div style={{ marginBottom: 20, padding: 16, background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 10 }}>
+
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, width: "100%", flexWrap: "nowrap" }}>
-                  <div style={{ margin: 0, fontWeight: 600, color: "var(--text-muted, #475569)", whiteSpace: "nowrap", flexShrink: 0 }}>{t("Thời gian hiệu lực")} *</div>
-                  <input type="number" min="1" value={duration} onChange={(e) => setDuration(e.target.value)} required style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, textAlign: "center", fontWeight: 700 }} disabled={saving} />
-                  <select value={durationUnit} onChange={(e) => setDurationUnit(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, fontWeight: 600 }} disabled={saving}>
-                    <option value="minutes">Phút</option>
-                    <option value="hours">Giờ</option>
-                  </select>
+                  <div style={{ margin: 0, fontWeight: 600, color: "var(--text-muted, #475569)", whiteSpace: "nowrap", flexShrink: 0, width: 70 }}>Giới hạn:</div>
+                  <input type="number" min="0" value={maxClaims} onChange={(e) => setMaxClaims(e.target.value)} placeholder="0 = Không giới hạn" style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, fontWeight: 700 }} disabled={saving} />
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", flex: 1 }}>lượt sử dụng</div>
                 </div>
-                <div style={{ fontSize: 13, color: "#d97706", display: "flex", gap: 6, alignItems: "flex-start", fontWeight: 600 }}>
-                  <AlertCircle size={16} style={{ marginTop: 2, flexShrink: 0 }} />
-                  <span>Voucher sẽ hết hạn sau <b>{duration || 30} {durationUnit === "hours" ? "giờ" : "phút"}</b> kể từ ngày tung.</span>
-                </div>
+
               </div>
             )}
 
-            {/* Info box: public voucher */}
-            <div
-              style={{
-                marginTop: 12,
-                padding: "10px 14px",
-                background: "rgba(236, 72, 153, 0.08)",
-                border: "1px solid rgba(236, 72, 153, 0.25)",
-                borderRadius: 8,
-                fontSize: 12,
-                color: "#ec4899",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Globe size={14} />{" "}
-              {t('Để trống "Khách hàng" → voucher sẽ hiện ở trang "Ưu đãi" cho mọi khách nhận')}
+            <label style={labelStyle}>Đối tượng áp dụng *</label>
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={() => { setTargetAudience("all"); setSelectedUserId(""); }}
+                style={{
+                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  padding: "12px 8px", borderRadius: 10, cursor: "pointer",
+                  border: targetAudience === "all" ? "2px solid #2634d5" : "1px solid var(--border-color, #e5e9ef)",
+                  backgroundColor: targetAudience === "all" ? "rgba(38, 52, 213, 0.05)" : "var(--card-bg, #fff)",
+                  color: targetAudience === "all" ? "#2634d5" : "var(--text-primary, #172033)",
+                  fontSize: 14, fontWeight: 700
+                }}
+              >
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: targetAudience === "all" ? "5px solid #2634d5" : "2px solid #cbd5e1", boxSizing: "border-box", flexShrink: 0 }} />
+                🌐 Toàn bộ
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setTargetAudience("specific"); if (!selectedUserId && customers.length > 0) setSelectedUserId(String(customers[0].id)); }}
+                style={{
+                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  padding: "12px 8px", borderRadius: 10, cursor: "pointer",
+                  border: targetAudience === "specific" ? "2px solid #2634d5" : "1px solid var(--border-color, #e5e9ef)",
+                  backgroundColor: targetAudience === "specific" ? "rgba(38, 52, 213, 0.05)" : "var(--card-bg, #fff)",
+                  color: targetAudience === "specific" ? "#2634d5" : "var(--text-primary, #172033)",
+                  fontSize: 14, fontWeight: 700
+                }}
+              >
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: targetAudience === "specific" ? "5px solid #2634d5" : "2px solid #cbd5e1", boxSizing: "border-box", flexShrink: 0 }} />
+                👤 Chỉ định 1 khách
+              </button>
             </div>
 
-            
+            {targetAudience === "specific" && (
+              <select
+                name="user_id"
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                disabled={saving}
+                style={inputStyle}
+              >
+                <option value="">— Chọn khách hàng —</option>
+                {customers.map((cu) => (
+                  <option key={cu.id} value={cu.id}>{cu.name} ({cu.email})</option>
+                ))}
+              </select>
+            )}
+
+            {targetAudience === "all" && (
+              <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(236, 72, 153, 0.08)", border: "1px solid rgba(236, 72, 153, 0.25)", borderRadius: 8, fontSize: 12, color: "#ec4899", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                <Globe size={14} style={{ flexShrink: 0 }} /> Voucher sẽ hiện ở trang "Ưu đãi" cho mọi khách nhận
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button
@@ -1165,57 +1383,26 @@ export default function OwnerVouchers() {
           CLAIMS MODAL
           ============================================================ */}
       {claimsModal && (
-        <Modal
-          onClose={() => setClaimsModal(null)}
-          maxWidth={560}
-          zIndex={MODAL_Z + 10}
-        >
+        <Modal onClose={() => setClaimsModal(null)} maxWidth={560} zIndex={MODAL_Z + 10}>
           <div style={modalHeaderStyle}>
-            <h3 style={modalTitleStyle}>
-              <Users size={20} /> {t("Khách đã nhận voucher")}
-            </h3>
-            <button
-              onClick={() => setClaimsModal(null)}
-              style={modalCloseStyle}
-              aria-label={t("Đóng")}
-            >
-              <X size={20} />
-            </button>
+            <h3 style={modalTitleStyle}><Users size={20} /> {t("Khách đã nhận voucher")}</h3>
+            <button onClick={() => setClaimsModal(null)} style={modalCloseStyle} aria-label="Đóng"><X size={20} /></button>
           </div>
 
-          <div
-            style={{
-              background: "var(--bg-tertiary, #f5f7fb)",
-              borderRadius: 8,
-              padding: "10px 14px",
-              marginBottom: 14,
-              fontSize: 12,
-            }}
-          >
-            <b style={{ fontFamily: "monospace", color: "#2634d5" }}>
-              {claimsModal.code}
-            </b>{" "}
-            · {money(claimsModal.value)} ·{" "}
-            <b>{claims.length}</b> {t("khách đã nhận")}
+          <div style={{ background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <b style={{ fontFamily: "monospace", color: "#2634d5" }}>{claimsModal.code}</b>{" "}
+              · {money(claimsModal.value)} · <b>{claims.length}/{Number(claimsModal.max_claims) > 0 ? claimsModal.max_claims : "Không giới hạn"}</b> khách đã nhận
+            </div>
+            <Countdown targetDate={claimsModal.expires_at} />
           </div>
 
           {loadingClaims ? (
-            <SkeletonTable
-              columns={4}
-              rows={3}
-              headers={[
-                t("Khách hàng"),
-                t("Mã cá nhân"),
-                t("Ngày nhận"),
-                t("Trạng thái"),
-              ]}
-            />
+            <SkeletonTable columns={4} rows={3} headers={[t("Khách hàng"), t("Mã cá nhân"), t("Ngày nhận"), t("Trạng thái")]} />
           ) : claims.length === 0 ? (
             <div style={emptyBoxStyle}>
               <Users size={36} style={{ opacity: 0.3, marginBottom: 8 }} />
-              <div style={{ fontSize: 13 }}>
-                {t("Chưa có khách nào nhận voucher này")}
-              </div>
+              <div style={{ fontSize: 13 }}>{t("Chưa có khách nào nhận voucher này")}</div>
             </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
@@ -1230,55 +1417,17 @@ export default function OwnerVouchers() {
                 </thead>
                 <tbody>
                   {claims.map((c) => (
-                    <tr
-                      key={c.id}
-                      style={{
-                        borderBottom:
-                          "1px solid var(--border-color, #eef2f7)",
-                      }}
-                    >
+                    <tr key={c.id} style={{ borderBottom: "1px solid var(--border-color, #eef2f7)" }}>
                       <td style={tdStyle}>
                         <b style={{ fontSize: 13 }}>{c.user_name}</b>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-light, #8993a3)",
-                          }}
-                        >
-                          {c.user_email}
-                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-light, #8993a3)" }}>{c.user_email}</div>
                       </td>
-                      <td
-                        style={{
-                          ...tdStyle,
-                          fontFamily: "monospace",
-                          fontSize: 11,
-                        }}
-                      >
-                        {c.code}
-                      </td>
-                      <td
-                        style={{
-                          ...tdStyle,
-                          fontSize: 11,
-                          color: "var(--text-muted, #64748b)",
-                        }}
-                      >
-                        {c.created_at
-                          ? new Date(c.created_at).toLocaleDateString("vi-VN")
-                          : "—"}
+                      <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 11 }}>{c.code}</td>
+                      <td style={{ ...tdStyle, fontSize: 11, color: "var(--text-muted, #64748b)" }}>
+                        {formatDateSafe(c.created_at, "date")}
                       </td>
                       <td style={tdStyle}>
-                        <span
-                          style={{
-                            padding: "3px 9px",
-                            borderRadius: 12,
-                            fontSize: 10.5,
-                            fontWeight: 700,
-                            background: c.used ? "#fee2e2" : "#e8f9f1",
-                            color: c.used ? "#ef4444" : "#18a967",
-                          }}
-                        >
+                        <span style={{ padding: "3px 9px", borderRadius: 12, fontSize: 10.5, fontWeight: 700, background: c.used ? "#fee2e2" : "#e8f9f1", color: c.used ? "#ef4444" : "#18a967" }}>
                           {c.used ? t("Đã dùng") : t("Chưa dùng")}
                         </span>
                       </td>
@@ -1289,13 +1438,11 @@ export default function OwnerVouchers() {
             </div>
           )}
 
-          <button
-            onClick={() => setClaimsModal(null)}
-            style={{ ...btnPrimaryStyle, marginTop: 16, width: "100%" }}
-          >
+          <button onClick={() => setClaimsModal(null)} style={{ ...btnPrimaryStyle, marginTop: 16, width: "100%" }}>
             {t("Đóng")}
           </button>
         </Modal>
+
       )}
 
       {/* ============================================================
@@ -1405,25 +1552,25 @@ function Stat({ label, value, color, icon }) {
 }
 
 function IconButton({
-  children,
-  onClick,
-  title,
-  color = "var(--text-primary, #172033)",
-}) {
+      children,
+      onClick,
+      title,
+      color = "var(--text-primary, #172033)",
+      disabled = false,
+    }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
+    <button onClick={onClick} disabled={disabled} title={title}
       aria-label={title}
       style={{
         padding: 6,
         border: "1px solid var(--border-color, #e5e9ef)",
         borderRadius: 6,
         background: "var(--card-bg, #fff)",
-        cursor: "pointer",
-        display: "grid",
-        placeItems: "center",
-        color,
+        cursor: disabled ? "not-allowed" : "pointer",
+            display: "grid",
+            placeItems: "center",
+            color: disabled ? "var(--text-light, #94a3b8)" : color,
+            opacity: disabled ? 0.5 : 1,
         width: 28,
         height: 28,
         flexShrink: 0,
@@ -1824,7 +1971,7 @@ function ConfigHistoryTable({ t }) {
           {history.map(h => (
             <tr key={h.id} style={{ borderBottom: "1px solid var(--border-color, #f1f5f9)" }}>
               <td style={{ padding: 10, color: "var(--text-muted, #64748b)", whiteSpace: "nowrap" }}>
-                {new Date(h.updated_at).toLocaleString("vi-VN")}
+                {formatDateSafe(h.updated_at, "datetime")}
               </td>
               <td style={{ padding: 10, fontWeight: 600 }}>{h.updated_by}</td>
               <td style={{ padding: 10 }}>
