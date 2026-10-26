@@ -2,36 +2,21 @@
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 3;      // Giảm từ 5 → 3 (tổng delay 503 ≤ ~4s)
-const MAX_RETRY_NETWORK = 3;  // Số lần retry khi mất mạng tạm thời
+const MAX_RETRY_503 = 3;      
+const MAX_RETRY_NETWORK = 3;  
 
-// ─────────────────────────────────────────────────────────────
-// isAuthFlowPath: 401 ở các path này là "sai thông tin đăng nhập"
-// hoặc "code OAuth sai" — KHÔNG phải "session hết hạn".
-// → KHÔNG dispatch auth-expired (tránh đá user ra trang login khi
-//   họ chỉ gõ sai mật khẩu, hoặc đang trong flow OAuth).
-//
-// LƯU Ý: /auth/me cũng nằm trong danh sách này — vì AuthContext
-// đã tự handle 401 của /auth/me trong restoreSession() để tránh
-// toast "phiên hết hạn" mỗi lần load trang với token cũ.
-// ─────────────────────────────────────────────────────────────
 function isAuthFlowPath(path) {
   if (
     path === "/auth/login" ||
     path === "/auth/register" ||
     path === "/auth/logout" ||
     path === "/auth/me" ||
-    path === "/auth/password"     // 401 = sai mật khẩu hiện tại
+    path === "/auth/password"
   ) return true;
-  // OAuth callback: /auth/<provider>/callback (google, facebook, microsoft-entra-id, ...)
   if (/^\/auth\/[^/]+\/callback$/.test(path)) return true;
   return false;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Token lưu memory + sessionStorage (không dùng localStorage vì
-// token không nên sống qua tab close; sessionStorage tự xoá).
-// ─────────────────────────────────────────────────────────────
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
@@ -53,7 +38,6 @@ export function getToken() {
 
 export function setToken(t) {
   memoryToken = t || null;
-  // Token mới → reset flag để lần hết hạn kế tiếp vẫn dispatch được
   if (t) isAuthExpiredDispatched = false;
   if (storageAvailable) {
     try {
@@ -73,8 +57,6 @@ function dispatchAuthExpired() {
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
 }
 
-// fetch() ném TypeError cho MỌI lỗi mạng (Chrome, Safari, Firefox).
-// Một số engine còn chèn message khác nhau — check cả 2 để chắc.
 function isNetworkError(e) {
   if (!e) return false;
   if (e.name === "TypeError") return true;
@@ -100,16 +82,15 @@ async function req(path, options = {}, _retryCount = 0) {
       ...options,
       headers,
       cache: "no-store",
-      credentials: "omit",   // Bearer-token only, không gửi cookie
+      credentials: "omit",
       signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    // Timeout
     if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err;
+      const err = new Error("Yêu cầu quá thời gian. Vui lòng kiểm tra mạng và thử lại.");
+      err.status = 0; throw err;
     }
-    // Mất mạng tạm thời → retry có backoff
     if (_retryCount < MAX_RETRY_NETWORK && isNetworkError(e)) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
       return req(path, options, _retryCount + 1);
@@ -121,13 +102,13 @@ async function req(path, options = {}, _retryCount = 0) {
     clearTimeout(timeoutId);
   }
 
-  // 503 (cold start, DB wake-up) → retry nhẹ
+  // Tự động thử lại khi Vercel báo 503 (Server đang khởi động hoặc quá tải)
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
-    await new Promise((r) => setTimeout(r, 1000 + _retryCount * 500));
+    console.warn(`[API 503] Retrying ${path} (${_retryCount + 1}/${MAX_RETRY_503})...`);
+    await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
     return req(path, options, _retryCount + 1);
   }
 
-  // 401 khi đang có token và không phải flow login → phiên hết hạn
   if (res.status === 401 && token && !isAuthFlowPath(path)) {
     clearToken();
     dispatchAuthExpired();
@@ -144,7 +125,12 @@ async function req(path, options = {}, _retryCount = 0) {
   } catch { data = {}; }
 
   if (!res.ok) {
-    const message = data.message || data.error || `HTTP ${res.status}`;
+    let message = data.message || data.error || `HTTP ${res.status}`;
+    if (res.status === 503) {
+      message = "Hệ thống đang khởi động hoặc quá tải. Vui lòng đợi vài giây và thử lại.";
+    } else if (res.status === 504) {
+      message = "Máy chủ xử lý quá lâu (Timeout). Vui lòng thử lại.";
+    }
     const err = new Error(message);
     err.status = res.status;
     err.body = data;
