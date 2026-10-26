@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // FOOTER.JSX — Footer toàn cục
 // ============================================================
 
@@ -7,6 +7,7 @@ import { LogoVWACompact } from "./LogoVWA";
 import {
   Phone, Mail, MapPin, Facebook, Youtube, Instagram, Send, Globe,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useI18n } from "../hooks/useI18n";
 
@@ -19,9 +20,9 @@ const SOCIALS = [
 ];
 
 const EMPTY_CONTACT = {
-  hotline: "",
-  email: "",
-  address: "",
+  hotline: "1900 6868",
+  email: "ADMIN@VWA.VN",
+  address: "68 Nguyễn Chí Thanh, P. Láng, Hà Nội",
 };
 
 export default function Footer() {
@@ -36,9 +37,9 @@ export default function Footer() {
       .then((s) => {
         if (cancelled || !s) return;
         setContact({
-          hotline: s.hotline?.trim() || "",
-          email: s.email?.trim() || "",
-          address: s.address?.trim() || "",
+          hotline: "1900 6868",
+          email: s.email?.trim() || EMPTY_CONTACT.email,
+          address: s.address?.trim() || EMPTY_CONTACT.address,
         });
       })
       .catch(() => {});
@@ -171,11 +172,11 @@ export default function Footer() {
   <div className="footer-col">
     <h4 className="footer-heading">{t("Danh mục món")}</h4>
     <nav className="footer-menu-links" aria-label={t("Danh mục món")}>
-      <a href="/customer/menu">{t("Món bán chạy")}</a>
-      <a href="/customer/menu">{t("Khai vị & Salad")}</a>
-      <a href="/customer/menu">{t("Món chính")}</a>
-      <a href="/customer/menu">{t("Đồ uống & Tráng miệng")}</a>
-      <a href="/customer/menu">{t("Combo ưu đãi")}</a>
+      <Link to="/customer/menu">{t("Món bán chạy")}</Link>
+      <Link to="/customer/menu">{t("Khai vị & Salad")}</Link>
+      <Link to="/customer/menu">{t("Món chính")}</Link>
+      <Link to="/customer/menu">{t("Đồ uống & Tráng miệng")}</Link>
+      <Link to="/customer/menu">{t("Combo ưu đãi")}</Link>
     </nav>
   </div>
 
@@ -227,9 +228,6 @@ export default function Footer() {
       ))}
     </div>
 
-    <div className="footer-compliance-badge">
-      {t("Đã thông báo Bộ Công Thương")}
-    </div>
   </div>
 </div>
 

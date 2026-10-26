@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V4 - FINAL + i18n)
 // ============================================================
 // 🔧 FIX:
@@ -528,7 +528,7 @@ export default function CustomerPromotions() {
               <div className="promo-hero__points-number">{points}</div>
               <div className="promo-hero__points-info">
                 <span className="promo-hero__points-label">
-                  {t("VWA Points khả dụng")}
+                  {t("🪙 KHẢ DỤNG")}
                 </span>
                 <span className="promo-hero__points-value">
                   ≈ {money(points * POINT_TO_VND)} {t("giá trị quy đổi")}
@@ -568,7 +568,7 @@ export default function CustomerPromotions() {
                 type="button"
                 className="promo-hero__action promo-hero__action--solid" onClick={() => { setShowPointHistory(true); loadAll(); }}>
                 <History size={16} />
-                {t("Lịch sử tích/đổi điểm")}
+                {t("Lịch sử sử dụng 🪙")}
               </button>
               <button
   type="button"
@@ -981,8 +981,8 @@ export default function CustomerPromotions() {
           >
             <div className="promo-modal__head">
               <div>
-                <h3>{t("Biến Động Điểm Thưởng")}</h3>
-                <p>{t("Theo dõi thời gian, nội dung và điểm số của các giao dịch")}</p>
+                <h3>{t("Lịch sử sử dụng 🪙")}</h3>
+                <p>{t("Theo dõi thời gian, nội dung và số xu biến động trong các giao dịch")}</p>
               </div>
               <button
                 type="button"
@@ -997,12 +997,12 @@ export default function CustomerPromotions() {
               {pointHistory.length === 0 ? (
                 <div className="promo-point-history-empty">
                   <History size={32} />
-                  <p>{t("Chưa có lịch sử tích/đổi điểm")}</p>
+                  <p>{t("Chưa có lịch sử sử dụng xu")}</p>
                 </div>
               ) : (
                 pointHistory.map((item, index) => {
                   const isRedeem =
-                    item.type === "redeem" || Number(item.points) < 0;
+                    Number(item.points) < 0;
                   const date = item.date
                     ? new Date(item.date).toLocaleDateString("vi-VN")
                     : "-";
@@ -1027,19 +1027,13 @@ export default function CustomerPromotions() {
                         {isRedeem ? <Gift size={18} /> : <Receipt size={18} />}
                       </div>
                       <div className="promo-point-history-info">
-                        <b>
-                          {isRedeem
-                            ? t("Đổi voucher")
-                            : t("Tích điểm đơn hàng")}
-                        </b>
-                        <span>
-                          {item.code ? `#${item.code}` : t("Không có mã")}
-                        </span>
+                        <b>{item.title || item.detail || (isRedeem ? "Sử dụng xu đổi voucher" : "Cộng xu từ giao dịch")}</b>
+                        <span>{item.code ? `#${item.code}` : ""}</span>
                         <small>{date} {time}</small>
                       </div>
                       <strong className={isRedeem ? "down" : "up"}>
-                        {Number(item.points) > 0 ? "+" : ""}
-                        {Number(item.points) || 0} pts
+                        {isRedeem ? "−" : "+"}
+                        {Math.abs(Number(item.points) || 0)} xu
                       </strong>
                     </div>
                   );
