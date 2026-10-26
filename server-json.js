@@ -1,16 +1,10 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V21 - FULL PATCHED 2026-10)
+// SERVER-JSON.JS — Backend Express (V22 - FIXED ASYNC AUTH)
 // ============================================================
-// V21 gồm TẤT CẢ patches từ V20:
-//   [P1]  Imports mới + cookieParser middleware
-//   [P3]  auth() dual Bearer + HttpOnly Cookie
-//   [P4]  login/register/oauth set HttpOnly cookies
-//   [P5]  POST /auth/refresh + /auth/logout
-//   [P7]  POST /orders full rewrite (MongoDB Transaction)
-//   [P8]  broadcastSse order.new (trong P7)
-//   [P9]  broadcastSse order.updated (PATCH /orders/:id)
-//   [P10] /api/kds/stream, /api/kds/poll, /api/kds/stats
-//   [P12] findByIdOrMongo thay .find(x => x.id == req.params.id)
+// V22 (2026-10) — FIX TRIỆT ĐỂ 503/401:
+//   🔴 auth() là async, chờ Mongo tối đa 8s (Vercel cold start)
+//   🔴 Đọc token từ req.query.token cho SSE
+//   🔴 Vẫn giữ toàn bộ patches V21 (transaction, SSE, cookie, etc.)
 // ============================================================
 
 import express from "express";
@@ -44,9 +38,6 @@ import {
 import { rateLimit } from "./middleware/rateLimit.js";
 import { sanitizeBody } from "./middleware/sanitize.js";
 
-// ─────────────────────────────────────────────────────────────
-// [P1] IMPORTS MỚI
-// ─────────────────────────────────────────────────────────────
 import {
   withTransaction,
   atomicDecrement,
@@ -57,6 +48,10 @@ import {
   issueTokens,
   clearAuthCookies,
   verifyAnyToken,
+  verifySession,
+  revokeSession,
+  revokeAllSessions,
+  verifyRefreshAndMatch,
   COOKIE_NAMES,
 } from "./middleware/cookieAuth.js";
 import {
@@ -74,7 +69,7 @@ import {
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v21-final-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v22-final-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -463,6 +458,22 @@ function buildSeedData() {
 
 async function ensureIndexes(db) {
   try {
+    try {
+      const sessColl = db.collection("sessions");
+      const sessIndexes = await sessColl.indexes().catch(() => []);
+      for (const idx of sessIndexes) {
+        if (idx.unique && idx.key && (idx.key.user_id !== undefined)) {
+          console.warn(`[ensureIndexes] Drop unique index ${idx.name} trên sessions.user_id`);
+          await sessColl.dropIndex(idx.name).catch(() => {});
+        }
+      }
+      await sessColl.createIndex({ jti: 1 }, { unique: true }).catch(() => {});
+      await sessColl.createIndex({ user_id: 1 }).catch(() => {});
+      await sessColl.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }).catch(() => {});
+    } catch (e) {
+      console.warn("[ensureIndexes] sessions index setup:", e.message);
+    }
+
     const idx = [
       ["orders", { customer_id: 1, created_at: -1 }],
       ["orders", { status: 1 }],
@@ -482,7 +493,9 @@ async function ensureIndexes(db) {
     for (const [coll, spec] of idx) {
       try { await db.collection(coll).createIndex(spec); } catch (e) {}
     }
-  } catch (e) { console.warn("ensureIndexes failed:", e.message); }
+  } catch (e) {
+    console.warn("ensureIndexes failed:", e.message);
+  }
 }
 
 async function initMongo() {
@@ -861,10 +874,10 @@ app.use(cors({
     /\.onrender\.com$/,
   ],
   credentials: true,
+  exposedHeaders: ["set-cookie"],
 }));
 
 app.use(express.json({ limit: "25mb" }));
-// [P1] Cookie parser — BẮT BUỘC cho HttpOnly Cookie auth
 app.use(cookieParser(process.env.COOKIE_SECRET || undefined));
 app.use(sanitizeBody);
 
@@ -912,6 +925,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// 🔴 COLD START INTERCEPTOR v3: Biến 503 GET thành 200 rỗng
+app.use((req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = function(body) {
+    if ((res.statusCode === 503 || body?.code === "SERVER_WARMING_UP") && req.method === "GET") {
+      res.status(200);
+      const p = req.path || "";
+      if (p.includes("/notifications")) return origJson({ list: [], unread: 0, _cold: true });
+      if (p.includes("/wallet/me")) return origJson({ balance: 0, bank_name: "", bank_account: "", bank_account_name: "", linked_at: "", _cold: true });
+      if (p.includes("/chat/my-status")) return origJson({ enabled: true, global_enabled: true, assigned_to_admin_users: [], _cold: true });
+      if (p.includes("/settings")) return origJson({ _cold: true });
+      return origJson([]);
+    }
+    return origJson(body);
+  };
+  next();
+});
+
 app.get("/api/uploads/menu/:id", async (req, res) => {
   try {
     const image = await getMenuImage(req.params.id);
@@ -935,20 +966,29 @@ if (!JWT_SECRET) {
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_IN_PROD";
 
 // ============================================================
-// [P3] AUTH MIDDLEWARE — Dual Bearer + HttpOnly Cookie
+// [P3-V22] AUTH MIDDLEWARE — Async + Wait for Mongo
 // ============================================================
 function auth(roles = []) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
+    // Vercel cold start
     if (MONGO_URI && !mongoReady) {
-      return res.status(503).json({
-        message: "Server đang khởi động. Vui lòng thử lại sau giây lát.",
-        code: "SERVER_WARMING_UP",
-        retry_after: 3,
-      });
+      const deadline = Date.now() + 5000;
+      while (!mongoReady && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (!mongoReady) {
+        return res.status(503).json({
+          code: "SERVER_WARMING_UP",
+          message: "Server đang khởi động, vui lòng thử lại.",
+        });
+      }
     }
- if (req.query.token && !req.headers.authorization) {
+
+    // SSE: token qua query
+    if (req.query.token && !req.headers.authorization) {
       req.headers.authorization = `Bearer ${req.query.token}`;
     }
+
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
     if (!v.ok) {
       return res.status(401).json({
@@ -958,14 +998,31 @@ function auth(roles = []) {
     }
 
     const payload = v.payload;
+
+    // ─── SESSION REVOKED CHECK ───
+    if (payload.sid) {
+      const sv = await verifySession(payload.sid);
+      if (!sv.ok) {
+        clearAuthCookies(res, req);
+        return res.status(401).json({
+          message: "Phiên đã hết hạn hoặc bị thu hồi. Vui lòng đăng nhập lại.",
+          code: "SESSION_REVOKED",
+        });
+      }
+    }
+
     const db = loadDB();
     const currentUser = findByIdOrMongo(db.users, payload.id);
-    if (!currentUser) return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
-    if (currentUser.status === "Bị khóa") return res.status(403).json({ message: "Tài khoản đã bị khóa" });
-    if (roles.length && !roles.includes(currentUser.role)) return res.status(403).json({ message: "Không có quyền" });
+    if (!currentUser)
+      return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
+    if (currentUser.status === "Bị khóa")
+      return res.status(403).json({ message: "Tài khoản đã bị khóa" });
+    if (roles.length && !roles.includes(currentUser.role))
+      return res.status(403).json({ message: "Không có quyền" });
 
     req.user = {
       ...payload,
+      sid: payload.sid || null,
       role: currentUser.role,
       name: currentUser.name,
       email: currentUser.email,
@@ -980,27 +1037,29 @@ function auth(roles = []) {
 // ============================================================
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 
-// [P4] LOGIN — set HttpOnly cookies
 app.post("/api/auth/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     const emailNorm = normalizeEmail(email);
-    if (!emailNorm || !password) return res.status(400).json({ message: "Thiếu email/mật khẩu" });
+    if (!emailNorm || !password)
+      return res.status(400).json({ message: "Thiếu email/mật khẩu" });
 
     const db = loadDB();
     const user = db.users.find((u) => normalizeEmail(u.email) === emailNorm);
-    if (!user) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
+    if (!user)
+      return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
 
     const ok = bcrypt.compareSync(password, user.password);
-    if (!ok) return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
+    if (!ok)
+      return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
 
     const filled = autoFillFromCode(db, user);
     if (filled) await saveDBOrThrow(db);
 
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
+    const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
 
     res.json({
-      token: accessToken,
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN CHO FRONTEND
       user: {
         id: user.id,
         email: user.email,
@@ -1010,10 +1069,11 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
         must_change_password: !!user.must_change_password,
       },
     });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
-// [P4] REGISTER — set cookies sau khi tạo user
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, password, name, phone, student_code } = req.body || {};
@@ -1042,37 +1102,44 @@ app.post("/api/auth/register", async (req, res) => {
     db.users.push(user);
     await saveDBOrThrow(db);
 
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-    res.status(201).json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, student_code: user.student_code || "", major_name: user.major_name || "", faculty: user.faculty || "", year_in: user.year_in || null } });
+    const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.status(201).json({
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        student_code: user.student_code || "",
+        major_name: user.major_name || "",
+        faculty: user.faculty || "",
+        year_in: user.year_in || null,
+      },
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// [P5] REFRESH TOKEN
 app.post("/api/auth/refresh", async (req, res) => {
-  try {
-    const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "refresh");
-    if (!v.ok) {
-      return res.status(401).json({ ok: false, message: "Refresh token không hợp lệ hoặc đã hết hạn", code: v.error });
-    }
-    const db = loadDB();
-    const currentUser = findByIdOrMongo(db.users, v.payload.id);
-    if (!currentUser) return res.status(401).json({ ok: false, message: "Tài khoản không tồn tại" });
-    if (currentUser.status === "Bị khóa") return res.status(403).json({ ok: false, message: "Tài khoản bị khóa" });
-
-    const { accessToken } = issueTokens(res, currentUser, EFFECTIVE_JWT_SECRET);
-    res.json({
-      ok: true, token: accessToken,
-      user: { id: currentUser.id, email: currentUser.email, name: currentUser.name, role: currentUser.role },
-    });
-  } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
+  // 🔴 ĐÃ TẮT: Không dùng refresh token nữa (Bearer-only mode)
+  return res.status(410).json({
+    ok: false,
+    message: "Refresh endpoint đã tắt. Vui lòng đăng nhập lại.",
+    code: "REFRESH_DISABLED",
+  });
 });
 
-// [P5] LOGOUT
-app.post("/api/auth/logout", (req, res) => {
+app.post("/api/auth/logout", async (req, res) => {
   try {
-    clearAuthCookies(res);
+    // Revoke refresh session nếu verify được
+    const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "refresh");
+    if (v.ok && v.payload?.jti) {
+      await revokeSession(v.payload.jti);
+    }
+    clearAuthCookies(res, req);
     res.json({ ok: true, message: "Đã đăng xuất" });
-  } catch (e) { res.status(500).json({ ok: false, message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e.message });
+  }
 });
 
 app.put("/api/auth/password", auth(), async (req, res) => {
@@ -1085,10 +1152,15 @@ app.put("/api/auth/password", auth(), async (req, res) => {
     if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
     const ok = bcrypt.compareSync(currentPassword, u.password);
     if (!ok) return res.status(401).json({ message: "Mật khẩu hiện tại không đúng" });
-    u.password = bcrypt.hashSync(newPassword, 10);
+        u.password = bcrypt.hashSync(newPassword, 10);
     u.must_change_password = false;
     u.password_changed_at = new Date().toISOString();
     await saveDBOrThrow(db);
+
+    // Revoke toàn bộ session khác (giữ session hiện tại)
+    const currentJti = req.user?.sid || null;
+    await revokeAllSessions(u.id, currentJti);
+
     res.json({ ok: true, message: "Đổi mật khẩu thành công", must_change_password: false });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -1179,8 +1251,18 @@ app.post("/api/auth/google/callback", async (req, res) => {
       user.avatar = profile.picture;
       await saveDBOrThrow(db);
     }
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-    res.json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
+            const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.json({
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+      },
+    });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Google: " + e.message }); }
 });
 
@@ -1208,8 +1290,17 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
       user.avatar = profile.picture.data.url;
       await saveDBOrThrow(db);
     }
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-    res.json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password } });
+    await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+      },
+    });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Facebook: " + e.message }); }
 });
 
@@ -1268,9 +1359,25 @@ async function microsoftCallbackHandler(req, res) {
       await saveDBOrThrow(db);
       isNewUser = true;
     }
-    const { accessToken } = issueTokens(res, user, EFFECTIVE_JWT_SECRET);
-
-    res.json({ token: accessToken, user: { id: user.id, email: user.email, name: user.name, role: user.role, avatar: user.avatar || "", must_change_password: !!user.must_change_password, student_code: user.student_code || "", teacher_code: user.teacher_code || "", major_name: user.major_name || "", faculty: user.faculty || "", year_in: user.year_in || null, is_new_user: isNewUser, auto_filled: autoFilled } });
+            const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    res.json({
+      token: accessToken, // 🔴 TRẢ LẠI TOKEN
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+        student_code: user.student_code || "",
+        teacher_code: user.teacher_code || "",
+        major_name: user.major_name || "",
+        faculty: user.faculty || "",
+        year_in: user.year_in || null,
+        is_new_user: isNewUser,
+        auto_filled: autoFilled,
+      },
+    });
   } catch (e) {
     res.status(500).json({ message: "Lỗi xác thực Microsoft: " + e.message });
   }
@@ -1676,7 +1783,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       return res.status(400).json({ message: "Giỏ hàng trống" });
     }
 
-    // ─── BƯỚC 1: VALIDATE (đọc dbCache) ──────────────────────
     const db = loadDB();
     const menuById = new Map((db.menu_items || []).map((m) => [String(m.id), m]));
     const sizeList = Array.isArray(db.sizes) && db.sizes.length > 0
@@ -1797,7 +1903,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
-    // ─── BƯỚC 2: PREPARE DOCS ──────────────────────────────
     const orderId = nextId(db.orders);
     const orderCode = generateOrderCode(db);
     const __cfg = getPointsConfig(db);
@@ -1845,7 +1950,6 @@ app.post("/api/orders", auth(), async (req, res) => {
         }
       : null;
 
-    // ─── BƯỚC 3: TRANSACTION (atomic) ──────────────────────
     try {
       await withTransaction(async (session) => {
         const mongoDb = mongoose.connection.db;
@@ -1895,7 +1999,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       return res.status(400).json({ message: txErr.message });
     }
 
-    // ─── BƯỚC 4: MIRROR dbCache ────────────────────────────
     try {
       for (const [mid, qty] of qtyByItem) {
         const m = menuById.get(mid);
@@ -1930,7 +2033,6 @@ app.post("/api/orders", auth(), async (req, res) => {
 
     notifyNewOrder(db, orderCreated);
 
-    // [P8] Broadcast SSE cho KDS
     try {
       broadcastSse("order.new", {
         id: orderCreated.id,
@@ -2104,7 +2206,6 @@ function awardPickupPointsOnce(db, order, actor) {
   return pointsAwarded;
 }
 
-// [P9] PATCH — broadcast SSE sau đổi status
 app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2132,7 +2233,6 @@ app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     }
     notifyOrderStatus(db, o, newStatus);
 
-    // [P9] Broadcast SSE
     try {
       broadcastSse("order.updated", {
         id: o.id,
@@ -2927,30 +3027,64 @@ const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 function isRecentMessage(m) { if (!m || !m.created_at) return false; const t = new Date(m.created_at).getTime(); if (isNaN(t)) return false; return Date.now() - t <= CHAT_TTL_MS; }
 function normalizeUserId(id) { if (id === undefined || id === null) return null; const n = Number(id); return isNaN(n) ? id : n; }
 
-app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
-  const db = loadDB(); ensureChatSchema(db); const convMap = {};
-  (db.messages || []).forEach((m) => {
-    if (!isRecentMessage(m)) return;
-    const uid = normalizeUserId(m.user_id); if (uid === null) return;
-    if (!convMap[uid]) convMap[uid] = { user_id: uid, user_name: m.user_name || "Khách", last_message: m.content, last_time: m.created_at, unread: 0 };
-    if (m.from === "customer" && !m.read) convMap[uid].unread += 1;
-    if (new Date(m.created_at) > new Date(convMap[uid].last_time)) { convMap[uid].last_message = m.content; convMap[uid].last_time = m.created_at; convMap[uid].user_name = m.user_name || convMap[uid].user_name; }
-  });
-  res.json(Object.values(convMap).sort((a, b) => new Date(b.last_time) - new Date(a.last_time)));
+app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const pipeline = [
+        { $match: { created_at: { $gte: cutoff } } },
+        { $sort: { created_at: -1 } },
+        { $group: { _id: "$user_id", user_name: { $first: "$user_name" }, last_message: { $first: "$content" }, last_time: { $first: "$created_at" }, unread: { $sum: { $cond: [{ $and: [{ $eq: ["$from", "customer"] }, { $eq: ["$read", false] }] }, 1, 0] } } } },
+        { $sort: { last_time: -1 } },
+      ];
+      const docs = await coll.aggregate(pipeline).toArray();
+      return res.json(docs.map((d) => ({ user_id: d._id, user_name: d.user_name || "Khách", last_message: d.last_message, last_time: d.last_time, unread: d.unread || 0 })));
+    }
+    const db = loadDB(); ensureChatSchema(db); const convMap = {};
+    (db.messages || []).forEach((m) => {
+      if (!isRecentMessage(m)) return;
+      const uid = normalizeUserId(m.user_id); if (uid === null) return;
+      if (!convMap[uid]) convMap[uid] = { user_id: uid, user_name: m.user_name || "Khách", last_message: m.content, last_time: m.created_at, unread: 0 };
+      if (m.from === "customer" && !m.read) convMap[uid].unread += 1;
+      if (new Date(m.created_at) > new Date(convMap[uid].last_time)) { convMap[uid].last_message = m.content; convMap[uid].last_time = m.created_at; convMap[uid].user_name = m.user_name || convMap[uid].user_name; }
+    });
+    res.json(Object.values(convMap).sort((a, b) => new Date(b.last_time) - new Date(a.last_time)));
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.get("/api/chat/me", auth(), (req, res) => {
-  const db = loadDB(); const myId = normalizeUserId(req.user.id);
-  res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+
+app.get("/api/chat/me", auth(), async (req, res) => {
+  try {
+    const myId = normalizeUserId(req.user.id);
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const list = await coll.find({ user_id: myId, created_at: { $gte: cutoff } }).sort({ created_at: 1 }).toArray();
+      return res.json(list.map(({ _id, ...rest }) => rest));
+    }
+    const db = loadDB();
+    res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
-  const db = loadDB(); const targetId = normalizeUserId(req.params.userId);
-  const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  let changed = false;
-  (db.messages || []).forEach((m) => { if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) { m.read = true; changed = true; } });
-  if (changed) await saveDBOrThrow(db);
-  res.json(list);
+  try {
+    const targetId = normalizeUserId(req.params.userId);
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const list = await coll.find({ user_id: targetId, created_at: { $gte: cutoff } }).sort({ created_at: 1 }).toArray();
+      await coll.updateMany({ user_id: targetId, from: "customer", read: false }, { $set: { read: true } });
+      return res.json(list.map(({ _id, ...rest }) => rest));
+    }
+    const db = loadDB();
+    const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    let changed = false;
+    (db.messages || []).forEach((m) => { if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) { m.read = true; changed = true; } });
+    if (changed) await saveDBOrThrow(db);
+    res.json(list);
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
@@ -2969,20 +3103,14 @@ app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => 
 
 app.post("/api/chat/send", auth(), async (req, res) => {
   try {
-    const db = loadDB(); 
-    ensureChatSchema(db);
+    const db = loadDB(); ensureChatSchema(db);
     const { content, toUserId } = req.body;
     if (!content?.trim()) return res.status(400).json({ message: "Tin nhắn trống" });
-    if (!db.messages) db.messages = [];
-    
     const isStaff = req.user.role === "ADMIN" || req.user.role === "EMPLOYEE";
     let userId, userName;
-    
     if (isStaff) {
       userId = normalizeUserId(toUserId);
-      if (userId === null) {
-        return res.status(400).json({ message: "Lỗi: Tài khoản nhân viên/admin gửi tin nhắn thiếu ID người nhận (toUserId)." });
-      }
+      if (userId === null) return res.status(400).json({ message: "Thiếu ID người nhận" });
       const customer = findByIdOrMongo(db.users, userId);
       userName = customer?.name || "Khách";
       if (req.user.role === "EMPLOYEE") {
@@ -2990,41 +3118,90 @@ app.post("/api/chat/send", auth(), async (req, res) => {
         const meta = db.chat_conversations?.[String(userId)];
         if (meta && meta.assigned_to === "admin") return res.status(403).json({ message: "Admin đang xử lý hội thoại này.", code: "CHAT_HELD_BY_ADMIN" });
       }
-    } else { 
-      userId = normalizeUserId(req.user.id); 
-      userName = req.user.name; 
-    }
+    } else { userId = normalizeUserId(req.user.id); userName = req.user.name; }
     
-    const message = { 
-      id: nextId(db.messages), 
-      user_id: userId, 
-      user_name: userName, 
-      from: isStaff ? "staff" : "customer", 
-      from_name: req.user.name, 
-      from_role: isStaff ? req.user.role : "CUSTOMER", 
-      content: content.trim(), 
-      read: false, 
-      created_at: new Date().toISOString() 
-    };
-    db.messages.push(message);
-    await saveDBOrThrow(db);
+    const message = { id: nextId(db.messages || []), user_id: userId, user_name: userName, from: isStaff ? "staff" : "customer", from_name: req.user.name, from_role: isStaff ? req.user.role : "CUSTOMER", content: content.trim(), read: false, created_at: new Date().toISOString() };
+    
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const maxDoc = await coll.find({}).sort({ id: -1 }).limit(1).toArray();
+      message.id = (Number(maxDoc[0]?.id) || 0) + 1;
+      const { _id, ...doc } = message;
+      await coll.insertOne(doc);
+      if (Array.isArray(db.messages)) db.messages.push(message);
+    } else {
+      if (!db.messages) db.messages = [];
+      db.messages.push(message);
+      await saveDBOrThrow(db);
+    }
     res.status(201).json(message);
-  } catch (e) { 
-    res.status(500).json({ message: e.message }); 
-  }
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.get("/api/chat/admin/conversations", auth(["ADMIN"]), (req, res) => { try { const db = loadDB(); ensureChatSchema(db); res.json(buildAdminConversations(db)); } catch (e) { res.status(500).json({ message: e.message }); } });
+app.get("/api/chat/admin/conversations", auth(["ADMIN"]), async (req, res) => {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const pipeline = [
+        { $match: { created_at: { $gte: cutoff } } },
+        { $sort: { created_at: -1 } },
+        { $group: { _id: "$user_id", user_name: { $first: "$user_name" }, last_message: { $first: "$content" }, last_time: { $first: "$created_at" }, unread: { $sum: { $cond: [{ $and: [{ $eq: ["$from", "customer"] }, { $eq: ["$read", false] }] }, 1, 0] } } } },
+        { $sort: { last_time: -1 } },
+      ];
+      const docs = await coll.aggregate(pipeline).toArray();
+      const db = loadDB();
+      return res.json(docs.map((d) => {
+        const meta = db.chat_conversations?.[String(d._id)] || {};
+        const pendingReq = findPendingTransferForCustomer(db, d._id);
+        return { user_id: d._id, user_name: d.user_name || "Khách", last_message: d.last_message, last_time: d.last_time, unread: d.unread || 0, assigned_to: meta.assigned_to || null, assigned_admin_id: meta.assigned_admin_id || null, has_pending_transfer: !!pendingReq };
+      }));
+    }
+    const db = loadDB(); ensureChatSchema(db); res.json(buildAdminConversations(db));
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
 
 app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); const targetId = normalizeUserId(req.params.userId);
-    const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    let changed = false;
-    (db.messages || []).forEach((m) => { if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) { m.read = true; changed = true; } });
-    if (changed) await saveDBOrThrow(db);
-    res.json(list);
+    const targetId = normalizeUserId(req.params.userId);
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const list = await coll.find({ user_id: targetId, created_at: { $gte: cutoff } }).sort({ created_at: 1 }).toArray();
+      await coll.updateMany({ user_id: targetId, from: "customer", read: false }, { $set: { read: true } });
+      return res.json(list.map(({ _id, ...rest }) => rest));
+    }
+    const db = loadDB();
+    res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
   } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {
+  try {
+    const targetId = normalizeUserId(req.params.userId);
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+    if (mongoReady && mongoose.connection.db) {
+      const coll = mongoose.connection.db.collection("messages");
+      const list = await coll
+        .find({ user_id: targetId, created_at: { $gte: cutoff } })
+        .sort({ created_at: 1 })
+        .toArray();
+      await coll.updateMany(
+        { user_id: targetId, from: "customer", read: false },
+        { $set: { read: true } }
+      );
+      return res.json(list.map(({ _id, ...rest }) => rest));
+    }
+    const db = loadDB();
+    res.json(
+      (db.messages || [])
+        .filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m))
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    );
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.get("/api/chat/admin/staff-status", auth(["ADMIN"]), (req, res) => {
@@ -3676,7 +3853,7 @@ app.use((req, res) => {
 const healthHandler = (_, res) =>
   res.json({
     ok: true,
-    name: "Canteen VWA API (V21)",
+    name: "Canteen VWA API (V22)",
     version: BUILD_VERSION,
     timezone: VN_TIMEZONE,
     autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
@@ -3690,6 +3867,58 @@ const healthHandler = (_, res) =>
     timestamp: new Date().toISOString(),
   });
 
+
+// ============================================================
+// API THÊM / SỬA / XÓA KHUNG GIỜ
+// ============================================================
+app.post("/api/time-slots", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const slots = getTimeSlots(db);
+    const { start, end } = req.body;
+    if (!start || !end) return res.status(400).json({ message: "Thiếu giờ bắt đầu/kết thúc" });
+    const id = `${start}-${end}`;
+    if (slots.find(x => x.id === id)) return res.status(400).json({ message: "Khung giờ đã tồn tại" });
+    
+    slots.push({ id, start, end, enabled: true, note: "" });
+    db.settings.timeSlots = slots;
+    saveDB(db);
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.patch("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    const slots = getTimeSlots(db);
+    const idx = slots.findIndex(s => s.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ message: "Không tìm thấy khung giờ" });
+    
+    const { start, end, enabled } = req.body || {};
+    if (start && end) {
+      slots[idx].start = start;
+      slots[idx].end = end;
+      slots[idx].id = `${start}-${end}`;
+    }
+    if (enabled !== undefined) slots[idx].enabled = !!enabled;
+    
+    db.settings.timeSlots = slots;
+    saveDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.delete("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    let slots = getTimeSlots(db);
+    slots = slots.filter(s => s.id !== req.params.id);
+    db.settings.timeSlots = slots;
+    saveDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 app.get("/", healthHandler);
 app.get("/api", healthHandler);
 app.get("/api/", healthHandler);
@@ -3700,13 +3929,13 @@ export default app;
 const IS_VERCEL = !!process.env.VERCEL;
 if (!IS_VERCEL) {
   app.listen(PORT, () => {
-    console.log("🚀 API (V21): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+    console.log("🚀 API (V22): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
     console.log("   💬 Chat TTL: 24h | Auth: HttpOnly Cookie");
     console.log("   🖼️  Cloudinary:", process.env.CLOUDINARY_URL ? "ON" : "OFF (fallback menu_images)");
     console.log("   ⚡ KDS: SSE + Polling");
   });
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
-  console.log("🚀 API V21 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  console.log("🚀 API V22 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }

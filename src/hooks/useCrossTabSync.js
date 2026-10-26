@@ -1,11 +1,6 @@
+// src/hooks/useCrossTabSync.js
 // ============================================================
-// useCrossTabSync.js — Sync state giữa các tab qua localStorage
-// ============================================================
-// V3 (2026-10):
-//   - 🔧 FIX: bỏ side-effect localStorage khỏi updater của setValue
-//     (StrictMode gọi updater 2 lần → ghi 2 lần). Chuyển sang
-//     useEffect persist, có skip flag cho lần mount + storage event.
-//   - Giữ guard SSR + defaultValue ổn định qua ref.
+// Sync state giữa các tab qua localStorage (Đã tắt Sync để test Multi-Tab)
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -24,46 +19,26 @@ function readInitial(key, fallback) {
 }
 
 export function useCrossTabSync(key, defaultValue = null) {
-  // Giữ defaultValue ổn định qua ref — tránh effect re-run khi caller
-  // truyền `[]` hoặc `{}` literal mỗi render.
   const defaultRef = useRef(defaultValue);
   useEffect(() => {
     defaultRef.current = defaultValue;
   }, [defaultValue]);
 
-  const [value, setValue] = useState(() => readInitial(key, defaultRef.current));
+  const [value, setValue] = useState(() =>
+    readInitial(key, defaultRef.current)
+  );
 
-  // Cờ: bỏ qua persist ngay sau mount (value đã có trong localStorage)
   const didMountRef = useRef(false);
-  // Cờ: bỏ qua persist ngay sau khi nhận storage event (tránh echo)
   const skipPersistRef = useRef(false);
 
-  // Sync khi tab khác đổi localStorage
+  // Reset khi auth-expired / logout (chỉ trong tab hiện tại)
   useEffect(() => {
     if (!isBrowser) return;
-
-    const handler = (e) => {
-      if (e.key !== key) return;
-      let next;
-      try {
-        next = e.newValue ? JSON.parse(e.newValue) : defaultRef.current;
-      } catch {
-        next = defaultRef.current;
-      }
-      skipPersistRef.current = true;
-      setValue(next);
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, [key]);
-
-  // Reset khi auth-expired / logout
-  useEffect(() => {
-    if (!isBrowser) return;
-
     const reset = () => {
-      try { localStorage.removeItem(key); } catch {}
-      skipPersistRef.current = true; // không cần ghi lại default
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+      skipPersistRef.current = true;
       setValue(defaultRef.current);
     };
     window.addEventListener("auth-expired", reset);
@@ -74,21 +49,17 @@ export function useCrossTabSync(key, defaultValue = null) {
     };
   }, [key]);
 
-  // 🔧 FIX: persist bằng useEffect — không nằm trong updater
+  // Vẫn ghi vào localStorage (để F5 không mất data)
   useEffect(() => {
     if (!isBrowser) return;
-
-    // Lần mount đầu: value đã đọc từ localStorage rồi → skip
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
-    // Vừa nhận storage event / reset → skip để tránh echo
     if (skipPersistRef.current) {
       skipPersistRef.current = false;
       return;
     }
-
     try {
       if (value === null || value === undefined) {
         localStorage.removeItem(key);

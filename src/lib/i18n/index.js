@@ -1,11 +1,14 @@
 // ============================================================
-// I18N CORE — Hệ thống đa ngôn ngữ (V8 - CANONICAL)
+// I18N CORE — Hệ thống đa ngôn ngữ (V9 - MULTI-TAB ISOLATED)
 // ============================================================
-// V8 (2026-10):
-//   - ✅ Gộp toàn bộ logic của V5 và V7.
-//   - ✅ Bổ sung getLocale/setLocale/subscribe cho useI18n.js.
-//   - ✅ Thêm translationCache (Map) tăng tốc độ tra cứu.
-//   - ✅ Đồng bộ 2 chiều: storage event + language-change event.
+// V9 (2026-10):
+//   - 🔴 localStorage → sessionStorage: mỗi TAB độc lập
+//   - 🔴 BỎ "storage" event listener (không sync cross-tab nữa)
+//   - 🔴 BỎ OLD_STORAGE_KEY (không đọc localStorage nữa)
+//   - ✅ "language-change" listener add ngay khi module load
+//     (không cần gọi initI18n)
+//   - ✅ useSettings(role) lo persist per-role; lib/i18n chỉ là
+//     bộ nhớ đệm cho boot (đọc sessionStorage.vwa_lang không role)
 // ============================================================
 
 import vi from "./locales/vi.json";
@@ -14,8 +17,7 @@ import ja from "./locales/ja.json";
 import ko from "./locales/ko.json";
 import zh from "./locales/zh.json";
 
-const LANG_KEY = "vwa_lang"; // Key chính
-const OLD_STORAGE_KEY = "canteen_locale"; // Key cũ (tương thích ngược)
+const LANG_KEY = "vwa_lang"; // sessionStorage key (per tab)
 const DEFAULT_LANG = "vi";
 
 export const AVAILABLE_LANGS = [
@@ -35,19 +37,21 @@ let inited = false;
 const listeners = new Set();
 const translationCache = new Map();
 
-// Đọc lang đã lưu khi khởi tạo (ưu tiên vwa_lang, fallback canteen_locale)
+// ============================================================
+// BOOT: Đọc lang đã lưu (per-tab) — chỉ sessionStorage
+// ============================================================
 try {
-  if (typeof window !== "undefined") {
-    const saved = localStorage.getItem(LANG_KEY) || localStorage.getItem(OLD_STORAGE_KEY);
+  if (typeof window !== "undefined" && typeof sessionStorage !== "undefined") {
+    const saved = sessionStorage.getItem(LANG_KEY);
     if (saved && DICTS[saved]) {
       currentLang = saved;
-      // Đồng bộ lại key mới nếu trước đó chỉ có key cũ
-      localStorage.setItem(LANG_KEY, saved);
     }
   }
 } catch {}
 
-// ---------- API Cơ bản ----------
+// ============================================================
+// API CƠ BẢN
+// ============================================================
 export function getLang() { return currentLang; }
 export function getLocale() { return currentLang; } // Alias cho useI18n
 export function isReady() { return ready; }
@@ -61,7 +65,9 @@ export function onLangChange(cb) {
 }
 export function subscribe(cb) { return onLangChange(cb); } // Alias cho useI18n
 
-// ---------- Hàm dịch ----------
+// ============================================================
+// HÀM DỊCH
+// ============================================================
 function applyVars(text, vars) {
   if (!vars || typeof vars !== "object") return text;
   let out = text;
@@ -75,8 +81,7 @@ function applyVars(text, vars) {
 export function t(source, vars) {
   if (source === null || source === undefined) return "";
   const key = String(source);
-  
-  // Cache key bao gồm cả lang và source
+
   const cacheKey = `${currentLang}::${key}`;
   if (translationCache.has(cacheKey) && !vars) {
     return translationCache.get(cacheKey);
@@ -87,12 +92,12 @@ export function t(source, vars) {
   if (currentLang !== "vi") {
     const dict = DICTS[currentLang] || {};
     translated = dict[key];
-    
-    // Fallback: thử trim / normalize nếu không tìm thấy
+
+    // Fallback: trim / normalize
     if (!translated || translated === key) {
       const trimmed = key.trim();
       if (trimmed !== key) translated = dict[trimmed];
-      
+
       if (!translated || translated === trimmed) {
         const normalized = key.replace(/\s+/g, " ").trim();
         if (normalized !== key) translated = dict[normalized];
@@ -100,12 +105,10 @@ export function t(source, vars) {
     }
   }
 
-  // Nếu không có bản dịch, trả về source gốc
   if (!translated || translated === key) {
     translated = key;
   }
 
-  // Lưu cache (chỉ lưu khi không có vars để tránh cache sai placeholder)
   if (!vars) {
     translationCache.set(cacheKey, translated);
   }
@@ -113,7 +116,9 @@ export function t(source, vars) {
   return applyVars(translated, vars);
 }
 
-// ---------- Đổi ngôn ngữ ----------
+// ============================================================
+// ĐỔI NGÔN NGỮ
+// ============================================================
 export function setLang(lang) {
   if (!lang || typeof lang !== "string") return;
   if (!DICTS[lang]) return;
@@ -122,9 +127,9 @@ export function setLang(lang) {
   currentLang = lang;
   translationCache.clear();
 
+  // 🔴 Ghi vào sessionStorage (per tab) — KHÔNG ghi localStorage
   try {
-    localStorage.setItem(LANG_KEY, lang);
-    localStorage.setItem(OLD_STORAGE_KEY, lang);
+    sessionStorage.setItem(LANG_KEY, lang);
   } catch {}
 
   // Notify hook
@@ -132,16 +137,34 @@ export function setLang(lang) {
     try { cb(lang); } catch (e) { console.error("[i18n] listener error:", e); }
   });
 
-  // Notify window (Topbar, CustomerProfile...)
+  // Notify same-tab components
   try {
     window.dispatchEvent(new CustomEvent("language-change", { detail: { lang } }));
   } catch {}
 
   try { document.documentElement.lang = lang; } catch {}
 }
-export function setLocale(lang) { setLang(lang); } // Alias cho useI18n
+export function setLocale(lang) { setLang(lang); } // Alias
 
-// ---------- Khởi tạo ----------
+// ============================================================
+// 🔴 SAME-TAB EVENT LISTENER (add ngay, không cần initI18n)
+// ============================================================
+if (typeof window !== "undefined") {
+  // Lắng nghe "language-change" (do useSettings dispatch)
+  try {
+    window.addEventListener("language-change", (e) => {
+      const next = e?.detail?.lang;
+      if (!next || !DICTS[next] || next === currentLang) return;
+      setLang(next);
+    });
+  } catch {}
+
+  // 🔴 KHÔNG listen "storage" event nữa — mỗi tab đã độc lập qua sessionStorage
+}
+
+// ============================================================
+// KHỞI TẠO (giữ để tương thích ngược, không bắt buộc)
+// ============================================================
 export function initI18n() {
   ready = true;
   if (inited) return Promise.resolve(true);
@@ -151,29 +174,15 @@ export function initI18n() {
     document.documentElement.lang = currentLang;
   } catch {}
 
-  // Đồng bộ khi tab khác đổi lang
-  try {
-    window.addEventListener("storage", (e) => {
-      if (e.key !== LANG_KEY && e.key !== OLD_STORAGE_KEY) return;
-      const next = e.newValue;
-      if (!next || !DICTS[next] || next === currentLang) return;
-      setLang(next);
-    });
-  } catch {}
-
-  // Đồng bộ khi component dispatch "language-change"
-  try {
-    window.addEventListener("language-change", (e) => {
-      const next = e?.detail?.lang;
-      if (!next || !DICTS[next] || next === currentLang) return;
-      setLang(next);
-    });
-  } catch {}
+  // 🔴 Không add "storage" listener nữa
+  // "language-change" đã được add ở module load
 
   return Promise.resolve(true);
 }
 
-// ---------- Export bổ sung ----------
+// ============================================================
+// EXPORT BỔ SUNG
+// ============================================================
 export function getAvailableKeys() {
   return Object.keys(DICTS[currentLang] || {});
 }
@@ -193,10 +202,16 @@ export function getCoverage(locale = currentLang) {
   }
 
   return {
-    locale, total: viKeys.length, translated, missing: missing.length,
+    locale,
+    total: viKeys.length,
+    translated,
+    missing: missing.length,
     percent: viKeys.length > 0 ? Math.round((translated / viKeys.length) * 1000) / 10 : 0,
     missingKeys: missing,
   };
 }
 
-export default { t, getLang, getLocale, setLang, setLocale, initI18n, onLangChange, subscribe };
+export default {
+  t, getLang, getLocale, setLang, setLocale, initI18n,
+  onLangChange, subscribe,
+};

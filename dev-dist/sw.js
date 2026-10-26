@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-53feb3a3'], (function (workbox) { 'use strict';
+define(['./workbox-ce825c4d'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -81,12 +81,13 @@ define(['./workbox-53feb3a3'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.baguo6oj7mg"
+    "revision": "0.s90328f081g"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
     allowlist: [/^\/$/]
   }));
+  workbox.registerRoute(/^\/api\/(auth|telemetry)\//i, new workbox.NetworkOnly(), 'GET');
   workbox.registerRoute(/^\/api\/uploads\/menu\/.*/i, new workbox.CacheFirst({
     "cacheName": "vwa-menu-images",
     plugins: [new workbox.ExpirationPlugin({
@@ -105,7 +106,7 @@ define(['./workbox-53feb3a3'], (function (workbox) { 'use strict';
       statuses: [0, 200]
     })]
   }), 'GET');
-  workbox.registerRoute(/^\/api\/(orders|auth|wallet|points|vouchers|chat|notifications)/i, new workbox.NetworkFirst({
+  workbox.registerRoute(/^\/api\/(orders|wallet|points|vouchers|chat|notifications)/i, new workbox.NetworkFirst({
     "cacheName": "vwa-api-dynamic",
     "networkTimeoutSeconds": 5,
     plugins: [new workbox.ExpirationPlugin({

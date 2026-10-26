@@ -1,33 +1,20 @@
 // src/api.js
-// ============================================================
-// API.JS — HTTP client (V19 - MULTI-TAB SESSIONSTORAGE)
-// ============================================================
-
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 3;
+const MAX_RETRY_503 = 5;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
-// Sử dụng sessionStorage để mỗi Tab có một session riêng biệt
 let storageAvailable = (() => {
-  try {
-    const k = "__test__";
-    sessionStorage.setItem(k, "1");
-    sessionStorage.removeItem(k);
-    return true;
-  } catch { return false; }
+  try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; } catch { return false; }
 })();
 
 export function getToken() {
   if (memoryToken) return memoryToken;
   if (storageAvailable) {
-    try {
-      const t = sessionStorage.getItem("token");
-      if (t) { memoryToken = t; return t; }
-    } catch { storageAvailable = false; }
+    try { const t = sessionStorage.getItem("token"); if (t) { memoryToken = t; return t; } } catch { storageAvailable = false; }
   }
   return null;
 }
@@ -36,33 +23,18 @@ export function setToken(t) {
   memoryToken = t || null;
   if (t) isAuthExpiredDispatched = false;
   if (storageAvailable) {
-    try {
-      if (t) sessionStorage.setItem("token", t);
-      else sessionStorage.removeItem("token");
-    } catch {}
+    try { if (t) sessionStorage.setItem("token", t); else sessionStorage.removeItem("token"); } catch {}
   }
-  try {
-    window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } }));
-  } catch {}
+  try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } })); } catch {}
 }
 
 export function clearToken() { setToken(null); }
 export function resetAuthExpiredFlag() { isAuthExpiredDispatched = false; }
 
-const authChannel =
-  typeof window !== "undefined" && "BroadcastChannel" in window
-    ? new BroadcastChannel("vwa_auth")
-    : null;
-
-function broadcastAuthEvent(type) {
-  try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {}
-}
-
 function dispatchAuthExpired() {
   if (isAuthExpiredDispatched) return;
   isAuthExpiredDispatched = true;
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-  broadcastAuthEvent("logout");
 }
 
 async function req(path, options = {}, _retryCount = 0) {
@@ -71,9 +43,7 @@ async function req(path, options = {}, _retryCount = 0) {
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const headers = { ...(options.headers || {}) };
-  if (options.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -84,14 +54,12 @@ async function req(path, options = {}, _retryCount = 0) {
       ...options,
       headers,
       cache: "no-store",
-      credentials: "same-origin",
+      credentials: "omit", // 🔴 KHÔNG gửi cookie nữa
       signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err;
-    }
+    if (e.name === "AbortError") { const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err; }
     if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
       return req(path, options, _retryCount + 1);
@@ -100,18 +68,17 @@ async function req(path, options = {}, _retryCount = 0) {
   } finally { clearTimeout(timeoutId); }
 
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
-    try {
-      const data = await res.json();
-      if (data.code === "SERVER_WARMING_UP") {
-        await new Promise((r) => setTimeout(r, 2000 * (_retryCount + 1)));
-        return req(path, options, _retryCount + 1);
-      }
-    } catch {}
+    await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
+    return req(path, options, _retryCount + 1);
   }
 
+  // 🔴 KHÔNG tự động refresh nữa — 401 là hết phiên
   if (res.status === 401 && token) {
-    clearToken();
-    dispatchAuthExpired();
+    const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/refresh") || path.includes("/auth/logout") || path.includes("/auth/me") || path.includes("/auth/");
+    if (!isAuthEndpoint) {
+      clearToken();
+      dispatchAuthExpired();
+    }
   }
 
   const contentType = res.headers.get("content-type") || "";
@@ -131,47 +98,29 @@ async function req(path, options = {}, _retryCount = 0) {
 export const api = {
   _base: BASE,
   health: () => req(""),
-  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }).then(r => {
-    if (r.token) setToken(r.token);
-    resetAuthExpiredFlag();
-    return r;
+  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }).then((r) => {
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
   }),
-  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then(r => {
-    if (r.token) setToken(r.token);
-    resetAuthExpiredFlag();
-    return r;
+  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then((r) => {
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
   }),
-  logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => {
-    clearToken();
-    dispatchAuthExpired();
-  }),
+  logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => clearToken()),
   me: () => req("/auth/me"),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {
-    callback: (provider, code, redirectUri) =>
-      req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }).then(r => {
-        if (r.token) setToken(r.token);
-        resetAuthExpiredFlag();
-        return r;
-      }),
+    callback: (provider, code, redirectUri) => req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }).then((r) => {
+      if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
+    }),
   },
   stats: () => req("/stats"),
   menu: {
     list: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams();
-      if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
-      if (sort) p.set("sort", sort);
-      const qs = p.toString();
-      return req("/menu" + (qs ? "?" + qs : ""));
+      const p = new URLSearchParams(); if (q) p.set("q", q); if (category && category !== "Tất cả") p.set("category", category); if (sort) p.set("sort", sort);
+      const qs = p.toString(); return req("/menu" + (qs ? "?" + qs : ""));
     },
     listActive: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams();
-      p.set("active_only", "1");
-      if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
-      if (sort) p.set("sort", sort);
+      const p = new URLSearchParams(); p.set("active_only", "1"); if (q) p.set("q", q); if (category && category !== "Tất cả") p.set("category", category); if (sort) p.set("sort", sort);
       return req("/menu?" + p.toString());
     },
     get: (id) => req(`/menu/${id}`),
@@ -179,16 +128,11 @@ export const api = {
     update: (id, data) => req(`/menu/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/menu/${id}`, { method: "DELETE" }),
   },
-  priceHistory: {
-    list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")),
-  },
+  priceHistory: { list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")) },
   orders: {
     create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
     myOrders: () => req("/orders/me"),
-    all: (status = "Tất cả") => {
-      const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : "";
-      return req("/orders" + qs);
-    },
+    all: (status = "Tất cả") => { const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : ""; return req("/orders" + qs); },
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received: (id) => req(`/orders/${id}/received`, { method: "POST" }),
     lookupQr: (orderCode) => req("/orders/scan-pickup/lookup", { method: "POST", body: JSON.stringify({ orderCode }) }),
@@ -361,13 +305,5 @@ export const api = {
   },
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },
 };
-
-if (typeof window !== "undefined" && authChannel) {
-  authChannel.onmessage = (e) => {
-    if (e.data?.type === "logout") {
-      try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-    }
-  };
-}
 
 export default api;
