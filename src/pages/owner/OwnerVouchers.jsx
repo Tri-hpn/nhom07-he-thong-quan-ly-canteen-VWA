@@ -17,6 +17,12 @@ import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import RulesModal from "../../components/RulesModal";
 
+
+const safeISOString = (dateVal) => {
+  if (!dateVal) return null;
+  const d = new Date(dateVal);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -1184,8 +1190,8 @@ export default function OwnerVouchers() {
               style={inputStyle}
             />
 
-            <label style={labelStyle}>{t("Ngày hết hạn")}</label>
-            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} disabled={saving} style={inputStyle} />
+            <label style={labelStyle}>{t("Thời gian hết hạn (Ngày & Giờ)")}</label>
+            <input type="datetime-local" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} disabled={saving} style={inputStyle} />
             <div style={{ fontSize: 12, color: "#64748b", marginBottom: 20, marginTop: 8 }}>
               (Để trống nếu voucher không có ngày hết hạn)
             </div>
@@ -1315,7 +1321,7 @@ export default function OwnerVouchers() {
         <Modal onClose={() => setClaimsModal(null)} maxWidth={560} zIndex={MODAL_Z + 10}>
           <div style={modalHeaderStyle}>
             <h3 style={modalTitleStyle}><Users size={20} /> {t("Khách đã nhận voucher")}</h3>
-            <button onClick={() => setClaimsModal(null)} style={modalCloseStyle} aria-label={t("Đóng")}><X size={20} /></button>
+            <button onClick={() => setClaimsModal(null)} style={modalCloseStyle} aria-label="Đóng"><X size={20} /></button>
           </div>
 
           <div style={{ background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -1371,10 +1377,7 @@ export default function OwnerVouchers() {
             {t("Đóng")}
           </button>
         </Modal>
-      )}
-      )}
-      )}
-      )}
+
       )}
 
       {/* ============================================================
