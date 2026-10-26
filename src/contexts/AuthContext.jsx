@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { api, setToken, getToken, clearToken } from "../api";
+import { api, clearToken, getToken } from "../api";
 
 const AuthContext = createContext(null);
 
@@ -16,8 +16,10 @@ export function AuthProvider({ children }) {
     setUserState((prev) => (typeof updater === "function" ? updater(prev) : updater));
   }, []);
 
-  const refreshUser = useCallback(async () => {
+  const restoreSession = useCallback(async () => {
     const myReqId = ++meReqIdRef.current;
+    const token = getToken();
+    if (!token) { setUserState(null); return null; }
     try {
       const me = await api.me();
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
@@ -25,14 +27,12 @@ export function AuthProvider({ children }) {
       return me;
     } catch (e) {
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
-      // 🔴 Bỏ qua lỗi 401 và 503 khi refresh ngầm
-      if (e.status === 401) {
-        setUserState(null);
-        clearToken();
-      }
+      if (e.status === 401) { setUserState(null); clearToken(); }
       return null;
     }
   }, []);
+
+  const refreshUser = restoreSession;
 
   const login = useCallback(async (email, password) => {
     const res = await api.login(email, password);
@@ -57,58 +57,36 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
-
     (async () => {
-      const token = getToken();
-      if (!token) {
-        if (!cancelled) { setUserState(null); setLoading(false); }
-        return;
-      }
-      try {
-        const myReqId = ++meReqIdRef.current;
-        const me = await api.me();
-        if (!cancelled && myReqId === meReqIdRef.current) setUserState(me);
-      } catch (e) {
-        // 🔴 [QUAN TRỌNG] Nếu lỗi 401 (hết hạn token) thì mới xóa. 
-        // Nếu 503 (Vercel đang khởi động) thì GIỮ NGUYÊN session.
-        if (!cancelled && e.status === 401) {
-          setUserState(null);
-          clearToken();
-        } else if (e.status === 503) {
-          console.warn("[AuthContext] Server đang khởi động, giữ nguyên session.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      await restoreSession();
+      if (!cancelled) setLoading(false);
     })();
-
-    return () => {
-      cancelled = true;
-      mountedRef.current = false;
-    };
-  }, []);
+    return () => { cancelled = true; mountedRef.current = false; };
+  }, [restoreSession]);
 
   useEffect(() => {
-    const onTokenChanged = (e) => {
-      if (e?.detail?.hasToken) refreshUser();
-      else { meReqIdRef.current++; setUserState(null); }
+    // Khi tab khác logout hoặc token hết hạn -> reset state
+    const onAuthExpired = () => {
+      meReqIdRef.current++;
+      setUserState(null);
+      clearToken();
     };
-    const onAuthExpired = () => { meReqIdRef.current++; setUserState(null); clearToken(); };
-    const onLogout = () => { meReqIdRef.current++; setUserState(null); clearToken(); };
-
-    window.addEventListener("token-changed", onTokenChanged);
+    const onLogout = () => {
+      meReqIdRef.current++;
+      setUserState(null);
+      clearToken();
+    };
     window.addEventListener("auth-expired", onAuthExpired);
     window.addEventListener("logout", onLogout);
     return () => {
-      window.removeEventListener("token-changed", onTokenChanged);
       window.removeEventListener("auth-expired", onAuthExpired);
       window.removeEventListener("logout", onLogout);
     };
-  }, [refreshUser]);
+  }, []);
 
   const value = useMemo(
-    () => ({ user, loading, mustChangePassword, login, logout, setUser, refreshUser }),
-    [user, loading, mustChangePassword, login, logout, setUser, refreshUser]
+    () => ({ user, loading, mustChangePassword, login, logout, setUser, refreshUser, restoreSession }),
+    [user, loading, mustChangePassword, login, logout, setUser, refreshUser, restoreSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

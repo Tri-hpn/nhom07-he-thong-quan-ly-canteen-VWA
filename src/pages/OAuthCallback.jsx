@@ -1,17 +1,15 @@
 // ============================================================
 // OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook/Microsoft
 // ============================================================
-// V7 (2026-10): FIX AADSTS50011
-//   - 🔧 Sửa redirectUri trỏ về route Frontend thay vì /api/
-// ============================================================
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { Loader2, AlertCircle } from "lucide-react";
-import { api, setToken } from "../api";
+import { api } from "../api";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";
 import { useAuth } from "../contexts/AuthContext";
+import { homePathForRole } from "../components/ProtectedRoute";
 
 export default function OAuthCallback({ provider, onLoginSuccess }) {
   const [params] = useSearchParams();
@@ -47,20 +45,27 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
       return;
     }
 
-    // 🔧 FIX: Luôn trỏ về Route của Frontend (VD: /auth/google/callback)
-    // Backend sẽ nhận POST request chứa code để đổi lấy token
     const redirectUri = window.location.origin + `/auth/${provider}/callback`;
 
     api.oauth
       .callback(provider, code, redirectUri)
-      .then(({ token, user }) => {
-        setToken(token);
-        setUser(user); 
+      .then(({ user }) => {
+        setUser(user);
         toast(`${t("Xin chào")} ${user.name}!`, "success");
         if (onLoginSuccess) onLoginSuccess(user);
 
-        const home = user.role === "ADMIN" ? "/owner" : user.role === "EMPLOYEE" ? "/employee" : "/customer";
-        navigate(home, { replace: true });
+        let target = homePathForRole(user.role);
+        try {
+          const savedReturnUrl = sessionStorage.getItem("oauth_return_url");
+          if (savedReturnUrl) {
+            sessionStorage.removeItem("oauth_return_url");
+            if (savedReturnUrl.startsWith("/") && !savedReturnUrl.startsWith("//")) {
+              target = savedReturnUrl;
+            }
+          }
+        } catch {}
+
+        navigate(target, { replace: true });
       })
       .catch((e) => {
         const msg = e.message || t("Đăng nhập thất bại");
@@ -68,7 +73,7 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
         setErrorMsg(msg);
         toast(msg, "error");
       });
-  }, []);
+  }, [provider, params, navigate, setUser, t, onLoginSuccess]);
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f5f3ff", padding: 24 }}>
@@ -86,7 +91,7 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
             <AlertCircle size={40} style={{ color: "#ef4444", marginBottom: 14 }} />
             <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#172033" }}>{t("Đăng nhập thất bại")}</h2>
             <p style={{ margin: "0 0 24px", fontSize: 13.5, color: "#64748b" }}>{errorMsg}</p>
-            <Link to="/" style={{ display: "inline-flex", padding: "12px 24px", background: "#2634d5", color: "#fff", textDecoration: "none", borderRadius: 10, fontWeight: 700 }}>← {t("Về trang đăng nhập")}</Link>
+            <Link to="/login" style={{ display: "inline-flex", padding: "12px 24px", background: "#2634d5", color: "#fff", textDecoration: "none", borderRadius: 10, fontWeight: 700 }}>← {t("Về trang đăng nhập")}</Link>
           </>
         )}
       </div>

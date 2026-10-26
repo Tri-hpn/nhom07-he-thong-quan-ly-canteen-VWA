@@ -6,24 +6,15 @@ const MAX_RETRY_503 = 5;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
-let refreshInFlight = null;
 
 let storageAvailable = (() => {
-  try {
-    const k = "__test__";
-    sessionStorage.setItem(k, "1");
-    sessionStorage.removeItem(k);
-    return true;
-  } catch { return false; }
+  try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; } catch { return false; }
 })();
 
 export function getToken() {
   if (memoryToken) return memoryToken;
   if (storageAvailable) {
-    try {
-      const t = sessionStorage.getItem("token");
-      if (t) { memoryToken = t; return t; }
-    } catch { storageAvailable = false; }
+    try { const t = sessionStorage.getItem("token"); if (t) { memoryToken = t; return t; } } catch { storageAvailable = false; }
   }
   return null;
 }
@@ -32,10 +23,7 @@ export function setToken(t) {
   memoryToken = t || null;
   if (t) isAuthExpiredDispatched = false;
   if (storageAvailable) {
-    try {
-      if (t) sessionStorage.setItem("token", t);
-      else sessionStorage.removeItem("token");
-    } catch {}
+    try { if (t) sessionStorage.setItem("token", t); else sessionStorage.removeItem("token"); } catch {}
   }
   try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } })); } catch {}
 }
@@ -43,33 +31,10 @@ export function setToken(t) {
 export function clearToken() { setToken(null); }
 export function resetAuthExpiredFlag() { isAuthExpiredDispatched = false; }
 
-const authChannel = typeof window !== "undefined" && "BroadcastChannel" in window ? new BroadcastChannel("vwa_auth") : null;
-function broadcastAuthEvent(type) { try { authChannel?.postMessage({ type, ts: Date.now() }); } catch {} }
-
 function dispatchAuthExpired() {
   if (isAuthExpiredDispatched) return;
   isAuthExpiredDispatched = true;
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-  broadcastAuthEvent("logout");
-}
-
-async function tryRefresh() {
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = (async () => {
-    try {
-      const res = await fetch(BASE + "/auth/refresh", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!res.ok) return false;
-      const data = await res.json().catch(() => ({}));
-      if (data.token) setToken(data.token);
-      return true;
-    } catch { return false; }
-    finally { refreshInFlight = null; }
-  })();
-  return refreshInFlight;
 }
 
 async function req(path, options = {}, _retryCount = 0) {
@@ -86,13 +51,15 @@ async function req(path, options = {}, _retryCount = 0) {
   let res;
   try {
     res = await fetch(BASE + path, {
-      ...options, headers, cache: "no-store", credentials: "include", signal: controller.signal,
+      ...options,
+      headers,
+      cache: "no-store",
+      credentials: "omit", // 🔴 KHÔNG gửi cookie nữa
+      signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err;
-    }
+    if (e.name === "AbortError") { const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err; }
     if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
       return req(path, options, _retryCount + 1);
@@ -100,28 +67,14 @@ async function req(path, options = {}, _retryCount = 0) {
     const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown")); err.status = 0; throw err;
   } finally { clearTimeout(timeoutId); }
 
-  // 503 — Vercel Cold Start, retry lên tới 5 lần với backoff
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
     await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
     return req(path, options, _retryCount + 1);
   }
 
-  // 401 — thử refresh 1 lần trước khi đá văng
+  // 🔴 KHÔNG tự động refresh nữa — 401 là hết phiên
   if (res.status === 401 && token) {
-    const isAuthEndpoint =
-      path.includes("/auth/login") ||
-      path.includes("/auth/register") ||
-      path.includes("/auth/refresh") ||
-      path.includes("/auth/logout") ||
-      path.includes("/auth/me");
-
-    if (!isAuthEndpoint && _retryCount < 2) {
-      const refreshed = await tryRefresh();
-      if (refreshed) {
-        return req(path, options, _retryCount + 1);
-      }
-    }
-
+    const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/refresh") || path.includes("/auth/logout") || path.includes("/auth/me") || path.includes("/auth/");
     if (!isAuthEndpoint) {
       clearToken();
       dispatchAuthExpired();
@@ -145,53 +98,33 @@ async function req(path, options = {}, _retryCount = 0) {
 export const api = {
   _base: BASE,
   health: () => req(""),
-  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }).then(r => {
-    if (r.token) setToken(r.token);
-    resetAuthExpiredFlag();
-    return r;
+  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }).then((r) => {
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
   }),
-  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then(r => {
-    if (r.token) setToken(r.token);
-    resetAuthExpiredFlag();
-    return r;
+  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then((r) => {
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
   }),
-  logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => {
-    clearToken();
-    dispatchAuthExpired();
-  }),
+  logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => clearToken()),
   me: () => req("/auth/me"),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {
-    callback: (provider, code, redirectUri) =>
-      req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }).then(r => {
-        if (r.token) setToken(r.token);
-        resetAuthExpiredFlag();
-        return r;
-      }),
+    callback: (provider, code, redirectUri) => req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }).then((r) => {
+      if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
+    }),
   },
   stats: () => req("/stats"),
   menu: {
     list: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams();
-      if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
-      if (sort) p.set("sort", sort);
-      const qs = p.toString();
-      return req("/menu" + (qs ? "?" + qs : ""));
+      const p = new URLSearchParams(); if (q) p.set("q", q); if (category && category !== "Tất cả") p.set("category", category); if (sort) p.set("sort", sort);
+      const qs = p.toString(); return req("/menu" + (qs ? "?" + qs : ""));
     },
     listActive: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams();
-      p.set("active_only", "1");
-      if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
-      if (sort) p.set("sort", sort);
+      const p = new URLSearchParams(); p.set("active_only", "1"); if (q) p.set("q", q); if (category && category !== "Tất cả") p.set("category", category); if (sort) p.set("sort", sort);
       return req("/menu?" + p.toString());
     },
     get: (id) => req(`/menu/${id}`),
     create: (data) => req("/menu", { method: "POST", body: JSON.stringify(data) }),
-        create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/menu/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/menu/${id}`, { method: "DELETE" }),
   },
@@ -199,10 +132,7 @@ export const api = {
   orders: {
     create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
     myOrders: () => req("/orders/me"),
-    all: (status = "Tất cả") => {
-      const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : "";
-      return req("/orders" + qs);
-    },
+    all: (status = "Tất cả") => { const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : ""; return req("/orders" + qs); },
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received: (id) => req(`/orders/${id}/received`, { method: "POST" }),
     lookupQr: (orderCode) => req("/orders/scan-pickup/lookup", { method: "POST", body: JSON.stringify({ orderCode }) }),
@@ -218,8 +148,6 @@ export const api = {
     list: (role) => req(`/users${role ? `?role=${role}` : ""}`),
     listByRole: (role) => req(`/users?role=${encodeURIComponent(role)}`),
     create: (data) => req("/users", { method: "POST", body: JSON.stringify(data) }),
-        create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/users/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/users/${id}`, { method: "DELETE" }),
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
@@ -259,8 +187,6 @@ export const api = {
     register: (data) => req("/shifts/register", { method: "POST", body: JSON.stringify(data) }),
     bulk: (data) => req("/shifts/bulk", { method: "POST", body: JSON.stringify(data) }),
     create: (data) => req("/shifts", { method: "POST", body: JSON.stringify(data) }),
-        create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/shifts/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/shifts/${id}`, { method: "DELETE" }),
     approve: (id) => req(`/shifts/${id}/approve`, { method: "PATCH" }),
@@ -270,8 +196,6 @@ export const api = {
     me: () => req("/tasks/me"),
     all: (params = {}) => { const q = new URLSearchParams(params).toString(); return req("/tasks" + (q ? `?${q}` : "")); },
     create: (data) => req("/tasks", { method: "POST", body: JSON.stringify(data) }),
-        create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/tasks/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/tasks/${id}`, { method: "DELETE" }),
     complete: (id) => req(`/tasks/${id}/complete`, { method: "PATCH" }),
@@ -353,8 +277,6 @@ export const api = {
   categories: {
     list: () => req("/categories"),
     create: (data) => req("/categories", { method: "POST", body: JSON.stringify(data) }),
-        create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/categories/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/categories/${id}`, { method: "DELETE" }),
   },
@@ -378,17 +300,10 @@ export const api = {
   },
   timeSlots: {
     list: () => req("/time-slots"),
-        create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },
 };
 
-if (typeof window !== "undefined" && authChannel) {
-  authChannel.onmessage = (e) => {
-    if (e.data?.type === "logout") { try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {} }
-  };
-}
 export default api;

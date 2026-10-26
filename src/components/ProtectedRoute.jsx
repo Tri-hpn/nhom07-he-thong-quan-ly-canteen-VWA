@@ -1,5 +1,5 @@
 // ============================================================
-// PROTECTEDROUTE.JSX — Chặn route theo VAI TRÒ (V3 - FIX LOGIN)
+// PROTECTEDROUTE.JSX — Deep-link + Role Guard
 // ============================================================
 
 import { Navigate, Outlet, useLocation } from "react-router-dom";
@@ -19,7 +19,6 @@ export default function ProtectedRoute({ allow = [], redirectTo, children }) {
   const { user, loading, mustChangePassword } = useAuth();
   const location = useLocation();
 
-  // ---------- Đang đọc token / khôi phục phiên ----------
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
@@ -28,24 +27,31 @@ export default function ProtectedRoute({ allow = [], redirectTo, children }) {
     );
   }
 
-  // ---------- Chưa đăng nhập ----------
-  // 🔴 FIX: Chuyển hướng về /login thay vì / (để tránh nhầm lẫn với trang chủ)
+  // URL đầy đủ (path + query + hash) để returnUrl không mất query
+  const returnUrl = location.pathname + location.search + location.hash;
+
+  // Chưa đăng nhập → chuyển về /login?returnUrl=<url hiện tại>
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return (
+      <Navigate
+        to={"/login?returnUrl=" + encodeURIComponent(returnUrl)}
+        replace
+      />
+    );
   }
 
-  // ---------- Bắt buộc đổi mật khẩu lần đầu ----------
+  // Đổi mật khẩu lần đầu — App.jsx (root) render <ForcePasswordChange />
   if (mustChangePassword) {
-    return <Navigate to="/" replace />;
+    return null;
   }
 
-  // ---------- Sai vai trò ----------
+  // Sai vai trò → 403
   if (allow.length > 0 && !allow.includes(user.role)) {
     return (
       <Navigate
-        to={redirectTo || homePathForRole(user.role)}
+        to={redirectTo || "/403"}
         replace
-        state={{ from: location.pathname }}
+        state={{ from: returnUrl }}
       />
     );
   }
