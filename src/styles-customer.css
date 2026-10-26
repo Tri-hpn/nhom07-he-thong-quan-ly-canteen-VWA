@@ -17218,3 +17218,45 @@ body.menu-v3-active .page-content {
   width: 160px !important;
   height: 190px !important;
 }
+/* Checkout: tách vùng cuộn độc lập cho hai cột */
+@media (min-width: 1025px) {
+  .checkout-v2 .checkout-grid {
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .checkout-v2 .checkout-left,
+  .checkout-v2 .checkout-right {
+    min-height: 0;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+    align-self: stretch;
+  }
+}
+
+@media (max-width: 1024px) {
+  .checkout-v2 .checkout-left,
+  .checkout-v2 .checkout-right {
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior-y: auto;
+  }
+}
+/* Checkout: ẩn thanh cuộn, vẫn cho phép cuộn */
+@media (min-width: 1025px) {
+  .checkout-v2 .checkout-left,
+  .checkout-v2 .checkout-right {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .checkout-v2 .checkout-left::-webkit-scrollbar,
+  .checkout-v2 .checkout-right::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}

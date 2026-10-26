@@ -1,5 +1,12 @@
-﻿// ============================================================
-// CUSTOMERCHECKOUT.JSX — Thanh toán (V7 - TỐI ƯU CHỐNG 503)
+// ============================================================
+// CUSTOMERCHECKOUT.JSX — Thanh toán (V6 - FINAL + i18n)
+// ============================================================
+// V6 (2026-11):
+//   - 🔧 FIX: copyToClipboard await writeText() + fallback execCommand
+//             (trước đây báo "Đã sao chép" ngay cả khi copy thất bại)
+//   - 🔧 DEAD CODE: xoá openPayment / paymentOrder / PaymentModal
+//     (không được gọi từ JSX → Modal chưa bao giờ mở)
+//   - Giữ nguyên toàn bộ logic đặt hàng khác
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -484,6 +491,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const confirmPayment = useCallback(
     async (paymentMethodArg) => {
       if (submittingRef.current) return;
+      if (!validate()) {
+        toast(t("Kiểm tra lại thông tin"), "error");
+        return;
+      }
       submittingRef.current = true;
       setSubmittingOrder(true);
 
@@ -1031,18 +1042,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   {t("để giúp quầy phục vụ trưa nhanh chóng, tránh ùn tắc hàng chờ trong giờ cao điểm của học viện.")}
                 </p>
 
-                <div className="checkout-cash-info__denoms">
-                  <span>{t("Mệnh giá tiền dự kiến đưa:")}</span>
-                  <div className="checkout-cash-info__denoms-row">
-                    <button type="button">
-                      {t("Đúng")} {money(total)}
-                    </button>
-                    <button type="button">
-                      {t("Đưa 50.000 đ (Thối 15k)")}
-                    </button>
-                    <button type="button">{t("Đưa 100.000 đ")}</button>
-                  </div>
-                </div>
               </div>
 
               <button
@@ -1097,10 +1096,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <div className="checkout-student__info">
                 <div className="checkout-student__name-row">
                   <b>{user?.name || t("Sinh viên")}</b>
-                  <span>K21 CNTT</span>
+                  {user?.major_name && <span>{user.major_name}</span>}
                 </div>
                 <div className="checkout-student__meta">
-                  {t("MSSV:")} 2151010088 • {t("Trợ giá SV 2025")}
+                  {t("MSSV:")} {user?.student_code || "—"}
                 </div>
               </div>
             </div>
