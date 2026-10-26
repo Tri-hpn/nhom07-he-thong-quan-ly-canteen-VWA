@@ -1,12 +1,9 @@
 // ============================================================
-// TOPBAR.JSX — Top navigation cho Customer (V6 - FINAL)
+// TOPBAR.JSX — Top navigation cho Customer (V7)
 // ============================================================
-// V6 (2026-10):
-//   - 🔧 FIX i18n: đổi label NAV sang key có trong en.json
-//     "Khám phá" → "Trang chủ"
-//     "Khuyến mãi" → "Khuyến mãi & Ưu đãi"
-//     "Ví Canteen" → "Ví"
-//   - Giữ nguyên toàn bộ logic khác từ V5
+// V7 (2026-11):
+//   - 🔧 FIX: Thêm getToken() guard vào readNotifications & readOrders.
+//             Tránh spam lỗi 401/403 khi chưa đăng nhập / hết phiên.
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -29,7 +26,6 @@ const ORDERS_SEEN_KEY = "orders_last_seen";
 const POLL_MS = 30000;
 const BADGE_MAX = 99;
 
-// 🔧 V6: đổi label sang key có trong en.json
 const NAV_ITEMS = [
   { key: "home",       label: "Trang chủ",             icon: Home,            path: "/customer/home" },
   { key: "menu",       label: "Thực đơn",              icon: UtensilsCrossed, path: "/customer/menu" },
@@ -107,6 +103,9 @@ export default function CustomerTopbar({
   }, []);
 
   const readNotifications = useCallback(async () => {
+    // 🔧 FIX: Chặn gọi API khi chưa đăng nhập (tránh 401/403)
+    if (!getToken()) return;
+    
     try {
       const data = await api.notifications.list();
       const list = Array.isArray(data?.list) ? data.list : [];
@@ -127,6 +126,7 @@ export default function CustomerTopbar({
     const timer = setInterval(readNotifications, 30000);
     return () => clearInterval(timer);
   }, [readNotifications]);
+
   useEffect(() => {
     const refreshNotifications = () => {
       readNotifications();
@@ -183,13 +183,14 @@ export default function CustomerTopbar({
 
   // ---------- READ ORDERS ----------
   const readOrders = useCallback(async () => {
+    // 🔧 FIX: Chặn gọi API khi chưa đăng nhập (tránh 401/403)
+    if (!getToken()) {
+      setOrderPending(0);
+      return;
+    }
+
     const myReqId = ++orderReqIdRef.current;
     try {
-      const token = getToken();
-      if (!token) {
-        setOrderPending(0);
-        return;
-      }
       const data = await api.orders.myOrders();
       if (myReqId !== orderReqIdRef.current) return;
 

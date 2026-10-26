@@ -792,7 +792,9 @@ function notifyNewOrder(db, order) {
   staff.forEach((s) => {
     const id = nextId(db.notifications);
     db.notifications.push({
-      id, user_id: s.id, title: "Đơn hàng mới",
+      id, 
+      user_id: Number(s.id), // 🔧 Ép kiểu Number
+      title: "Đơn hàng mới",
       content: order.customer_name + " vừa đặt đơn " + order.code + " (" + order.total.toLocaleString("vi-VN") + "đ)",
       type: "order", link: s.role === "ADMIN" ? "/owner" : "/employee/orders", read: false, created_at: new Date().toISOString(),
     });
@@ -1043,6 +1045,7 @@ const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_
 // ============================================================
 // AUTH MIDDLEWARE — Async + Wait for Mongo
 // ============================================================
+
 function auth(roles = []) {
   return async (req, res, next) => {
     if (MONGO_URI && !mongoReady) {
@@ -1084,7 +1087,10 @@ function auth(roles = []) {
     }
 
     const db = loadDB();
-    const currentUser = findByIdOrMongo(db.users, payload.id);
+    // 🔧 FIX: Ép kiểu id về Number để đồng bộ dữ liệu
+    const userId = Number(payload.id); 
+    const currentUser = findByIdOrMongo(db.users, userId);
+    
     if (!currentUser)
       return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
     if (currentUser.status === "Bị khóa")
@@ -1092,13 +1098,15 @@ function auth(roles = []) {
     if (roles.length && !roles.includes(currentUser.role))
       return res.status(403).json({ message: "Không có quyền" });
 
+    // 🔧 FIX: Gán đè toàn bộ req.user bằng dữ liệu chuẩn từ DB, không dùng payload cũ
     req.user = {
-      ...payload,
-      sid: payload.sid || null,
+      id: currentUser.id, // Luôn là Number
       role: currentUser.role,
       name: currentUser.name,
       email: currentUser.email,
+      sid: payload.sid || null,
     };
+    
     req.tokenSource = v.source;
     next();
   };
@@ -2195,11 +2203,11 @@ app.post("/api/orders", auth(), async (req, res) => {
 // ============================================================
 // KDS — REAL-TIME (SSE + Polling)
 // ============================================================
-app.get(
-  "/api/kds/stream",
-  auth(["ADMIN", "EMPLOYEE"]),
-  sseHandler({ filterRoles: ["ADMIN", "EMPLOYEE"] })
-);
+// 🔧 FIX: Vercel Serverless không hỗ trợ SSE tốt, gây lỗi 403/Timeout. 
+// Chuyển sang dùng Polling (đã có sẵn ở route /api/kds/poll).
+app.get("/api/kds/stream", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+  res.status(501).json({ message: "SSE not supported on Vercel. Please use polling." });
+});
 
 app.get("/api/kds/poll", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   try {
@@ -2240,8 +2248,11 @@ app.get("/api/kds/stats", auth(["ADMIN"]), (_req, res) => {
 // ============================================================
 app.get("/api/orders/me", auth(), (req, res) => {
   const db = loadDB();
+  const userId = Number(req.user.id); // 🔧 Ép kiểu
   const enrich = (o) => ({ ...o, items: (o.items || []).map((it) => { const menu = (db.menu_items || []).find((m) => m.id == it.menu_item_id); return { ...it, image: menu?.image || "", category: menu?.category || "" }; }), _id: o.id });
-  res.json(db.orders.filter((o) => o.customer_id === req.user.id).map(enrich));
+  
+  // 🔧 Ép kiểu khi so sánh
+  res.json(db.orders.filter((o) => Number(o.customer_id) === userId).map(enrich));
 });
 
 app.get("/api/orders", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
@@ -3586,7 +3597,13 @@ app.get("/api/chat/my-status", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
 // ============================================================
 app.get("/api/notifications", auth(), (req, res) => {
   const db = loadDB();
-  const list = (db.notifications || []).filter((n) => n.user_id === req.user.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 50);
+  const userId = Number(req.user.id); // 🔧 Ép kiểu
+  
+  const list = (db.notifications || [])
+    .filter((n) => Number(n.user_id) === userId) // 🔧 Ép kiểu khi so sánh
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 50);
+    
   res.json({ list, unread: list.filter((n) => !n.read).length });
 });
 app.post("/api/notifications/:id/read", auth(), async (req, res) => {
