@@ -511,15 +511,15 @@ async function initMongo() {
         return false;
       }
 
-      console.log("🔌 Đang kết nối MongoDB...");
+            console.log("🔌 Đang kết nối MongoDB...");
       await mongoose.connect(MONGO_URI, {
-        serverSelectionTimeoutMS: 30000,
-        socketTimeoutMS: 45000,
-        connectTimeoutMS: 6000,
-        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 30000, // Tăng lên 30s
+        socketTimeoutMS: 60000,          // Tăng lên 60s
+        connectTimeoutMS: 30000,         // Tăng lên 30s
+        maxPoolSize: 5,                  // Giảm xuống 5 để tránh quá tải Atlas
         minPoolSize: 0,
         bufferCommands: false,
-        family: 4,
+        // 🔧 FIX: Đã xóa `family: 4` vì Vercel (AWS) có thể gặp lỗi timeout với IPv4 bị ép buộc
         retryWrites: true,
         retryReads: true,
       });
@@ -1022,14 +1022,36 @@ app.use((req, res, next) => {
 
 app.get("/api/uploads/menu/:id", async (req, res) => {
   try {
+    // Nếu mất kết nối DB tạm thời, chờ tối đa 3s để khởi động lại
+    if (!mongoReady) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+
     const image = await getMenuImage(req.params.id);
-    if (!image) return res.status(404).json({ message: "Không tìm thấy ảnh" });
+    
+    // Nếu không tìm thấy ảnh hoặc DB timeout -> Trả về ảnh SVG mặc định thay vì 404
+    if (!image) {
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Cache-Control", "public, max-age=3600"); // Cache lỗi 1 tiếng để giảm tải
+      return res.send(
+        `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text></svg>`
+      );
+    }
+    
     if (image.redirectTo) return res.redirect(302, image.redirectTo);
+    
     res.setHeader("Content-Type", image.contentType || "image/jpeg");
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     res.setHeader("ETag", '"' + req.params.id + "-" + image.rev + '"');
     res.send(image.buffer);
-  } catch (e) { res.status(500).json({ message: "Lỗi tải ảnh: " + e.message }); }
+  } catch (e) {
+    console.error(`[Image Error] ID ${req.params.id}:`, e.message);
+    // Lỗi 500 cũng fallback về SVG mặc định để không làm gãy UI
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(
+      `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text></svg>`
+    );
+  }
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
