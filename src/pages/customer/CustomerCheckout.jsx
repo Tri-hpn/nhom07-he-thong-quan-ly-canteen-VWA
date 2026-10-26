@@ -1,12 +1,5 @@
 ﻿// ============================================================
-// CUSTOMERCHECKOUT.JSX — Thanh toán (V6 - FINAL + i18n)
-// ============================================================
-// V6 (2026-11):
-//   - 🔧 FIX: copyToClipboard await writeText() + fallback execCommand
-//             (trước đây báo "Đã sao chép" ngay cả khi copy thất bại)
-//   - 🔧 DEAD CODE: xoá openPayment / paymentOrder / PaymentModal
-//     (không được gọi từ JSX → Modal chưa bao giờ mở)
-//   - Giữ nguyên toàn bộ logic đặt hàng khác
+// CUSTOMERCHECKOUT.JSX — Thanh toán (V7 - TỐI ƯU CHỐNG 503)
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -38,11 +31,8 @@ const FALLBACK_TIME_SLOTS = [
   "17:00 - 17:30", "17:30 - 18:00", "18:00 - 18:30",
 ];
 
-// Module-scoped frozen constant
 const EMPTY_ARRAY = Object.freeze([]);
-
 const COUNTDOWN_START = 585;
-
 const SELECTED_CART_KEY = "canteen_cart_selected";
 const CART_KEY = "canteen_cart";
 
@@ -69,16 +59,6 @@ function removeOrderedItems(cart, selectedKeys) {
     localStorage.removeItem(SELECTED_CART_KEY);
   } catch {}
   return remain;
-}
-
-function readSelectedKeys() {
-  try {
-    const raw = localStorage.getItem(SELECTED_CART_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
 }
 
 function isSlotInPast(slot) {
@@ -240,36 +220,37 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }, [countdown]);
 
+  // 🔧 TỐI ƯU: Dùng Promise.allSettled để không block UI nếu 1 API bị chậm/lỗi
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const [
-          vouchersRes,
-          pointsRes,
-          walletRes,
-          settingsRes,
-          timeSlotsRes,
-        ] = await Promise.all([
-          api.vouchers.me().catch(() => []),
-          api.points.me().catch(() => ({ points: 0 })),
-          api.wallet.me().catch(() => ({ balance: 0 })),
-          api.settings.get().catch(() => null),
-          api.timeSlots.list().catch(() => []),
+        const results = await Promise.allSettled([
+          api.vouchers.me(),
+          api.points.me(),
+          api.wallet.me(),
+          api.settings.get(),
+          api.timeSlots.list(),
         ]);
 
         if (cancelled) return;
 
-        setMyVouchers(
-          (Array.isArray(vouchersRes) ? vouchersRes : []).filter(
-            (v) => !v.used
-          )
+        const [vouchersRes, pointsRes, walletRes, settingsRes, timeSlotsRes] = results.map(
+          (r) => (r.status === "fulfilled" ? r.value : null)
         );
 
-        setPoints(pointsRes?.points || 0);
-        setWalletBalance(walletRes?.balance || 0);
-        setSettings(settingsRes);
+        if (vouchersRes) {
+          setMyVouchers(
+            (Array.isArray(vouchersRes) ? vouchersRes : []).filter(
+              (v) => !v.used
+            )
+          );
+        }
+
+        if (pointsRes) setPoints(pointsRes.points || 0);
+        if (walletRes) setWalletBalance(walletRes.balance || 0);
+        if (settingsRes) setSettings(settingsRes);
 
         const slots = Array.isArray(timeSlotsRes) ? timeSlotsRes : [];
         if (slots.length > 0) {
@@ -284,6 +265,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         } else {
           setTimeSlots(FALLBACK_TIME_SLOTS);
         }
+      } catch (err) {
+        console.warn("Init checkout error:", err);
       } finally {
         if (!cancelled) setInitLoading(false);
       }
@@ -337,7 +320,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       }
     };
 
-    const timerId = window.setInterval(refreshBankSettings, 10000);
+    // 🔧 TỐI ƯU: Tăng thời gian polling lên 30s để giảm tải cho Vercel
+    const timerId = window.setInterval(refreshBankSettings, 30000);
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
@@ -353,19 +337,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     if (user?.name) setName((cur) => (cur ? cur : user.name));
     if (user?.phone) setPhone((cur) => (cur ? cur : user.phone));
   }, [user]);
-
-  const reloadVouchersAndPoints = useCallback(async () => {
-    try {
-      const [list, pointsData] = await Promise.all([
-        api.vouchers.me().catch(() => []),
-        api.points.me().catch(() => ({ points: 0 })),
-      ]);
-      setMyVouchers(
-        (Array.isArray(list) ? list : []).filter((v) => !v.used)
-      );
-      setPoints(pointsData?.points || 0);
-    } catch {}
-  }, []);
 
   const applyVoucher = useCallback(
     async (code) => {
@@ -492,28 +463,21 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
         navigate("/customer/success", { state: { order } });
       } catch (e) {
-        toast(e.message || t("Không đặt được hàng"), "error");
+        // 🔧 FIX: Bắt lỗi 503 và hướng dẫn user
+        if (e.status === 503 || e.message.includes("503") || e.message.includes("khởi động")) {
+          toast("Hệ thống đang khởi động. Vui lòng đợi 3-5s và bấm đặt hàng lại!", "warning", { duration: 6000 });
+        } else {
+          toast(e.message || t("Không đặt được hàng"), "error");
+        }
       } finally {
         submittingRef.current = false;
         setSubmittingOrder(false);
       }
     },
     [
-      lines,
-      isBuyNow,
-      cart,
-      setCart,
-      navigate,
-      buildItemsPayload,
-      buildNotePayload,
-      pickupTime,
-      discount,
-      pointsDiscount,
-      usePoints,
-      appliedVoucher,
-      buildOrderDiscountPayload,
-      isGreen,
-      t,
+      lines, isBuyNow, cart, setCart, navigate, buildItemsPayload, 
+      buildNotePayload, pickupTime, discount, pointsDiscount, 
+      usePoints, appliedVoucher, buildOrderDiscountPayload, isGreen, t,
     ]
   );
 
@@ -548,32 +512,24 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
         navigate("/customer/success", { state: { order } });
       } catch (e) {
-        toast(e.message || t("Không đặt được hàng"), "error");
+        // 🔧 FIX: Bắt lỗi 503 và hướng dẫn user
+        if (e.status === 503 || e.message.includes("503") || e.message.includes("khởi động")) {
+          toast("Hệ thống đang khởi động. Vui lòng đợi 3-5s và bấm đặt hàng lại!", "warning", { duration: 6000 });
+        } else {
+          toast(e.message || t("Không đặt được hàng"), "error");
+        }
       } finally {
         submittingRef.current = false;
         setSubmittingOrder(false);
       }
     },
     [
-      lines,
-      isBuyNow,
-      cart,
-      setCart,
-      navigate,
-      buildItemsPayload,
-      buildNotePayload,
-      pickupTime,
-      discount,
-      pointsDiscount,
-      usePoints,
-      appliedVoucher,
-      buildOrderDiscountPayload,
-      isGreen,
-      t,
+      lines, isBuyNow, cart, setCart, navigate, buildItemsPayload, 
+      buildNotePayload, pickupTime, discount, pointsDiscount, 
+      usePoints, appliedVoucher, buildOrderDiscountPayload, isGreen, t,
     ]
   );
 
-  // 🔧 FIX: await writeText + fallback execCommand cho trình duyệt cũ
   const copyToClipboard = useCallback(async (text) => {
     const s = String(text ?? "");
     try {
@@ -582,7 +538,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         toast(t("Đã sao chép"), "success");
         return;
       }
-      // Fallback cho HTTP / trình duyệt cũ
       const ta = document.createElement("textarea");
       ta.value = s;
       ta.style.position = "fixed";
@@ -630,6 +585,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     normalizedBankCode && normalizedBankAccount
       ? `https://img.vietqr.io/image/${encodeURIComponent(normalizedBankCode)}-${encodeURIComponent(normalizedBankAccount)}-compact2.svg?${vietQrParams.toString()}`
       : "";
+  
   const downloadVietQrImage = async () => {
     if (!vietQrImageUrl) {
       toast(t("Chưa có mã QR để tải xuống"), "error");
@@ -678,6 +634,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       );
     }
   };
+
   return (
     <div className="checkout-v2">
       <section className="checkout-header">
