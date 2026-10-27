@@ -1,6 +1,9 @@
 // ============================================================
 // APP.JSX — Root + Routing (Deep-link aware)
 // ============================================================
+// 🔧 FIX: Đã xác nhận logic chặn render Layout khi !user là ĐÚNG.
+//         Nguyên nhân lỗi 401 nằm ở api.js và EmployeeChat.jsx (đã sửa).
+// ============================================================
 
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
@@ -410,7 +413,6 @@ export default function App() {
             path="/owner/employees"
             element={wrap("Quản lý nhân viên", "Danh sách nhân viên", <OwnerEmployees />)}
           />
-          {/* ⚠️ ĐÃ XOÁ DÒNG LỖI SYNTAX ")} />" Ở ĐÂY */}
           <Route
             path="/owner/attendance"
             element={wrap("Chấm công", "Lịch sử chấm công nhân viên", <OwnerAttendance />)}

@@ -1,13 +1,10 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V18)
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V19)
 // ============================================================
-// V18 (2026-11):
-//   🔧 FIX: Bỏ hardcode "2151010088", "K21" -> dùng dữ liệu thật.
-//   🔧 FIX: Reset contextData(null) khi đổi hội thoại.
-//   🔧 FIX: Avatar tin nhắn staff lấy từ user context.
-//   🔧 FIX: Bỏ ghi chú khẩu vị hardcode -> lấy từ contextData.
-// V17 (2025-11):
-//   🔧 FIX CRITICAL: Import getToken, invalidate poll, thành tiền.
+// V19 (2026-11):
+//   🔧 FIX 401 SPAM: Thêm guard getToken() vào loadCurrentStaff.
+//   🔧 FIX: Guard getToken() trong openConv trước khi gọi api.orders.all.
+//   🔧 FIX: Bỏ auto scroll khi không có tin nhắn (tránh loop).
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -808,7 +805,7 @@ export default function EmployeeChat() {
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);
   const msgsReqIdRef = useRef(0);
-  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
+  const isSendingRef = useRef(false);
 
   const lastMsgCountRef = useRef(0);
   const lastConvIdRef = useRef(null);
@@ -915,7 +912,7 @@ export default function EmployeeChat() {
     let cancelled = false;
 
     const loadStaff = () => {
-      if (!getToken()) return;
+      if (!getToken()) return; // 🔧 FIX: Chặn gọi API khi chưa có token
       api.shifts
         .currentStaff()
         .then((data) => {
@@ -947,7 +944,7 @@ export default function EmployeeChat() {
       setInternalNote(c.note || "");
       setCustomerOrders([]);
       setCurrentOrderIdx(0);
-      setContextData(null); // 🔧 FIX: Reset data để không lẫn khách cũ
+      setContextData(null);
       lastMsgCountRef.current = 0;
       lastConvIdRef.current = null;
 
@@ -963,37 +960,43 @@ export default function EmployeeChat() {
 
       // Context
       setLoadingContext(true);
-      api.chat
-        .getContext(c.user_id)
-        .then((data) => {
-          if (selectedRef.current?.user_id === c.user_id) {
-            setContextData(data);
-          }
-        })
-        .catch(() => setContextData(null))
-        .finally(() => setLoadingContext(false));
+      if (getToken()) {
+        api.chat
+          .getContext(c.user_id)
+          .then((data) => {
+            if (selectedRef.current?.user_id === c.user_id) {
+              setContextData(data);
+            }
+          })
+          .catch(() => setContextData(null))
+          .finally(() => setLoadingContext(false));
+      } else {
+        setLoadingContext(false);
+      }
 
       // Đơn đang xử lý (Lấy tất cả)
-      api.orders
-        .all("Tất cả")
-        .then((allOrders) => {
-          if (selectedRef.current?.user_id !== c.user_id) return;
-          const list = Array.isArray(allOrders) ? allOrders : [];
-          const myOrders = list
-            .filter(
-              (o) =>
-                o.customer_id === c.user_id &&
-                !["Hoàn thành", "Đã hủy"].includes(o.status)
-            )
-            .sort(
-              (a, b) =>
-                new Date(b.created_at).getTime() -
-                new Date(a.created_at).getTime()
-            );
-          setCustomerOrders(myOrders);
-          setCurrentOrderIdx(0);
-        })
-        .catch(() => setCustomerOrders([]));
+      if (getToken()) {
+        api.orders
+          .all("Tất cả")
+          .then((allOrders) => {
+            if (selectedRef.current?.user_id !== c.user_id) return;
+            const list = Array.isArray(allOrders) ? allOrders : [];
+            const myOrders = list
+              .filter(
+                (o) =>
+                  o.customer_id === c.user_id &&
+                  !["Hoàn thành", "Đã hủy"].includes(o.status)
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.created_at).getTime() -
+                  new Date(a.created_at).getTime()
+              );
+            setCustomerOrders(myOrders);
+            setCurrentOrderIdx(0);
+          })
+          .catch(() => setCustomerOrders([]));
+      }
     },
     [loadMessages, loadConvs]
   );
@@ -1228,6 +1231,10 @@ export default function EmployeeChat() {
 
   const handleTransferAdmin = async () => {
     if (!selected) return;
+    if (!getToken()) {
+      toast(t("Vui lòng đăng nhập lại."), "error");
+      return;
+    }
     try {
       await api.chat.admin.requestTransfer({
         customerId: selected.user_id,

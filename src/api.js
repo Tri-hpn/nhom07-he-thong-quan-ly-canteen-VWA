@@ -7,6 +7,14 @@ const MAX_RETRY_503 = 5;
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
+// 🔧 FIX: Danh sách các API cho phép gọi khi chưa đăng nhập
+const PUBLIC_PATHS = [
+  "/auth/login", "/auth/register", "/auth/refresh", "/auth/logout",
+  "/auth/google/callback", "/auth/facebook/callback", "/auth/microsoft-entra-id/callback",
+  "/menu", "/categories", "/toppings", "/sizes", "/promotions", "/time-slots",
+  "/school/parse-student", "/school/parse-teacher", "/school/majors-map"
+];
+
 let storageAvailable = (() => {
   try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; } catch { return false; }
 })();
@@ -38,6 +46,17 @@ function dispatchAuthExpired() {
 }
 
 async function req(path, options = {}, _retryCount = 0) {
+  const token = getToken();
+  const isPublic = PUBLIC_PATHS.some(p => path.startsWith(p));
+
+  // 🔧 FIX: Chặn request nếu không có token và không phải API công khai
+  if (!token && !isPublic) {
+    const err = new Error("Chưa đăng nhập hoặc phiên đã hết hạn");
+    err.status = 401;
+    err.body = { message: "Vui lòng đăng nhập lại." };
+    throw err;
+  }
+
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -45,7 +64,6 @@ async function req(path, options = {}, _retryCount = 0) {
   const headers = { ...(options.headers || {}) };
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
-  const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res;
