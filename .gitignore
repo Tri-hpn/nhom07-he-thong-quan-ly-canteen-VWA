@@ -41,7 +41,6 @@ backups/
 dev-dist/
 *.bak
 *.bak-*
-autoTranslate.js
 public/shrink-menu-images.*
 scripts/cleanup-db.mjs
 scripts/dedupe-orders.mjS
