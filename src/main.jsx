@@ -10,7 +10,6 @@ import "./styles-sky.css";
 import "./styles-employee.css";
 import "./styles-admin.css";
 import "./styles-customer.css";
-import "./responsive-audit.css";
 
 /**
  * Dọn SW/caches cũ (migration 1 lần / session).
@@ -20,8 +19,7 @@ async function cleanupOldServiceWorkers() {
   if (!("serviceWorker" in navigator)) return;
   try {
     const regs = await navigator.serviceWorker.getRegistrations();
-    // 🔧 ĐÃ TĂNG LÊN V5: Ép trình duyệt xoá cache JS cũ (fix bug 401)
-    const flagKey = "vwa_sw_cleaned_v5";
+    const flagKey = "vwa_sw_cleaned_v4";
     if (sessionStorage.getItem(flagKey) === "1") return;
 
     for (const reg of regs) {

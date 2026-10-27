@@ -2,28 +2,36 @@
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 5;
-const MAX_RETRY_PROXY = 6;
+const MAX_RETRY_503 = 3;      
+const MAX_RETRY_NETWORK = 3;  
+
+function isAuthFlowPath(path) {
+  if (
+    path === "/auth/login" ||
+    path === "/auth/register" ||
+    path === "/auth/logout" ||
+    path === "/auth/me" ||
+    path === "/auth/password"
+  ) return true;
+  if (/^\/auth\/[^/]+\/callback$/.test(path)) return true;
+  return false;
+}
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
-// 🔧 Danh sách các API cho phép gọi khi chưa đăng nhập
-const PUBLIC_PATHS = [
-  "/auth/login", "/auth/register", "/auth/refresh", "/auth/logout",
-  "/auth/google/callback", "/auth/facebook/callback", "/auth/microsoft-entra-id/callback",
-  "/menu", "/categories", "/toppings", "/sizes", "/promotions", "/time-slots",
-  "/school/parse-student", "/school/parse-teacher", "/school/majors-map"
-];
-
 let storageAvailable = (() => {
-  try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; } catch { return false; }
+  try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; }
+  catch { return false; }
 })();
 
 export function getToken() {
   if (memoryToken) return memoryToken;
   if (storageAvailable) {
-    try { const t = sessionStorage.getItem("token"); if (t) { memoryToken = t; return t; } } catch { storageAvailable = false; }
+    try {
+      const t = sessionStorage.getItem("token");
+      if (t) { memoryToken = t; return t; }
+    } catch { storageAvailable = false; }
   }
   return null;
 }
@@ -32,7 +40,10 @@ export function setToken(t) {
   memoryToken = t || null;
   if (t) isAuthExpiredDispatched = false;
   if (storageAvailable) {
-    try { if (t) sessionStorage.setItem("token", t); else sessionStorage.removeItem("token"); } catch {}
+    try {
+      if (t) sessionStorage.setItem("token", t);
+      else sessionStorage.removeItem("token");
+    } catch {}
   }
   try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } })); } catch {}
 }
@@ -46,69 +57,15 @@ function dispatchAuthExpired() {
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
 }
 
-// ── Refresh token (dedup concurrent) ───────────────────────
-let refreshPromise = null;
-async function tryRefreshOnce() {
-  if (refreshPromise) return refreshPromise;
-  refreshPromise = (async () => {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 15000);
-    try {
-      const res = await fetch(BASE + "/auth/refresh", {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-        signal: controller.signal,
-      });
-      if (!res.ok) return false;
-      const data = await res.json().catch(() => ({}));
-      if (data?.token) {
-        setToken(data.token);
-        resetAuthExpiredFlag();
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(tid);
-      setTimeout(() => { refreshPromise = null; }, 1000);
-    }
-  })();
-  return refreshPromise;
+function isNetworkError(e) {
+  if (!e) return false;
+  if (e.name === "TypeError") return true;
+  if (typeof e.message === "string" &&
+      /Failed to fetch|NetworkError|Load failed|Network request failed/i.test(e.message)) return true;
+  return false;
 }
 
-// 🔧 Detect Vite proxy error (backend chưa listen)
-function isProxyError(status, text) {
-  if (![500, 502, 503, 504].includes(status)) return false;
-  const t = String(text || "").toLowerCase();
-  return (
-    t.includes("econnrefused") ||
-    t.includes("proxy error") ||
-    t.includes("error occurred while trying to proxy") ||
-    t.includes("could not connect")
-  );
-}
-
-async function req(path, options = {}, _retryCount = 0, _refreshAttempted = false, _proxyRetryCount = 0) {
-  const token = getToken();
-  const isPublic = PUBLIC_PATHS.some(p => path.startsWith(p));
-
-  // 🔧 COOKIE-BASED AUTH: KHÔNG chặn client-side khi thiếu Bearer token.
-  // Lý do: sau F5 / mở tab mới, memoryToken có thể null nhưng HttpOnly cookie
-  // vẫn còn valid → server sẽ đọc cookie và trả 200. Chặn ở client sẽ phá hỏng
-  // chính flow cookie (bug 401 hàng loạt trên Vercel).
-  //
-  // Flow đúng:
-  //   1. Không có token → vẫn fire request với credentials: "include"
-  //   2. Server đọc cookie:
-  //      - Valid → 200 ✅
-  //      - Hết hạn → 401 → auto-refresh (block bên dưới) → retry
-  //      - Refresh fail → dispatch auth-expired → về /login
-  //   3. Nếu thực sự chưa login → 401 → refresh fail → auth-expired → về /login
-
+async function req(path, options = {}, _retryCount = 0) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -116,6 +73,7 @@ async function req(path, options = {}, _retryCount = 0, _refreshAttempted = fals
   const headers = { ...(options.headers || {}) };
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
+  const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res;
@@ -124,19 +82,18 @@ async function req(path, options = {}, _retryCount = 0, _refreshAttempted = fals
       ...options,
       headers,
       cache: "no-store",
-      credentials: "include",
+      credentials: "omit",
       signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian.");
-      err.status = 0;
-      throw err;
+      const err = new Error("Yêu cầu quá thời gian. Vui lòng kiểm tra mạng và thử lại.");
+      err.status = 0; throw err;
     }
-    if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
+    if (_retryCount < MAX_RETRY_NETWORK && isNetworkError(e)) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
-      return req(path, options, _retryCount + 1, _refreshAttempted, _proxyRetryCount);
+      return req(path, options, _retryCount + 1);
     }
     const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown"));
     err.status = 0;
@@ -145,42 +102,35 @@ async function req(path, options = {}, _retryCount = 0, _refreshAttempted = fals
     clearTimeout(timeoutId);
   }
 
-  // 🔧 Retry 503 (cold start backend)
+  // Tự động thử lại khi Vercel báo 503 (Server đang khởi động hoặc quá tải)
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
+    console.warn(`[API 503] Retrying ${path} (${_retryCount + 1}/${MAX_RETRY_503})...`);
     await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
-    return req(path, options, _retryCount + 1, _refreshAttempted, _proxyRetryCount);
+    return req(path, options, _retryCount + 1);
+  }
+
+  if (res.status === 401 && token && !isAuthFlowPath(path)) {
+    clearToken();
+    dispatchAuthExpired();
   }
 
   const contentType = res.headers.get("content-type") || "";
   let data;
   try {
     if (contentType.includes("application/json")) data = await res.json();
-    else { const text = await res.text(); data = text ? { message: text.slice(0, 300), __raw: text } : {}; }
+    else {
+      const text = await res.text();
+      data = text ? { message: text.slice(0, 300) } : {};
+    }
   } catch { data = {}; }
 
-  // 🔧 Retry proxy error (Vite ECONNREFUSED — backend chưa listen kịp)
-  //    Chỉ retry ở DEV (Vite proxy). Prod không có lỗi này.
-  if (
-    _proxyRetryCount < MAX_RETRY_PROXY &&
-    isProxyError(res.status, data?.__raw || data?.message || "")
-  ) {
-    const delay = 500 + _proxyRetryCount * 400;
-    if (_proxyRetryCount === 0) {
-      console.warn(`[api] Backend chưa sẵn sàng — retry ${path} sau ${delay}ms...`);
-    }
-    await new Promise((r) => setTimeout(r, delay));
-    return req(path, options, _retryCount, _refreshAttempted, _proxyRetryCount + 1);
-  }
-
-  // 🔧 Auto-refresh on 401
-  if (res.status === 401 && !isPublic && path !== "/auth/refresh" && !_refreshAttempted) {
-    const ok = await tryRefreshOnce();
-    if (ok) return req(path, options, _retryCount, true, _proxyRetryCount);
-    if (path !== "/auth/me") dispatchAuthExpired();
-  }
-
   if (!res.ok) {
-    const message = data.message || data.error || `HTTP ${res.status}`;
+    let message = data.message || data.error || `HTTP ${res.status}`;
+    if (res.status === 503) {
+      message = "Hệ thống đang khởi động hoặc quá tải. Vui lòng đợi vài giây và thử lại.";
+    } else if (res.status === 504) {
+      message = "Máy chủ xử lý quá lâu (Timeout). Vui lòng thử lại.";
+    }
     const err = new Error(message);
     err.status = res.status;
     err.body = data;
@@ -196,21 +146,20 @@ export const api = {
   // ── Auth ───────────────────────────────────────────────────
   login: (email, password) =>
     req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) })
-      .then((r) => { if (r.token) { setToken(r.token); resetAuthExpiredFlag(); } return r; }),
+      .then((r) => { if (r.token) setToken(r.token); return r; }),
   register: (data) =>
     req("/auth/register", { method: "POST", body: JSON.stringify(data) })
-      .then((r) => { if (r.token) { setToken(r.token); resetAuthExpiredFlag(); } return r; }),
+      .then((r) => { if (r.token) setToken(r.token); return r; }),
   logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => clearToken()),
   me: () => req("/auth/me"),
-  refresh: () =>
-    req("/auth/refresh", { method: "POST", body: "{}" })
-      .then((r) => { if (r.token) { setToken(r.token); resetAuthExpiredFlag(); } return r; }),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {
     callback: (provider, code, redirectUri) =>
-      req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) })
-        .then((r) => { if (r.token) { setToken(r.token); resetAuthExpiredFlag(); } return r; }),
+      req(`/auth/${provider}/callback`, {
+        method: "POST",
+        body: JSON.stringify({ code, redirectUri }),
+      }).then((r) => { if (r.token) setToken(r.token); return r; }),
   },
 
   // ── Stats ──────────────────────────────────────────────────
@@ -338,14 +287,14 @@ export const api = {
     complete: (id) => req(`/tasks/${id}/complete`, { method: "PATCH" }),
   },
 
-  // ── Student Card ───────────────────────────────────────────
-  studentCard: {
-    me: () => req("/student-card/me"),
-    setLocked: (data) => req("/student-card/lock", { method: "POST", body: JSON.stringify(data) }),
-  },
-
   // ── Wallet ─────────────────────────────────────────────────
-  wallet: {
+  studentCard: {
+  me: () => req("/student-card/me"),
+  setLocked: (data) => req("/student-card/lock", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+},wallet: {
     me: () => req("/wallet/me"),
     transactions: () => req("/wallet/transactions"),
     deposit: (data) => req("/wallet/deposit", { method: "POST", body: JSON.stringify(data) }),
@@ -433,10 +382,10 @@ export const api = {
     },
   },
 
-  // ── Toppings / Sizes / Categories ──────────────────────────
-  toppings: {
+  // ── Taxonomy ───────────────────────────────────────────────
+  toppings: { 
     list: (category) => req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`),
-    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }),
+    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
   },
   sizes: { list: () => req("/sizes") },
   categories: {
@@ -455,7 +404,7 @@ export const api = {
     update: (userId, custom) => req(`/permissions/${userId}`, { method: "PUT", body: JSON.stringify({ custom }) }),
   },
 
-  // ── Backup / Reports / Settings / TimeSlots / Admin ────────
+  // ── Admin / System ─────────────────────────────────────────
   backup: {
     export: () => req("/backup/export"),
     import: (data) => req("/backup/import", { method: "POST", body: JSON.stringify(data), timeoutMs: UPLOAD_TIMEOUT_MS }),
@@ -468,10 +417,10 @@ export const api = {
     update: (data) => req("/settings", { method: "PUT", body: JSON.stringify(data) }),
   },
   timeSlots: {
-    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
     list: () => req("/time-slots"),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
     update: (id, data) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }), // 🔧 BỔ SUNG
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },

@@ -18,57 +18,37 @@ export default defineConfig(({ mode }) => {
       react(),
       i18nPlugin(),
       VitePWA({
-        registerType: "autoUpdate",
-        // 🔧 FIX: dùng public/manifest.json (đã có sẵn) thay vì disable
+        registerType: "prompt", // ✅ FIX: đồng bộ với main.jsx (onNeedRefresh)
         manifest: false,
-        // 🔧 FIX: TỰ ĐỘNG inject register script (trước = null → SW không đăng ký)
-        injectRegister: "auto",
-        // 🔧 FIX: DISABLE dev-dist (tránh sinh rác dev-dist/)
-        devOptions: { enabled: false },
+        injectRegister: null,
+        devOptions: { enabled: true, type: "module" },
         workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallback: "index.html",
-          // 🔧 FIX: KHÔNG fallback SPA cho /api/*
           navigateFallbackAllowlist: [/^(?!\/api).*/],
-          // 🔧 FIX: KHÔNG cache /api/* ở SW (để API luôn lấy mới)
-          navigateFallbackDenylist: [/^\/api/],
           runtimeCaching: [
-            // ① KHÔNG CACHE auth + telemetry (bảo mật session)
-            {
-              urlPattern: /^\/api\/(auth|telemetry)\//i,
-              handler: "NetworkOnly",
-            },
-            // ② Ảnh menu — cache mạnh (ảnh tĩnh, có thể cache lâu)
+            { urlPattern: /^\/api\/(auth|telemetry)\//i, handler: "NetworkOnly" },
             {
               urlPattern: /^\/api\/uploads\/menu\/.*/i,
               handler: "CacheFirst",
               options: {
                 cacheName: "vwa-menu-images",
-                expiration: {
-                  maxEntries: 200,
-                  maxAgeSeconds: 30 * 24 * 60 * 60,
-                },
+                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ③ Menu/categories — StaleWhileRevalidate
             {
               urlPattern: /^\/api\/(menu|categories|toppings|sizes)/i,
               handler: "StaleWhileRevalidate",
               options: {
                 cacheName: "vwa-api-menu",
-                expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 24 * 60 * 60,
-                },
+                expiration: { maxEntries: 50, maxAgeSeconds: 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ④ Dynamic (orders/wallet/points/...) — NetworkFirst
             {
-              urlPattern:
-                /^\/api\/(orders|wallet|points|vouchers|chat|notifications)/i,
+              urlPattern: /^\/api\/(orders|wallet|points|vouchers|chat|notifications)/i,
               handler: "NetworkFirst",
               options: {
                 cacheName: "vwa-api-dynamic",
@@ -77,7 +57,6 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ⑤ Mọi API khác — NetworkFirst
             {
               urlPattern: /^\/api\/.*/i,
               handler: "NetworkFirst",
@@ -117,10 +96,7 @@ export default defineConfig(({ mode }) => {
               const host = req.headers.host;
               if (host) {
                 proxyReq.setHeader("x-forwarded-host", host);
-                proxyReq.setHeader(
-                  "x-forwarded-proto",
-                  req.connection?.encrypted ? "https" : "http"
-                );
+                proxyReq.setHeader("x-forwarded-proto", req.connection?.encrypted ? "https" : "http");
               }
             });
           },
@@ -139,8 +115,6 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             "react-vendor": ["react", "react-dom", "react-router-dom"],
             "icon-vendor": ["lucide-react"],
-            "chart-vendor": ["recharts"],
-            "qr-vendor": ["qrcode.react", "@zxing/browser"],
           },
           chunkFileNames: "assets/[name]-[hash].js",
           entryFileNames: "assets/[name]-[hash].js",
@@ -148,26 +122,11 @@ export default defineConfig(({ mode }) => {
         },
       },
       esbuild: isProd
-        ? {
-            drop: ["debugger"],
-            pure: ["console.log", "console.debug", "console.trace"],
-          }
+        ? { drop: ["debugger"], pure: ["console.log", "console.debug", "console.trace"] }
         : {},
     },
-    // 🔧 FIX: Thêm qrcode.react + @zxing/browser để Vite pre-bundle → dev start nhanh
-    optimizeDeps: {
-      include: [
-        "react",
-        "react-dom",
-        "react-router-dom",
-        "lucide-react",
-        "qrcode.react",
-        "@zxing/browser",
-      ],
-    },
+    optimizeDeps: { include: ["react", "react-dom", "react-router-dom", "lucide-react"] },
     css: { devSourcemap: true },
-    define: {
-      __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "1.0.0"),
-    },
+    define: { __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "1.0.0") },
   };
 });
