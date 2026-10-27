@@ -21,6 +21,9 @@ export default function WalletPanel({ user, onClose }) {
 
   const [wallet, setWallet] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [studentCardLocked, setStudentCardLocked] = useState(false);
+  const [cardBusy, setCardBusy] = useState(false);
+  const [cardLoaded, setCardLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +42,59 @@ export default function WalletPanel({ user, onClose }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api.studentCard.me()
+      .then((data) => {
+        if (!cancelled) {
+          setStudentCardLocked(!!data?.locked);
+          setCardLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCardLoaded(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleStudentCard = async () => {
+    if (!cardLoaded || cardBusy) return;
+
+    const nextLocked = !studentCardLocked;
+    const pin = window.prompt(
+      nextLocked
+        ? "Nhập PIN để khóa thẻ sinh viên:"
+        : "Nhập PIN để mở khóa thẻ sinh viên:"
+    );
+
+    if (pin === null) return;
+
+    setCardBusy(true);
+    try {
+      const result = await api.studentCard.setLocked({
+        pin: pin.trim(),
+        locked: nextLocked,
+      });
+
+      setStudentCardLocked(!!result?.locked);
+      window.alert(
+        result?.locked
+          ? "Đã khóa thẻ sinh viên."
+          : "Đã mở khóa thẻ sinh viên."
+      );
+    } catch (error) {
+      window.alert(error?.message || "Không thể cập nhật trạng thái thẻ.");
+    } finally {
+      setCardBusy(false);
+    }
+  };
 
   const balance = wallet?.balance ?? user?.balance ?? 0;
   const hasBank = !!(wallet?.bank_account);
@@ -102,15 +158,41 @@ export default function WalletPanel({ user, onClose }) {
               </span>
             </div>
           </div>
-          <span
-            className={`settings-wallet__badge ${
-              hasPin
-                ? "settings-wallet__badge--active"
-                : "settings-wallet__badge--inactive"
-            }`}
-          >
-            {hasPin ? t("Đã thiết lập PIN") : t("Chưa có PIN")}
-          </span>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+            <span
+              className={`settings-wallet__badge ${
+                studentCardLocked
+                  ? "settings-wallet__badge--inactive"
+                  : "settings-wallet__badge--active"
+              }`}
+            >
+              {studentCardLocked ? t("Thẻ đang khóa") : t("Thẻ đang hoạt động")}
+            </span>
+            <button
+              type="button"
+              onClick={toggleStudentCard}
+              disabled={!cardLoaded || cardBusy}
+              style={{
+                border: "none",
+                borderRadius: 8,
+                padding: "8px 12px",
+                cursor: !cardLoaded || cardBusy ? "not-allowed" : "pointer",
+                opacity: !cardLoaded || cardBusy ? 0.6 : 1,
+                background: studentCardLocked ? "#15803d" : "#dc2626",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 12,
+              }}
+            >
+              {!cardLoaded
+                ? t("Đang tải...")
+                : cardBusy
+                  ? t("Đang xử lý...")
+                  : studentCardLocked
+                    ? t("Mở khóa thẻ")
+                    : t("Khóa thẻ")}
+            </button>
+          </div>
         </div>
 
         <div className="settings-wallet__info-row">

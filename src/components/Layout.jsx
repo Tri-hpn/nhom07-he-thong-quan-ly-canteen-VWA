@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // LAYOUT.JSX — Layout chính (V4 - FINAL)
 // ============================================================
 // V4 (2026-10):
@@ -21,6 +21,7 @@ import Footer from "./Footer";
 import NotificationBell from "./NotificationBell";
 import ConfirmDialog, { LogoutIcon } from "./ConfirmDialog";
 import SettingsModal from "./SettingsModal";
+import HelpPolicyModal from "./settings/HelpPolicyModal";
 import { useI18n } from "../hooks/useI18n";
 
 // ============================================================
@@ -193,9 +194,20 @@ export default function Layout({
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelpPolicy, setShowHelpPolicy] = useState(false);
 
   const isCustomer = role === "CUSTOMER";
   const isAdmin = role === "ADMIN";
+
+useEffect(() => {
+    if (!isCustomer) return;
+
+    const handleOpenHelpPolicy = () => setShowHelpPolicy(true);
+    window.addEventListener("canteen:open-help-policy", handleOpenHelpPolicy);
+
+    return () =>
+      window.removeEventListener("canteen:open-help-policy", handleOpenHelpPolicy);
+  }, [isCustomer]);
 
   // Body class cho mobile bottom nav
   useEffect(() => {
@@ -364,6 +376,9 @@ export default function Layout({
           user={user}
           onLogout={onLogout}
         />
+      )}
+      {isCustomer && showHelpPolicy && (
+        <HelpPolicyModal onClose={() => setShowHelpPolicy(false)} />
       )}
     </div>
   );

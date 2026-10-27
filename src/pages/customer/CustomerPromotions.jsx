@@ -1,5 +1,6 @@
 // ============================================================
 // CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi xu (V4 - FINAL + i18n)
+// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V4 - FINAL + i18n)
 // ============================================================
 // 🔧 FIX:
 //   - FIX CRASH: Đổi emoji string trong EARN_METHODS thành Lucide Icon
@@ -38,15 +39,6 @@ const POINT_TO_VND = 1;
 const REDEEM_OPTIONS = [100, 200, 500, 1000];
 
 const EARN_METHODS = [
-  {
-    key: "eat",
-    icon: Utensils,
-    color: "#2563EB",
-    title: "Hoàn thành đơn hàng",
-    badge: "Hoàn 1%",
-    desc: "Mỗi 10.000 đ thanh toán tại quầy hoặc ứng dụng nhận ngay 1 VWA Point tự động.",
-    cta: "Xem hạn mức và quyền lợi trợ giá",
-  },
   {
     key: "subsidy",
     icon: Award, // 🔧 Đã sửa: Dùng Icon thay vì emoji string
@@ -1241,10 +1233,10 @@ export default function CustomerPromotions() {
             onClick={(e) => e.stopPropagation()}
             style={{
               position: "relative",
-              width: "min(390px, calc(100vw - 28px))",
+              width: "min(760px, calc(100vw - 32px))",
               boxSizing: "border-box",
-              padding: 16,
-              borderRadius: 20,
+              padding: 18,
+              borderRadius: 24,
               background: "linear-gradient(145deg, #f0fdf4, #ffffff 75%)",
               border: "1px solid #d1fae5",
               boxShadow: "0 18px 50px rgba(15, 100, 55, 0.16)",
@@ -1265,7 +1257,7 @@ export default function CustomerPromotions() {
                 borderRadius: "50%",
                 background: "#dcfce7",
                 color: "#15803d",
-                fontSize: 20,
+                fontSize: 28,
                 cursor: "pointer",
               }}
             >
@@ -1276,7 +1268,7 @@ export default function CustomerPromotions() {
               style={{
                 display: "inline-flex",
                 padding: "4px 10px",
-                borderRadius: 20,
+                borderRadius: 24,
                 background: "#16a34a",
                 color: "#fff",
                 fontSize: 9,
@@ -1291,11 +1283,11 @@ export default function CustomerPromotions() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: 8,
-                marginTop: 7,
+                gap: 10,
+                marginTop: 12,
               }}
             >
-              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 850 }}>
+              <h2 style={{ margin: 0, fontSize: 28, fontWeight: 850 }}>
                 VWA Green Points
               </h2>
               <span style={{ fontSize: 23, color: "#16a34a" }}>✧</span>
@@ -1303,51 +1295,55 @@ export default function CustomerPromotions() {
 
             <p style={{ margin: "4px 0 14px", color: "#64748b", fontSize: 11 }}>
               Tích xu khi mang bình nước / dùng khay tái chế
+            <p style={{ margin: "6px 0 8px", color: "#64748b", fontSize: 15 }}>
+              Tích điểm khi mang bình nước / dùng khay tái chế
             </p>
 
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 10,
               }}
             >
               <div
                 style={{
-                  padding: 11,
+                  padding: 13,
                   border: "1px solid #dbe5e7",
-                  borderRadius: 12,
+                  borderRadius: 16,
                   background: "#fff",
                   minWidth: 0,
                 }}
               >
                 <div style={{ color: "#64748b", fontSize: 10 }}>
                   Xu tích lũy
+                <div style={{ color: "#64748b", fontSize: 13 }}>
+                  Điểm tích lũy
                 </div>
-                <div style={{ marginTop: 3, fontSize: 22, fontWeight: 850 }}>
+                <div style={{ marginTop: 4, fontSize: 23, fontWeight: 850 }}>
                   {Number(points || 0).toLocaleString("vi-VN")}
                 </div>
-                <div style={{ color: "#64748b", fontSize: 9, marginTop: 3 }}>
+                <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
                   VWA Points hiện có
                 </div>
               </div>
 
               <div
                 style={{
-                  padding: 11,
+                  padding: 10,
                   border: "1px solid #dbe5e7",
-                  borderRadius: 12,
+                  borderRadius: 16,
                   background: "#fff",
                   minWidth: 0,
                 }}
               >
-                <div style={{ color: "#64748b", fontSize: 10 }}>
+                <div style={{ color: "#64748b", fontSize: 12 }}>
                   Giá trị quy đổi
                 </div>
                 <div
                   style={{
-                    marginTop: 3,
-                    fontSize: 20,
+                    marginTop: 4,
+                    fontSize: 23,
                     fontWeight: 850,
                     overflowWrap: "anywhere",
                   }}
@@ -1356,54 +1352,61 @@ export default function CustomerPromotions() {
                 </div>
                 <div style={{ color: "#64748b", fontSize: 9, marginTop: 3 }}>
                   Theo tỷ lệ quy đổi xu
+                <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
+                  Theo tỷ lệ quy đổi điểm
                 </div>
               </div>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginTop: 10,
-                padding: 12,
-                border: "1px solid #dcfce7",
-                borderRadius: 12,
-                background: "#fff",
-              }}
-            >
-              <div
-                style={{
-                  width: 34,
-                  height: 34,
-                  flexShrink: 0,
-                  display: "grid",
-                  placeItems: "center",
-                  borderRadius: 10,
-                  background: "#fef3c7",
-                  fontSize: 18,
-                }}
-              >
-                ☕
-              </div>
+                        <div style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 14,
+              marginTop: 12,
+              padding: 13,
+              border: "1px solid #bbf7d0",
+              borderRadius: 16,
+              background: "linear-gradient(135deg, #f0fdf4, #ffffff)",
+            }}>
+              <div aria-hidden="true" style={{
+                flexShrink: 0,
+                width: 46,
+                height: 46,
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 14,
+                background: "#dcfce7",
+                fontSize: 25,
+              }}>🌿</div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 800 }}>
-                  Voucher Giảm 20.000đ Đồ Uống
+                <div style={{
+                  color: "#166534",
+                  fontSize: 16,
+                  fontWeight: 800,
+                  marginBottom: 6,
+                }}>Cách nhận Xu xanh</div>
+                <div style={{
+                  color: "#475569",
+                  fontSize: 14,
+                  lineHeight: 1.65,
+                }}>
+                  Mang bình nước cá nhân hoặc sử dụng khay tái chế khi mua
+                  đồ ăn tại canteen để góp phần giảm rác thải nhựa và xây
+                  dựng môi trường học đường xanh hơn.
                 </div>
-                <div style={{ marginTop: 3, color: "#64748b", fontSize: 10 }}>
-                  Quy đổi với 100 Green Points
-                </div>
+                <div style={{
+                  marginTop: 8,
+                  color: "#15803d",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}>Chung tay sống xanh mỗi ngày</div>
               </div>
             </div>
-
-            <button
+<button
               type="button"
               onClick={() => {
                 setShowEcoModal(false);
-                document.getElementById("my-vouchers")?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                });
+                setShowRulesModal(true);
               }}
               style={{
                 display: "flex",
@@ -1411,19 +1414,20 @@ export default function CustomerPromotions() {
                 justifyContent: "center",
                 gap: 7,
                 width: "100%",
-                marginTop: 10,
-                padding: "12px 10px",
+                marginTop: 12,
+                padding: "14px 14px",
                 border: 0,
-                borderRadius: 11,
+                borderRadius: 16,
                 background: "#16a34a",
                 color: "#fff",
-                fontSize: 12,
+                fontSize: 16,
                 fontWeight: 800,
                 cursor: "pointer",
               }}
             >
               <span>＋</span>
               Đổi xu nhận quà &amp; voucher ưu đãi
+              Xem chi tiết
             </button>
           </div>
         </div>

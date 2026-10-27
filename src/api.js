@@ -201,6 +201,15 @@ export const api = {
     complete: (id) => req(`/tasks/${id}/complete`, { method: "PATCH" }),
   },
   wallet: {
+
+  // ── Wallet ─────────────────────────────────────────────────
+  studentCard: {
+  me: () => req("/student-card/me"),
+  setLocked: (data) => req("/student-card/lock", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+},wallet: {
     me: () => req("/wallet/me"),
     transactions: () => req("/wallet/transactions"),
     deposit: (data) => req("/wallet/deposit", { method: "POST", body: JSON.stringify(data) }),

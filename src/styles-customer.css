@@ -1,12 +1,12 @@
 /* ============================================================
-   STYLES-CUSTOMER.CSS — Customer Portal (FULL - V4)
+   STYLES-CUSTOMER.CSS â€” Customer Portal (FULL - V4)
    ============================================================
-   Đã tổng hợp tất cả các fix:
-     - Bỏ sticky sidebar (Menu + Profile) — sidebar cuộn cùng trang
-     - Nút "Xem tiếp" không che món cuối (block bình thường)
-     - Giá cũ trên, giá mới dưới
-     - Không có khoảng trống thừa giữa 2 cột
-     - Card món đồng bộ với trang chủ (ảnh vuông 96px)
+   ÄÃ£ tá»•ng há»£p táº¥t cáº£ cÃ¡c fix:
+     - Bá» sticky sidebar (Menu + Profile) â€” sidebar cuá»™n cÃ¹ng trang
+     - NÃºt "Xem tiáº¿p" khÃ´ng che mÃ³n cuá»‘i (block bÃ¬nh thÆ°á»ng)
+     - GiÃ¡ cÅ© trÃªn, giÃ¡ má»›i dÆ°á»›i
+     - KhÃ´ng cÃ³ khoáº£ng trá»‘ng thá»«a giá»¯a 2 cá»™t
+     - Card mÃ³n Ä‘á»“ng bá»™ vá»›i trang chá»§ (áº£nh vuÃ´ng 96px)
    ============================================================ */
 
 /* ============================================================
@@ -56,7 +56,7 @@
 }
 
 /* ============================================================
-   ẨN BREADCRUMB TOÀN CỤC
+   áº¨N BREADCRUMB TOÃ€N Cá»¤C
    ============================================================ */
 .cart-breadcrumb,
 .checkout-breadcrumb,
@@ -69,7 +69,7 @@
 }
 
 /* ============================================================
-   QUY TẮC GIÁ CŨ / GIÁ MỚI — giá cũ dòng trên, giá mới dòng dưới
+   QUY Táº®C GIÃ CÅ¨ / GIÃ Má»šI â€” giÃ¡ cÅ© dÃ²ng trÃªn, giÃ¡ má»›i dÃ²ng dÆ°á»›i
    ============================================================ */
 .menu-food-card__price-row-sq,
 .home-flash-card__price,
@@ -491,7 +491,7 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 7fr 5fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 32px;
   align-items: center;
 }
@@ -1538,7 +1538,7 @@
 }
 .orders-live-card__body {
   display: grid;
-  grid-template-columns: 7fr 5fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
   padding: 24px;
 }
@@ -1935,7 +1935,7 @@
 }
 .order-history-card__body {
   display: grid;
-  grid-template-columns: 7fr 5fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
   align-items: center;
 }
@@ -2379,7 +2379,7 @@
 }
 .cart-grid {
   display: grid;
-  grid-template-columns: 7fr 5fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
   align-items: flex-start;
 }
@@ -2993,7 +2993,7 @@
 .checkout-stepper__item--pending { opacity: 0.5; }
 .checkout-grid {
   display: grid;
-  grid-template-columns: 7fr 5fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
   align-items: flex-start;
 }
@@ -4042,7 +4042,7 @@
 }
 
 /* ============================================================
-   CUSTOMER MENU V3 — Layout 2 cột (không sticky, không khoảng trống)
+   CUSTOMER MENU V3 â€” Layout 2 cá»™t (khÃ´ng sticky, khÃ´ng khoáº£ng trá»‘ng)
    ============================================================ */
 .customer-menu-v3 {
   display: flex !important;
@@ -4058,7 +4058,7 @@
   flex-shrink: 0;
 }
 
-/* Layout: grid 2 cột, sidebar cột cứng, main co giãn hết phần còn lại */
+/* Layout: grid 2 cá»™t, sidebar cá»™t cá»©ng, main co giÃ£n háº¿t pháº§n cÃ²n láº¡i */
 .customer-menu-v3 > .menu-v3-layout {
   display: grid !important;
   grid-template-columns: 280px minmax(0, 1fr) !important;
@@ -4069,7 +4069,7 @@
   min-width: 0;
 }
 
-/* Sidebar KHÔNG sticky, KHÔNG kéo dài — chỉ cao bằng nội dung */
+/* Sidebar KHÃ”NG sticky, KHÃ”NG kÃ©o dÃ i â€” chá»‰ cao báº±ng ná»™i dung */
 .customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar {
   width: 100% !important;
   min-width: 0 !important;
@@ -4588,7 +4588,7 @@
 }
 
 /* ============================================================
-   MENU GRID — auto-fill, không có nút nổi chồng
+   MENU GRID â€” auto-fill, khÃ´ng cÃ³ nÃºt ná»•i chá»“ng
    ============================================================ */
 .menu-v3-grid {
   display: grid !important;
@@ -4604,7 +4604,7 @@
 }
 
 /* ============================================================
-   MENU V3 — Thanh phân trang dưới grid
+   MENU V3 â€” Thanh phÃ¢n trang dÆ°á»›i grid
    ============================================================ */
 .menu-v3-pagination-bar {
   display: flex;
@@ -4721,7 +4721,7 @@
   .menu-v3-page-indicator__current { font-size: 18px; }
 }
 
-/* Xoá nút "Xem tiếp" cũ — không còn dùng */
+/* XoÃ¡ nÃºt "Xem tiáº¿p" cÅ© â€” khÃ´ng cÃ²n dÃ¹ng */
 .menu-v3-loadmore-overlay,
 .menu-v3-loadmore-btn,
 .menu-v3-loadmore-hint {
@@ -4729,7 +4729,7 @@
 }
 
 /* ============================================================
-   FOOD CARD — layout đồng bộ với HomeFoodCard
+   FOOD CARD â€” layout Ä‘á»“ng bá»™ vá»›i HomeFoodCard
    ============================================================ */
 .menu-food-card--home-style {
   display: flex !important;
@@ -4931,7 +4931,7 @@
   }
 }
 /* ============================================================
-   PROFILE MODAL — Thông báo & Giờ ca ăn
+   PROFILE MODAL â€” ThÃ´ng bÃ¡o & Giá» ca Äƒn
    ============================================================ */
 
 .profile-noti-list {
@@ -5004,7 +5004,7 @@
   }
 }
 
-/* Giờ ca ăn */
+/* Giá» ca Äƒn */
 .profile-mealslot-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5151,7 +5151,7 @@ html.dark-mode .profile-noti-time__select {
   color: #E2E8F0;
 }
 /* ============================================================
-   CUSTOMER PROFILE V2 — Layout 2 cột, không sticky
+   CUSTOMER PROFILE V2 â€” Layout 2 cá»™t, khÃ´ng sticky
    ============================================================ */
 .customer-profile-v2 {
   display: flex !important;
@@ -6266,7 +6266,7 @@ html.dark-mode .profile-noti-time__select {
   to   { transform: rotate(360deg); }
 }
 /* ============================================================
-   PROFILE MODAL — biến thể "wide" cho Theme / Language
+   PROFILE MODAL â€” biáº¿n thá»ƒ "wide" cho Theme / Language
    ============================================================ */
 .profile-modal--wide {
   max-width: 760px;
@@ -6299,7 +6299,7 @@ html.dark-mode .profile-noti-time__select {
   color: var(--c-text-muted);
 }
 
-/* Trong modal, các grid tự giãn theo maxWidth */
+/* Trong modal, cÃ¡c grid tá»± giÃ£n theo maxWidth */
 .profile-modal .profile-theme-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -6463,7 +6463,7 @@ html.dark-mode .profile-modal-section__desc { color: #94A3B8; }
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 7fr 5fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 32px;
   align-items: center;
 }
@@ -6935,7 +6935,7 @@ html.dark-mode .profile-modal-section__desc { color: #94A3B8; }
 .promo-public-card__btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .promo-split {
   display: grid;
-  grid-template-columns: 5fr 7fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
   align-items: flex-start;
 }
@@ -9660,7 +9660,7 @@ header.customer-topbar > .customer-topbar__main {
   transform: translate(25%, -25%);
 }
 
-/* Panel — căn giữa theo chiều dọc, không che navbar */
+/* Panel â€” cÄƒn giá»¯a theo chiá»u dá»c, khÃ´ng che navbar */
 .chatbot-panel-v2 {
   position: fixed;
   top: 50%;
@@ -10090,7 +10090,7 @@ header.customer-topbar > .customer-topbar__main {
 }
 .chatbot-hotline__row a:hover { text-decoration: underline; }
 
-/* Loading ca trực */
+/* Loading ca trá»±c */
 .chatbot-shift-loading {
   display: flex;
   align-items: center;
@@ -10100,7 +10100,7 @@ header.customer-topbar > .customer-topbar__main {
   font-size: 12px;
 }
 
-/* Empty ca trực */
+/* Empty ca trá»±c */
 .chatbot-shift-empty {
   display: flex;
   flex-direction: column;
@@ -10512,7 +10512,7 @@ html.dark-mode .chatbot-msg__body {
 }
 
 /* ============================================================
-   DARK MODE — Tổng hợp
+   DARK MODE â€” Tá»•ng há»£p
    ============================================================ */
 html.dark-mode {
   --c-surface: #0F172A;
@@ -10859,16 +10859,16 @@ html.dark-mode .menu-food-card__price-old-sq { color: #64748B; }
 html.dark-mode .menu-food-card__meta-row { color: #94A3B8; }
 html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
 /* ============================================================
-   OVERRIDE — ChatBot panel v2: fix cột trái / chat bên phải
+   OVERRIDE â€” ChatBot panel v2: fix cá»™t trÃ¡i / chat bÃªn pháº£i
    ============================================================ */
 
-/* Panel: bố cục cố định */
+/* Panel: bá»‘ cá»¥c cá»‘ Ä‘á»‹nh */
 .chatbot-panel-v2 {
   display: flex !important;
   flex-direction: column !important;
 }
 
-/* Body: grid 2 cột rõ ràng — sidebar 260px + chat 1fr */
+/* Body: grid 2 cá»™t rÃµ rÃ ng â€” sidebar 260px + chat 1fr */
 .chatbot-panel-v2 .chatbot-body {
   display: grid !important;
   grid-template-columns: 260px minmax(0, 1fr) !important;
@@ -10879,7 +10879,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   width: 100% !important;
 }
 
-/* Sidebar trái — CỐ ĐỊNH ở cột 1 */
+/* Sidebar trÃ¡i â€” Cá» Äá»ŠNH á»Ÿ cá»™t 1 */
 .chatbot-panel-v2 .chatbot-side--left {
   grid-column: 1 !important;
   grid-row: 1 !important;
@@ -10900,12 +10900,12 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   z-index: 1 !important;
 }
 
-/* Cột phải — ẨN hoàn toàn (đã chuyển nội dung vào sidebar trái) */
+/* Cá»™t pháº£i â€” áº¨N hoÃ n toÃ n (Ä‘Ã£ chuyá»ƒn ná»™i dung vÃ o sidebar trÃ¡i) */
 .chatbot-panel-v2 .chatbot-side--right {
   display: none !important;
 }
 
-/* Chat center — CỘT 2, chiếm hết bên phải */
+/* Chat center â€” Cá»˜T 2, chiáº¿m háº¿t bÃªn pháº£i */
 .chatbot-panel-v2 .chatbot-center {
   grid-column: 2 !important;
   grid-row: 1 !important;
@@ -10922,7 +10922,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   z-index: 1 !important;
 }
 
-/* Messages bên trong chat center */
+/* Messages bÃªn trong chat center */
 .chatbot-panel-v2 .chatbot-messages {
   flex: 1 1 auto !important;
   min-height: 0 !important;
@@ -10931,7 +10931,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   overflow-x: hidden !important;
 }
 
-/* Quick row + input sát đáy chat */
+/* Quick row + input sÃ¡t Ä‘Ã¡y chat */
 .chatbot-panel-v2 .chatbot-quick-row,
 .chatbot-panel-v2 .chatbot-input {
   flex-shrink: 0 !important;
@@ -10939,7 +10939,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
 }
 
 /* ============================================================
-   Mobile (< 800px): bỏ sidebar, chỉ hiện chat
+   Mobile (< 800px): bá» sidebar, chá»‰ hiá»‡n chat
    ============================================================ */
 @media (max-width: 800px) {
   .chatbot-panel-v2 .chatbot-body {
@@ -10953,7 +10953,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   }
 }
 /* ============================================================
-   ORDER DATE/TIME LABEL — nhãn "Hôm nay / Hôm qua"
+   ORDER DATE/TIME LABEL â€” nhÃ£n "HÃ´m nay / HÃ´m qua"
    ============================================================ */
 .order-history-card__date {
   display: inline-flex;
@@ -10991,10 +10991,10 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   color: #B45309;
 }
 /* ============================================================
-   OVERRIDE — ChatBot food card gọn, đồng bộ với Menu
+   OVERRIDE â€” ChatBot food card gá»n, Ä‘á»“ng bá»™ vá»›i Menu
    ============================================================ */
 
-/* Grid 3 cột cố định — không dùng auto-fit */
+/* Grid 3 cá»™t cá»‘ Ä‘á»‹nh â€” khÃ´ng dÃ¹ng auto-fit */
 .chatbot-panel-v2 .chatbot-food-grid {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
@@ -11016,7 +11016,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   }
 }
 
-/* Card — gọn, ảnh nhỏ, không phình */
+/* Card â€” gá»n, áº£nh nhá», khÃ´ng phÃ¬nh */
 .chatbot-panel-v2 .chatbot-food-card {
   display: flex !important;
   flex-direction: column !important;
@@ -11031,7 +11031,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   transform: translateY(-1px) !important;
 }
 
-/* Ảnh vuông nhỏ, tỉ lệ 1:1 nhưng giới hạn chiều cao */
+/* áº¢nh vuÃ´ng nhá», tá»‰ lá»‡ 1:1 nhÆ°ng giá»›i háº¡n chiá»u cao */
 .chatbot-panel-v2 .chatbot-food-card__img-wrap {
   position: relative !important;
   width: 100% !important;
@@ -11047,7 +11047,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   display: block !important;
 }
 
-/* Info gọn */
+/* Info gá»n */
 .chatbot-panel-v2 .chatbot-food-card__info {
   padding: 8px !important;
   display: flex !important;
@@ -11057,7 +11057,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
   min-width: 0 !important;
 }
 
-/* Tên món 2 dòng, ellipsis */
+/* TÃªn mÃ³n 2 dÃ²ng, ellipsis */
 .chatbot-panel-v2 .chatbot-food-card__name {
   margin: 0 !important;
   font-family: var(--c-font-head) !important;
@@ -11132,7 +11132,7 @@ html.dark-mode .menu-food-card__actions-row { border-top-color: #334155; }
 }
 .chatbot-panel-v2 .chatbot-food-card__view:hover { background: #D97706 !important; }
 
-/* Badge nhỏ hơn */
+/* Badge nhá» hÆ¡n */
 .chatbot-panel-v2 .chatbot-food-card__badge,
 .chatbot-panel-v2 .chatbot-food-card__discount {
   padding: 1px 5px !important;
@@ -11159,7 +11159,7 @@ html.dark-mode .chatbot-panel-v2 .chatbot-food-card__price {
   color: #60A5FA !important;
 }
 /* ============================================================
-   CHAT DATE DIVIDER — Badge ngày ở giữa khung chat
+   CHAT DATE DIVIDER â€” Badge ngÃ y á»Ÿ giá»¯a khung chat
    ============================================================ */
 
 .chat-date-divider {
@@ -11190,7 +11190,7 @@ html.dark-mode .chatbot-panel-v2 .chatbot-food-card__price {
   flex-shrink: 0;
 }
 
-/* Variant màu theo ngày */
+/* Variant mÃ u theo ngÃ y */
 .chat-date-divider--today .chat-date-divider__label {
   background: rgba(24, 169, 103, 0.1);
   color: #18a967;
@@ -11206,7 +11206,7 @@ html.dark-mode .chatbot-panel-v2 .chatbot-food-card__price {
   color: var(--text-light, #8993a3);
 }
 
-/* Staff chat (nền bg-tertiary) — dùng màu nổi hơn */
+/* Staff chat (ná»n bg-tertiary) â€” dÃ¹ng mÃ u ná»•i hÆ¡n */
 .chat-main__feed .chat-date-divider__label {
   background: var(--st-surface-container, #eaedff);
   color: var(--st-text-muted, #434655);
@@ -11258,7 +11258,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   }
 }
 /* ============================================================
-   KẾT THÚC FILE
+   Káº¾T THÃšC FILE
    ============================================================ */
 /* ============================================================
    CUSTOMER PROMOTIONS - FINAL CLEAN LAYOUT
@@ -11372,7 +11372,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
 .customer-topbar__nav button {
   font-size: 14px !important;
 }
-/* CUSTOMER TOPBAR - CANH GIỮA MENU + CỤM ACTIONS BÊN PHẢI */
+/* CUSTOMER TOPBAR - CANH GIá»®A MENU + Cá»¤M ACTIONS BÃŠN PHáº¢I */
 .customer-topbar__main-inner {
   position: relative !important;
   display: flex !important;
@@ -11557,7 +11557,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
     max-width: none !important;
   }
 }
-/* CUSTOMER HOME - thu nhỏ ô VWA Pay */
+/* CUSTOMER HOME - thu nhá» Ã´ VWA Pay */
 .home-wallet-pill {
   gap: 10px !important;
   padding: 10px 14px !important;
@@ -11681,7 +11681,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
     white-space: normal !important;
   }
 }
-/* CUSTOMER MENU: đưa 2 badge sang góc phải */
+/* CUSTOMER MENU: Ä‘Æ°a 2 badge sang gÃ³c pháº£i */
 .customer-menu-v3 > .menu-v3-header {
   display: flex !important;
   justify-content: flex-end !important;
@@ -11694,11 +11694,11 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   width: 100% !important;
   margin-left: auto !important;
 }
-/* CUSTOMER MENU: đưa badge gần Topbar hơn */
+/* CUSTOMER MENU: Ä‘Æ°a badge gáº§n Topbar hÆ¡n */
 .customer-menu-v3 > .menu-v3-header {
   margin-top: -8px !important;
 }
-/* CUSTOMER MENU: bỏ khung ngoài thanh điều khiển */
+/* CUSTOMER MENU: bá» khung ngoÃ i thanh Ä‘iá»u khiá»ƒn */
 .menu-v3-filter-bar {
   background: transparent !important;
   border: none !important;
@@ -11706,7 +11706,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   padding: 0 !important;
   border-radius: 0 !important;
 }
-/* CUSTOMER MENU - cân lại khoảng cách phần đầu trang */
+/* CUSTOMER MENU - cÃ¢n láº¡i khoáº£ng cÃ¡ch pháº§n Ä‘áº§u trang */
 .customer-menu-v3 > .menu-v3-header {
   margin-top: -8px !important;
   margin-bottom: -10px !important;
@@ -11821,7 +11821,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
 }
 
 .customer-menu-v3 > .menu-v3-header::before {
-  content: "Thực đơn";
+  content: "Thá»±c Ä‘Æ¡n";
   display: block;
   flex: 0 0 auto;
   font-family: var(--c-font-head);
@@ -11866,7 +11866,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
     margin-left: 0 !important;
   }
 }
-/* CUSTOMER MENU: ẩn tiêu đề và đường kẻ */
+/* CUSTOMER MENU: áº©n tiÃªu Ä‘á» vÃ  Ä‘Æ°á»ng káº» */
 .customer-menu-v3 > .menu-v3-header::before {
   content: none !important;
   display: none !important;
@@ -11875,15 +11875,15 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
 .customer-menu-v3 > .menu-v3-header {
   border-bottom: none !important;
 }
-/* CUSTOMER MENU: thu hẹp khoảng cách phía trên khu vực thực đơn */
+/* CUSTOMER MENU: thu háº¹p khoáº£ng cÃ¡ch phÃ­a trÃªn khu vá»±c thá»±c Ä‘Æ¡n */
 .customer-menu-v3 > .menu-v3-layout {
   margin-top: -16px !important;
 }
-/* CUSTOMER MENU: kéo toàn bộ khu vực thực đơn lên */
+/* CUSTOMER MENU: kÃ©o toÃ n bá»™ khu vá»±c thá»±c Ä‘Æ¡n lÃªn */
 .customer-menu-v3 > .menu-v3-layout {
   margin-top: -28px !important;
 }
-/* CUSTOMER MENU: thu hẹp khoảng cách từ thanh điều khiển đến thẻ món */
+/* CUSTOMER MENU: thu háº¹p khoáº£ng cÃ¡ch tá»« thanh Ä‘iá»u khiá»ƒn Ä‘áº¿n tháº» mÃ³n */
 .customer-menu-v3 .menu-v3-filter-bar {
   margin-bottom: 4px !important;
 }
@@ -11892,11 +11892,11 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   margin-top: 0 !important;
   padding-top: 0 !important;
 }
-/* CUSTOMER MENU: đưa hai badge gần Topbar hơn */
+/* CUSTOMER MENU: Ä‘Æ°a hai badge gáº§n Topbar hÆ¡n */
 .customer-menu-v3 .menu-v3-header__badges {
   transform: translateY(-10px) !important;
 }
-/* CUSTOMER MENU: kéo khu vực thực đơn gần hai badge phía trên */
+/* CUSTOMER MENU: kÃ©o khu vá»±c thá»±c Ä‘Æ¡n gáº§n hai badge phÃ­a trÃªn */
 .customer-menu-v3 > .menu-v3-layout {
   margin-top: -38px !important;
 }
@@ -11912,15 +11912,15 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   margin-top: -27px !important;
   padding-top: 0 !important;
 }
-/* CUSTOMER MENU: đưa hai nhãn gần Topbar hơn */
+/* CUSTOMER MENU: Ä‘Æ°a hai nhÃ£n gáº§n Topbar hÆ¡n */
 .customer-menu-v3 .menu-v3-header__badges {
   transform: translateY(-10px) !important;
 }
-/* CUSTOMER MENU: nâng hai badge thêm một chút */
+/* CUSTOMER MENU: nÃ¢ng hai badge thÃªm má»™t chÃºt */
 .customer-menu-v3 .menu-v3-header__badges {
   transform: translateY(-15px) !important;
 }
-/* CUSTOMER MENU: cân khoảng cách giữa badges, thanh điều khiển và thẻ món */
+/* CUSTOMER MENU: cÃ¢n khoáº£ng cÃ¡ch giá»¯a badges, thanh Ä‘iá»u khiá»ƒn vÃ  tháº» mÃ³n */
 .customer-menu-v3 .menu-v3-filter-bar {
   transform: translateY(-16px) !important;
   margin-bottom: 12px !important;
@@ -11930,7 +11930,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   margin-top: 0 !important;
   padding-top: 0 !important;
 }
-/* CUSTOMER MENU: căn khoảng cách giữa Sắp xếp và các khung món */
+/* CUSTOMER MENU: cÄƒn khoáº£ng cÃ¡ch giá»¯a Sáº¯p xáº¿p vÃ  cÃ¡c khung mÃ³n */
 .customer-menu-v3 .menu-v3-filter-bar {
   margin-bottom: 6px !important;
 }
@@ -11939,19 +11939,19 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   margin-top: 0 !important;
   padding-top: 0 !important;
 }
-/* CUSTOMER MENU: đẩy thẻ món lên nhẹ */
+/* CUSTOMER MENU: Ä‘áº©y tháº» mÃ³n lÃªn nháº¹ */
 .customer-menu-v3 .menu-v3-results-wrap {
   margin-top: -8px !important;
 }
-/* CUSTOMER MENU: nâng thẻ món thêm một chút */
+/* CUSTOMER MENU: nÃ¢ng tháº» mÃ³n thÃªm má»™t chÃºt */
 .customer-menu-v3 .menu-v3-results-wrap {
   margin-top: -14px !important;
 }
-/* CUSTOMER MENU: tinh chỉnh vị trí thẻ món */
+/* CUSTOMER MENU: tinh chá»‰nh vá»‹ trÃ­ tháº» mÃ³n */
 .customer-menu-v3 .menu-v3-results-wrap {
   margin-top: -18px !important;
 }
-/* CUSTOMER MENU: tinh chỉnh khoảng cách thẻ món */
+/* CUSTOMER MENU: tinh chá»‰nh khoáº£ng cÃ¡ch tháº» mÃ³n */
 .customer-menu-v3 .menu-v3-results-wrap {
   margin-top: -27px !important;
 }
@@ -12424,7 +12424,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
 .customer-menu-v3 .menu-v3-price-slider__range:focus-visible::-webkit-slider-thumb {
   box-shadow: 0 0 0 4px rgba(37, 99, 235, .18);
 }
-/* 1. Khung chứa Tiêu đề & Khoảng giá */
+/* 1. Khung chá»©a TiÃªu Ä‘á» & Khoáº£ng giÃ¡ */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head {
   width: 100% !important;
   max-width: 100% !important;
@@ -12439,7 +12439,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   gap: 8px !important;
 }
 
-/* Tiêu đề "Khoảng giá (VNĐ)" */
+/* TiÃªu Ä‘á» "Khoáº£ng giÃ¡ (VNÄ)" */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head > h2 {
   position: static !important;
   left: auto !important;
@@ -12448,13 +12448,13 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   margin: 0 !important;
 }
 
-/* Số tiền hiển thị bên phải (0đ - 500.000đ) */
+/* Sá»‘ tiá»n hiá»ƒn thá»‹ bÃªn pháº£i (0Ä‘ - 500.000Ä‘) */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group__range {
   white-space: nowrap !important;
   font-size: 11px !important;
 }
 
-/* Khung chứa thanh trượt */
+/* Khung chá»©a thanh trÆ°á»£t */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider {
   width: 100% !important;
   max-width: 100% !important;
@@ -12474,7 +12474,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   overflow: visible !important;
 }
 
-/* Thanh kéo màu xám (Track) */
+/* Thanh kÃ©o mÃ u xÃ¡m (Track) */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__control .menu-v3-price-slider__track {
   left: 7px !important;
   right: 7px !important;
@@ -12485,7 +12485,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   height: 4px !important;
 }
 
-/* Thanh kéo màu xanh (Range) */
+/* Thanh kÃ©o mÃ u xanh (Range) */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__range {
   left: 0 !important;
   width: 100% !important;
@@ -12495,7 +12495,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   position: absolute !important;
 }
 
-/* Nhãn giá dưới thanh trượt (0đ và 500.000đ) */
+/* NhÃ£n giÃ¡ dÆ°á»›i thanh trÆ°á»£t (0Ä‘ vÃ  500.000Ä‘) */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-price-slider__labels {
   width: 100% !important;
   max-width: 100% !important;
@@ -12565,10 +12565,10 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   }
 }
 /* ============================================================
-   CUSTOMER PROFILE V6 — Layout mới + School Integration
+   CUSTOMER PROFILE V6 â€” Layout má»›i + School Integration
    ============================================================ */
 
-/* ---------- CARD CHÍNH (full-width) ---------- */
+/* ---------- CARD CHÃNH (full-width) ---------- */
 .profile-main-card {
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e5e9ef);
@@ -12712,7 +12712,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   justify-content: flex-end;
 }
 
-/* ---------- CARD THÔNG TIN ---------- */
+/* ---------- CARD THÃ”NG TIN ---------- */
 .profile-info-card {
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e5e9ef);
@@ -12791,7 +12791,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   letter-spacing: 0.5px;
 }
 
-/* ---------- CARD LIÊN KẾT MSSV ---------- */
+/* ---------- CARD LIÃŠN Káº¾T MSSV ---------- */
 .profile-link-card {
   background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
   border: 1px solid #bae6fd;
@@ -12867,7 +12867,7 @@ html.dark-mode .chat-date-divider--yesterday .chat-date-divider__label {
   margin-bottom: 20px;
 }
 
-/* ---------- BUTTON LỚN ---------- */
+/* ---------- BUTTON Lá»šN ---------- */
 .profile-btn--lg {
   padding: 11px 22px !important;
   font-size: 14px !important;
@@ -14996,20 +14996,20 @@ html.dark-mode .wallet-preset-btn--selected span {
 }
 /* ============================================================
    CUSTOMER MENU V5 - STICKY SIDEBAR (NO SCROLLBAR) + SCROLL GRID
-   - Bộ lọc đứng im, ẩn thanh cuộn nhưng vẫn lướt được.
-   - Danh sách món có thanh cuộn riêng.
+   - Bá»™ lá»c Ä‘á»©ng im, áº©n thanh cuá»™n nhÆ°ng váº«n lÆ°á»›t Ä‘Æ°á»£c.
+   - Danh sÃ¡ch mÃ³n cÃ³ thanh cuá»™n riÃªng.
    ============================================================ */
 
-/* 1. Ép page-content thành app-like layout khi ở trang Menu */
+/* 1. Ã‰p page-content thÃ nh app-like layout khi á»Ÿ trang Menu */
 body.menu-v3-active .page-content {
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
-  padding-top: 16px !important; /* Khoảng trống dưới Topbar */
+  padding-top: 16px !important; /* Khoáº£ng trá»‘ng dÆ°á»›i Topbar */
   padding-bottom: 0 !important;
 }
 
-/* 2. Khung chính: lấp đầy page-content */
+/* 2. Khung chÃ­nh: láº¥p Ä‘áº§y page-content */
 .customer-menu-v3 {
   flex: 1 !important;
   display: flex !important;
@@ -15023,7 +15023,7 @@ body.menu-v3-active .page-content {
   box-sizing: border-box !important;
 }
 
-/* 3. Layout 2 cột */
+/* 3. Layout 2 cá»™t */
 .customer-menu-v3 > .menu-v3-layout {
   flex: 1 !important;
   display: grid !important;
@@ -15037,7 +15037,7 @@ body.menu-v3-active .page-content {
 }
 
 /* ============================================================
-   4. SIDEBAR TRÁI: Lướt được nhưng ẨN THANH CUỘN
+   4. SIDEBAR TRÃI: LÆ°á»›t Ä‘Æ°á»£c nhÆ°ng áº¨N THANH CUá»˜N
    ============================================================ */
 .customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar {
   height: 100% !important;
@@ -15050,7 +15050,7 @@ body.menu-v3-active .page-content {
   position: static !important;
   margin-top: 0 !important;
 
-  /* Ẩn thanh cuộn */
+  /* áº¨n thanh cuá»™n */
   scrollbar-width: none !important; /* Firefox */
   -ms-overflow-style: none !important; /* IE 10+ */
 }
@@ -15058,7 +15058,7 @@ body.menu-v3-active .page-content {
   display: none !important; /* Chrome, Safari, Edge */
 }
 
-/* 5. Cột phải (main): flex column */
+/* 5. Cá»™t pháº£i (main): flex column */
 .customer-menu-v3 > .menu-v3-layout > .menu-v3-main {
   height: 100% !important;
   display: flex !important;
@@ -15068,7 +15068,7 @@ body.menu-v3-active .page-content {
   gap: 12px !important;
 }
 
-/* 6. Thanh sắp xếp: cố định trên cùng */
+/* 6. Thanh sáº¯p xáº¿p: cá»‘ Ä‘á»‹nh trÃªn cÃ¹ng */
 .customer-menu-v3 .menu-v3-filter-bar {
   flex-shrink: 0 !important;
   margin: 0 !important;
@@ -15080,7 +15080,7 @@ body.menu-v3-active .page-content {
 }
 
 /* ============================================================
-   7. VÙNG DANH SÁCH MÓN: CÓ THANH CUỘN RIÊNG
+   7. VÃ™NG DANH SÃCH MÃ“N: CÃ“ THANH CUá»˜N RIÃŠNG
    ============================================================ */
 .customer-menu-v3 .menu-v3-results-wrap {
   flex: 1 !important;
@@ -15102,7 +15102,7 @@ body.menu-v3-active .page-content {
   background: #94a3b8;
 }
 
-/* 8. Mobile: trả về layout cuộn bình thường */
+/* 8. Mobile: tráº£ vá» layout cuá»™n bÃ¬nh thÆ°á»ng */
 @media (max-width: 1024px) {
   body.menu-v3-active .page-content {
     overflow-y: auto !important;
@@ -15134,7 +15134,7 @@ body.menu-v3-active .page-content {
     padding-right: 0 !important;
   }
 }
-/* 1. Xóa bỏ MỌI lề âm, transform của các khối cha (Danh mục, Tiêu chí) */
+/* 1. XÃ³a bá» Má»ŒI lá» Ã¢m, transform cá»§a cÃ¡c khá»‘i cha (Danh má»¥c, TiÃªu chÃ­) */
 .customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar > .menu-v3-sidebar__card .menu-v3-group,
 .customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar > .menu-v3-sidebar__card .menu-v3-group__head {
   margin-left: 0 !important;
@@ -15143,27 +15143,27 @@ body.menu-v3-active .page-content {
   width: 100% !important;
 }
 
-/* 2. Ép TẤT CẢ các thẻ h2 về đúng lề trái gốc, cấm kéo lệch */
+/* 2. Ã‰p Táº¤T Cáº¢ cÃ¡c tháº» h2 vá» Ä‘Ãºng lá» trÃ¡i gá»‘c, cáº¥m kÃ©o lá»‡ch */
 .customer-menu-v3 > .menu-v3-layout > .menu-v3-sidebar > .menu-v3-sidebar__card h2 {
   margin: 0 !important;
   padding: 0 !important;
   transform: none !important;
   position: static !important;
   left: auto !important;
-  flex-shrink: 0 !important; /* Cấm co chữ lại */
-  white-space: nowrap !important; /* Cấm rớt dòng */
+  flex-shrink: 0 !important; /* Cáº¥m co chá»¯ láº¡i */
+  white-space: nowrap !important; /* Cáº¥m rá»›t dÃ²ng */
 }
 
-/* 3. Khung chứa "Khoảng giá" dàn ngang, không cho phép rớt dòng */
+/* 3. Khung chá»©a "Khoáº£ng giÃ¡" dÃ n ngang, khÃ´ng cho phÃ©p rá»›t dÃ²ng */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head {
   display: flex !important;
   flex-direction: row !important;
-  flex-wrap: nowrap !important; /* Chống xê dịch khi kéo slider */
+  flex-wrap: nowrap !important; /* Chá»‘ng xÃª dá»‹ch khi kÃ©o slider */
   align-items: center !important;
   justify-content: space-between !important;
 }
 
-/* 4. Số tiền bên phải luôn cố định, không đẩy chữ "Khoảng giá" đi đâu cả */
+/* 4. Sá»‘ tiá»n bÃªn pháº£i luÃ´n cá»‘ Ä‘á»‹nh, khÃ´ng Ä‘áº©y chá»¯ "Khoáº£ng giÃ¡" Ä‘i Ä‘Ã¢u cáº£ */
 .customer-menu-v3 .menu-v3-sidebar__card .menu-v3-group:has(.menu-v3-price-slider) > .menu-v3-group__head > .menu-v3-group__range {
   margin-left: auto !important;
   white-space: nowrap !important;
@@ -15187,7 +15187,7 @@ body.menu-v3-active .page-content {
   box-sizing: border-box;
 }
 
-/* Hi?u ?ng v�n s�ng m? g�c tr�i */
+/* Hi?u ?ng vï¿½n sï¿½ng m? gï¿½c trï¿½i */
 .wallet-card-physical--prudential::before {
   content: "";
   position: absolute;
@@ -15232,7 +15232,7 @@ body.menu-v3-active .page-content {
   font-family: "Times New Roman", serif !important;
   font-size: 38px !important;
   font-weight: 700 !important;
-  color: #D4AF37 !important; /* M�u v�ng kim */
+  color: #D4AF37 !important; /* Mï¿½u vï¿½ng kim */
   margin: 0 !important;
   line-height: 1 !important;
   letter-spacing: 3px !important;
@@ -15363,7 +15363,7 @@ body.menu-v3-active .page-content {
   font-family: var(--c-font-body), sans-serif;
 }
 
-/* Hi?u ?ng v�n s�ng m? (gi? l?p b?ng pseudo-element) */
+/* Hi?u ?ng vï¿½n sï¿½ng m? (gi? l?p b?ng pseudo-element) */
 .card-prudential__bg {
   position: absolute;
   top: -50%;
@@ -15461,7 +15461,7 @@ body.menu-v3-active .page-content {
   .card-prudential__bottom { font-size: 13px; gap: 10px; }
 }
 
-/* V�n s�ng SVG cho th? VWA */
+/* Vï¿½n sï¿½ng SVG cho th? VWA */
 .card-prudential__bg {
   position: absolute;
   top: 0;
@@ -15471,13 +15471,13 @@ body.menu-v3-active .page-content {
   z-index: 0;
   pointer-events: none;
   border-radius: 20px;
-  /* V? c�c du?ng cong SVG t?o hi?u ?ng l?a */
+  /* V? cï¿½c du?ng cong SVG t?o hi?u ?ng l?a */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='none'%3E%3Cg stroke='%23ffffff' fill='none' stroke-linecap='round'%3E%3Cpath d='M-50,500 C150,450 50,200 250,50 S450,50 600,-50' stroke-width='2' opacity='0.15' filter='blur(1px)'/%3E%3Cpath d='M-50,480 C120,400 80,150 220,30 S420,20 550,-50' stroke-width='1' opacity='0.3'/%3E%3Cpath d='M-50,520 C180,480 100,250 300,100 S500,100 650,-50' stroke-width='4' opacity='0.05' filter='blur(3px)'/%3E%3Cpath d='M-50,430 C100,350 40,120 180,10 S350,10 480,-50' stroke-width='1.5' opacity='0.2'/%3E%3Cpath d='M-50,400 C90,320 30,100 150,-10 S300,-10 400,-50' stroke-width='3' opacity='0.08' filter='blur(2px)'/%3E%3C/g%3E%3C/svg%3E");
   background-size: cover;
   background-position: bottom left;
 }
 
-/* V�n s�ng SVG l?a xo�y cho th? VWA */
+/* Vï¿½n sï¿½ng SVG l?a xoï¿½y cho th? VWA */
 .card-prudential__bg {
   position: absolute;
   top: 0;
@@ -15489,7 +15489,7 @@ body.menu-v3-active .page-content {
   border-radius: 20px;
   opacity: 0.8;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23ffffff' stroke-linecap='round'%3E%3C!-- Nh�m du?ng cong d?m --%3E%3Cpath d='M-100,600 Q150,300 100,-100 T500,-100' stroke-width='1.5' opacity='0.4'/%3E%3Cpath d='M-80,580 Q170,320 120,-80 T520,-80' stroke-width='3' opacity='0.2' filter='blur(1px)'/%3E%3Cpath d='M-120,550 Q130,280 80,-120 T480,-120' stroke-width='0.8' opacity='0.6'/%3E%3C!-- Nh�m du?ng cong m? t?o chi?u s�u --%3E%3Cpath d='M-50,650 Q200,350 150,-50 T550,-50' stroke-width='6' opacity='0.1' filter='blur(3px)'/%3E%3Cpath d='M-150,500 Q100,250 50,-150 T450,-150' stroke-width='4' opacity='0.15' filter='blur(2px)'/%3E%3C!-- C�c n�t m?nh xo�y xung quanh --%3E%3Cpath d='M0,400 C200,200 100,0 300,0' stroke-width='1' opacity='0.3'/%3E%3Cpath d='M-20,420 C180,220 80,20 280,20' stroke-width='0.5' opacity='0.5'/%3E%3Cpath d='M-40,380 C160,180 60,-20 260,-20' stroke-width='2' opacity='0.15'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23ffffff' stroke-linecap='round'%3E%3C!-- Nhï¿½m du?ng cong d?m --%3E%3Cpath d='M-100,600 Q150,300 100,-100 T500,-100' stroke-width='1.5' opacity='0.4'/%3E%3Cpath d='M-80,580 Q170,320 120,-80 T520,-80' stroke-width='3' opacity='0.2' filter='blur(1px)'/%3E%3Cpath d='M-120,550 Q130,280 80,-120 T480,-120' stroke-width='0.8' opacity='0.6'/%3E%3C!-- Nhï¿½m du?ng cong m? t?o chi?u sï¿½u --%3E%3Cpath d='M-50,650 Q200,350 150,-50 T550,-50' stroke-width='6' opacity='0.1' filter='blur(3px)'/%3E%3Cpath d='M-150,500 Q100,250 50,-150 T450,-150' stroke-width='4' opacity='0.15' filter='blur(2px)'/%3E%3C!-- Cï¿½c nï¿½t m?nh xoï¿½y xung quanh --%3E%3Cpath d='M0,400 C200,200 100,0 300,0' stroke-width='1' opacity='0.3'/%3E%3Cpath d='M-20,420 C180,220 80,20 280,20' stroke-width='0.5' opacity='0.5'/%3E%3Cpath d='M-40,380 C160,180 60,-20 260,-20' stroke-width='2' opacity='0.15'/%3E%3C/g%3E%3C/svg%3E");
   background-size: cover;
   background-position: center left;
   background-repeat: no-repeat;
@@ -15499,7 +15499,7 @@ body.menu-v3-active .page-content {
    VWA SMART PAY - PRUDENTIAL ICONIC STYLE (V2)
    ============================================================ */
 .card-prudential {
-  /* M�u xanh Navy s�ng hon, chu?n m�u Prudential */
+  /* Mï¿½u xanh Navy sï¿½ng hon, chu?n mï¿½u Prudential */
   background: radial-gradient(circle at 80% 20%, #1a4282 0%, #0a2540 80%) !important;
   border-radius: 20px !important;
   padding: 24px 30px !important;
@@ -15516,7 +15516,7 @@ body.menu-v3-active .page-content {
   border: 1px solid rgba(255,255,255,0.1) !important;
 }
 
-/* Nh�ng ?nh SVG v�n l?a */
+/* Nhï¿½ng ?nh SVG vï¿½n l?a */
 .card-prudential__bg {
   position: absolute !important;
   top: 0 !important;
@@ -15560,7 +15560,7 @@ body.menu-v3-active .page-content {
   margin: 15px 0 !important;
 }
 
-/* Ch? VWA PAY m�u v�ng gradient */
+/* Ch? VWA PAY mï¿½u vï¿½ng gradient */
 .card-prudential__title h2 {
   font-family: "Times New Roman", Times, serif !important;
   font-size: 44px !important;
@@ -15583,12 +15583,12 @@ body.menu-v3-active .page-content {
   opacity: 0.9 !important;
 }
 
-/* D?i bang TH? SINH VI�N */
+/* D?i bang TH? SINH VIï¿½N */
 .card-prudential__tag {
   background: linear-gradient(90deg, #a87f42 0%, #d4af37 100%) !important;
   color: #fff !important;
   padding: 8px 20px !important;
-  border-radius: 20px 4px 20px 4px !important; /* Bo g�c ch�o ki?u Prudential */
+  border-radius: 20px 4px 20px 4px !important; /* Bo gï¿½c chï¿½o ki?u Prudential */
   font-size: 11px !important;
   font-weight: 700 !important;
   letter-spacing: 2px !important;
@@ -15640,7 +15640,7 @@ body.menu-v3-active .page-content {
   border: 1px solid rgba(255,255,255,0.1) !important;
 }
 
-/* Th? ch?a v�n s�ng l?a */
+/* Th? ch?a vï¿½n sï¿½ng l?a */
 .card-prudential__bg {
   position: absolute !important;
   top: 0 !important;
@@ -15656,7 +15656,7 @@ body.menu-v3-active .page-content {
   opacity: 0.9 !important;
 }
 
-/* Ch? �p d?ng z-index cho c�c ph?n t? con, TR? th? __bg */
+/* Ch? ï¿½p d?ng z-index cho cï¿½c ph?n t? con, TR? th? __bg */
 .card-prudential > *:not(.card-prudential__bg) {
   position: relative !important;
   z-index: 1 !important;
@@ -15744,7 +15744,7 @@ body.menu-v3-active .page-content {
   .card-prudential__bottom { font-size: 13px !important; gap: 10px !important; }
 }
 
-/* Th? ch?a v�n s�ng l?a */
+/* Th? ch?a vï¿½n sï¿½ng l?a */
 .card-prudential__bg {
   position: absolute !important;
   top: 0 !important;
@@ -15758,10 +15758,10 @@ body.menu-v3-active .page-content {
   background-position: bottom left !important;
   background-repeat: no-repeat !important;
   opacity: 1 !important;
-  mix-blend-mode: screen !important; /* H�a tr?n m�u d? ph�t s�ng r?c r? */
+  mix-blend-mode: screen !important; /* Hï¿½a tr?n mï¿½u d? phï¿½t sï¿½ng r?c r? */
 }
 
-/* Th? ch?a v�n s�ng l?a */
+/* Th? ch?a vï¿½n sï¿½ng l?a */
 .card-prudential__bg {
   position: absolute !important;
   top: 0 !important;
@@ -15798,7 +15798,7 @@ body.menu-v3-active .page-content {
   border: 1px solid rgba(255,255,255,0.1) !important;
 }
 
-/* �p v�n s�ng ch? n?m n?a b�n tr�i */
+/* ï¿½p vï¿½n sï¿½ng ch? n?m n?a bï¿½n trï¿½i */
 .card-prudential__bg {
   position: absolute !important;
   top: 0 !important;
@@ -15837,7 +15837,7 @@ body.menu-v3-active .page-content {
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
-/* �?y ch? VWA PAY ra ch�nh gi?a */
+/* ï¿½?y ch? VWA PAY ra chï¿½nh gi?a */
 .card-prudential__middle {
   display: flex !important;
   justify-content: center !important;
@@ -15872,7 +15872,7 @@ body.menu-v3-active .page-content {
   opacity: 0.8 !important;
 }
 
-/* H�ng du?i c�ng: Tag b�n tr�i, T�n b�n ph?i */
+/* Hï¿½ng du?i cï¿½ng: Tag bï¿½n trï¿½i, Tï¿½n bï¿½n ph?i */
 .card-prudential__bottom {
   display: flex !important;
   justify-content: space-between !important;
@@ -15928,7 +15928,7 @@ body.menu-v3-active .page-content {
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
-  justify-content: center !important; /* Can gi?a to�n b? n?i dung */
+  justify-content: center !important; /* Can gi?a toï¿½n b? n?i dung */
   align-items: center !important;
   min-height: 280px !important;
   box-shadow: 0 15px 35px rgba(0,0,0,0.4) !important;
@@ -15937,12 +15937,12 @@ body.menu-v3-active .page-content {
   border: 1px solid rgba(255,255,255,0.1) !important;
 }
 
-/* Khung v�n s�ng b�n tr�i */
+/* Khung vï¿½n sï¿½ng bï¿½n trï¿½i */
 .card-prudential__bg {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
-  width: 45% !important; /* Ch? chi?m 45% b�n tr�i */
+  width: 45% !important; /* Ch? chi?m 45% bï¿½n trï¿½i */
   height: 100% !important;
   z-index: 0 !important;
   pointer-events: none !important;
@@ -16013,7 +16013,7 @@ body.menu-v3-active .page-content {
   margin-top: 6px !important;
 }
 
-/* T�n v� MSSV ? g�c du?i ph?i */
+/* Tï¿½n vï¿½ MSSV ? gï¿½c du?i ph?i */
 .card-prudential__bottom-right {
   position: absolute !important;
   bottom: 24px !important;
@@ -16134,7 +16134,7 @@ body.menu-v3-active .page-content {
   margin-top: 6px !important;
 }
 
-/* ��Y L� PH?N S?A L?I CH?NG CH�O CH?: �p c? d?nh ? g�c du?i ph?i */
+/* ï¿½ï¿½Y Lï¿½ PH?N S?A L?I CH?NG CHï¿½O CH?: ï¿½p c? d?nh ? gï¿½c du?i ph?i */
 .card-prudential__bottom-right {
   position: absolute !important;
   bottom: 20px !important;
@@ -16223,7 +16223,7 @@ body.menu-v3-active .page-content {
    VWA SMART PAY - PRUDENTIAL SILK (EXACT MATCH)
    ============================================================ */
 .vwa-card-final {
-  background: radial-gradient(circle at 85% 15%, #16437e 0%, #0a1c33 70%) !important; /* M�u xanh chu?n Prudential */
+  background: radial-gradient(circle at 85% 15%, #16437e 0%, #0a1c33 70%) !important; /* Mï¿½u xanh chu?n Prudential */
 }
 /* VWA CARD FINAL STYLES */
 .vwa-card-final {
@@ -16748,7 +16748,7 @@ body.menu-v3-active .page-content {
 }
 /* END CLEAN BOTTOM EDGE */
 
-/* Checkout: công tắc bật/tắt Dùng Xu VWA */
+/* Checkout: cÃ´ng táº¯c báº­t/táº¯t DÃ¹ng Xu VWA */
 .checkout-points-option {
   display: flex;
   align-items: center;
@@ -17059,7 +17059,7 @@ body.menu-v3-active .page-content {
 .checkout-toggle-green:checked::after {
   transform: translateX(14px) !important;
 }
-/* Checkout: tách vùng cuộn độc lập cho hai cột */
+/* Checkout: tÃ¡ch vÃ¹ng cuá»™n Ä‘á»™c láº­p cho hai cá»™t */
 @media (min-width: 1025px) {
   .checkout-v2 .checkout-grid {
     align-items: stretch;
@@ -17086,7 +17086,7 @@ body.menu-v3-active .page-content {
     overscroll-behavior-y: auto;
   }
 }
-/* Checkout: ẩn thanh cuộn, vẫn cho phép cuộn */
+/* Checkout: áº©n thanh cuá»™n, váº«n cho phÃ©p cuá»™n */
 @media (min-width: 1025px) {
   .checkout-v2 .checkout-left,
   .checkout-v2 .checkout-right {
@@ -17100,4 +17100,103 @@ body.menu-v3-active .page-content {
     width: 0;
     height: 0;
   }
+}
+/* Wallet security: expand description on desktop */
+.wallet-security__left {
+  flex: 1;
+  max-width: none;
+  min-width: 0;
+}
+
+.wallet-security__left p {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .wallet-security__left p {
+    white-space: normal;
+  }
+}
+
+/* Customer cart: summary scrolls with the page */
+.cart-summary {
+  position: static !important;
+  top: auto !important;
+  align-self: start;
+}
+
+.cart-right > .cart-summary {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+
+/* Final fix: VWA Green Points modal */
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) {
+  padding: 12px !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+  width: min(760px, calc(100vw - 32px)) !important;
+  max-width: 760px !important;
+  padding: 18px !important;
+  box-sizing: border-box !important;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) h2 {
+  font-size: 25px !important;
+}
+
+@media (max-width: 600px) {
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+    width: calc(100vw - 24px) !important;
+    padding: 14px !important;
+  }
+}
+/* VWA Green Points - fixed 12cm width */
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) {
+  padding: 12px !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+  width: 12cm !important;
+  max-width: calc(100vw - 24px) !important;
+  box-sizing: border-box !important;
+  padding: 16px !important;
+  max-height: calc(100dvh - 24px) !important;
+  overflow-y: auto !important;
+  border-radius: 19px !important;
+}
+
+@media (max-width: 480px) {
+  .promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] {
+    width: calc(100vw - 24px) !important;
+    max-width: none !important;
+    padding: 14px !important;
+  }
+}
+
+/* VWA Green Points - compact summary cards */
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] [style*="grid-template-columns"] > div {
+  padding: 12px !important;
+  min-height: 0 !important;
+  border-radius: 16px !important;
+  box-sizing: border-box !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] [style*="grid-template-columns"] > div p {
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  margin-top: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] [style*="grid-template-columns"] > div strong,
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] [style*="grid-template-columns"] > div h3,
+.promo-modal-overlay:has([aria-label="VWA Green Points"]) [role="dialog"] [style*="grid-template-columns"] > div h4 {
+  font-size: 26px !important;
+  line-height: 1.2 !important;
 }
