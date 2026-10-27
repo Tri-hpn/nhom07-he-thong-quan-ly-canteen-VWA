@@ -96,14 +96,18 @@ async function req(path, options = {}, _retryCount = 0, _refreshAttempted = fals
   const token = getToken();
   const isPublic = PUBLIC_PATHS.some(p => path.startsWith(p));
 
-  // 🔧 Chặn request nếu không có token và không phải API công khai
-  // (vẫn cho phép /auth/me vì có thể restore từ HttpOnly cookie)
-  if (!token && !isPublic && path !== "/auth/me") {
-    const err = new Error("Chưa đăng nhập hoặc phiên đã hết hạn");
-    err.status = 401;
-    err.body = { message: "Vui lòng đăng nhập lại." };
-    throw err;
-  }
+  // 🔧 COOKIE-BASED AUTH: KHÔNG chặn client-side khi thiếu Bearer token.
+  // Lý do: sau F5 / mở tab mới, memoryToken có thể null nhưng HttpOnly cookie
+  // vẫn còn valid → server sẽ đọc cookie và trả 200. Chặn ở client sẽ phá hỏng
+  // chính flow cookie (bug 401 hàng loạt trên Vercel).
+  //
+  // Flow đúng:
+  //   1. Không có token → vẫn fire request với credentials: "include"
+  //   2. Server đọc cookie:
+  //      - Valid → 200 ✅
+  //      - Hết hạn → 401 → auto-refresh (block bên dưới) → retry
+  //      - Refresh fail → dispatch auth-expired → về /login
+  //   3. Nếu thực sự chưa login → 401 → refresh fail → auth-expired → về /login
 
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
