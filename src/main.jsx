@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import App from "./App.jsx";
 
+import "./index.css";           // 🔴 FIX #F-1: file này trước đây KHÔNG BAO GIỜ được load
 import "./styles.css";
 import "./styles-sky.css";
 import "./styles-employee.css";
@@ -86,21 +87,11 @@ class ErrorBoundary extends React.Component {
   }
   componentDidCatch(error, errorInfo) {
     console.error("Canteen App Error caught:", error, errorInfo);
-    try {
-      fetch("/api/telemetry/error", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: String(error?.message || error),
-          stack: String(error?.stack || "").slice(0, 2000),
-          component: errorInfo?.componentStack?.slice(0, 2000),
-          url: window.location.href,
-          ua: navigator.userAgent,
-          ts: Date.now(),
-        }),
-      }).catch(() => {});
-    } catch {}
+    // Telemetry tạm tắt — server chưa có endpoint POST /api/telemetry/error.
+    // Khi thêm route server, bật lại khối fetch dưới.
+    // if (import.meta.env.PROD) {
+    //   fetch("/api/telemetry/error", { ... })
+    // }
   }
   render() {
     if (this.state.hasError) {

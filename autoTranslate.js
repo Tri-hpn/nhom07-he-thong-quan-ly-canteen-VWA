@@ -1,12 +1,10 @@
 ﻿// ============================================================
 // AUTOTRANSLATE.JS — Dịch tự động (Google + MyMemory fallback)
-// V4 (2026-10):
-//   - 🔧 FIX CRITICAL: KHÔNG cache / KHÔNG trả source text khi
-//     dịch thất bại. Trước đây cache "source = translation" khiến
-//     lần sau coi như đã dịch → data bẩn vĩnh viễn.
-//   - 🔧 MyMemory: ép Number(responseStatus) để bắt rate limit
-//     dù API trả string "429" hay number 429.
-//   - 🔧 Nâng limit 500 → 2000 ký tự (description dài).
+// V5 (2026-11):
+//   ✅ cleanupEntities chạy TRƯỚC check equality (fix cache bẩn)
+//   ✅ Cache cap 20k entries, LRU eviction
+//   ✅ Flush cache khi SIGINT/SIGTERM
+//   ✅ Log engine đã dùng
 // ============================================================
 
 import fs from "node:fs";
@@ -22,6 +20,8 @@ let saveTimer = null;
 const MAX_CONCURRENT = 2;
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_TEXT_LEN = 2000;
+const MAX_CACHE_ENTRIES = 20_000;
+const EVICT_RATIO = 0.1; // xoá 10% cũ nhất khi overflow
 
 let running = 0;
 const waitQueue = [];
@@ -55,25 +55,46 @@ function loadCacheFromFile() {
   }
 }
 
+function saveCacheNow() {
+  try {
+    const obj = {};
+    for (const [k, v] of memoryCache.entries()) obj[k] = v;
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(obj, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("[translate] Cannot save cache:", e.message);
+  }
+}
+
 function scheduleSaveCache() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    try {
-      const obj = {};
-      for (const [k, v] of memoryCache.entries()) obj[k] = v;
-      fs.writeFileSync(CACHE_FILE, JSON.stringify(obj, null, 2), "utf-8");
-    } catch (e) {
-      console.warn("[translate] Cannot save cache:", e.message);
-    }
+    saveCacheNow();
     saveTimer = null;
   }, 3000);
 }
 
+// Cap LRU: khi vượt MAX_CACHE_ENTRIES → xoá ~10% cũ nhất
+function evictIfNeeded() {
+  if (memoryCache.size <= MAX_CACHE_ENTRIES) return;
+  const toEvict = Math.floor(MAX_CACHE_ENTRIES * EVICT_RATIO);
+  const keysIter = memoryCache.keys();
+  for (let i = 0; i < toEvict; i++) {
+    const { value: k } = keysIter.next();
+    if (k === undefined) break;
+    memoryCache.delete(k);
+  }
+  console.warn(`[translate] Cache overflow — evicted ${toEvict} oldest entries`);
+}
+
 loadCacheFromFile();
+
+// Flush cache khi thoát (dev Ctrl+C, prod SIGTERM từ Vercel)
+process.once("SIGINT", () => { if (saveTimer) { saveCacheNow(); saveTimer = null; } process.exit(0); });
+process.once("SIGTERM", () => { if (saveTimer) { saveCacheNow(); saveTimer = null; process.exit(0); } });
 
 function cacheKey(text, lang) { return text + "||" + lang; }
 
-// ---------- Google Translate ----------
+// ---------- Google Translate (unofficial free endpoint) ----------
 const GOOGLE_ENDPOINT = "https://translate.googleapis.com/translate_a/single";
 
 async function tryGoogle(text, targetLang) {
@@ -83,7 +104,10 @@ async function tryGoogle(text, targetLang) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (Canteen-VWA Translator)" },
+    });
     clearTimeout(timeoutId);
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
@@ -95,7 +119,7 @@ async function tryGoogle(text, targetLang) {
   }
 }
 
-// ---------- MyMemory ----------
+// ---------- MyMemory fallback ----------
 async function tryMyMemory(text, targetLang) {
   const url =
     "https://api.mymemory.translated.net/get?q=" +
@@ -109,12 +133,10 @@ async function tryMyMemory(text, targetLang) {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
 
-    // 🔧 FIX: responseStatus có thể là string "429" hoặc number 429
     const status = Number(data?.responseStatus);
     if (status === 429 || status === 403) throw new Error("MyMemory rate limit");
 
     const translated = data?.responseData?.translatedText || "";
-    // MyMemory đôi khi trả warning dưới dạng text — bỏ qua nếu có
     if (translated && /MYMEMORY WARNING/i.test(translated)) {
       throw new Error("MyMemory warning");
     }
@@ -150,31 +172,43 @@ export async function translateOne(text, targetLang) {
   await acquire();
   try {
     let translated = null;
-    let usedEngine = "google";
+    let engineUsed = "";
 
     try {
       translated = await tryGoogle(text, targetLang);
+      if (translated) engineUsed = "google";
     } catch (e) {
       console.warn("[translate] Google fail:", e.message, "→ MyMemory");
-      usedEngine = "mymemory";
     }
 
     if (!translated) {
       try {
         translated = await tryMyMemory(text, targetLang);
+        if (translated) engineUsed = "mymemory";
       } catch (e) {
         console.warn("[translate] MyMemory fail:", e.message);
       }
     }
 
-    // 🔧 FIX CRITICAL: KHÔNG cache failure — để lần sau retry
-    if (!translated || translated === text) {
+    // 🔧 FIX CRITICAL: cleanup TRƯỚC khi check equality
+    if (translated) {
+      translated = cleanupEntities(translated).trim();
+    }
+
+    // Nếu dịch thất bại hoặc kết quả trùng source → KHÔNG cache
+    if (!translated || translated === text || translated.trim() === text.trim()) {
       return text;
     }
 
-    translated = cleanupEntities(translated);
     memoryCache.set(key, translated);
+    evictIfNeeded();
     scheduleSaveCache();
+    if (engineUsed) {
+      // Silent log — chỉ log khi debug cần bật TRANSLATE_DEBUG=1
+      if (process.env.TRANSLATE_DEBUG === "1") {
+        console.log(`[translate] ✓ ${engineUsed} ${String(text).slice(0, 20)}... → ${targetLang}`);
+      }
+    }
     return translated;
   } catch (err) {
     const isTimeout = err.name === "AbortError" || err.type === "aborted";
@@ -195,9 +229,9 @@ export async function translateFields(obj, fields, targetLangs) {
   for (const lang of targetLangs) {
     for (const field of fields) {
       const text = plain[field];
-      if (!text || plain[field + "_" + lang]) continue;
+      const existing = plain[field + "_" + lang];
+      if (!text || (existing && String(existing).trim())) continue;
       tasks.push(translateOne(text, lang).then((translated) => {
-        // 🔧 Chỉ gán nếu dịch thực sự khác source (tránh "translation = source")
         if (translated && translated !== text) plain[field + "_" + lang] = translated;
       }));
     }

@@ -99,6 +99,7 @@ function getInitials(name) {
 export default function ChatBotWidget({ cart, setCart, user, hideLauncher = false, supportRequest = null, onSupportRequestHandled }) {
   const { t, tData } = useI18n();
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("ai"); 
   useEffect(() => {
     const openFromOrderHelp = (event) => {
       const detail = event?.detail;
@@ -118,7 +119,6 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       window.removeEventListener("canteen-open-chatbot", openFromOrderHelp);
     };
   }, []);
-  const [mode, setMode] = useState("ai");
 
   // AI messages
   const [aiMessages, setAiMessages] = useState([]);
@@ -829,7 +829,7 @@ function LeftSidebar({ user, t, onPromptClick }) {
           <div className="chatbot-profile__info">
             <b>{user?.name || t("Khách")}</b>
             <span>
-              {t("MSSV:")} {user?.studentId || "—"}
+              {t("MSSV:")} {user?.student_code || "—"}
             </span>
           </div>
           <span className="chatbot-profile__badge">SV</span>

@@ -9,7 +9,8 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "includeFiles": "api/**"
     }
   },
   "rewrites": [
@@ -18,7 +19,7 @@
       "destination": "/api/index.js"
     },
     {
-      "source": "/((?!api/|assets/|sw\\.js|workbox-.*\\.js|manifest\\.json).*)",
+      "source": "/((?!api/|assets/|sw\\.js|registerSW\\.js|workbox-.*\\.js|manifest\\.json|manifest\\.webmanifest|robots\\.txt|sitemap\\.xml|.well-known/|.*\\.(?:png|jpe?g|svg|ico|webp|gif|woff2?|ttf|eot|css|js|map|txt|xml|json)$).*)",
       "destination": "/index.html"
     }
   ],
@@ -27,7 +28,7 @@
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()" }
       ]

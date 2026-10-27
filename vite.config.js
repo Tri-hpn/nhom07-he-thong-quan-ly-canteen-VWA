@@ -12,57 +12,66 @@ const __dirname = path.dirname(__filename);
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const isProd = mode === "production";
+  const backendUrl = env.VITE_BACKEND_URL || "http://localhost:3000";
 
   return {
     plugins: [
       react(),
       i18nPlugin(),
+      // 🔧 FIX: Inject fallback cho %VITE_SITE_URL% để không bao giờ warning
+      {
+        name: "inject-site-url",
+        transformIndexHtml(html) {
+          const siteUrl = (env.VITE_SITE_URL || "http://localhost:5173").replace(/\/$/, "");
+          return html.replace(/%VITE_SITE_URL%/g, siteUrl);
+        },
+      },
       VitePWA({
         registerType: "autoUpdate",
         manifest: false,
         injectRegister: null,
-        devOptions: { enabled: true, type: "module" },
+        devOptions: {
+          enabled: false, // ⚠️ KHÔNG bật ở dev để tránh SW cache gây khó debug
+          type: "module",
+        },
         workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallback: "index.html",
           navigateFallbackAllowlist: [/^(?!\/api).*/],
+          navigateFallbackDenylist: [
+            /^\/api\//,
+            /^\/assets\//,
+            /\.(?:png|jpe?g|gif|svg|ico|webp|css|js|json|txt|xml|woff2?|ttf|eot|map)$/i,
+          ],
+          cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
           runtimeCaching: [
-            // ① KHÔNG CACHE auth + telemetry (tránh lộ session)
             {
               urlPattern: /^\/api\/(auth|telemetry)\//i,
               handler: "NetworkOnly",
             },
-            // ② Ảnh menu — cache mạnh
             {
               urlPattern: /^\/api\/uploads\/menu\/.*/i,
               handler: "CacheFirst",
               options: {
                 cacheName: "vwa-menu-images",
-                expiration: {
-                  maxEntries: 200,
-                  maxAgeSeconds: 30 * 24 * 60 * 60,
-                },
+                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ③ Menu/categories — StaleWhileRevalidate
             {
               urlPattern: /^\/api\/(menu|categories|toppings|sizes)/i,
               handler: "StaleWhileRevalidate",
               options: {
                 cacheName: "vwa-api-menu",
-                expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 24 * 60 * 60,
-                },
+                expiration: { maxEntries: 50, maxAgeSeconds: 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ④ Dynamic (KHÔNG còn auth)
             {
-              urlPattern:
-                /^\/api\/(orders|wallet|points|vouchers|chat|notifications)/i,
+              urlPattern: /^\/api\/(orders|wallet|points|vouchers|chat|notifications)/i,
               handler: "NetworkFirst",
               options: {
                 cacheName: "vwa-api-dynamic",
@@ -71,7 +80,6 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ⑤ Mọi API khác
             {
               urlPattern: /^\/api\/.*/i,
               handler: "NetworkFirst",
@@ -94,17 +102,17 @@ export default defineConfig(({ mode }) => {
         "@data": path.resolve(__dirname, "./src/data"),
       },
     },
-        server: {
+    server: {
       port: 5173,
       host: true,
       strictPort: true,
       open: false,
       proxy: {
         "/api": {
-          target: env.VITE_BACKEND_URL || "http://localhost:3000",
-          changeOrigin: true, // Bắt buộc phải là true
+          target: backendUrl,
+          changeOrigin: true,
           secure: false,
-          cookieDomainRewrite: "localhost", // 🔴 THÊM DÒNG NÀY ĐỂ FIX LỖI COOKIE
+          cookieDomainRewrite: "localhost",
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq, req) => {
               if (env.VITE_KEEP_ORIGIN_HOST !== "1") return;
@@ -127,12 +135,14 @@ export default defineConfig(({ mode }) => {
       sourcemap: !isProd,
       minify: "esbuild",
       target: "es2020",
-      chunkSizeWarningLimit: 1200,
+      chunkSizeWarningLimit: 900,
       rollupOptions: {
         output: {
           manualChunks: {
             "react-vendor": ["react", "react-dom", "react-router-dom"],
             "icon-vendor": ["lucide-react"],
+            "chart-vendor": ["recharts"],
+            "qr-vendor": ["@zxing/browser", "qrcode.react"],
           },
           chunkFileNames: "assets/[name]-[hash].js",
           entryFileNames: "assets/[name]-[hash].js",
@@ -140,11 +150,22 @@ export default defineConfig(({ mode }) => {
         },
       },
       esbuild: isProd
-        ? { drop: ["debugger"], pure: ["console.log", "console.debug", "console.trace"] }
+        ? {
+            drop: ["debugger"],
+            pure: ["console.log", "console.debug", "console.trace"],
+          }
         : {},
     },
     optimizeDeps: {
-      include: ["react", "react-dom", "react-router-dom", "lucide-react"],
+      include: [
+        "react",
+        "react-dom",
+        "react-router-dom",
+        "lucide-react",
+        "recharts",
+        "@zxing/browser",
+        "qrcode.react",
+      ],
     },
     css: { devSourcemap: true },
     define: {

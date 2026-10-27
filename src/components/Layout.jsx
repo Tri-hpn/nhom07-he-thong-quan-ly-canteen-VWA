@@ -81,6 +81,7 @@ const PAGE_HEADINGS = [
     subtitle: "Danh sách nhân viên",
   },
   {
+    path: "/owner/shifts",
     title: "Quản lý ca",
     subtitle: "Phân ca + theo dõi chấm công",
   },
@@ -320,7 +321,7 @@ useEffect(() => {
                     </div>
                   <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary, #172033)" }}>{user.name || "Quản trị viên"}</span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted, #64748b)" }}>{role === "ADMIN" ? "Quản trị viên" : "Nhân viên"}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted, #64748b)" }}>{t(role === "ADMIN" ? "Quản trị viên" : "Nhân viên")}</span>
                   </div>
                 </div>
               )}

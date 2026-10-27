@@ -182,9 +182,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    try {
-      await api.logout();
-    } catch {}
+    // 🔴 FIX #F-3: AuthContext.logout ĐÃ gọi api.logout() → KHÔNG gọi lại
     await logout();
     setCart({});
     try {

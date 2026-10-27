@@ -1,9 +1,17 @@
 // src/api.js
+// V3 (2026-11):
+//   ✅ Token dùng sessionStorage (Độc lập từng tab)
+//   ✅ Upload timeout 60s cho create/update có image
+//   ✅ Tách network retry và 503 retry counter
+// ============================================================
+
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 3;      
-const MAX_RETRY_NETWORK = 3;  
+const MAX_RETRY_503 = 3;
+const MAX_RETRY_NETWORK = 3;
+
+const TOKEN_STORAGE_KEY = "token";
 
 function isAuthFlowPath(path) {
   if (
@@ -20,8 +28,14 @@ function isAuthFlowPath(path) {
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
+// 🟢 Dùng sessionStorage để 2 tab độc lập
 let storageAvailable = (() => {
-  try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; }
+  try { 
+    const k = "__test__"; 
+    sessionStorage.setItem(k, "1"); 
+    sessionStorage.removeItem(k); 
+    return true; 
+  }
   catch { return false; }
 })();
 
@@ -29,7 +43,7 @@ export function getToken() {
   if (memoryToken) return memoryToken;
   if (storageAvailable) {
     try {
-      const t = sessionStorage.getItem("token");
+      const t = sessionStorage.getItem(TOKEN_STORAGE_KEY);
       if (t) { memoryToken = t; return t; }
     } catch { storageAvailable = false; }
   }
@@ -41,8 +55,8 @@ export function setToken(t) {
   if (t) isAuthExpiredDispatched = false;
   if (storageAvailable) {
     try {
-      if (t) sessionStorage.setItem("token", t);
-      else sessionStorage.removeItem("token");
+      if (t) sessionStorage.setItem(TOKEN_STORAGE_KEY, t);
+      else sessionStorage.removeItem(TOKEN_STORAGE_KEY);
     } catch {}
   }
   try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } })); } catch {}
@@ -65,7 +79,7 @@ function isNetworkError(e) {
   return false;
 }
 
-async function req(path, options = {}, _retryCount = 0) {
+async function req(path, options = {}, retryState = { network: 0, http503: 0 }) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -91,9 +105,9 @@ async function req(path, options = {}, _retryCount = 0) {
       const err = new Error("Yêu cầu quá thời gian. Vui lòng kiểm tra mạng và thử lại.");
       err.status = 0; throw err;
     }
-    if (_retryCount < MAX_RETRY_NETWORK && isNetworkError(e)) {
-      await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
-      return req(path, options, _retryCount + 1);
+    if (retryState.network < MAX_RETRY_NETWORK && isNetworkError(e)) {
+      await new Promise((r) => setTimeout(r, 1500 * (retryState.network + 1)));
+      return req(path, options, { ...retryState, network: retryState.network + 1 });
     }
     const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown"));
     err.status = 0;
@@ -102,11 +116,11 @@ async function req(path, options = {}, _retryCount = 0) {
     clearTimeout(timeoutId);
   }
 
-  // Tự động thử lại khi Vercel báo 503 (Server đang khởi động hoặc quá tải)
-  if (res.status === 503 && _retryCount < MAX_RETRY_503) {
-    console.warn(`[API 503] Retrying ${path} (${_retryCount + 1}/${MAX_RETRY_503})...`);
-    await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
-    return req(path, options, _retryCount + 1);
+  // 503 retry có counter riêng
+  if (res.status === 503 && retryState.http503 < MAX_RETRY_503) {
+    console.warn(`[API 503] Retrying ${path} (${retryState.http503 + 1}/${MAX_RETRY_503})...`);
+    await new Promise((r) => setTimeout(r, 2000 + retryState.http503 * 1000));
+    return req(path, options, { ...retryState, http503: retryState.http503 + 1 });
   }
 
   if (res.status === 401 && token && !isAuthFlowPath(path)) {
@@ -152,7 +166,11 @@ export const api = {
       .then((r) => { if (r.token) setToken(r.token); return r; }),
   logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => clearToken()),
   me: () => req("/auth/me"),
-  updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
+  updateProfile: (data) => req("/auth/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+  }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {
     callback: (provider, code, redirectUri) =>
@@ -184,15 +202,23 @@ export const api = {
       return req("/menu?" + p.toString());
     },
     get: (id) => req(`/menu/${id}`),
-    create: (data) => req("/menu", { method: "POST", body: JSON.stringify(data) }),
-    update: (id, data) => req(`/menu/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    create: (data) => req("/menu", {
+      method: "POST",
+      body: JSON.stringify(data),
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
+    update: (id, data) => req(`/menu/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
     remove: (id) => req(`/menu/${id}`, { method: "DELETE" }),
   },
   priceHistory: { list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")) },
 
   // ── Orders ─────────────────────────────────────────────────
   orders: {
-    create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
+    create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data), timeoutMs: 40000 }),
     myOrders: () => req("/orders/me"),
     all: (status = "Tất cả") => {
       const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : "";
@@ -215,7 +241,11 @@ export const api = {
     list: (role) => req(`/users${role ? `?role=${role}` : ""}`),
     listByRole: (role) => req(`/users?role=${encodeURIComponent(role)}`),
     create: (data) => req("/users", { method: "POST", body: JSON.stringify(data) }),
-    update: (id, data) => req(`/users/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    update: (id, data) => req(`/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+    }),
     remove: (id) => req(`/users/${id}`, { method: "DELETE" }),
     resetPassword: (id) => req(`/users/${id}/reset-password`, { method: "POST" }),
     setPoints: (id, data) => req(`/users/${id}/points`, { method: "PUT", body: JSON.stringify(data) }),
@@ -287,14 +317,17 @@ export const api = {
     complete: (id) => req(`/tasks/${id}/complete`, { method: "PATCH" }),
   },
 
-  // ── Wallet ─────────────────────────────────────────────────
+  // ── Student Card ───────────────────────────────────────────
   studentCard: {
-  me: () => req("/student-card/me"),
-  setLocked: (data) => req("/student-card/lock", {
-    method: "POST",
-    body: JSON.stringify(data),
-  }),
-},wallet: {
+    me: () => req("/student-card/me"),
+    setLocked: (data) => req("/student-card/lock", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  },
+
+  // ── Wallet ─────────────────────────────────────────────────
+  wallet: {
     me: () => req("/wallet/me"),
     transactions: () => req("/wallet/transactions"),
     deposit: (data) => req("/wallet/deposit", { method: "POST", body: JSON.stringify(data) }),
@@ -383,9 +416,9 @@ export const api = {
   },
 
   // ── Taxonomy ───────────────────────────────────────────────
-  toppings: { 
+  toppings: {
     list: (category) => req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`),
-    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
+    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }),
   },
   sizes: { list: () => req("/sizes") },
   categories: {
@@ -418,9 +451,9 @@ export const api = {
   },
   timeSlots: {
     list: () => req("/time-slots"),
-    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
+    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
     update: (id, data) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }), // 🔧 BỔ SUNG
+    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },

@@ -9,11 +9,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Utensils, ShoppingBag, Users, UserCog, Warehouse,
-  BarChart3, LogOut, ClipboardList, Bell, UserRound, CreditCard,
-  MessageCircle, CalendarCheck, Database, TrendingUp, Shield, Wallet,
-  Ticket, Sun, ChefHat, Megaphone, Package, Receipt, CheckSquare,
-  ShieldCheck, Kanban, History, BellRing, ReceiptText, UtensilsCrossed,
-  LayoutGrid, BadgeCheck, Activity, Settings,
+  BarChart3, ClipboardList, Bell, CreditCard, MessageCircle,
+  CalendarCheck, Database, TrendingUp, Shield, Wallet, Ticket,
+  ChefHat, Kanban, History, BellRing, UtensilsCrossed, UserRound,
 } from "lucide-react";
 import { api } from "../api";
 import { useI18n } from "../hooks/useI18n";

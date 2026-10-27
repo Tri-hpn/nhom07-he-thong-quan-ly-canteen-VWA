@@ -1,11 +1,13 @@
-﻿
-/* ==========================================
-   FIX LỖI BẢNG BỊ RỚT DÒNG TRÊN TRANG KHÁCH HÀNG
+﻿/* ==========================================
+   INDEX.CSS — Global utility styles
+   ⚠️ File này giờ đã được import trong main.jsx (trước đây orphan)
    ========================================== */
-.customer-table th, 
+
+/* Fix bảng bị rớt dòng trên trang khách hàng */
+.customer-table th,
 .customer-table td {
-  white-space: nowrap !important; /* Cấm rớt dòng */
-  padding: 12px 16px !important;  /* Thêm khoảng trống cho chữ thở */
+  white-space: nowrap !important;
+  padding: 12px 16px !important;
   vertical-align: middle !important;
 }
 

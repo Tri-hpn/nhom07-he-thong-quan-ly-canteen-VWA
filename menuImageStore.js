@@ -51,14 +51,33 @@ export function classifyImageValue(value) {
   return { kind: "external", value: raw };
 }
 
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB decoded
+
 export function decodeDataUrl(dataUrl) {
   const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(String(dataUrl || ""));
   if (!m) return null;
   try {
+    // Ước lượng size TRƯỚC khi decode (tránh OOM)
+    const payloadLen = m[3].length;
+    const approxBytes = m[2]
+      ? Math.floor((payloadLen * 3) / 4)
+      : payloadLen;
+
+    if (approxBytes > MAX_IMAGE_BYTES) {
+      console.warn(
+        `[menuImageStore] ảnh quá lớn (${(approxBytes / 1048576).toFixed(1)}MB > ${MAX_IMAGE_BYTES / 1048576}MB), bỏ qua`
+      );
+      return null;
+    }
+
     const buffer = m[2]
       ? Buffer.from(m[3], "base64")
       : Buffer.from(decodeURIComponent(m[3]), "binary");
     if (!buffer.length) return null;
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      console.warn(`[menuImageStore] buffer sau decode vượt giới hạn, bỏ qua`);
+      return null;
+    }
     return { contentType: m[1] || "image/jpeg", buffer };
   } catch {
     return null;
@@ -151,13 +170,32 @@ function redirectSet(key, url) {
 export async function getMenuImage(id) {
   const key = String(id ?? "");
   if (!key) return null;
-  if (!mongoose.connection?.db) return null;
 
+  // Ưu tiên redirect cache — vẫn trả được kể cả khi DB tạm mất
   const cachedUrl = redirectGet(key);
   if (cachedUrl) return { redirectTo: cachedUrl };
 
+  // Ưu tiên buffer cache — fallback khi DB disconnect
+  const cachedEntries = [...imageCache.keys()].filter(
+    (k) => k === key || k.startsWith(`${key}:`)
+  );
+  if (!mongoose.connection?.db) {
+    for (const ck of cachedEntries) {
+      const entry = imageCache.get(ck);
+      if (entry) return entry;
+    }
+    return null;
+  }
+
   const doc = await MenuImageModel.findById(key).lean();
-  if (!doc) return null;
+  if (!doc) {
+    // DB connected nhưng không có doc → thử cache (item có thể đã bị xoá khỏi DB nhưng còn cache)
+    for (const ck of cachedEntries) {
+      const entry = imageCache.get(ck);
+      if (entry) return entry;
+    }
+    return null;
+  }
 
   if (!isInlineImage(doc.image)) {
     const url = typeof doc.image === "string" ? doc.image.trim() : "";
@@ -186,8 +224,18 @@ export async function getMenuImage(id) {
 
 export async function putMenuImage(id, dataUrl) {
   const key = String(id ?? "");
+  if (!key) {
+    console.warn("[menuImageStore.putMenuImage] thiếu id");
+    return null;
+  }
   const decoded = decodeDataUrl(dataUrl);
-  if (!key || !decoded) return null;
+  if (!decoded) {
+    console.warn(
+      `[menuImageStore.putMenuImage] decode fail cho id=${key} (size quá lớn hoặc format sai)`
+    );
+    // KHÔNG xoá ảnh cũ — để admin biết upload thất bại
+    return null;
+  }
 
   const rev = Date.now();
   await MenuImageModel.updateOne(
@@ -253,14 +301,22 @@ export async function applyMenuImageToItem(item, incomingImage, { persist = true
           folder: "canteen-vwa/menu",
           publicId: `item_${item.id}`,
         });
-        // Xoá ảnh Cloudinary cũ nếu có (khác URL mới)
+        // Chỉ xoá ảnh Cloudinary cũ SAU KHI upload mới thành công
         if (item.image && isCloudinaryUrl(item.image) && item.image !== uploaded.url) {
-          await deleteCloudinaryImage(item.image).catch(() => {});
+          await deleteCloudinaryImage(item.image).catch((delErr) => {
+            console.warn(
+              `[applyMenuImageToItem] Không xoá được Cloudinary cũ (${item.image}): ${delErr.message} — orphan`
+            );
+          });
         }
         item.image = uploaded.url;
         return item.image;
       } catch (e) {
-        console.warn("[applyMenuImageToItem] Cloudinary fail, fallback menu_images:", e.message);
+        console.warn(
+          `[applyMenuImageToItem] Cloudinary fail (${e.message}) — fallback lưu menu_images collection (dev/local)`
+        );
+        // Nếu item.image là Cloudinary URL CŨ → giữ nguyên, KHÔNG xoá
+        // → admin có thể tự cleanup sau nếu muốn
       }
     }
 

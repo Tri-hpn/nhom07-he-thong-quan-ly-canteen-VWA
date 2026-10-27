@@ -27,12 +27,15 @@ export function AuthProvider({ children }) {
       return me;
     } catch (e) {
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
-      
-      // 🔧 FIX: CHỈ xóa token khi lỗi 401 (Hết phiên thật sự).
-      // Nếu lỗi 403 (sai quyền) hay 500 (server lỗi) thì giữ nguyên token, không đá văng user.
-      if (e.status === 401) { 
-        setUserState(null); 
-        clearToken(); 
+
+      // 🟠 FIX #F-7: CHỈ xóa token khi 401 (hết phiên thật). Giữ 403/500 để không đá user oan.
+      if (e.status === 401) {
+        setUserState(null);
+        clearToken();
+        // Dispatch để App.jsx hiển thị toast "Phiên hết hạn" — CHỈ khi
+        // trước đó đã có user (đây không phải lần load đầu chưa login).
+        // App.jsx tự dedup bằng lastAuthExpiredRef (2s).
+        try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
       }
       return null;
     }

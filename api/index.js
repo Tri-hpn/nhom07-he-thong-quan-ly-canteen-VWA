@@ -14,15 +14,15 @@ if (typeof app !== "function") {
 }
 
 // ─────────────────────────────────────────────────────────────
-// COLD-START WARM-UP: log cảnh báo nếu thiếu env quan trọng.
+// ENV CHECK
 // ─────────────────────────────────────────────────────────────
-const REQUIRED_ENV = ["MONGO_URI", "JWT_SECRET"];
+const REQUIRED_ENV = ["MONGO_URI", "JWT_SECRET", "COOKIE_SECRET"];
 const RECOMMENDED_ENV = [
   "NODE_ENV",
-  "COOKIE_SECRET",
   "CORS_ORIGIN",
   "CLOUDINARY_URL",
   "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
 ];
 
 const missingRequired = REQUIRED_ENV.filter((k) => !process.env[k]);
@@ -37,13 +37,12 @@ const missingRecommended = RECOMMENDED_ENV.filter((k) => !process.env[k]);
 if (missingRecommended.length && process.env.NODE_ENV === "production") {
   console.warn(
     `[api/index.js] ⚠️  Thiếu env khuyến nghị: ${missingRecommended.join(", ")} ` +
-      `— một số tính năng (secure cookie, rate-limit Redis, upload Cloudinary) ` +
-      `sẽ không chạy được chính xác.`
+      `— một số tính năng (rate-limit Redis, upload Cloudinary) sẽ không chạy đúng.`
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// BUILD INFO (giúp trace deploy nào đang chạy trên Vercel)
+// BUILD INFO
 // ─────────────────────────────────────────────────────────────
 console.log(
   `[api/index.js] 🚀 Boot | NODE_ENV=${process.env.NODE_ENV || "dev"} ` +
@@ -51,7 +50,8 @@ console.log(
     `| VERCEL_ENV=${process.env.VERCEL_ENV || "-"} ` +
     `| VERCEL_GIT_COMMIT_SHA=${
       process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "-"
-    }`
+    } ` +
+    `| NODE=${process.version}`
 );
 
 // ⚠️ KHÔNG gọi app.listen() ở đây — Vercel tự quản lý socket.

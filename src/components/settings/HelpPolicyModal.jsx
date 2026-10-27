@@ -1,4 +1,4 @@
-﻿import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, ShieldCheck, CircleHelp } from "lucide-react";
 
@@ -121,6 +121,9 @@ const faqs = [
 ];
 
 export default function HelpPolicyModal({ onClose }) {
+  // 🔴 BẮT BUỘC: useRef phải nằm BÊN TRONG function component
+  const mouseDownTargetRef = useRef(null);
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -137,9 +140,16 @@ export default function HelpPolicyModal({ onClose }) {
   }, [onClose]);
 
   return createPortal(
-    <div className="vwa-help-overlay" onMouseDown={(e) => {
-      if (e.target === e.currentTarget) onClose();
-    }}>
+    <div
+      className="vwa-help-overlay"
+      onMouseDown={(e) => { mouseDownTargetRef.current = e.target; }}
+      onMouseUp={(e) => {
+        if (e.target === e.currentTarget && mouseDownTargetRef.current === e.currentTarget) {
+          onClose();
+        }
+        mouseDownTargetRef.current = null;
+      }}
+    >
       <section
         className="vwa-help-modal"
         role="dialog"
@@ -166,6 +176,21 @@ export default function HelpPolicyModal({ onClose }) {
         </header>
 
         <div className="vwa-help-content">
+          <div
+            style={{
+              padding: "10px 14px",
+              marginBottom: 16,
+              background: "#fef3c7",
+              border: "1px solid #fcd34d",
+              borderRadius: 10,
+              fontSize: 12,
+              color: "#92400e",
+              lineHeight: 1.5,
+            }}
+          >
+            ⚠️ Quy chế này được ban hành bằng tiếng Việt. Bản dịch (nếu có) chỉ
+            mang tính tham khảo.
+          </div>
           <div className="vwa-help-intro">
             <p className="vwa-help-main-title">
               TRỢ GIÚP &amp; QUY CHẾ SỬ DỤNG DỊCH VỤ CANTEEN VWA

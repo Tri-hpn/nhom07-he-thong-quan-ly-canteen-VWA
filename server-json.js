@@ -190,15 +190,12 @@ function getVNTime(d = new Date()) {
 }
 
 function generateOrderCode(db) {
-  let code;
-  let attempts = 0;
-  do {
+  for (let attempt = 0; attempt < 10; attempt++) {
     const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-    code = "VWA-" + Date.now().toString().slice(-8) + "-" + rand;
-    attempts++;
-  } while ((db.orders || []).some((o) => o.code === code) && attempts < 10);
-  if (attempts >= 10) throw new Error("Không thể tạo mã đơn hàng unique — vui lòng thử lại");
-  return code;
+    const code = "VWA-" + Date.now().toString().slice(-8) + "-" + rand;
+    if (!(db.orders || []).some((o) => o.code === code)) return code;
+  }
+  throw new Error("Không thể tạo mã đơn hàng unique — vui lòng thử lại");
 }
 
 const TEMP_PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -454,7 +451,7 @@ function buildSeedData() {
     student_cards: [],
     points_config: { ...JSON.parse(JSON.stringify(DEFAULT_POINTS_CONFIG)), updated_at: new Date().toISOString() },
     chat_conversations: {},
-    settings: { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "", chat_enabled_global: true },
+    settings: { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "", chat_enabled_global: true, openHours: "6:30 — 18:30 hàng ngày" },
   };
 }
 
@@ -542,22 +539,41 @@ async function initMongo() {
       };
 
       for (const key of Object.keys(seed)) {
-        const hasColl = collNames.includes(key);
-        let docs = [];
-        if (hasColl) docs = await db.collection(key).find({}).toArray();
+        try {
+          const hasColl = collNames.includes(key);
+          let docs = [];
+          if (hasColl) docs = await db.collection(key).find({}).toArray();
 
-        if (OBJECT_KEYS.includes(key)) {
-          if (docs.length > 0) cache[key] = stripId(docs[0]);
-          else {
-            cache[key] = seed[key];
-            await db.collection(key).insertOne(seed[key]);
+          if (OBJECT_KEYS.includes(key)) {
+            if (docs.length > 0) cache[key] = stripId(docs[0]);
+            else {
+              const seedObj = seed[key];
+              if (seedObj && typeof seedObj === "object" && !Array.isArray(seedObj)) {
+                cache[key] = seedObj;
+                await db.collection(key).insertOne(seedObj);
+              } else {
+                console.warn(`[initMongo] ${key}: seed không phải object, bỏ qua`);
+                cache[key] = {};
+              }
+            }
+          } else {
+            if (docs.length > 0) cache[key] = docs.map(stripId);
+            else {
+              const seedArr = seed[key];
+              if (!Array.isArray(seedArr)) {
+                console.warn(`[initMongo] ${key}: seed KHÔNG phải array (${typeof seedArr}), bỏ qua insertMany`);
+                cache[key] = [];
+              } else {
+                cache[key] = seedArr;
+                if (seedArr.length > 0) {
+                  await db.collection(key).insertMany(seedArr);
+                }
+              }
+            }
           }
-        } else {
-          if (docs.length > 0) cache[key] = docs.map(stripId);
-          else {
-            cache[key] = seed[key];
-            if (seed[key].length > 0) await db.collection(key).insertMany(seed[key]);
-          }
+        } catch (e) {
+          console.error(`[initMongo] Lỗi khi xử lý key="${key}":`, e.message);
+          throw e;  // re-throw để biết key nào fail trong log chính
         }
       }
 
@@ -687,8 +703,14 @@ async function _writeCollection(db, key, value) {
         await coll.bulkWrite(ops, { ordered: false });
       } catch (e) {
         const writeErrors = e.result?.getWriteErrors?.() || e.writeErrors || [];
-        if (writeErrors.length > 0) throw e;
-        console.warn(`bulkWrite ${key}: ${writeErrors.length}/${ops.length} ops failed`);
+        // Chỉ NUỐT lỗi duplicate-key (11000). Mọi lỗi khác PHẢI throw để không desync.
+        const onlyDupKey = writeErrors.length > 0 && writeErrors.every((we) => we.code === 11000);
+        if (onlyDupKey) {
+          console.warn(`bulkWrite ${key}: ignored ${writeErrors.length}/${ops.length} duplicate-key errors`);
+        } else {
+          console.error(`bulkWrite ${key}: FATAL`, e.message, writeErrors);
+          throw e;
+        }
       }
     }
 
@@ -944,16 +966,29 @@ function rollbackCancelledOrder(db, order) {
 const app = express();
 app.set("trust proxy", 1);
 
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://canteenvwa.vercel.app",
+];
+if (process.env.CORS_ORIGIN) {
+  process.env.CORS_ORIGIN
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .forEach((o) => ALLOWED_ORIGINS.push(o));
+}
+// Preview deploy: chỉ match project này, không match toàn bộ *.vercel.app
+const PREVIEW_RE = /^https:\/\/canteenvwa(?:-[a-z0-9-]+)?\.vercel\.app$/;
+
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://canteenvwa.vercel.app",
-    /\.vercel\.app$/,
-    /\.onrender\.com$/,
-  ],
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // same-origin / Postman
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (PREVIEW_RE.test(origin)) return cb(null, true);
+    return cb(null, false);
+  },
   credentials: true,
-  exposedHeaders: ["set-cookie"],
 }));
 
 app.use(express.json({ limit: "25mb" }));
@@ -1454,10 +1489,35 @@ async function microsoftCallbackHandler(req, res) {
       await saveDB(db); // ✅ FIX
     } else {
       const id = nextId(db.users);
-      // ... (code khởi tạo user)
-      db.wallets.push({ user_id: id, balance: 0, bank_name: "", bank_account: "", bank_account_name: "", linked_at: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      user = {
+        id,
+        email: emailNorm,
+        password: "",
+        name: profile.displayName || emailNorm.split("@")[0],
+        phone: "",
+        role: classify.role || "CUSTOMER",
+        status: "Hoạt động",
+        points: 0,
+        provider: "microsoft",
+        avatar: "",
+        student_code: classify.code_type === "STUDENT" && classify.code ? classify.code : "",
+        teacher_code: classify.code_type === "TEACHER" && classify.code ? classify.code : "",
+        created_at: new Date().toISOString(),
+      };
+      db.users.push(user);
+      if (!db.wallets) db.wallets = [];
+      db.wallets.push({
+        user_id: id,
+        balance: 0,
+        bank_name: "",
+        bank_account: "",
+        bank_account_name: "",
+        linked_at: "",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
       autoFilled = autoFillFromCode(db, user);
-      await saveDB(db); // ✅ FIX
+      await saveDBOrThrow(db);
       isNewUser = true;
     }
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
@@ -1533,9 +1593,24 @@ app.get("/api/menu", (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// 🔴 FIX #F-4: Client có api.menu.get(id) nhưng server thiếu route
+app.get("/api/menu/:id", (req, res) => {
+  try {
+    const db = loadDB();
+    const item = findByIdOrMongo(db.menu_items, req.params.id);
+    if (!item) return res.status(404).json({ message: "Không tìm thấy món" });
+    res.json(item);
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 app.post("/api/menu", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
+    if (req.user.role === "EMPLOYEE") {
+      const emp = findByIdOrMongo(db.users, req.user.id);
+      const allPerms = new Set([...(ROLE_PERMISSIONS.EMPLOYEE || []), ...(emp?.permissions || [])]);
+      if (!allPerms.has("menu.create")) return res.status(403).json({ message: "Bạn không có quyền thêm món" });
+    }
     const body = { ...req.body };
     if (!body.name || !body.name.trim()) return res.status(400).json({ message: "Tên món không được để trống" });
     if (body.price !== undefined && (isNaN(Number(body.price)) || Number(body.price) < 0)) return res.status(400).json({ message: "Giá không được âm" });
@@ -1620,6 +1695,11 @@ app.get("/api/price-history", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
 app.delete("/api/menu/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
     const db = loadDB();
+    if (req.user.role === "EMPLOYEE") {
+      const emp = findByIdOrMongo(db.users, req.user.id);
+      const allPerms = new Set([...(ROLE_PERMISSIONS.EMPLOYEE || []), ...(emp?.permissions || [])]);
+      if (!allPerms.has("menu.delete")) return res.status(403).json({ message: "Bạn không có quyền xoá món" });
+    }
     const target = findByIdOrMongo(db.menu_items, req.params.id);
     if (!target) return res.status(404).json({ message: "Không tìm thấy món" });
     db.menu_items = db.menu_items.filter((m) => m !== target);
@@ -1874,9 +1954,11 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), async (req, res) => {
 // ============================================================
 app.post("/api/orders", auth(), async (req, res) => {
   const db = loadDB();
-  let retries = 3;
-  
-  while (retries > 0) {
+  const MAX_ATTEMPTS = 3;
+  let attempt = 0;
+
+  while (attempt < MAX_ATTEMPTS) {
+    attempt++;
     try {
       const {
         items,
@@ -2093,7 +2175,7 @@ const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
       }
 
       // ─── 10. Transaction trên Mongo ───────────────────────
-      const useTransaction = mongoReady && supportsTransactions();
+      const useTransaction = mongoReady && (await supportsTransactions());
       if (useTransaction) {
         try {
           await withTransaction(async (session) => {
@@ -2230,17 +2312,12 @@ const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
       return res.status(201).json({ ...orderCreated, _id: orderCreated.id });
 
     } catch (e) {
-      // 🔧 BẮT LỖI VÀ RETRY NẾU DB CHƯA SẴN SÀNG
-      if (e.message === "MONGODB_NOT_READY" || e.message.includes("buffering timed out")) {
-        console.warn(`[POST /api/orders] DB chưa sẵn sàng. Thử lại lần ${4 - retries}/3...`);
-        retries--;
-        if (retries > 0) {
-          await new Promise((r) => setTimeout(r, 1500)); // Chờ 1.5s để Mongo khởi động
-          continue; // Chạy lại vòng lặp
-        }
+      const isRetryable = e.message === "MONGODB_NOT_READY" || e.message.includes("buffering timed out");
+      if (isRetryable && attempt < MAX_ATTEMPTS) {
+        console.warn(`[POST /api/orders] DB chưa sẵn sàng (attempt ${attempt}/${MAX_ATTEMPTS}). Retry sau 1.5s...`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
       }
-      
-      // Nếu là lỗi khác (hoặc hết lượt retry)
       console.error("[POST /api/orders] unexpected:", e);
       return res.status(500).json({ message: e.message || "Không thể tạo đơn hàng." });
     }
@@ -4024,7 +4101,7 @@ app.post("/api/shifts/register", auth(["EMPLOYEE", "ADMIN"]), async (req, res) =
     dates.forEach((date) => {
       shifts.forEach((shift) => {
         if (db.shifts.find((s) => s.employee_id === req.user.id && s.date === date && s.shift === shift)) skipped++;
-        else { db.shifts.push({ id: nextId(db.shifts) + created, employee_id: req.user.id, employee_name: emp.name, date, shift, note: note || "", status: "pending", source: "employee", created_by: emp.name, created_at: new Date().toISOString() }); created++; }
+        else { db.shifts.push({ id: nextId(db.shifts), employee_id: req.user.id, employee_name: emp.name, date, shift, note: note || "", status: "pending", source: "employee", created_by: emp.name, created_at: new Date().toISOString() }); created++; }
       });
     });
     await saveDBOrThrow(db); res.status(201).json({ created, skipped });
@@ -4046,7 +4123,7 @@ app.post("/api/shifts/bulk", auth(["ADMIN"]), async (req, res) => {
     dates.forEach((date) => {
       shifts.forEach((shift) => {
         if (db.shifts.find((s) => s.employee_id == employee_id && s.date === date && s.shift === shift)) skipped++;
-        else { db.shifts.push({ id: nextId(db.shifts) + created, employee_id: +employee_id, employee_name: emp.name, date, shift, note: note || "", status: "approved", source: "admin", created_by: req.user.name, created_at: new Date().toISOString() }); created++; }
+        else { db.shifts.push({ id: nextId(db.shifts), employee_id: +employee_id, employee_name: emp.name, date, shift, note: note || "", status: "approved", source: "admin", created_by: req.user.name, created_at: new Date().toISOString() }); created++; }
       });
     });
     await saveDBOrThrow(db); res.status(201).json({ created, skipped });
@@ -4135,7 +4212,7 @@ app.delete("/api/tasks/:id", auth(["ADMIN"]), async (req, res) => {
   res.json({ ok: true });
 });
 
-app.patch("/api/tasks/:id/complete", auth(), async (req, res) => {
+app.patch("/api/tasks/:id/complete", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   const db = loadDB();
   const t = findByIdOrMongo(db.tasks, req.params.id);
   if (!t) return res.status(404).json({ message: "Không tìm thấy task" });
@@ -4205,8 +4282,20 @@ app.put("/api/permissions/:userId", auth(["ADMIN"]), async (req, res) => {
 // ============================================================
 app.get("/api/settings", auth(), (req, res) => {
   const db = loadDB(); ensureChatSchema(db);
-  const empty = { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" };
-  res.json({ ...empty, ...(db.settings || {}) });
+  const PUBLIC_FIELDS = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "openHours", "open_hours"];
+  const out = { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" };
+  for (const k of PUBLIC_FIELDS) {
+    if (db.settings?.[k] !== undefined) out[k] = db.settings[k];
+  }
+  // Chỉ ADMIN nhận thêm cấu hình nội bộ
+  if (req.user.role === "ADMIN") {
+    out.timeSlots = db.settings?.timeSlots;
+    out.rules_history = db.settings?.rules_history;
+    out.chat_enabled_global = db.settings?.chat_enabled_global;
+    out.majorsMap = db.settings?.majorsMap;
+    out.expenses = db.settings?.expenses;
+  }
+  res.json(out);
 });
 
 app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
@@ -4337,8 +4426,14 @@ app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
 
 app.post("/api/backup/reset", auth(["ADMIN"]), async (req, res) => {
   try {
-    const { confirm } = req.body; const RESET_TOKEN = process.env.RESET_CONFIRM_TOKEN || "RESET";
-    if (confirm !== RESET_TOKEN) return res.status(400).json({ message: `Cần xác nhận '${RESET_TOKEN}'` });
+    const RESET_TOKEN = process.env.RESET_CONFIRM_TOKEN;
+    if (!RESET_TOKEN) {
+      return res.status(503).json({
+        message: "RESET_CONFIRM_TOKEN chưa cấu hình — từ chối thao tác reset vì lý do an toàn.",
+      });
+    }
+    const { confirm } = req.body;
+    if (confirm !== RESET_TOKEN) return res.status(400).json({ message: "Mã xác nhận không đúng." });
     const db = loadDB();
     db.orders = []; db.wallets = []; db.wallet_transactions = []; db.notifications = []; db.messages = []; db.attendances = []; db.shifts = []; db.imports = []; db.price_history = []; db.reviews = []; db.points_history = []; db.chat_transfer_requests = []; db.chat_conversations = {};
     (db.users || []).forEach((u) => { u.points = 0; });

@@ -6,11 +6,9 @@
     <meta name="theme-color" content="#2634d5" />
     <meta name="description" content="Hệ thống đặt món và quản lý Canteen VWA" />
 
-    <!-- Favicon: SVG cho browser hiện đại -->
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <!-- ✅ apple-touch-icon cần PNG (iOS không hỗ trợ SVG) -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <!-- ✅ manifest.json là file TĨNH trong public/ — PWA plugin KHÔNG generate manifest (vite.config: manifest: false) -->
     <link rel="manifest" href="/manifest.json" />
 
     <!-- PWA meta -->
@@ -19,23 +17,31 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Canteen VWA" />
 
-    <!-- Open Graph (Facebook/Zalo share) -->
-    <meta property="og:title" content="Canteen VWA" />
-    <meta property="og:description" content="Đặt món nhanh — Quản lý gọn" />
+    <!-- Preconnect (tăng tốc tải ngoài) -->
+    <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
+    <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+
+    <!-- Open Graph (Facebook/Zalo share) — PHẢI URL TUYỆT ĐỐI -->
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:site_name" content="Canteen VWA" />
+    <meta property="og:locale" content="vi_VN" />
+    <meta property="og:title" content="Canteen VWA — Đặt món nhanh, quản lý gọn" />
+    <meta property="og:description" content="Hệ thống đặt món và quản lý Canteen VWA" />
+    <meta property="og:url" content="%VITE_SITE_URL%/" />
+    <meta property="og:image" content="%VITE_SITE_URL%/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Canteen VWA" />
 
     <!-- Twitter card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Canteen VWA" />
     <meta name="twitter:description" content="Đặt món nhanh — Quản lý gọn" />
-    <meta name="twitter:image" content="/og-image.png" />
+    <meta name="twitter:image" content="%VITE_SITE_URL%/og-image.png" />
 
     <title>Canteen VWA — Quản lý Canteen</title>
 
-    <!-- Anti-FOUC theme script: chạy TRƯỚC khi CSS parse -->
+    <!-- Anti-FOUC theme script (chạy TRƯỚC khi CSS parse) -->
     <script>
       (function () {
         try {
@@ -57,7 +63,6 @@
   <body>
     <div id="root"></div>
     <noscript>Vui lòng bật JavaScript để sử dụng Canteen VWA.</noscript>
-    <!-- Vite sẽ thay entry này bằng asset có hash khi build production -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
