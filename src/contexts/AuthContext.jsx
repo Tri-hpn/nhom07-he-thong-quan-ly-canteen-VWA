@@ -1,14 +1,16 @@
 // src/contexts/AuthContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { api, clearToken, getToken } from "../api";
+import { api, clearToken } from "../api";
 
 const AuthContext = createContext(null);
+const AUTH_CHANNEL = "vwa-auth";
 
 export function AuthProvider({ children }) {
   const [user, setUserState] = useState(null);
   const [loading, setLoading] = useState(true);
   const meReqIdRef = useRef(0);
   const mountedRef = useRef(true);
+  const channelRef = useRef(null);
 
   const mustChangePassword = useMemo(() => !!user?.must_change_password, [user]);
 
@@ -16,10 +18,9 @@ export function AuthProvider({ children }) {
     setUserState((prev) => (typeof updater === "function" ? updater(prev) : updater));
   }, []);
 
+  // Restore session từ cookie/Bearer — api.js tự refresh khi cần
   const restoreSession = useCallback(async () => {
     const myReqId = ++meReqIdRef.current;
-    const token = getToken();
-    if (!token) { setUserState(null); return null; }
     try {
       const me = await api.me();
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
@@ -27,12 +28,9 @@ export function AuthProvider({ children }) {
       return me;
     } catch (e) {
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
-      
-      // 🔧 FIX: CHỈ xóa token khi lỗi 401 (Hết phiên thật sự).
-      // Bỏ qua lỗi 403, 500, 503...
-      if (e.status === 401) { 
-        setUserState(null); 
-        clearToken(); 
+      if (e.status === 401) {
+        setUserState(null);
+        clearToken();
       }
       return null;
     }
@@ -44,6 +42,7 @@ export function AuthProvider({ children }) {
     const res = await api.login(email, password);
     if (!res || !res.user) throw new Error("Phản hồi không hợp lệ");
     setUserState(res.user);
+    try { channelRef.current?.postMessage({ type: "LOGIN", data: { user: res.user } }); } catch {}
     return res.user;
   }, []);
 
@@ -52,6 +51,7 @@ export function AuthProvider({ children }) {
     try { await api.logout(); } catch {}
     clearToken();
     setUserState(null);
+    try { channelRef.current?.postMessage({ type: "LOGOUT", data: {} }); } catch {}
     try {
       localStorage.removeItem("canteen_cart");
       localStorage.removeItem("canteen_cart_selected");
@@ -61,6 +61,38 @@ export function AuthProvider({ children }) {
     } catch {}
   }, []);
 
+  // BroadcastChannel: setup + listen
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel(AUTH_CHANNEL);
+    channelRef.current = ch;
+    ch.onmessage = (ev) => {
+      const { type, data } = ev.data || {};
+      if (type === "LOGIN" && data?.user) {
+        meReqIdRef.current++;
+        setUserState(data.user);
+      } else if (type === "LOGOUT") {
+        meReqIdRef.current++;
+        clearToken();
+        setUserState(null);
+        try {
+          localStorage.removeItem("canteen_cart");
+          localStorage.removeItem("canteen_cart_selected");
+          sessionStorage.removeItem("canteen_cart_selected");
+        } catch {}
+      } else if (type === "USER_UPDATE" && data?.user) {
+        setUserState((prev) =>
+          prev && String(prev.id) === String(data.user.id) ? data.user : prev
+        );
+      }
+    };
+    return () => {
+      ch.close();
+      channelRef.current = null;
+    };
+  }, []);
+
+  // Init: restore session 1 lần
   useEffect(() => {
     mountedRef.current = true;
     let cancelled = false;
@@ -68,9 +100,13 @@ export function AuthProvider({ children }) {
       await restoreSession();
       if (!cancelled) setLoading(false);
     })();
-    return () => { cancelled = true; mountedRef.current = false; };
+    return () => {
+      cancelled = true;
+      mountedRef.current = false;
+    };
   }, [restoreSession]);
 
+  // Legacy events
   useEffect(() => {
     const onAuthExpired = () => {
       meReqIdRef.current++;

@@ -3,6 +3,7 @@ const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
 const MAX_RETRY_503 = 5;
+const MAX_RETRY_PROXY = 6;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
@@ -45,12 +46,59 @@ function dispatchAuthExpired() {
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
 }
 
-async function req(path, options = {}, _retryCount = 0) {
+// ── Refresh token (dedup concurrent) ───────────────────────
+let refreshPromise = null;
+async function tryRefreshOnce() {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(BASE + "/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        signal: controller.signal,
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => ({}));
+      if (data?.token) {
+        setToken(data.token);
+        resetAuthExpiredFlag();
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(tid);
+      setTimeout(() => { refreshPromise = null; }, 1000);
+    }
+  })();
+  return refreshPromise;
+}
+
+// 🔧 Detect Vite proxy error (backend chưa listen)
+function isProxyError(status, text) {
+  if (![500, 502, 503, 504].includes(status)) return false;
+  const t = String(text || "").toLowerCase();
+  return (
+    t.includes("econnrefused") ||
+    t.includes("proxy error") ||
+    t.includes("error occurred while trying to proxy") ||
+    t.includes("could not connect")
+  );
+}
+
+async function req(path, options = {}, _retryCount = 0, _refreshAttempted = false, _proxyRetryCount = 0) {
   const token = getToken();
   const isPublic = PUBLIC_PATHS.some(p => path.startsWith(p));
 
   // 🔧 Chặn request nếu không có token và không phải API công khai
-  if (!token && !isPublic) {
+  // (vẫn cho phép /auth/me vì có thể restore từ HttpOnly cookie)
+  if (!token && !isPublic && path !== "/auth/me") {
     const err = new Error("Chưa đăng nhập hoặc phiên đã hết hạn");
     err.status = 401;
     err.body = { message: "Vui lòng đăng nhập lại." };
@@ -72,7 +120,7 @@ async function req(path, options = {}, _retryCount = 0) {
       ...options,
       headers,
       cache: "no-store",
-      credentials: "omit",
+      credentials: "include",
       signal: controller.signal,
     });
   } catch (e) {
@@ -84,7 +132,7 @@ async function req(path, options = {}, _retryCount = 0) {
     }
     if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
-      return req(path, options, _retryCount + 1);
+      return req(path, options, _retryCount + 1, _refreshAttempted, _proxyRetryCount);
     }
     const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown"));
     err.status = 0;
@@ -93,20 +141,39 @@ async function req(path, options = {}, _retryCount = 0) {
     clearTimeout(timeoutId);
   }
 
+  // 🔧 Retry 503 (cold start backend)
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
     await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
-    return req(path, options, _retryCount + 1);
+    return req(path, options, _retryCount + 1, _refreshAttempted, _proxyRetryCount);
   }
-
-  // 🔧 BỎ logic tự động xóa token ở đây. AuthContext sẽ xử lý khi gọi /auth/me.
-  // if (res.status === 401 && token) { ... clearToken() ... }
 
   const contentType = res.headers.get("content-type") || "";
   let data;
   try {
     if (contentType.includes("application/json")) data = await res.json();
-    else { const text = await res.text(); data = text ? { message: text.slice(0, 300) } : {}; }
+    else { const text = await res.text(); data = text ? { message: text.slice(0, 300), __raw: text } : {}; }
   } catch { data = {}; }
+
+  // 🔧 Retry proxy error (Vite ECONNREFUSED — backend chưa listen kịp)
+  //    Chỉ retry ở DEV (Vite proxy). Prod không có lỗi này.
+  if (
+    _proxyRetryCount < MAX_RETRY_PROXY &&
+    isProxyError(res.status, data?.__raw || data?.message || "")
+  ) {
+    const delay = 500 + _proxyRetryCount * 400;
+    if (_proxyRetryCount === 0) {
+      console.warn(`[api] Backend chưa sẵn sàng — retry ${path} sau ${delay}ms...`);
+    }
+    await new Promise((r) => setTimeout(r, delay));
+    return req(path, options, _retryCount, _refreshAttempted, _proxyRetryCount + 1);
+  }
+
+  // 🔧 Auto-refresh on 401
+  if (res.status === 401 && !isPublic && path !== "/auth/refresh" && !_refreshAttempted) {
+    const ok = await tryRefreshOnce();
+    if (ok) return req(path, options, _retryCount, true, _proxyRetryCount);
+    if (path !== "/auth/me") dispatchAuthExpired();
+  }
 
   if (!res.ok) {
     const message = data.message || data.error || `HTTP ${res.status}`;
@@ -131,6 +198,9 @@ export const api = {
       .then((r) => { if (r.token) { setToken(r.token); resetAuthExpiredFlag(); } return r; }),
   logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => clearToken()),
   me: () => req("/auth/me"),
+  refresh: () =>
+    req("/auth/refresh", { method: "POST", body: "{}" })
+      .then((r) => { if (r.token) { setToken(r.token); resetAuthExpiredFlag(); } return r; }),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {

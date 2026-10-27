@@ -1,5 +1,5 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V27 - FIX DIRECT MONGO QUERY)
+// SERVER-JSON.JS — Backend Express (V28 - COOKIE + REFRESH ROTATION)
 // ============================================================
 
 import express from "express";
@@ -45,6 +45,9 @@ import {
   verifyAnyToken,
   verifySession,
   revokeSession,
+  revokeByRefreshToken,
+  rotateRefreshToken,
+  setAuthCookies,
   revokeAllSessions,
   verifyRefreshAndMatch,
   COOKIE_NAMES,
@@ -64,7 +67,7 @@ import {
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v27-direct-mongo-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v28-cookie-refresh-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -523,6 +526,7 @@ async function ensureIndexes(db) {
       }
       await sessColl.createIndex({ jti: 1 }, { unique: true }).catch(() => {});
       await sessColl.createIndex({ user_id: 1 }).catch(() => {});
+      await sessColl.createIndex({ refresh_hash: 1 }).catch(() => {});
       await sessColl.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }).catch(() => {});
     } catch (e) {}
 
@@ -1063,9 +1067,14 @@ function auth(roles = []) {
 
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
     if (!v.ok) {
+      // 🔧 FIX: map TokenExpiredError/expired → TOKEN_EXPIRED để client biết cần refresh
+      const mappedCode =
+        v.error === "TokenExpiredError" || v.error === "expired"
+          ? "TOKEN_EXPIRED"
+          : (v.error || "UNAUTHENTICATED");
       return res.status(401).json({
         message: "Chưa đăng nhập hoặc phiên đã hết hạn",
-        code: v.error || "UNAUTHENTICATED",
+        code: mappedCode,
       });
     }
 
@@ -1106,10 +1115,11 @@ function auth(roles = []) {
 }
 
 // ============================================================
-// AUTH ENDPOINTS (FIXED: DIRECT MONGO QUERY)
+// AUTH ENDPOINTS
 // ============================================================
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 const registerLimiter = rateLimit({ windowMs: 60_000, max: 3 });
+const refreshLimiter = rateLimit({ windowMs: 60_000, max: 30 });
 
 app.post("/api/auth/login", loginLimiter, async (req, res) => {
   try {
@@ -1119,7 +1129,6 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
       return res.status(400).json({ message: "Thiếu email/mật khẩu" });
 
     let user = null;
-    // 🔧 FIX TRIỆT ĐỂ: Luôn query trực tiếp Mongo cho API Login
     if (mongoReady && mongoose.connection.db) {
       const dbUser = await mongoose.connection.db.collection("users").findOne({ email: emailNorm });
       if (dbUser) user = { ...dbUser, _id: dbUser._id };
@@ -1137,7 +1146,6 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
       return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
 
     const db = loadDB();
-    // Đảm bảo user này có trong dbCache hiện tại để các luồng sau dùng
     if (mongoReady) {
       const idx = db.users.findIndex(u => String(u.id) === String(user.id));
       if (idx >= 0) db.users[idx] = user;
@@ -1147,6 +1155,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     const filled = autoFillFromCode(db, user);
     if (filled) await saveDBOrThrow(db);
 
+    // issueTokens đã tự set cookie vwa_access + vwa_refresh
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
 
     res.json({
@@ -1210,19 +1219,56 @@ app.post("/api/auth/register", registerLimiter, async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.post("/api/auth/refresh", async (req, res) => {
-  return res.status(410).json({
-    ok: false,
-    message: "Refresh endpoint đã tắt. Vui lòng đăng nhập lại.",
-    code: "REFRESH_DISABLED",
-  });
+// 🔧 FIX: REFRESH THẬT — rotate token + set cookie mới
+app.post("/api/auth/refresh", refreshLimiter, async (req, res) => {
+  try {
+    const refreshToken = req.cookies?.[COOKIE_NAMES.REFRESH];
+    if (!refreshToken) {
+      return res.status(401).json({
+        ok: false,
+        code: "NO_REFRESH_TOKEN",
+        message: "Không có refresh token — vui lòng đăng nhập lại.",
+      });
+    }
+    const result = await rotateRefreshToken(refreshToken, EFFECTIVE_JWT_SECRET, { req });
+    if (!result) {
+      clearAuthCookies(res, req);
+      return res.status(401).json({
+        ok: false,
+        code: "INVALID_REFRESH",
+        message: "Refresh token không hợp lệ hoặc đã hết hạn.",
+      });
+    }
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+    res.json({
+      ok: true,
+      token: result.accessToken,
+      user: result.user
+        ? {
+            id: result.user.id,
+            email: result.user.email,
+            name: result.user.name,
+            role: result.user.role,
+            avatar: result.user.avatar || "",
+            must_change_password: !!result.user.must_change_password,
+          }
+        : undefined,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e.message });
+  }
 });
 
+// 🔧 FIX: LOGOUT — revoke cả session qua jti và refresh cookie
 app.post("/api/auth/logout", async (req, res) => {
   try {
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
     if (v.ok && v.payload?.sid) {
       await revokeSession(v.payload.sid);
+    }
+    const refreshToken = req.cookies?.[COOKIE_NAMES.REFRESH];
+    if (refreshToken) {
+      await revokeByRefreshToken(refreshToken);
     }
     clearAuthCookies(res, req);
     res.json({ ok: true, message: "Đã đăng xuất" });
@@ -1265,7 +1311,6 @@ app.get("/api/auth/me", auth(), async (req, res) => {
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
 
   const db = loadDB();
-  // Cập nhật lại vào cache
   const idx = db.users.findIndex(x => String(x.id) === String(u.id));
   if (idx >= 0) db.users[idx] = u;
   else db.users.push(u);
@@ -1881,9 +1926,7 @@ function getUserSubsidyStatus(user) {
 }
 
 // ============================================================
-// POST /api/orders — TRANSACTION + SAGA ROLLBACK + SSE BROADCAST
-// 🔧 FIX C3a: Atomic counter cho order.id
-// 🔧 FIX C3b: Saga rollback cho fallback M0 (không transaction)
+// POST /api/orders
 // ============================================================
 app.post("/api/orders", auth(), async (req, res) => {
   try {
@@ -1917,7 +1960,6 @@ app.post("/api/orders", auth(), async (req, res) => {
     const detailed = [];
     let subtotal = 0;
 
-    // ─── Validate từng món ───
     for (const it of items) {
       const q = Number(it.qty);
       if (!Number.isFinite(q) || q <= 0 || !Number.isInteger(q)) {
@@ -1964,7 +2006,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       });
     }
 
-    // ─── Check tồn kho ───
     for (const [mid, qty] of qtyByItem) {
       const m = menuById.get(mid);
       if ((Number(m.stock) || 0) < qty) {
@@ -1972,7 +2013,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
-    // ─── Parse khung giờ nhận ───
     const pickupSlotId = (() => {
       const direct = String(pickupTime || "").replace(/\s/g, "");
       if (/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(direct)) return direct;
@@ -1980,7 +2020,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       return match ? match[1].replace(/\s/g, "") : "";
     })();
 
-    // ─── Validate khung giờ ───
     if (pickupSlotId) {
       const slots = getTimeSlots(db);
       const slot = slots.find((s) => s.id === pickupSlotId);
@@ -1988,7 +2027,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       if (!slot.enabled) return res.status(400).json({ message: `Khung giờ ${pickupSlotId} đã kín hoặc tạm ngưng.` });
     }
 
-    // ─── Voucher ───
     let computedDiscount = 0;
     let usedVoucher = null;
     if (voucherCode) {
@@ -2005,7 +2043,6 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (!voucherCode && clientDiscount > 0) return res.status(400).json({ message: "Giảm giá không hợp lệ (không có voucher)" });
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: "Giảm giá không khớp với voucher" });
 
-    // ─── Customer + Subsidy ───
     const useSubsidy = req.body.useSubsidy === true;
     const customer = findByIdOrMongo(db.users, req.user.id);
     if (!customer) return res.status(400).json({ message: "Không tìm thấy tài khoản" });
@@ -2018,7 +2055,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       subsidyDiscount = Math.min(subsidyMaxPerOrder, status.remaining);
     }
 
-    // ─── Xu ───
     const useXu = useXuRaw === true;
     let xuDiscount = 0;
     if (useXu && customer) {
@@ -2030,10 +2066,8 @@ app.post("/api/orders", auth(), async (req, res) => {
       xuDiscount = Math.min(availableXu, maxXuAllowed);
     }
 
-    // ─── Total (SAU khi đã có đủ discount) ───
     const total = Math.max(0, subtotal - computedDiscount - xuDiscount - subsidyDiscount);
 
-    // ─── CARD check ───
     if (payment === "CARD") {
       const studentCard = (db.student_cards || []).find(
         (item) => Number(item.user_id) === Number(req.user.id)
@@ -2045,7 +2079,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
-    // ─── Wallet check ───
     const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
     if (isWalletPay) {
       const wallet = getOrCreateWallet(db, req.user.id);
@@ -2054,8 +2087,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
-    // ─── Points ───
-    // 🔧 FIX C3a: Atomic counter — không race kể cả Vercel multi-container
     let orderId = null;
     if (mongoReady && mongoose.connection.db) {
       orderId = await getNextSequence(mongoose.connection.db, "orders");
@@ -2116,7 +2147,6 @@ app.post("/api/orders", auth(), async (req, res) => {
         }
       : null;
 
-    // 🔧 FIX #4: Guard supportsTransactions() cho Mongo M0
     const canUseTx = supportsTransactions() && mongoReady && mongoose.connection.db;
     const mongoDb = mongoose.connection.db;
     if (!mongoDb) {
@@ -2125,9 +2155,6 @@ app.post("/api/orders", auth(), async (req, res) => {
 
     try {
       if (canUseTx) {
-        // ═══════════════════════════════════════════════════════
-        // NHÁNH A: Có transaction (Mongo M10+) — an toàn 100%
-        // ═══════════════════════════════════════════════════════
         await withTransaction(async (session) => {
           for (const [mid, qty] of qtyByItem) {
             const m = menuById.get(mid);
@@ -2179,14 +2206,9 @@ app.post("/api/orders", auth(), async (req, res) => {
           await mongoDb.collection("orders").insertOne(orderDoc, { session });
         });
       } else {
-        // ═══════════════════════════════════════════════════════
-        // NHÁNH B: Không có transaction (M0) — SAGA ROLLBACK
-        // 🔧 FIX C3b: Thay vì partial fail gây mất kho, rollback thủ công
-        // ═══════════════════════════════════════════════════════
         const reserved = { stocks: [], wallet: null, voucher: null, xu: 0, subsidy: 0, userFilter: null };
 
         try {
-          // Bước 1: Reserve stocks
           for (const [mid, qty] of qtyByItem) {
             const m = menuById.get(mid);
             const filter = m._id ? { _id: m._id } : { id: m.id };
@@ -2196,7 +2218,6 @@ app.post("/api/orders", auth(), async (req, res) => {
             await mongoDb.collection("menu_items").updateOne(filter, { $inc: { sold: qty } });
           }
 
-          // Bước 2: Wallet
           if (isWalletPay) {
             const ok = await atomicDecrement(mongoDb.collection("wallets"), { user_id: req.user.id }, "balance", total, null);
             if (!ok) throw new Error("Số dư ví không đủ.");
@@ -2205,7 +2226,6 @@ app.post("/api/orders", auth(), async (req, res) => {
             await mongoDb.collection("wallet_transactions").insertOne(txDoc);
           }
 
-          // Bước 3: Xu
           if (useXu && xuDiscount > 0 && customer) {
             const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
             const ok = await atomicDecrement(mongoDb.collection("users"), userFilter, "points", xuDiscount, null);
@@ -2214,7 +2234,6 @@ app.post("/api/orders", auth(), async (req, res) => {
             reserved.userFilter = userFilter;
           }
 
-          // Bước 4: Subsidy
           if (useSubsidy && subsidyDiscount > 0 && customer) {
             const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
             const upd = await mongoDb.collection("users").updateOne(
@@ -2225,13 +2244,11 @@ app.post("/api/orders", auth(), async (req, res) => {
             reserved.subsidy = subsidyDiscount;
           }
 
-          // Bước 5: Points earned
           if (finalPointsEarned > 0 && customer) {
             const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
             await atomicIncrement(mongoDb.collection("users"), userFilter, "points", finalPointsEarned, null);
           }
 
-          // Bước 6: Voucher
           if (usedVoucher) {
             const vcFilter = usedVoucher._id ? { _id: usedVoucher._id } : { id: usedVoucher.id };
             const upd = await mongoDb.collection("vouchers").updateOne(
@@ -2242,11 +2259,9 @@ app.post("/api/orders", auth(), async (req, res) => {
             reserved.voucher = vcFilter;
           }
 
-          // Bước 7: Insert order
           const { _id, ...orderDoc } = orderCreated;
           await mongoDb.collection("orders").insertOne(orderDoc);
         } catch (err) {
-          // 🔧 SAGA ROLLBACK — hoàn tác tất cả đã làm
           console.error("[checkoutOrder/M0] Fail:", err.message, "→ rollback");
 
           for (const { filter, qty } of reserved.stocks) {
@@ -2307,7 +2322,6 @@ app.post("/api/orders", auth(), async (req, res) => {
       return res.status(400).json({ message: txErr.message });
     }
 
-    // ─── Mirror sang dbCache ───
     try {
       for (const [mid, qty] of qtyByItem) {
         const m = menuById.get(mid);
@@ -2377,8 +2391,9 @@ app.post("/api/orders", auth(), async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+
 // ============================================================
-// KDS — REAL-TIME (SSE + Polling)
+// KDS — REAL-TIME
 // ============================================================
 app.get(
   "/api/kds/stream",
@@ -3011,6 +3026,7 @@ app.post("/api/reviews", auth(), async (req, res) => {
     return res.status(500).json({ message: e.message });
   }
 });
+
 // ============================================================
 // POINTS CONFIG & POINTS
 // ============================================================
@@ -3415,6 +3431,7 @@ app.delete("/api/vouchers/revoke/:id", auth(["ADMIN"]), async (req, res) => {
   await saveDBOrThrow(db);
   res.json({ ok: true });
 });
+
 // ============================================================
 // PROMOTIONS & CATEGORIES
 // ============================================================
@@ -3759,6 +3776,7 @@ app.post("/api/wallet/pay", auth(), async (req, res) => {
     res.status(201).json({ ok: true, transaction: tx, newBalance: w.balance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 // ============================================================
 // CHAT SYSTEM
 // ============================================================
@@ -4308,6 +4326,7 @@ app.get("/api/stats", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
     res.json(data);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
+
 // ============================================================
 // INVENTORY
 // ============================================================
@@ -5228,14 +5247,14 @@ app.use((req, res) => {
 const healthHandler = (_, res) =>
   res.json({
     ok: true,
-    name: "Canteen VWA API (V27)",
+    name: "Canteen VWA API (V28)",
     version: BUILD_VERSION,
     timezone: VN_TIMEZONE,
     autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
     chat: { ttlHours: 24, admin: true },
     oauth: { google: GOOGLE_OAUTH_ENABLED, facebook: FACEBOOK_OAUTH_ENABLED, microsoft: MICROSOFT_OAUTH_ENABLED },
     mongo: mongoReady ? "connected" : "not-connected",
-    auth: { mode: "Bearer-only", refresh: false },
+    auth: { mode: "cookie+bearer", refresh: "rotating-30d" },
     cloudinary: !!(process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)),
     kds: { sse: true, polling: true, ...sseStats() },
     counter: { mode: "atomic-mongo", collection: "counters" },
@@ -5256,16 +5275,18 @@ export default app;
 const IS_VERCEL = !!process.env.VERCEL;
 if (!IS_VERCEL) {
   app.listen(PORT, () => {
-    console.log("🚀 API (V27): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
-    console.log("   💬 Chat TTL: 24h | Auth: Bearer token");
+    console.log("🚀 API (V28): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+    console.log("   🍪 Auth: HttpOnly cookie + Bearer fallback");
+    console.log("   🔄 Refresh: rotating 30d (sessions.refresh_hash)");
+    console.log("   💬 Chat TTL: 24h");
     console.log("   🖼️  Cloudinary:", process.env.CLOUDINARY_URL ? "ON" : "OFF (fallback menu_images)");
     console.log("   ⚡ KDS: SSE + Polling");
-    console.log("   🛡️  Register limit: 3 req/phút/IP");
+    console.log("   🛡️  Register limit: 3 req/phút/IP | Refresh limit: 30 req/phút/IP");
     console.log("   🔢 Counter: Atomic (Mongo counters collection)");
     console.log("   🔄 Orders: " + (supportsTransactions() ? "Transaction (M10+)" : "Saga rollback (M0)"));
   });
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
-  console.log("🚀 API V27 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  console.log("🚀 API V28 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }
