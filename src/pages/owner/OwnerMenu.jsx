@@ -25,7 +25,7 @@ import {
   Power, ChevronLeft, ChevronRight, Flame, History,
   ChevronDown } from "lucide-react";
 import { SkeletonTable } from "../../components/Skeleton";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -163,18 +163,19 @@ export default function OwnerMenu() {
   // ============================================================
 
   const loadSlots = useCallback(async () => {
-    setSlotsLoading(true);
-    setSlotsError("");
-    try {
-      const data = await api.timeSlots.list();
-      setSlots(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setSlotsError(e.message || "Không tải được khung giờ");
-      setSlots([]);
-    } finally {
-      setSlotsLoading(false);
-    }
-  }, []);
+  if (!getToken()) { setSlotsLoading(false); return; } // 🔧 FIX
+  setSlotsLoading(true);
+  setSlotsError("");
+  try {
+    const data = await api.timeSlots.list();
+    setSlots(Array.isArray(data) ? data : []);
+  } catch (e) {
+    setSlotsError(e.message || "Không tải được khung giờ");
+    setSlots([]);
+  } finally {
+    setSlotsLoading(false);
+  }
+}, []);
 
   const toggleSlot = async (slot) => {
     if (togglingSlotId !== null) return;
@@ -224,8 +225,9 @@ export default function OwnerMenu() {
   // ============================================================
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  if (!getToken()) { setLoading(false); return; } // 🔧 FIX
+  setLoading(true);
+  setError("");
     try {
       const [items, cats] = await Promise.all([
         api.menu.list("", "Tất cả", "popular"),
@@ -290,7 +292,7 @@ export default function OwnerMenu() {
       result = result.filter((m) => m.name?.toLowerCase().includes(s));
     }
     if (stallFilter !== "Mọi Quầy") {
-      result = result.filter((m) => m.station === stallFilter || m.stall === stallFilter || m.area === stallFilter);
+    result = result.filter((m) => (m.station || m.stall || m.area) === stallFilter);
     }
     if (filterCat) {
       result = result.filter((m) => m.category === filterCat);
@@ -313,8 +315,8 @@ export default function OwnerMenu() {
 
   // Reset page khi filter/search đổi
   useEffect(() => {
-    setPage(1);
-  }, [q, filterCat]);
+  setPage(1);
+}, [q, filterCat, stallFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -447,7 +449,7 @@ export default function OwnerMenu() {
       name,
       category,
       price,
-      stall: f.get("stall")?.trim() || "",
+      station: f.get("station")?.trim() || "",
       original_price: original > 0 ? original : price,
       discount_percent: original > 0 ? d : 0,
       stock,
@@ -1905,18 +1907,12 @@ export default function OwnerMenu() {
                 disabled={saving}
               />
 
-              <div style={{ width: "100%", maxWidth: 400, marginBottom: 16 }}>
-<div style={{ width: "100%", maxWidth: 400, maxHeight: 250, overflow: "hidden", marginBottom: 16, borderRadius: 8, alignSelf: "flex-start" }}>
-<div style={{ width: "100%", maxWidth: 400, marginBottom: 16, alignSelf: "flex-start" }}>
-<div style={{ width: "100%", maxWidth: 400, marginBottom: 16, alignSelf: "flex-start" }}>
-<ImageUploader
-                value={image}
-                onChange={setImage}
-                label="Ảnh món ăn (JPEG/PNG, tối đa 100MB)"
-              />
-</div>
-</div>
-</div>
+              <div style={{ width: "100%", maxWidth: 400, marginBottom: 16, alignSelf: "flex-start" }}>
+  <ImageUploader
+    value={image}
+    onChange={setImage}
+    label="Ảnh món ăn (JPEG/PNG, tối đa 100MB)"
+  />
 </div>
 
               {!image && (

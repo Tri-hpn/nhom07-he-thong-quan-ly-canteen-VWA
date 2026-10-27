@@ -13,7 +13,7 @@ import {
   Calendar, Clock, TrendingUp, AlertTriangle, Search, X, Loader2, CalendarX,
 } from "lucide-react";
 import { api, getToken } from "../../api";
-import { SkeletonTable, SkeletonStats } from "../../components/Skeleton";
+import { SkeletonStats } from "../../components/Skeleton";
 import { useI18n } from "../../hooks/useI18n";
 
 // ============================================================

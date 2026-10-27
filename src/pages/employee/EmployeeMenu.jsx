@@ -199,7 +199,7 @@ export default function EmployeeMenu() {
       markProcessing(id, true);
 
       const isOut = item._stockStatus === "OUT";
-      const newStock = isOut ? 20 : 0;
+      const newStock = isOut ? Math.max(LOW_STOCK_THRESHOLD, 10) : 0;
 
       try {
         await api.menu.update(id, { stock: newStock });
@@ -238,7 +238,7 @@ export default function EmployeeMenu() {
       markProcessing(id, true);
       try {
         await api.menu.update(id, { stock: newStock });
-        toast(`${t("Tồn kho:")} ${newStock} ${t("suất")}`, "success", { id: "stock-toast-" + id, duration: 1500 });
+        toast(`${t("Tồn kho:")} ${newStock} ${t("suất")}`, "success");
         await load(true);
       } catch (e) { toast(e.message || t("Không cập nhật được"), "error"); }
       finally { markProcessing(id, false); }

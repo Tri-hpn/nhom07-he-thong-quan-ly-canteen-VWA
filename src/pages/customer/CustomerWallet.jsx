@@ -1,23 +1,31 @@
 // ============================================================
-// CUSTOMERWALLET.JSX — Ví Canteen VWA Pay (V2 - design mới)
+// CUSTOMERWALLET.JSX — Ví Canteen VWA Pay (V3 - FIXED)
 // ============================================================
-// ✅ GIỮ NGUYÊN: logic, state, hooks, API calls, i18n
-//  THAY ĐỔI: cấu trúc JSX render theo design mới
+// 🔧 V3 (2026-11) FIX:
+//   #1 Xóa DUPLICATE tạo deposit (handleSelectTopupMethod không auto create)
+//   #2 Xóa DepositModal — chỉ dùng inline QR (tránh trùng UX)
+//   #3 Chặn đổi amount/preset/method khi có pendingTopupTx
+//   #4 Fix message "Chuyển khoản thành công" → "Vui lòng quét QR"
+//   #5 Thêm Quick Actions bar (Nạp / Rút / Đổi NH) — entry point cho 2 modal
+//   #6 Thêm getToken() guard trong loadAll()
+//   #7 Xóa dead imports (Skeleton, 15 icon unused)
+//   #8 Reset visibleTx khi đổi tab/search
+//   #9 Search mở rộng (amount, status)
+//   + qrTimer chỉ chạy khi có pendingTopupTx
 // ============================================================
 
-import {Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
+import { SkeletonList } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Wallet, Plus, Minus, Link as LinkIcon, CreditCard, QrCode, Banknote, Clock, CheckCircle2, ArrowDownCircle, ArrowUpCircle, ShoppingBag, X, Building2, History, AlertTriangle, Loader2, AlertCircle, RefreshCw, Home, ChevronRight, BadgeCheck, Shield, Zap, Utensils, ArrowDown, ArrowUp, RotateCcw, Download, Lock, Headset, Search, Coffee, Soup, Store, Sandwich, Sparkles, Eye, EyeOff } from "lucide-react";
-import { api } from "../../api";
+  Wallet, Plus, Minus, CreditCard, QrCode, Banknote, Clock,
+  CheckCircle2, ArrowDownCircle, ArrowUpCircle, ShoppingBag, X, Building2,
+  History, AlertTriangle, Loader2, AlertCircle, RefreshCw,
+  Shield, Zap, Lock, Headset, Search, Sparkles,
+} from "lucide-react";
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
-import { usePointsConfig } from "../../hooks/usePointsConfig";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
 
 const MODAL_Z = 2147483600;
 
@@ -48,50 +56,32 @@ const EMPTY_WALLET = {
   linked_at: "",
 };
 
-// ============================================================
-// HELPERS
-// ============================================================
-
 function fmtDateTime(iso) {
   if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("vi-VN");
-  } catch {
-    return "—";
-  }
+  try { return new Date(iso).toLocaleString("vi-VN"); } catch { return "—"; }
 }
 
 function fmtDate(iso) {
   if (!iso) return "";
-  try {
-    return new Date(iso).toLocaleDateString("vi-VN");
-  } catch {
-    return "";
-  }
+  try { return new Date(iso).toLocaleDateString("vi-VN"); } catch { return ""; }
 }
 
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
-
 export default function CustomerWallet({ user }) {
-  const ptsCfg = usePointsConfig();
   const { t } = useI18n();
 
   const [wallet, setWallet] = useState(EMPTY_WALLET);
   const [transactions, setTransactions] = useState([]);
   const [settings, setSettings] = useState(null);
-  const [points, setPoints] = useState(0); 
 
   const [loading, setLoading] = useState(true);
-  const [showSensitiveInfo, setShowSensitiveInfo] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const [tab, setTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [showDeposit, setShowDeposit] = useState(false);
   const [topupAmount, setTopupAmount] = useState(100000);
   const [customTopupInput, setCustomTopupInput] = useState("");
   const [selectedTopupPreset, setSelectedTopupPreset] = useState(null);
@@ -101,16 +91,13 @@ export default function CustomerWallet({ user }) {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showLinkBank, setShowLinkBank] = useState(false);
 
-  // QR countdown (design có auto-refresh)
   const [qrTimer, setQrTimer] = useState(60);
   const [autoSubsidy, setAutoSubsidy] = useState(true);
-  // Số giao dịch đang hiển thị (nút "Xem thêm lịch sử cũ hơn")
   const [visibleTx, setVisibleTx] = useState(8);
 
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
 
-  // ---------- TX config (GIỮ NGUYÊN) ----------
   const TX_CONFIG = useMemo(
     () => ({
       deposit:  { icon: ArrowDownCircle, color: "#18a967", bg: "#e8f9f1", label: t("Nạp tiền"),    sign: "+" },
@@ -129,13 +116,17 @@ export default function CustomerWallet({ user }) {
     [t]
   );
 
-  // ---------- Load (GIỮ NGUYÊN) ----------
   const loadAll = useCallback(async (silent = false) => {
+    // 🔧 FIX #6: Guard getToken chống spam 401
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
     if (inFlightRef.current) return;
     inFlightRef.current = true;
 
     const myReqId = ++reqIdRef.current;
-    if (!silent) setRefreshing(true);
+    if (!silent) setLoading(true);
     setError("");
 
     try {
@@ -155,19 +146,14 @@ export default function CustomerWallet({ user }) {
         setError(e.message || t("Không tải được dữ liệu ví"));
       }
     } finally {
-      if (myReqId === reqIdRef.current) {
-        setLoading(false);
-        if (!silent) setRefreshing(false);
-      }
+      if (myReqId === reqIdRef.current) setLoading(false);
       inFlightRef.current = false;
     }
   }, [t]);
 
-  useEffect(() => {
-    loadAll(false);
-  }, [loadAll]);
+  useEffect(() => { loadAll(false); }, [loadAll]);
 
-  // QR countdown
+  // QR POS countdown (giữ riêng — khác QR nạp tiền)
   useEffect(() => {
     const timer = setInterval(() => {
       setQrTimer((s) => (s <= 1 ? 60 : s - 1));
@@ -175,29 +161,35 @@ export default function CustomerWallet({ user }) {
     return () => clearInterval(timer);
   }, []);
 
-  // ---------- Derived (GIỮ NGUYÊN) ----------
+  // 🔧 FIX #8: Reset visibleTx khi đổi tab/search
+  useEffect(() => {
+    setVisibleTx(8);
+  }, [tab, searchQuery]);
+
   const filtered = useMemo(() => {
     let list = transactions;
-    if (tab !== "all") {
-      list = list.filter((tx) => tx.type === tab);
-    }
+    if (tab !== "all") list = list.filter((tx) => tx.type === tab);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
+      // 🔧 FIX #9: Search rộng hơn
       list = list.filter((tx) => {
         const code = (tx.code || "").toLowerCase();
         const note = (tx.note || "").toLowerCase();
-        return code.includes(q) || note.includes(q);
+        const amountStr = String(tx.amount || "");
+        const statusStr = (tx.status || "").toLowerCase();
+        return (
+          code.includes(q) ||
+          note.includes(q) ||
+          amountStr.includes(q) ||
+          statusStr.includes(q)
+        );
       });
     }
     return list;
   }, [transactions, tab, searchQuery]);
 
   const stats = useMemo(() => {
-    let deposited = 0;
-    let withdrawn = 0;
-    let paid = 0;
-    let pending = 0;
-
+    let deposited = 0, withdrawn = 0, paid = 0, pending = 0;
     for (const tx of transactions) {
       if (tx.status === "pending") pending++;
       if (tx.status !== "approved") continue;
@@ -211,40 +203,58 @@ export default function CustomerWallet({ user }) {
 
   const isLinked = !!wallet.bank_account;
   const canWithdraw = isLinked && wallet.balance >= MIN_WITHDRAW;
+  const hasPendingTopup = !!pendingTopupTx?.code;
 
   const handleSuccessModal = useCallback(async () => {
-    setShowDeposit(false);
     setShowWithdraw(false);
     setShowLinkBank(false);
     await loadAll(true);
   }, [loadAll]);
 
+  // 🔧 FIX #1: KHÔNG auto tạo tx khi chọn method
+  const handleSelectTopupMethod = useCallback((method) => {
+    if (hasPendingTopup) {
+      toast(t("Bạn đang có yêu cầu nạp chờ duyệt. Vui lòng đợi admin xử lý trước."), "warning");
+      return;
+    }
+    setTopupMethod(method);
+  }, [hasPendingTopup, t]);
+
+  // 🔧 FIX #3: Chặn đổi preset khi có pending
+  const handleSelectPreset = useCallback((amount) => {
+    if (hasPendingTopup) {
+      toast(t("Bạn đang có yêu cầu nạp chờ duyệt. Vui lòng đợi admin xử lý trước."), "warning");
+      return;
+    }
+    setTopupAmount(amount);
+    setCustomTopupInput("");
+    setSelectedTopupPreset(amount);
+  }, [hasPendingTopup, t]);
+
+  // 🔧 FIX #3: Chặn đổi custom amount khi có pending
+  const handleCustomAmountChange = useCallback((e) => {
+    if (hasPendingTopup) return;
+    const digits = e.target.value.replace(/\D/g, "");
+    setCustomTopupInput(digits);
+    setSelectedTopupPreset(null);
+    setTopupAmount(digits ? Number(digits) : 0);
+  }, [hasPendingTopup]);
+
+  // 🔧 FIX #1 + #2 + #4: Tạo tx duy nhất khi user bấm nút
   const handleDirectTopup = useCallback(async () => {
     if (topupSubmitting) return;
+    if (hasPendingTopup) {
+      toast(t("Bạn đang có yêu cầu nạp chờ duyệt. Vui lòng đợi admin xử lý trước."), "warning");
+      return;
+    }
 
     const requestedAmount = Number(topupAmount);
     if (!Number.isFinite(requestedAmount) || requestedAmount < MIN_DEPOSIT) {
-      toast(
-        t("Số tiền nạp tối thiểu {value}").replace("{value}", money(MIN_DEPOSIT)),
-        "error"
-      );
+      toast(t("Số tiền nạp tối thiểu {value}").replace("{value}", money(MIN_DEPOSIT)), "error");
       return;
     }
-
     if (!Number.isInteger(requestedAmount)) {
       toast(t("Số tiền nạp phải là số nguyên hợp lệ."), "error");
-      return;
-    }
-
-    if (
-      topupMethod === "QR" &&
-      pendingTopupTx?.code &&
-      Number(pendingTopupTx.amount) === requestedAmount
-    ) {
-      toast(
-        t("Chuyển khoản thành công. Đang chờ duyệt"),
-        "info"
-      );
       return;
     }
 
@@ -257,91 +267,52 @@ export default function CustomerWallet({ user }) {
       });
 
       const transaction = result?.transaction;
-      if (!transaction) {
+      if (!transaction?.code) {
         throw new Error(t("Không tạo được yêu cầu nạp tiền."));
       }
 
       if (topupMethod === "CASH") {
-        setPendingTopupTx(null);
         toast(t("Đã tạo yêu cầu nạp tiền mặt. Vui lòng thanh toán tại quầy."), "success");
-        await handleSuccessModal();
+        // Reset form
+        setTopupAmount(100000);
+        setCustomTopupInput("");
+        setSelectedTopupPreset(null);
+        await loadAll(true);
       } else {
+        // QR: chỉ hiển thị inline QR, không tạo thêm tx
         setPendingTopupTx(transaction);
-        setShowDeposit(true);
-        toast(t("Chuyển khoản thành công. Đang chờ duyệt"), "info");
+        toast(t("Đã tạo mã QR. Vui lòng quét để hoàn tất thanh toán."), "success");
       }
     } catch (error) {
       toast(error?.message || t("Không tạo được yêu cầu nạp"), "error");
     } finally {
       setTopupSubmitting(false);
     }
-  }, [
-    topupSubmitting,
-    topupAmount,
-    topupMethod,
-    pendingTopupTx,
-    t,
-    handleSuccessModal,
-  ]);
-  const handleSelectTopupMethod = useCallback(async (method) => {
-    setTopupMethod(method);
+  }, [topupSubmitting, hasPendingTopup, topupAmount, topupMethod, t, loadAll]);
 
-    if (method !== "QR" || topupSubmitting) return;
+  // Ẩn QR local (không cancel trên server vì chưa có API)
+  const handleHideQR = useCallback(() => {
+    const ok = window.confirm(
+      t("Yêu cầu nạp sẽ vẫn treo trên hệ thống cho đến khi admin duyệt. Bạn có chắc muốn ẩn mã QR?")
+    );
+    if (!ok) return;
+    setPendingTopupTx(null);
+    toast(t("Đã ẩn mã QR. Yêu cầu nạp trước đó vẫn chờ admin duyệt."), "info");
+  }, [t]);
 
-    const requestedAmount = Number(topupAmount);
-
-    if (!Number.isFinite(requestedAmount) || requestedAmount < MIN_DEPOSIT) {
-      toast(
-        t("Số tiền nạp tối thiểu {value}").replace("{value}", money(MIN_DEPOSIT)),
-        "error"
-      );
+  const handleOpenWithdraw = useCallback(() => {
+    if (!isLinked) {
+      toast(t("Vui lòng liên kết ngân hàng trước khi rút tiền."), "warning");
+      setShowLinkBank(true);
       return;
     }
-
-    if (!Number.isInteger(requestedAmount)) {
-      toast(t("Số tiền nạp phải là số nguyên hợp lệ."), "error");
+    if (wallet.balance < MIN_WITHDRAW) {
+      toast(t("Số dư tối thiểu {value} để rút.").replace("{value}", money(MIN_WITHDRAW)), "warning");
       return;
     }
+    setShowWithdraw(true);
+  }, [isLinked, wallet.balance, t]);
 
-    if (
-      pendingTopupTx?.code &&
-      Number(pendingTopupTx.amount) === requestedAmount
-    ) {
-      return;
-    }
-
-    setTopupSubmitting(true);
-
-    try {
-      const result = await api.wallet.deposit({
-        amount: requestedAmount,
-        method: "QR",
-        note: "",
-      });
-
-      const transaction = result?.transaction;
-
-      if (!transaction?.code) {
-        throw new Error(t("Không tạo được yêu cầu nạp tiền."));
-      }
-
-      setPendingTopupTx(transaction);
-      toast(t("Mã QR nạp tiền đã sẵn sàng."), "success");
-    } catch (error) {
-      toast(
-        error?.message || t("Không tạo được yêu cầu nạp"),
-        "error"
-      );
-    } finally {
-      setTopupSubmitting(false);
-    }
-  }, [
-    topupSubmitting,
-    topupAmount,
-    pendingTopupTx,
-    t,
-  ]);
-  // TX tabs config
   const TABS = [
     { id: "all",      label: t("Tất cả") },
     { id: "deposit",  label: t("Nạp tiền (+)") },
@@ -352,10 +323,8 @@ export default function CustomerWallet({ user }) {
   // ============================================================
   // RENDER
   // ============================================================
-
   return (
     <div className="customer-wallet-v2">
-      {/* ERROR BANNER */}
       {error && (
         <div className="wallet-error-banner">
           <AlertCircle size={18} />
@@ -366,18 +335,11 @@ export default function CustomerWallet({ user }) {
         </div>
       )}
 
-      {/* ============================================== */}
-      {/* 1. BREADCRUMB + HEADER                          */}
-      {/* ============================================== */}
-            {/* 1. HEADER */}
-      <section className="wallet-header" style={{ display: 'none' }}>
-      </section>
-
-      {/* 2. CARD */}
-      <section className="wallet-bento" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+      {/* CARD THẺ */}
+      <section className="wallet-bento" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
         <div className="vwa-card-final">
           <div className="vwa-card-final__bg"></div>
-          
+
           <div className="vwa-card-final__top-right">
             <div className="vwa-card-final__logo">
               <Wallet size={18} />
@@ -394,30 +356,163 @@ export default function CustomerWallet({ user }) {
 
           <div className="vwa-card-final__bottom-info">
             <div className="vwa-card-final__balance">
-              <span>SỐ DƯ KHẢ DỤNG</span>
+              <span>{t("SỐ DƯ KHẢ DỤNG")}</span>
               <b>
-                {loading ? <Loader2 size={24} className="wallet-spin" /> : money(wallet.balance || 0)}
+                {loading ? (
+                  <Loader2 size={24} className="wallet-spin" />
+                ) : (
+                  money(wallet.balance || 0)
+                )}
               </b>
             </div>
 
             <div className="vwa-card-final__holder">
               <div className="vwa-card-final__holder-item">
-                <span>CHỦ THẺ</span>
-                <b>{String(user?.name || user?.full_name || "CHUA C?P NH?T").trim().toLocaleUpperCase("vi-VN")}</b>
+                <span>{t("CHỦ THẺ")}</span>
+                <b>{String(user?.name || user?.full_name || t("CHƯA CẬP NHẬT")).trim().toLocaleUpperCase("vi-VN")}</b>
               </div>
-              <div className="vwa-card-final__holder-item" style={{ textAlign: 'right' }}>
-                <span>MÃ THẺ (MSSV)</span>
-                <b>
-                  {user?.student_code || user?.student_id || user?.mssv || "CHUA C?P NH?T"}
-                </b>
+              <div className="vwa-card-final__holder-item" style={{ textAlign: "right" }}>
+                <span>{t("MÃ THẺ (MSSV)")}</span>
+                <b>{user?.student_code || user?.student_id || user?.mssv || t("CHƯA CẬP NHẬT")}</b>
               </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* 🔧 FIX #5: QUICK ACTIONS — entry point cho Rút tiền & LinkBank */}
+      <section
+        className="wallet-quick-actions"
+        style={{
+          display: "flex",
+          gap: 12,
+          marginBottom: 20,
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            document.getElementById("topup-container")?.scrollIntoView({ behavior: "smooth" });
+          }}
+          style={{
+            flex: 1,
+            minWidth: 140,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            padding: "12px 16px",
+            background: "#18a967",
+            color: "#fff",
+            border: 0,
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          <Plus size={18} />
+          {t("Nạp tiền")}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleOpenWithdraw}
+          disabled={!canWithdraw}
+          style={{
+            flex: 1,
+            minWidth: 140,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            padding: "12px 16px",
+            background: canWithdraw ? "#f59e0b" : "#e2e8f0",
+            color: canWithdraw ? "#fff" : "#94a3b8",
+            border: 0,
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: canWithdraw ? "pointer" : "not-allowed",
+          }}
+        >
+          <Minus size={18} />
+          {t("Rút tiền")}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowLinkBank(true)}
+          style={{
+            flex: 1,
+            minWidth: 140,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            padding: "12px 16px",
+            background: "#fff",
+            color: "#2634d5",
+            border: "1px solid #2634d5",
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          <CreditCard size={18} />
+          {isLinked ? t("Đổi ngân hàng") : t("Liên kết ngân hàng")}
+        </button>
+      </section>
+
+      {/* 🔧 FIX #3: Banner pending deposit */}
+      {hasPendingTopup && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: "14px 18px",
+            background: "rgba(245, 158, 11, 0.12)",
+            border: "2px solid #f59e0b",
+            borderRadius: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+          }}
+        >
+          <AlertTriangle size={22} style={{ color: "#f59e0b", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <b style={{ display: "block", color: "#92400e", fontSize: 14 }}>
+              {t("Đang có yêu cầu nạp {amount} chờ duyệt")
+                .replace("{amount}", money(pendingTopupTx.amount))}
+            </b>
+            <span style={{ fontSize: 12, color: "#78350f" }}>
+              {t("Mã GD:")} <b>{pendingTopupTx.code}</b> ·{" "}
+              {t("Vui lòng đợi admin xác nhận.")}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleHideQR}
+            style={{
+              padding: "8px 14px",
+              background: "#fff",
+              color: "#f59e0b",
+              border: "1px solid #f59e0b",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {t("Ẩn QR")}
+          </button>
+        </div>
+      )}
+
       <section className="wallet-action-grid">
-        {/* LEFT: Top-up */}
+        {/* NẠP TIỀN */}
         <div className="wallet-topup" id="topup-container">
           <div className="wallet-topup__head">
             <div>
@@ -425,25 +520,22 @@ export default function CustomerWallet({ user }) {
                 <Plus size={22} />
                 {t("Nạp tiền nhanh vào Ví (Instant Top-up)")}
               </h2>
-              <p>
-                {t("Tiền nạp vào ví được áp dụng ngay lập tức tại toàn bộ quầy dịch vụ Canteen VWA")}
-              </p>
+              <p>{t("Tiền nạp vào ví được áp dụng ngay lập tức tại toàn bộ quầy dịch vụ Canteen VWA")}</p>
             </div>
-            <span className="wallet-topup__free-badge">
-              {t("Miễn phí 100%")}
-            </span>
+            <span className="wallet-topup__free-badge">{t("Miễn phí 100%")}</span>
           </div>
 
           {/* Preset amounts */}
           <div className="wallet-topup__presets">
             <label>{t("Chọn mệnh giá nạp:")}</label>
             <div className="wallet-topup__preset-grid">
-              {QUICK_DEPOSIT.map((a, i) => (
+              {QUICK_DEPOSIT.map((a) => (
                 <button
                   key={a}
                   type="button"
+                  disabled={hasPendingTopup}
                   className={`wallet-preset-btn ${selectedTopupPreset === a ? "wallet-preset-btn--selected" : ""}`}
-                  onClick={() => { setTopupAmount(a); setCustomTopupInput(""); setSelectedTopupPreset(a); setPendingTopupTx(null); }}
+                  onClick={() => handleSelectPreset(a)}
                 >
                   <span>{a.toLocaleString("vi-VN")} đ</span>
                 </button>
@@ -459,13 +551,8 @@ export default function CustomerWallet({ user }) {
                 type="text"
                 inputMode="numeric"
                 value={customTopupInput}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, "");
-                  setCustomTopupInput(digits);
-                  setSelectedTopupPreset(null);
-                  setPendingTopupTx(null);
-                  setTopupAmount(digits ? Number(digits) : 0);
-                }}
+                onChange={handleCustomAmountChange}
+                disabled={hasPendingTopup}
                 placeholder={t("Hoặc nhập số tiền tùy ý (tối thiểu 10.000đ)")}
                 className="wallet-topup__custom-input"
               />
@@ -473,20 +560,16 @@ export default function CustomerWallet({ user }) {
             </div>
           </div>
 
-          {/* Method preview */}
+          {/* Method */}
           <div className="wallet-topup__method">
             <label>{t("Phương thức nạp tiền:")}</label>
 
-            <div
-              className="wallet-topup__method-options"
-              role="radiogroup"
-              aria-label={t("Phương thức nạp tiền:")}
-            >
-              {/* CASH FIRST */}
+            <div className="wallet-topup__method-options" role="radiogroup">
               <button
                 type="button"
                 role="radio"
                 aria-checked={topupMethod === "CASH"}
+                disabled={hasPendingTopup}
                 className={`wallet-topup__method-card ${topupMethod === "CASH" ? "wallet-topup__method-card--active" : ""}`}
                 onClick={() => handleSelectTopupMethod("CASH")}
               >
@@ -507,11 +590,11 @@ export default function CustomerWallet({ user }) {
                 <Banknote size={18} style={{ color: topupMethod === "CASH" ? "var(--c-primary)" : "var(--c-text-light)" }} />
               </button>
 
-              {/* VIETQR SECOND */}
               <button
                 type="button"
                 role="radio"
                 aria-checked={topupMethod === "QR"}
+                disabled={hasPendingTopup}
                 className={`wallet-topup__method-card ${topupMethod === "QR" ? "wallet-topup__method-card--active" : ""}`}
                 onClick={() => handleSelectTopupMethod("QR")}
               >
@@ -536,14 +619,14 @@ export default function CustomerWallet({ user }) {
               </button>
             </div>
           </div>
+
+          {/* Inline QR */}
           {topupMethod === "QR" &&
-            (topupSubmitting ||
-              (pendingTopupTx?.code &&
-               Number(pendingTopupTx.amount) === Number(topupAmount))) && (
+            (topupSubmitting || (hasPendingTopup && Number(pendingTopupTx.amount) === Number(topupAmount))) && (
               <div className="wallet-topup__qr-inline">
                 {topupSubmitting ? (
                   <div className="wallet-topup__qr-inline-loading">
-                    <Loader2 size={22} className="checkout-spin" />
+                    <Loader2 size={22} className="wallet-spin" />
                     <span>{t("Đang tạo mã QR thanh toán...")}</span>
                   </div>
                 ) : (
@@ -574,82 +657,80 @@ export default function CustomerWallet({ user }) {
                     </div>
 
                     <button
-                  type="button"
-                  className="wallet-topup__qr-save"
-                  onClick={async () => {
-                    const qrImage = document.querySelector(".wallet-topup__qr-inline-image");
+                      type="button"
+                      className="wallet-topup__qr-save"
+                      onClick={async () => {
+                        const qrImage = document.querySelector(".wallet-topup__qr-inline-image");
+                        if (!qrImage?.src) {
+                          toast(t("Không tìm thấy mã QR để lưu."), "error");
+                          return;
+                        }
+                        const safeCode = String(pendingTopupTx?.code || "CanteenVWA").replace(/[^a-zA-Z0-9_-]/g, "_");
 
-                    if (!qrImage?.src) {
-                      toast(t("Không tìm thấy mã QR để lưu."), "error");
-                      return;
-                    }
-
-                    const safeCode = String(pendingTopupTx?.code || "CanteenVWA")
-                      .replace(/[^a-zA-Z0-9_-]/g, "_");
-
-                    try {
-                      const response = await fetch(qrImage.src, {
-                        mode: "cors",
-                        cache: "no-store",
-                      });
-
-                      if (!response.ok) {
-                        throw new Error("Khong tai duoc anh QR.");
-                      }
-
-                      const blob = await response.blob();
-
-                      if (!blob.size) {
-                        throw new Error("Anh QR rong.");
-                      }
-
-                      const objectUrl = URL.createObjectURL(blob);
-                      const link = document.createElement("a");
-
-                      link.href = objectUrl;
-                      link.download = "VietQR-nap-tien-" + safeCode + ".png";
-                      document.body.appendChild(link);
-                      link.click();
-                      link.remove();
-
-                      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
-
-                      toast(t("Đổi thành công!"), "success");
-                    } catch (error) {
-                      const fallbackLink = document.createElement("a");
-                      fallbackLink.href = qrImage.src;
-                      fallbackLink.target = "_blank";
-                      fallbackLink.rel = "noopener noreferrer";
-                      document.body.appendChild(fallbackLink);
-                      fallbackLink.click();
-                      fallbackLink.remove();
-
-                      toast(
-                        t("Trình duyệt không cho tải trực tiếp. Mã QR đã mở ở tab mới; hãy nhấp phải ảnh và chọn Lưu hình ảnh thành."),
-                        "info"
-                      );
-                    }
-                  }}
-                >
-                  <span aria-hidden="true">↓</span>
-                  {t("Lưu")}
-                </button>
+                        try {
+                          const response = await fetch(qrImage.src, { mode: "cors", cache: "no-store" });
+                          if (!response.ok) throw new Error("Khong tai duoc anh QR.");
+                          const blob = await response.blob();
+                          if (!blob.size) throw new Error("Anh QR rong.");
+                          const objectUrl = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.href = objectUrl;
+                          link.download = "VietQR-nap-tien-" + safeCode + ".png";
+                          document.body.appendChild(link);
+                          link.click();
+                          link.remove();
+                          window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+                          toast(t("Đã lưu ảnh QR thành công!"), "success");
+                        } catch (error) {
+                          const fallbackLink = document.createElement("a");
+                          fallbackLink.href = qrImage.src;
+                          fallbackLink.target = "_blank";
+                          fallbackLink.rel = "noopener noreferrer";
+                          document.body.appendChild(fallbackLink);
+                          fallbackLink.click();
+                          fallbackLink.remove();
+                          toast(
+                            t("Trình duyệt không cho tải trực tiếp. Mã QR đã mở ở tab mới; hãy nhấp phải ảnh và chọn Lưu hình ảnh thành."),
+                            "info"
+                          );
+                        }
+                      }}
+                    >
+                      <span aria-hidden="true">↓</span>
+                      {t("Lưu")}
+                    </button>
                   </>
                 )}
               </div>
             )}
+
           {/* CTA */}
           <button
             className="wallet-topup__cta"
             onClick={handleDirectTopup}
-            disabled={topupSubmitting}
+            disabled={topupSubmitting || hasPendingTopup}
           >
-            {topupMethod === "CASH" ? <Banknote size={16} /> : <Lock size={16} />}
-            {topupSubmitting
-              ? t("Đang tạo yêu cầu...")
-              : topupMethod === "CASH"
-                ? t("Xác nhận nạp tiền mặt tại quầy")
-                : t("Xác nhận chuyển khoản / Nạp tiền")}
+            {hasPendingTopup ? (
+              <>
+                <Clock size={16} />
+                {t("Đang chờ admin duyệt")}
+              </>
+            ) : topupSubmitting ? (
+              <>
+                <Loader2 size={16} className="wallet-spin" />
+                {t("Đang tạo yêu cầu...")}
+              </>
+            ) : topupMethod === "CASH" ? (
+              <>
+                <Banknote size={16} />
+                {t("Xác nhận nạp tiền mặt tại quầy")}
+              </>
+            ) : (
+              <>
+                <Lock size={16} />
+                {t("Xác nhận chuyển khoản / Nạp tiền")}
+              </>
+            )}
           </button>
           <p className="wallet-topup__secure">
             <Shield size={14} />
@@ -657,7 +738,7 @@ export default function CustomerWallet({ user }) {
           </p>
         </div>
 
-        {/* RIGHT: QR POS */}
+        {/* QR POS (giữ nguyên) */}
         <div className="wallet-qr-pos" id="qr-pos-card">
           <div className="wallet-qr-pos__head">
             <div className="wallet-qr-pos__eyebrow">
@@ -665,9 +746,7 @@ export default function CustomerWallet({ user }) {
               {t("MÃ THANH TOÁN TẠI QUẦY CANTEEN")}
             </div>
             <h2>{t("Dynamic QR Code 1-Chạm")}</h2>
-            <p>
-              {t("Đưa mã vào đầu đọc tại Quầy 01, Quầy 02 hoặc Quầy nước")}
-            </p>
+            <p>{t("Đưa mã vào đầu đọc tại Quầy 01, Quầy 02 hoặc Quầy nước")}</p>
           </div>
 
           <div className="wallet-qr-pos__box">
@@ -682,27 +761,17 @@ export default function CustomerWallet({ user }) {
               </span>
             </div>
 
-            {/* QR visual */}
             <div className="wallet-qr-pos__qr-wrap">
-              <svg
-                className="wallet-qr-pos__qr"
-                viewBox="0 0 200 200"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Corner finders */}
+              <svg className="wallet-qr-pos__qr" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
                 <rect fill="#131b2e" height="50" rx="8" width="50" x="10" y="10" />
                 <rect fill="#fff" height="30" rx="4" width="30" x="20" y="20" />
                 <rect fill="#004ac6" height="16" rx="2" width="16" x="27" y="27" />
-
                 <rect fill="#131b2e" height="50" rx="8" width="50" x="140" y="10" />
                 <rect fill="#fff" height="30" rx="4" width="30" x="150" y="20" />
                 <rect fill="#004ac6" height="16" rx="2" width="16" x="157" y="27" />
-
                 <rect fill="#131b2e" height="50" rx="8" width="50" x="10" y="140" />
                 <rect fill="#fff" height="30" rx="4" width="30" x="20" y="150" />
                 <rect fill="#004ac6" height="16" rx="2" width="16" x="27" y="157" />
-
-                {/* Data modules */}
                 {[
                   [70, 15], [90, 15], [110, 15], [70, 35], [110, 35],
                   [15, 70], [35, 70], [55, 70], [75, 70], [95, 70], [115, 70], [135, 70], [155, 70], [175, 70],
@@ -712,34 +781,15 @@ export default function CustomerWallet({ user }) {
                   [70, 155], [90, 155], [110, 155], [155, 155], [175, 155],
                   [70, 175], [110, 175], [135, 175], [155, 175],
                 ].map(([x, y], i) => (
-                  <rect
-                    key={i}
-                    fill={i % 3 === 0 ? "#004ac6" : "#131b2e"}
-                    height="12"
-                    rx="2"
-                    width="12"
-                    x={x}
-                    y={y}
-                  />
+                  <rect key={i} fill={i % 3 === 0 ? "#004ac6" : "#131b2e"} height="12" rx="2" width="12" x={x} y={y} />
                 ))}
-
-                {/* Center VWA */}
                 <rect fill="#004ac6" height="50" rx="12" width="50" x="75" y="75" />
-                <text
-                  fill="#fff"
-                  fontFamily="'Plus Jakarta Sans', sans-serif"
-                  fontSize="14"
-                  fontWeight="700"
-                  textAnchor="middle"
-                  x="100"
-                  y="105"
-                >
+                <text fill="#fff" fontFamily="'Plus Jakarta Sans', sans-serif" fontSize="14" fontWeight="700" textAnchor="middle" x="100" y="105">
                   VWA
                 </text>
               </svg>
             </div>
 
-            {/* Backup PIN */}
             <div className="wallet-qr-pos__pin">
               <span className="wallet-qr-pos__pin-label">
                 {t("Mã PIN dự phòng nếu camera quầy lỗi:")}
@@ -748,27 +798,22 @@ export default function CustomerWallet({ user }) {
             </div>
           </div>
 
-          {/* Auto subsidy toggle */}
           <div className="wallet-qr-pos__controls">
             <label className="wallet-qr-pos__toggle">
               <div className="wallet-qr-pos__toggle-left">
                 <Sparkles size={18} />
                 <div>
                   <b>{t("Tự động áp dụng Trợ giá SV")}</b>
-                  <span>Hạn mức: {new Intl.NumberFormat('vi-VN').format(user?.subsidy_remaining ?? 500000)}đ/tháng</span>
+                  <span>
+                    {t("Hạn mức:")}{" "}
+                    {new Intl.NumberFormat("vi-VN").format(user?.subsidy_remaining ?? 500000)}đ/tháng
+                  </span>
                 </div>
               </div>
-              <input
-                type="checkbox"
-                checked={autoSubsidy}
-                onChange={(e) => setAutoSubsidy(e.target.checked)}
-              />
+              <input type="checkbox" checked={autoSubsidy} onChange={(e) => setAutoSubsidy(e.target.checked)} />
             </label>
 
-            <button
-              className="wallet-qr-pos__refresh"
-              onClick={() => setQrTimer(60)}
-            >
+            <button className="wallet-qr-pos__refresh" onClick={() => setQrTimer(60)}>
               <RefreshCw size={16} />
               {t("Làm mới mã thanh toán ngay")}
             </button>
@@ -776,9 +821,7 @@ export default function CustomerWallet({ user }) {
         </div>
       </section>
 
-      {/* ============================================== */}
-      {/* 4. TRANSACTION HISTORY                          */}
-      {/* ============================================== */}
+      {/* LỊCH SỬ GIAO DỊCH */}
       <section className="wallet-history">
         <div className="wallet-history__head">
           <div>
@@ -786,9 +829,7 @@ export default function CustomerWallet({ user }) {
               <History size={22} />
               {t("Lịch sử giao dịch & Biến động số dư")}
             </h2>
-            <p>
-              {t("Tra cứu chi tiết các lần thanh toán, nạp tiền và tiền trợ giá học viện")}
-            </p>
+            <p>{t("Tra cứu chi tiết các lần thanh toán, nạp tiền và tiền trợ giá học viện")}</p>
           </div>
         </div>
 
@@ -797,9 +838,7 @@ export default function CustomerWallet({ user }) {
             {TABS.map((tItem) => (
               <button
                 key={tItem.id}
-                className={`wallet-history__tab ${
-                  tab === tItem.id ? "active" : ""
-                }`}
+                className={`wallet-history__tab ${tab === tItem.id ? "active" : ""}`}
                 onClick={() => setTab(tItem.id)}
               >
                 {tItem.label}
@@ -813,12 +852,11 @@ export default function CustomerWallet({ user }) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("Tìm theo mã đơn, quầy...")}
+              placeholder={t("Tìm theo mã, ghi chú, số tiền, trạng thái...")}
             />
           </div>
         </div>
 
-        {/* List */}
         {loading && (
           <div className="wallet-history__skeleton">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -859,19 +897,14 @@ export default function CustomerWallet({ user }) {
               {t("Hiển thị")} {Math.min(visibleTx, filtered.length)}{" "}
               {t("trên tổng số")} {filtered.length} {t("giao dịch")}
             </span>
-            <button
-              type="button"
-              onClick={() => setVisibleTx((n) => n + 8)}
-            >
+            <button type="button" onClick={() => setVisibleTx((n) => n + 8)}>
               {t("Xem thêm lịch sử cũ hơn")}
             </button>
           </div>
         )}
       </section>
 
-      {/* ============================================== */}
-      {/* 5. SECURITY BANNER                              */}
-      {/* ============================================== */}
+      {/* SECURITY */}
       <section className="wallet-security">
         <div className="wallet-security__left">
           <div className="wallet-security__icon">
@@ -888,9 +921,7 @@ export default function CustomerWallet({ user }) {
           <button
             type="button"
             className="wallet-security__btn wallet-security__btn--primary"
-            onClick={() => {
-              window.location.href = "tel:19006868";
-            }}
+            onClick={() => { window.location.href = "tel:19006868"; }}
           >
             <Headset size={16} />
             {t("Hotline: 1900 6868")}
@@ -898,23 +929,7 @@ export default function CustomerWallet({ user }) {
         </div>
       </section>
 
-      {/* ============================================== */}
-      {/* MODALS (GIỮ NGUYÊN)                             */}
-      {/* ============================================== */}
-      {showDeposit && (
-        <DepositModal
-          settings={settings}
-          initialMethod={topupMethod}
-          initialAmount={topupAmount}
-          initialStep={pendingTopupTx ? 2 : 1}
-          initialTx={pendingTopupTx}
-          onClose={() => {
-            setShowDeposit(false);
-            setPendingTopupTx(null);
-          }}
-          onSuccess={handleSuccessModal}
-        />
-      )}
+      {/* MODALS */}
       {showWithdraw && (
         <WithdrawModal
           balance={wallet.balance}
@@ -949,20 +964,9 @@ export default function CustomerWallet({ user }) {
 // ============================================================
 // SUB: WalletTransactionRow
 // ============================================================
-
 function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
-  const config = TX_CONFIG[tx.type] || {
-    icon: Wallet,
-    color: "#2563EB",
-    bg: "#EFF6FF",
-    label: "—",
-    sign: "",
-  };
-  const statusCfg = STATUS_CONFIG[tx.status] || {
-    label: "—",
-    color: "#64748b",
-    bg: "#f1f5f9",
-  };
+  const config = TX_CONFIG[tx.type] || { icon: Wallet, color: "#2563EB", bg: "#EFF6FF", label: "—", sign: "" };
+  const statusCfg = STATUS_CONFIG[tx.status] || { label: "—", color: "#64748b", bg: "#f1f5f9" };
   const Icon = config.icon;
   const isDeposit = tx.type === "deposit";
 
@@ -983,9 +987,7 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
             <b className="wallet-tx-row__title">
               {config.label} {tx.code && `#${tx.code}`}
             </b>
-            {tx.counter && (
-              <span className="wallet-tx-row__counter">{tx.counter}</span>
-            )}
+            {tx.counter && <span className="wallet-tx-row__counter">{tx.counter}</span>}
           </div>
           <p className="wallet-tx-row__desc">
             {tx.note || tx.description || config.label}
@@ -1001,11 +1003,7 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
       </div>
 
       <div className="wallet-tx-row__right">
-        <div
-          className={`wallet-tx-row__amount ${
-            isDeposit ? "wallet-tx-row__amount--plus" : ""
-          }`}
-        >
+        <div className={`wallet-tx-row__amount ${isDeposit ? "wallet-tx-row__amount--plus" : ""}`}>
           {config.sign}
           {money(tx.amount || 0).replace("đ", "")}{" "}
           <span className="wallet-tx-row__amount-unit">đ</span>
@@ -1015,10 +1013,7 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
             {t("Số dư cuối:")} {money(tx.balance_after)}
           </div>
         )}
-        <span
-          className="wallet-tx-row__status"
-          style={{ background: statusCfg.bg, color: statusCfg.color }}
-        >
+        <span className="wallet-tx-row__status" style={{ background: statusCfg.bg, color: statusCfg.color }}>
           {tx.status === "approved" && <CheckCircle2 size={12} />}
           {statusCfg.label}
         </span>
@@ -1028,9 +1023,8 @@ function WalletTransactionRow({ tx, TX_CONFIG, STATUS_CONFIG, t }) {
 }
 
 // ============================================================
-// MODAL WRAPPER (GIỮ NGUYÊN)
+// MODAL WRAPPER
 // ============================================================
-
 function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
   useEffect(() => {
     const handler = (e) => {
@@ -1048,11 +1042,7 @@ function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
       aria-label={label}
       className="wallet-modal-overlay"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="wallet-modal"
-        style={{ maxWidth }}
-      >
+      <div onClick={(e) => e.stopPropagation()} className="wallet-modal" style={{ maxWidth, maxHeight: "90vh", overflowY: "auto" }}>
         {children}
       </div>
     </div>
@@ -1060,206 +1050,8 @@ function Modal({ children, onClose, busy = false, maxWidth = 460, label }) {
 }
 
 // ============================================================
-// DEPOSIT MODAL (GIỮ NGUYÊN logic, đổi UI nhẹ)
+// WITHDRAW MODAL — giữ nguyên 100%
 // ============================================================
-
-function DepositModal({ settings, onClose, onSuccess, initialMethod = "QR", initialAmount = 100000, initialStep = 1, initialTx = null }) {
-  const { t } = useI18n();
-  const [step, setStep] = useState(initialStep);
-  const [amount, setAmount] = useState(initialAmount);
-  const [method, setMethod] = useState(initialMethod === "CASH" ? "CASH" : "QR");
-  const [note, setNote] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [tx, setTx] = useState(initialTx || null);
-
-  const busy = submitting;
-
-  const submit = async () => {
-    if (submitting) return;
-    if (amount < MIN_DEPOSIT) {
-      toast(
-        t("Số tiền nạp tối thiểu {value}").replace("{value}", money(MIN_DEPOSIT)),
-        "error"
-      );
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const res = await api.wallet.deposit({ amount, method, note });
-      setTx(res.transaction);
-      toast(t("Đã tạo yêu cầu nạp tiền"), "success");
-
-      if (method === "CASH") {
-        onSuccess();
-      } else {
-        setStep(2);
-      }
-    } catch (e) {
-      toast(e.message || t("Không tạo được yêu cầu nạp"), "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // STEP 2: QR
-  if (step === 2 && tx && method === "QR") {
-    const bankCode = settings?.bank || "VCB";
-    const bankAccount = settings?.account || "";
-    const bankName = settings?.accountName || "CANTEEN VWA";
-
-    const qrUrl = bankAccount
-      ? `https://img.vietqr.io/image/${bankCode}-${bankAccount}-compact2.png?amount=${tx.amount}&addInfo=${encodeURIComponent(tx.code)}&accountName=${encodeURIComponent(bankName)}`
-      : null;
-
-    return (
-      <Modal onClose={onClose} busy={busy} label={t("Nạp tiền qua VietQR")}>
-        <div className="wallet-modal__head">
-          <h3>{t("Nạp tiền qua VietQR")}</h3>
-          <button onClick={onClose} disabled={busy}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="wallet-qr-modal">
-          <div className="wallet-qr-modal__icon-wrap">
-            <QrCode size={28} />
-          </div>
-          <p className="wallet-qr-modal__desc">
-            {t("Quét mã QR để chuyển {amount} cho đơn {code}")
-              .replace("{amount}", money(tx.amount))
-              .replace("{code}", tx.code)}
-          </p>
-
-          {qrUrl ? (
-            <div className="wallet-qr-modal__img-wrap">
-              <img
-                src={qrUrl}
-                alt="QR"
-                onError={(e) => {
-                  e.target.style.display = "none";
-                }}
-              />
-            </div>
-          ) : (
-            <div className="wallet-qr-modal__warning">
-              {t("Chưa cấu hình tài khoản nhận tiền")}
-            </div>
-          )}
-
-          <div className="wallet-qr-modal__note">
-            <AlertTriangle size={16} />
-            <span>
-              {t("Vui lòng chuyển đúng số tiền và nội dung. Yêu cầu sẽ được admin duyệt trong vài phút.")}
-            </span>
-          </div>
-
-          <button className="wallet-modal__primary" onClick={onSuccess}>
-            {t("Đã hiểu")}
-          </button>
-        </div>
-      </Modal>
-    );
-  }
-
-  // STEP 1: Form
-  return (
-    <Modal onClose={onClose} busy={busy} label={t("Nạp tiền")}>
-      <div className="wallet-modal__head">
-        <h3>
-          <Plus size={20} style={{ color: "#18a967" }} />
-          {t("Nạp tiền")}
-        </h3>
-        <button onClick={onClose} disabled={busy}>
-          <X size={20} />
-        </button>
-      </div>
-
-      <label className="wallet-modal__label">{t("Số tiền")} *</label>
-      <div className="wallet-modal__input-wrap">
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(+e.target.value)}
-          min={MIN_DEPOSIT}
-          step={1000}
-          disabled={busy}
-          className="wallet-modal__input wallet-modal__input--amount"
-        />
-        <span className="wallet-modal__input-suffix">đ</span>
-      </div>
-
-      <div className="wallet-modal__quick">
-        {QUICK_DEPOSIT.map((a) => (
-          <button
-            key={a}
-            type="button"
-            onClick={() => setAmount(a)}
-            disabled={busy}
-            className={`wallet-modal__quick-btn ${
-              amount === a ? "active" : ""
-            }`}
-          >
-            {a.toLocaleString("vi-VN")}đ
-          </button>
-        ))}
-      </div>
-
-      <label className="wallet-modal__label">{t("Phương thức nạp")}</label>
-      <div className="wallet-modal__method-summary">
-        <div className="wallet-modal__method-summary-icon">
-          {method === "QR" ? <QrCode size={22} /> : <Banknote size={22} />}
-        </div>
-        <div className="wallet-modal__method-summary-content">
-          <b>
-            {method === "QR"
-              ? t("Chuyển khoản VietQR PRO 24/7")
-              : t("Thanh toán tiền mặt tại quầy")}
-          </b>
-          <span>
-            {method === "QR"
-              ? t("Quét mã và thực hiện chuyển khoản theo hướng dẫn.")
-              : t("Nộp tiền trực tiếp cho nhân viên. Yêu cầu sẽ chờ xác nhận.")}
-          </span>
-        </div>
-      </div>
-      <label className="wallet-modal__label">{t("Ghi chú")}</label>
-      <input
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder={t("Ghi chú thêm (không bắt buộc)")}
-        maxLength={200}
-        disabled={busy}
-        className="wallet-modal__input"
-      />
-
-      <div className="wallet-modal__actions">
-        <button onClick={onClose} disabled={busy} className="wallet-modal__btn wallet-modal__btn--ghost">
-          {t("Hủy")}
-        </button>
-        <button
-          onClick={submit}
-          disabled={busy || amount < MIN_DEPOSIT}
-          className="wallet-modal__btn wallet-modal__btn--primary"
-        >
-          {submitting ? (
-            <>
-              <Loader2 size={14} className="wallet-spin" />
-              {t("Đang xử lý...")}
-            </>
-          ) : (
-            `${t("Nạp tiền")} ${amount.toLocaleString("vi-VN")}đ`
-          )}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-// ============================================================
-// WITHDRAW MODAL (GIỮ NGUYÊN logic)
-// ============================================================
-
 function WithdrawModal({ balance, bank, onClose, onSuccess }) {
   const { t } = useI18n();
   const [amount, setAmount] = useState(50000);
@@ -1271,10 +1063,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
   const submit = async () => {
     if (submitting) return;
     if (amount < MIN_WITHDRAW) {
-      toast(
-        t("Số tiền rút tối thiểu {value}").replace("{value}", money(MIN_WITHDRAW)),
-        "error"
-      );
+      toast(t("Số tiền rút tối thiểu {value}").replace("{value}", money(MIN_WITHDRAW)), "error");
       return;
     }
     if (amount > balance) {
@@ -1301,9 +1090,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
           <Minus size={20} style={{ color: "#f59e0b" }} />
           {t("Rút tiền")}
         </h3>
-        <button onClick={onClose} disabled={busy}>
-          <X size={20} />
-        </button>
+        <button onClick={onClose} disabled={busy}><X size={20} /></button>
       </div>
 
       <div className="wallet-modal__info">
@@ -1332,9 +1119,7 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
             type="button"
             onClick={() => setAmount(a)}
             disabled={busy || a > balance}
-            className={`wallet-modal__quick-btn ${
-              amount === a ? "active" : ""
-            }`}
+            className={`wallet-modal__quick-btn ${amount === a ? "active" : ""}`}
           >
             {a.toLocaleString("vi-VN")}đ
           </button>
@@ -1395,9 +1180,8 @@ function WithdrawModal({ balance, bank, onClose, onSuccess }) {
 }
 
 // ============================================================
-// LINK BANK MODAL (GIỮ NGUYÊN logic)
+// LINK BANK MODAL — giữ nguyên 100%
 // ============================================================
-
 function LinkBankModal({ wallet, onClose, onSuccess }) {
   const { t } = useI18n();
   const [bankName, setBankName] = useState(wallet.bank_name || "VCB");
@@ -1441,29 +1225,18 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
           <CreditCard size={20} style={{ color: "#2563EB" }} />
           {t("Liên kết ngân hàng")}
         </h3>
-        <button onClick={onClose} disabled={busy}>
-          <X size={20} />
-        </button>
+        <button onClick={onClose} disabled={busy}><X size={20} /></button>
       </div>
 
       <div className="wallet-modal__note">
         <AlertTriangle size={16} />
-        <span>
-          {t("Tài khoản này sẽ dùng để nhận tiền khi bạn rút từ Ví Canteen. Hãy kiểm tra kỹ trước khi lưu.")}
-        </span>
+        <span>{t("Tài khoản này sẽ dùng để nhận tiền khi bạn rút từ Ví Canteen. Hãy kiểm tra kỹ trước khi lưu.")}</span>
       </div>
 
       <label className="wallet-modal__label">{t("Ngân hàng")} *</label>
-      <select
-        value={bankName}
-        onChange={(e) => setBankName(e.target.value)}
-        disabled={busy}
-        className="wallet-modal__select"
-      >
+      <select value={bankName} onChange={(e) => setBankName(e.target.value)} disabled={busy} className="wallet-modal__select">
         {BANKS.map((b) => (
-          <option key={b.code} value={b.code}>
-            {b.name} ({b.code})
-          </option>
+          <option key={b.code} value={b.code}>{b.name} ({b.code})</option>
         ))}
       </select>
 
@@ -1495,9 +1268,7 @@ function LinkBankModal({ wallet, onClose, onSuccess }) {
         </button>
         <button
           onClick={submit}
-          disabled={
-            busy || !account.trim() || !accountName.trim() || account.length < 6
-          }
+          disabled={busy || !account.trim() || !accountName.trim() || account.length < 6}
           className="wallet-modal__btn wallet-modal__btn--primary"
         >
           {submitting ? (

@@ -1,0 +1,673 @@
+/* ============================================================
+   RESPONSIVE-AUDIT.CSS — Override cuối cùng cho mọi thiết bị
+   ============================================================
+   Import SAU TẤT CẢ file CSS khác trong main.jsx.
+
+   Triết lý:
+   - 1 nguồn duy nhất cho layout shell (sidebar + main + page-content)
+   - Fluid sizing bằng clamp() — không hardcode px
+   - Breakpoints cho TẤT CẢ thiết bị phổ biến (320 → 2560px)
+   - Touch target 44px (Apple HIG)
+   - Safe area iOS notch
+   - Fix iOS auto-zoom khi focus input
+   - Fix conflict giữa styles.css / styles-sky / styles-employee / ...
+   ============================================================ */
+
+/* ============================================================
+   §1. FLUID ROOT — toàn bộ rem tự co giãn
+   ============================================================ */
+html {
+  font-size: clamp(14px, 0.2vw + 13.2px, 16px);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ============================================================
+   §2. LAYOUT SHELL — 1 nguồn duy nhất (đè mọi conflict cũ)
+   ============================================================ */
+
+/* Reset các rule cũ trong styles.css PHẦN 2 */
+.app-shell {
+  display: flex !important;
+  flex-direction: row !important;
+  width: 100% !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 100vh;
+  overflow: hidden !important;
+  background: var(--sky-page-bg, #FAFCFF);
+}
+
+/* Sidebar — DÙNG CHUNG cho admin/staff (KHÔNG áp vào chat context) */
+.sidebar,
+.app-shell > aside:not(.chat-context) {
+  width: clamp(220px, 17vw, 260px) !important;
+  flex: 0 0 auto !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  z-index: 20 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: clamp(14px, 1.6vw, 26px) clamp(12px, 1.4vw, 20px) !important;
+  box-sizing: border-box !important;
+}
+
+/* Main content */
+.main,
+main.main,
+.admin-shell .main {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+  width: auto !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Page content — fluid padding + max-width */
+.page-content {
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  max-width: 1600px !important;
+  width: 100% !important;
+  margin-inline: auto !important;
+  padding: clamp(12px, 1.8vw, 32px) clamp(12px, 2.2vw, 32px) !important;
+  box-sizing: border-box !important;
+  min-height: 0;
+}
+
+/* Customer layout — không có sidebar */
+.app-shell.customer-layout {
+  flex-direction: column !important;
+}
+
+.app-shell.customer-layout .main {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ============================================================
+   §3. TOPBAR — Fluid height, sticky
+   ============================================================ */
+.topbar,
+header[style*="sticky"] {
+  height: clamp(56px, 4vw, 72px) !important;
+  padding: 0 clamp(12px, 1.8vw, 28px) !important;
+  flex-shrink: 0 !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 40 !important;
+}
+
+.topbar-logo-img {
+  width: clamp(32px, 3vw, 44px) !important;
+  height: clamp(32px, 3vw, 44px) !important;
+}
+
+/* ============================================================
+   §4. FLUID TYPOGRAPHY
+   ============================================================ */
+h1,
+.page-heading h1,
+.app-page-title,
+.admin-page-head__title,
+.staff-hero__title,
+.orders-title,
+.menu86-hero__title,
+.wallet-title,
+.promo-title {
+  font-size: clamp(20px, 1.5vw + 14px, 30px) !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.015em !important;
+}
+
+h2,
+.admin-kpi__label-wrapper h2,
+.home-section-title {
+  font-size: clamp(17px, 1vw + 13px, 24px) !important;
+}
+
+h3,
+.panel-head h3,
+.promo-section__title {
+  font-size: clamp(15px, 0.6vw + 13px, 20px) !important;
+}
+
+/* KPI số lớn — fluid, không bị overflow trên màn hình nhỏ */
+.admin-kpi__value,
+.staff-kpi-card__value,
+.menu86-kpi__value,
+.kds-kpi__value,
+.orders-kpi__value,
+.chat-kpi__value {
+  font-size: clamp(24px, 2.4vw + 8px, 36px) !important;
+}
+
+/* Số tiền lớn */
+.wallet-card-physical__balance-value,
+.vwa-card-final__balance b,
+.card-prudential__bottom-right,
+.checkout-summary__total-value,
+.orders-summary-final-value,
+.cart-summary__total-value {
+  font-size: clamp(22px, 2vw + 10px, 36px) !important;
+}
+
+/* ============================================================
+   §5. BREAKPOINTS — Cover mọi thiết bị phổ biến
+   ============================================================ */
+
+/* 5.1 iPhone SE (1st/2nd/3rd — 320-374px) */
+@media (max-width: 374px) {
+  .page-content {
+    padding: 10px 8px !important;
+  }
+  .topbar, header[style*="sticky"] {
+    height: 52px !important;
+    padding: 0 8px !important;
+    gap: 4px !important;
+  }
+  .topbar-logo-img { width: 28px !important; height: 28px !important; }
+  .topbar-right > * {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+  }
+  .primary-btn, .outline-btn {
+    padding: 9px 12px !important;
+    font-size: 12px !important;
+  }
+  .banner-carousel {
+    min-height: 150px !important;
+    max-height: 180px !important;
+  }
+  /* Hiện search thay vì ẩn — quan trọng */
+  .customer-topbar__search {
+    display: flex !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+  .customer-topbar__search-input {
+    font-size: 13px !important;
+  }
+}
+
+/* 5.2 iPhone mini (375-389px) */
+@media (min-width: 375px) and (max-width: 389px) {
+  .page-content { padding: 10px 10px !important; }
+  .topbar, header[style*="sticky"] { padding: 0 10px !important; }
+}
+
+/* 5.3 iPhone 12/13/14 (390-413px) — đã có 375-640 default đủ */
+
+/* 5.4 iPhone Pro Max (414-430px) — default */
+
+/* 5.5 Tablet dọc — iPad Mini (768-833px) */
+@media (min-width: 768px) and (max-width: 833px) {
+  .page-content { padding: 16px 20px !important; }
+}
+
+/* 5.6 iPad Air / iPad Pro 11 portrait (834-1023px) */
+@media (min-width: 834px) and (max-width: 1023px) {
+  .page-content { padding: 18px 24px !important; }
+  .menu-food-grid, .home-flash-grid, .flash-grid, .home-picks-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+  }
+}
+
+/* 5.7 iPad Pro 12.9 landscape / Laptop nhỏ (1024-1279px) */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .page-content { padding: 22px 26px !important; }
+}
+
+/* 5.8 Laptop phổ thông (1280-1439px) — default từ clamp */
+
+/* 5.9 MacBook Pro 14-16" (1440-1919px) — default từ clamp */
+
+/* 5.10 Full HD+ / 2K / 4K (≥ 1920px) */
+@media (min-width: 1920px) {
+  .page-content {
+    max-width: 1720px !important;
+    padding: 32px 40px !important;
+  }
+  .menu-food-grid, .home-flash-grid, .flash-grid, .home-picks-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  }
+}
+
+@media (min-width: 2560px) {
+  .page-content { max-width: 2000px !important; }
+}
+
+/* ============================================================
+   §6. GRID SYSTEMS — Tự co giãn theo không gian
+   ============================================================ */
+
+/* 6.1 Food cards — auto-fill */
+.menu-food-grid,
+.home-flash-grid,
+.flash-grid,
+.home-picks-grid,
+.home-food-grid-5,
+.home-food-grid-4 {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(180px, 15vw, 280px), 1fr)) !important;
+  gap: clamp(10px, 1.2vw, 16px) !important;
+  align-items: stretch !important;
+  width: 100% !important;
+}
+
+/* 6.2 KPI grids */
+.admin-kpi-grid,
+.staff-kpi-grid,
+.orders-kpi-grid,
+.chat-kpi-ribbon,
+.kds-kpi-grid,
+.menu86-kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(clamp(150px, 16vw, 240px), 1fr)) !important;
+  gap: clamp(10px, 1vw, 16px) !important;
+}
+
+/* 6.3 2-column layouts — tự stack khi hẹp */
+.cart-grid,
+.checkout-grid,
+.checkout-2col,
+.cart-2col,
+.promo-split,
+.promo-redeem-lower,
+.orders-split,
+.footer-grid,
+.footer-grid.footer-grid--four-col {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)) !important;
+  gap: clamp(14px, 1.5vw, 24px) !important;
+}
+
+/* 6.4 Admin menu/employee cards */
+.admin-menu-grid,
+.admin-employees-grid,
+.menu86-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)) !important;
+}
+
+@media (max-width: 640px) {
+  .admin-menu-grid,
+  .admin-employees-grid,
+  .menu86-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* 6.5 KDS board — card width fluid */
+.kds-row__body > .kds-card,
+.kds-row__body > article,
+.kds-row__body > .kds-ticket,
+.kds-row__body > .kds-pickup {
+  flex: 0 0 clamp(220px, 22vw, 280px) !important;
+  max-width: clamp(220px, 22vw, 280px) !important;
+  min-width: clamp(220px, 22vw, 280px) !important;
+}
+
+@media (max-width: 640px) {
+  .kds-row__body > .kds-card,
+  .kds-row__body > article,
+  .kds-row__body > .kds-ticket,
+  .kds-row__body > .kds-pickup {
+    flex: 1 1 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* 6.6 Chat workspace */
+@media (min-width: 1280px) {
+  .chat-workspace-grid {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(0, 2.2fr) minmax(280px, 1fr) !important;
+    gap: clamp(10px, 1vw, 16px) !important;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .chat-workspace-grid {
+    grid-template-columns: minmax(240px, 0.9fr) minmax(0, 2.2fr) !important;
+  }
+  .chat-workspace-grid > .chat-context {
+    display: none !important;
+  }
+}
+
+/* ============================================================
+   §7. TOUCH TARGETS — 44px theo Apple HIG
+   ============================================================ */
+@media (hover: none) and (pointer: coarse) {
+  button:not(.chat-quick-chip):not(.chat-input-tool):not(.chat-conv__filter),
+  a[role="button"],
+  .icon-btn,
+  .primary-btn,
+  .outline-btn,
+  .kds-card__btn,
+  .menu86-card-row__step-btn,
+  .menu86-card-row__quick-btn,
+  .customer-topbar__icon-btn,
+  .sidebar nav a,
+  .nav-link,
+  .bottom-nav-item {
+    min-height: 44px;
+  }
+
+  .icon-btn,
+  .customer-topbar__icon-btn,
+  .topbar-icon-btn {
+    min-width: 44px;
+  }
+}
+
+/* ============================================================
+   §8. SAFE AREAS — iOS notch + home indicator
+   ============================================================ */
+@supports (padding: env(safe-area-inset-top)) {
+  .topbar,
+  header[style*="sticky"] {
+    padding-top: env(safe-area-inset-top) !important;
+    height: calc(clamp(56px, 4vw, 72px) + env(safe-area-inset-top)) !important;
+  }
+
+  .bottom-nav,
+  .customer-bottomnav {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+
+  .sidebar,
+  .app-shell > aside:not(.chat-context) {
+    padding-bottom: calc(clamp(14px, 1.6vw, 26px) + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  @media (max-width: 900px) {
+    body.has-bottom-nav .page-content {
+      padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+  }
+}
+
+/* ============================================================
+   §9. iOS INPUT ZOOM FIX — font-size 16px chống auto-zoom
+   ============================================================ */
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* ============================================================
+   §10. PREVENT HORIZONTAL SCROLL
+   ============================================================ */
+html, body {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+}
+
+img, video, canvas, svg {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* Fix overflow từ các pre/code dài */
+pre, code {
+  overflow-x: auto !important;
+  max-width: 100% !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+}
+
+/* ============================================================
+   §11. FIX CÁC BLOCK CONFLICT ĐÃ PHÁT HIỆN
+   ============================================================ */
+
+/* --- 11.1 Menu search sidebar: XOÁ tất cả calc() fix trước --- */
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-search,
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-search__wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  box-sizing: border-box !important;
+}
+
+.customer-menu-v3 .menu-v3-sidebar__card .menu-v3-search__input {
+  width: 100% !important;
+  min-width: 0 !important;
+  flex: 1 1 0% !important;
+}
+
+/* --- 11.2 Customer logo: 1 định nghĩa duy nhất --- */
+.customer-topbar__logo > img {
+  width: clamp(30px, 3vw, 40px) !important;
+  height: clamp(30px, 3vw, 40px) !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 10px !important;
+  object-fit: contain !important;
+  background: transparent !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14) !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* --- 11.3 HeaderNav / BottomNav: 1 nguồn duy nhất --- */
+.header-nav {
+  display: block !important;
+}
+
+.bottom-nav,
+.customer-bottomnav {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .header-nav {
+    display: none !important;
+  }
+  .bottom-nav,
+  .customer-bottomnav {
+    display: flex !important;
+  }
+}
+
+/* --- 11.4 Chat context — không kế thừa style sidebar --- */
+.chat-context {
+  position: relative !important;
+  width: auto !important;
+  height: auto !important;
+  left: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  z-index: auto !important;
+}
+
+.chat-context::before,
+.chat-context::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* --- 11.5 VWA Card — 1 định nghĩa kích thước, không phá tỷ lệ --- */
+.vwa-card-final,
+.card-prudential {
+  min-height: clamp(200px, 18vw, 260px) !important;
+  padding: clamp(16px, 2vw, 30px) !important;
+  box-sizing: border-box !important;
+}
+
+.vwa-card-final__title h2,
+.card-prudential__title h2 {
+  font-size: clamp(28px, 4vw, 52px) !important;
+}
+
+@media (max-width: 640px) {
+  .vwa-card-final__title h2,
+  .card-prudential__title h2 {
+    font-size: 30px !important;
+    letter-spacing: 3px !important;
+  }
+}
+
+/* --- 11.6 Toast, Modal, Dialog — max-size theo viewport --- */
+.toast-container {
+  max-width: min(500px, calc(100vw - 32px)) !important;
+}
+
+[role="dialog"] > div,
+.modal,
+.food-detail-content,
+.promo-modal,
+.wallet-modal,
+.profile-modal {
+  max-width: min(calc(100vw - 24px), 600px) !important;
+  max-height: calc(100vh - 32px) !important;
+  max-height: calc(100dvh - 32px) !important;
+  overflow-y: auto !important;
+}
+
+/* --- 11.7 Bảng: cuộn ngang mượt trên mobile --- */
+@media (max-width: 768px) {
+  table,
+  .admin-table,
+  .admin-voucher-table,
+  .shifthist-table {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    border-radius: 8px;
+  }
+
+  table::-webkit-scrollbar {
+    height: 4px;
+  }
+  table::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.5);
+    border-radius: 4px;
+  }
+}
+
+/* --- 11.8 Banner carousel — fluid aspect ratio --- */
+.banner-carousel {
+  aspect-ratio: 16 / 5 !important;
+  min-height: clamp(160px, 16vw, 280px) !important;
+  max-height: clamp(180px, 18vw, 320px) !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 640px) {
+  .banner-carousel {
+    aspect-ratio: 16 / 7 !important;
+    min-height: 160px !important;
+    max-height: 220px !important;
+  }
+}
+
+/* ============================================================
+   §12. SIDEBAR MOBILE — trượt từ trái
+   ============================================================ */
+@media (max-width: 1024px) {
+  .sidebar,
+  .app-shell > aside:not(.chat-context) {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    transform: translateX(-100%) !important;
+    z-index: 9999 !important;
+    transition: transform 0.28s ease !important;
+    width: clamp(220px, 60vw, 280px) !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2) !important;
+  }
+
+  .sidebar.mobile-open,
+  .app-shell > aside:not(.chat-context).mobile-open {
+    transform: translateX(0) !important;
+  }
+
+  /* Main luôn full width trên mobile */
+  .app-shell .main,
+  .app-shell main.main {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  /* Overlay khi sidebar mở */
+  body.sidebar-open::before {
+    content: "" !important;
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(15, 23, 42, 0.5) !important;
+    z-index: 9998 !important;
+    animation: sidebarFadeIn 0.2s ease !important;
+  }
+
+  body.sidebar-open {
+    overflow: hidden !important;
+  }
+}
+
+@keyframes sidebarFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ============================================================
+   §13. REDUCED MOTION — tôn trọng cài đặt OS
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   §14. DARK MODE fixes
+   ============================================================ */
+html.dark-mode {
+  color-scheme: dark;
+}
+
+html.dark-mode .app-shell {
+  background: #0B1220 !important;
+}
+
+html.dark-mode .main {
+  background: transparent !important;
+}
+
+/* ============================================================
+   KẾT THÚC — FILE NÀY PHẢI IMPORT CUỐI CÙNG
+   ============================================================ */

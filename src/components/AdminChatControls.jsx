@@ -1,10 +1,12 @@
 // ============================================================
-// ADMINCHATCONTROLS.JSX — Panel điều khiển chat cho Admin
+// ADMINCHATCONTROLS.JSX — Panel điều khiển chat cho Admin (V2)
 // ============================================================
-// Gồm 3 section:
-//   1. Công tắc GLOBAL (bật/tắt toàn hệ thống)
-//   2. Danh sách nhân viên + toggle per-employee
-//   3. Hàng chờ yêu cầu chuyển tiếp (accept/reject)
+// V2 (2026-11):
+//   🔧 FIX CRITICAL: toggleGlobal dùng nhầm `newEnabled` (var hoisted,
+//      undefined) thay vì `newState` → title/danger/confirmText SAI khi
+//      bật lại chat toàn hệ thống.
+//   🔧 FIX: Thêm getToken() guard cho loadStaff, loadRequests,
+//      và polling interval → chặn spam 401/403 mỗi 3s khi hết phiên.
 // ============================================================
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -12,7 +14,7 @@ import {
   Lock, Unlock, UserCog, ShieldAlert, Check, X, Loader2,
   ToggleLeft, ToggleRight, Users, Headset, RefreshCw, Inbox,
 } from "lucide-react";
-import { api } from "../api";
+import { api, getToken } from "../api";
 import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
 import ConfirmDialog from "./ConfirmDialog";
@@ -56,9 +58,13 @@ export default function AdminChatControls({
   // LOAD ALL
   // ============================================================
   const loadStaff = useCallback(async () => {
+    // 🔧 FIX V2: guard token
+    if (!getToken()) {
+      setStaffLoading(false);
+      return;
+    }
     try {
       const data = await api.chat.admin.staffStatus();
-      // Backend trả: { global_enabled: bool, staff: [{id, name, email, chat_enabled}] }
       if (data && typeof data === "object") {
         setGlobalEnabled(!!data.global_enabled);
         setStaffList(Array.isArray(data.staff) ? data.staff : []);
@@ -73,6 +79,11 @@ export default function AdminChatControls({
   }, []);
 
   const loadRequests = useCallback(async () => {
+    // 🔧 FIX V2: guard token
+    if (!getToken()) {
+      setRequestsLoading(false);
+      return;
+    }
     try {
       const data = await api.chat.admin.transferRequests("pending");
       const list = Array.isArray(data) ? data : [];
@@ -95,35 +106,40 @@ export default function AdminChatControls({
   useEffect(() => {
     const timer = setInterval(() => {
       if (!tabVisibleRef.current) return;
+      // 🔧 FIX V2: guard token trước khi gọi
+      if (!getToken()) return;
       loadRequests();
       const myId = ++reqIdRef.current;
-      if (myId % 5 === 0) loadStaff(); // Refresh staff mỗi 15s
+      if (myId % 5 === 0) loadStaff();
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [loadStaff, loadRequests]);
 
   // ============================================================
   // GLOBAL TOGGLE
+  // 🔧 FIX V2 CRITICAL: dùng `newState`, KHÔNG dùng `newEnabled`
   // ============================================================
   const toggleGlobal = () => {
     const newState = !globalEnabled;
     setConfirm({
-      title: newEnabled
+      title: newState
         ? t("Bật chat toàn hệ thống?")
         : t("TẮT chat toàn hệ thống?"),
-      message: newEnabled
+      message: newState
         ? t("Mọi nhân viên sẽ được phép nhắn tin với khách trở lại.")
         : t("TẤT CẢ nhân viên sẽ KHÔNG thể nhắn tin với khách cho đến khi bạn bật lại."),
-      confirmText: newEnabled ? t("Bật") : t("TẮT NGAY"),
+      confirmText: newState ? t("Bật") : t("TẮT NGAY"),
       cancelText: t("Hủy"),
-      danger: !newEnabled,
+      danger: !newState,
       onConfirm: async () => {
         setGlobalLoading(true);
         try {
           await api.chat.admin.toggleGlobal(newState);
           setGlobalEnabled(newState);
           toast(
-            newState ? t("Đã BẬT chat toàn hệ thống") : t("Đã TẮT chat toàn hệ thống"),
+            newState
+              ? t("Đã BẬT chat toàn hệ thống")
+              : t("Đã TẮT chat toàn hệ thống"),
             newState ? "success" : "warning"
           );
           setConfirm(null);
@@ -134,8 +150,6 @@ export default function AdminChatControls({
         }
       },
     });
-    // Forward decl fix
-    var newEnabled = newState;
   };
 
   // ============================================================
@@ -158,7 +172,9 @@ export default function AdminChatControls({
       );
     } catch (e) {
       setStaffList((list) =>
-        list.map((x) => (x.id === emp.id ? { ...x, chat_enabled: !newState } : x))
+        list.map((x) =>
+          x.id === emp.id ? { ...x, chat_enabled: !newState } : x
+        )
       );
       toast(e.message || t("Không đổi được trạng thái"), "error");
     } finally {

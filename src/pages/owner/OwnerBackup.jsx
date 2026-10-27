@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Download, Upload, AlertTriangle, Database, RefreshCw, HardDrive, CheckCircle2, Loader2, X,
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import { SkeletonStats } from "../../components/Skeleton";
@@ -90,15 +90,20 @@ export default function OwnerBackup() {
   // ---------- Load stats ----------
 
   const loadStats = async () => {
-    setStatsLoading(true);
-    try {
-      const data = await api.backup.stats();
-      setStats(data);
-    } catch {
-      // Không hiện toast để tránh spam khi mở trang
-    } finally {
-      setStatsLoading(false);
-    }
+  // 🔧 FIX: guard chống 401 spam khi session hết hạn
+  if (!getToken()) {
+    setStatsLoading(false);
+    return;
+  }
+  setStatsLoading(true);
+  try {
+    const data = await api.backup.stats();
+    setStats(data);
+  } catch {
+    // Không hiện toast để tránh spam khi mở trang
+  } finally {
+    setStatsLoading(false);
+  }
   };
 
   useEffect(() => {

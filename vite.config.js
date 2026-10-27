@@ -19,21 +19,27 @@ export default defineConfig(({ mode }) => {
       i18nPlugin(),
       VitePWA({
         registerType: "autoUpdate",
+        // 🔧 FIX: dùng public/manifest.json (đã có sẵn) thay vì disable
         manifest: false,
-        injectRegister: null,
-        devOptions: { enabled: true, type: "module" },
+        // 🔧 FIX: TỰ ĐỘNG inject register script (trước = null → SW không đăng ký)
+        injectRegister: "auto",
+        // 🔧 FIX: DISABLE dev-dist (tránh sinh rác dev-dist/)
+        devOptions: { enabled: false },
         workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp}"],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallback: "index.html",
+          // 🔧 FIX: KHÔNG fallback SPA cho /api/*
           navigateFallbackAllowlist: [/^(?!\/api).*/],
+          // 🔧 FIX: KHÔNG cache /api/* ở SW (để API luôn lấy mới)
+          navigateFallbackDenylist: [/^\/api/],
           runtimeCaching: [
-            // ① KHÔNG CACHE auth + telemetry (tránh lộ session)
+            // ① KHÔNG CACHE auth + telemetry (bảo mật session)
             {
               urlPattern: /^\/api\/(auth|telemetry)\//i,
               handler: "NetworkOnly",
             },
-            // ② Ảnh menu — cache mạnh
+            // ② Ảnh menu — cache mạnh (ảnh tĩnh, có thể cache lâu)
             {
               urlPattern: /^\/api\/uploads\/menu\/.*/i,
               handler: "CacheFirst",
@@ -59,7 +65,7 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ④ Dynamic (KHÔNG còn auth)
+            // ④ Dynamic (orders/wallet/points/...) — NetworkFirst
             {
               urlPattern:
                 /^\/api\/(orders|wallet|points|vouchers|chat|notifications)/i,
@@ -71,7 +77,7 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
-            // ⑤ Mọi API khác
+            // ⑤ Mọi API khác — NetworkFirst
             {
               urlPattern: /^\/api\/.*/i,
               handler: "NetworkFirst",
@@ -94,7 +100,7 @@ export default defineConfig(({ mode }) => {
         "@data": path.resolve(__dirname, "./src/data"),
       },
     },
-        server: {
+    server: {
       port: 5173,
       host: true,
       strictPort: true,
@@ -102,9 +108,9 @@ export default defineConfig(({ mode }) => {
       proxy: {
         "/api": {
           target: env.VITE_BACKEND_URL || "http://localhost:3000",
-          changeOrigin: true, // Bắt buộc phải là true
+          changeOrigin: true,
           secure: false,
-          cookieDomainRewrite: "localhost", // 🔴 THÊM DÒNG NÀY ĐỂ FIX LỖI COOKIE
+          cookieDomainRewrite: "localhost",
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq, req) => {
               if (env.VITE_KEEP_ORIGIN_HOST !== "1") return;
@@ -133,6 +139,8 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             "react-vendor": ["react", "react-dom", "react-router-dom"],
             "icon-vendor": ["lucide-react"],
+            "chart-vendor": ["recharts"],
+            "qr-vendor": ["qrcode.react", "@zxing/browser"],
           },
           chunkFileNames: "assets/[name]-[hash].js",
           entryFileNames: "assets/[name]-[hash].js",
@@ -140,11 +148,22 @@ export default defineConfig(({ mode }) => {
         },
       },
       esbuild: isProd
-        ? { drop: ["debugger"], pure: ["console.log", "console.debug", "console.trace"] }
+        ? {
+            drop: ["debugger"],
+            pure: ["console.log", "console.debug", "console.trace"],
+          }
         : {},
     },
+    // 🔧 FIX: Thêm qrcode.react + @zxing/browser để Vite pre-bundle → dev start nhanh
     optimizeDeps: {
-      include: ["react", "react-dom", "react-router-dom", "lucide-react"],
+      include: [
+        "react",
+        "react-dom",
+        "react-router-dom",
+        "lucide-react",
+        "qrcode.react",
+        "@zxing/browser",
+      ],
     },
     css: { devSourcemap: true },
     define: {

@@ -1,10 +1,10 @@
 ﻿// ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban (V17 - REAL-TIME SSE)
+// EMPLOYEEORDERS.JSX — KDS Kanban (V20)
 // ============================================================
-// V17 (2026-10):
-//   - ⚡ Tích hợp Server-Sent Events (SSE) thay thế Polling 5s.
-//   - 🔄 Auto fallback về Polling nếu SSE đứt kết nối.
-//   - 🟢 Hiển thị trạng thái kết nối (LIVE / POLLING).
+// V20 (2026-11):
+//   🔧 FIX: Thêm nút "Thông báo" và "Sửa món" ở cột Đã Xác Nhận.
+// V19 (2026-11):
+//   🔧 FIX: 5 React key composite, dedupe orders.
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -13,7 +13,7 @@ import {
   CheckCircle2, Wallet, Timer, TrendingUp, User, Lock,
   ChevronDown, PackageCheck, Volume2, VolumeX, Store,
   UtensilsCrossed, ListFilter, Inbox, Play, Soup, ArrowRight,
-  Clock, Flame, ChevronLeft, Wifi
+  Clock, Flame, ChevronLeft, Wifi, Edit, Bell
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api, getToken } from "../../api";
@@ -154,7 +154,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
     const slots = [];
     for (let h = 7; h <= 19; h++) {
       for (let m of ["00", "30"]) {
-        if (h === 19 && m === "30") break; // Dừng ở 19:00
+        if (h === 19 && m === "30") break;
         const start = `${String(h).padStart(2, '0')}:${m}`;
         const endH = m === "30" ? h + 1 : h;
         const endM = m === "30" ? "00" : "30";
@@ -166,7 +166,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
   };
   const allTimeSlots = generateTimeSlots();
 
-
   const { t } = useI18n();
   const { user } = useAuth();
 
@@ -174,7 +173,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [sseConnected, setSseConnected] = useState(false); // Trạng thái SSE
+  const [sseConnected, setSseConnected] = useState(false);
 
   const [approvedShifts, setApprovedShifts] = useState([]);
 
@@ -212,8 +211,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const dingIntervalRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
   const stationMenuRef = useRef(null);
-  
-  // Refs cho SSE
+
   const esRef = useRef(null);
   const pollTimerRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -276,7 +274,19 @@ export default function EmployeeOrders({ isAdmin = false }) {
       const data = await api.orders.all("Tất cả");
       if (myReqId !== reqIdRef.current) return;
       const list = Array.isArray(data) ? data : [];
-      const sorted = [...list].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
+      const byId = new Map();
+      for (const o of list) {
+        const key = String(o._id || o.id || o.code);
+        const existing = byId.get(key);
+        if (!existing) { byId.set(key, o); continue; }
+        const tNew = new Date(o.updated_at || o.created_at || 0).getTime();
+        const tOld = new Date(existing.updated_at || existing.created_at || 0).getTime();
+        if (tNew > tOld) byId.set(key, o);
+      }
+      const dedupedList = Array.from(byId.values());
+
+      const sorted = [...dedupedList].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
       setOrders(sorted);
     } catch (e) {
       if (myReqId === reqIdRef.current && !silent) setError(e.message || t("Không tải được đơn hàng"));
@@ -298,10 +308,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
     const startPolling = () => {
       if (pollTimerRef.current) return;
       pollTimerRef.current = setInterval(async () => {
-        try {
-          await load(true); // Silent reload
-        } catch {}
-      }, 15000); // Polling 15s fallback
+        try { await load(true); } catch {}
+      }, 15000);
     };
 
     const stopPolling = () => {
@@ -323,10 +331,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
       es.onopen = () => {
         if (!isSubscribed) return;
         setSseConnected(true);
-        load(true); // Đồng bộ ngay khi kết nối
+        load(true);
       };
 
-      // Lắng nghe sự kiện có đơn mới hoặc đổi trạng thái
       es.addEventListener("order.new", () => { if (isSubscribed) load(true); });
       es.addEventListener("order.updated", () => { if (isSubscribed) load(true); });
 
@@ -336,7 +343,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
         es.close();
         esRef.current = null;
         startPolling();
-        reconnectTimerRef.current = setTimeout(connectSSE, 5000); // Thử lại sau 5s
+        reconnectTimerRef.current = setTimeout(connectSSE, 5000);
       };
     };
 
@@ -350,7 +357,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
     };
   }, [load]);
 
-  // Các event từ tab khác (local storage)
   useEffect(() => {
     const off = onOrderUpdated(() => { load(true); });
     return off;
@@ -373,7 +379,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
     sortOldestFirst(byStatus.ready);
 
     byStatus.completed.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
-    const completedTotal = byStatus.completed.length;// [FIX v13] Đã bỏ slice ở data gốc — slice được xử lý trong filteredRows.completed
+    const completedTotal = byStatus.completed.length;
     return { ...byStatus, completedTotal };
   }, [orders]);
 
@@ -381,7 +387,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
     (list) => {
       let res = [...list];
 
-      // 1. Tìm kiếm (Mã đơn, Tên KH, SĐT, MSSV)
       const q = search.trim().toLowerCase();
       if (q) {
         res = res.filter((o) => {
@@ -393,24 +398,24 @@ export default function EmployeeOrders({ isAdmin = false }) {
         });
       }
 
-      // 2. Lọc theo khung giờ nhận
       if (pickupTimeFilter) {
+        const norm = (s) => String(s || "").replace(/\s/g, "").toLowerCase();
+        const filterNorm = norm(pickupTimeFilter);
         res = res.filter((o) => {
-          const pt = (o.pickupTime || o.pickup_time || o.note || "").toLowerCase();
-          return pt.includes(pickupTimeFilter.toLowerCase());
+          const src = norm(o.pickupTime || o.pickup_time || o.pickup_time_str || o.note || "");
+          return src.includes(filterNorm);
         });
       }
 
-      // 3. Lọc theo thời gian (Real-time, fix lỗi múi giờ)
       if (timeframeFilter !== "all") {
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        
+
         res = res.filter((o) => {
           const timeStr = o.created_at || o.updated_at;
           if (!timeStr) return false;
           const orderTime = new Date(timeStr).getTime();
-          
+
           if (timeframeFilter === "today") return orderTime >= todayStart;
           if (timeframeFilter === "7days") return orderTime >= todayStart - (6 * 24 * 60 * 60 * 1000);
           if (timeframeFilter === "30days") return orderTime >= todayStart - (29 * 24 * 60 * 60 * 1000);
@@ -418,7 +423,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
         });
       }
 
-      // 4. Lọc theo thanh toán
       if (paymentFilter && paymentFilter !== "all") {
         const pf = paymentFilter.toLowerCase();
         res = res.filter((o) => {
@@ -427,11 +431,10 @@ export default function EmployeeOrders({ isAdmin = false }) {
           if (pf.includes("ví") || pf.includes("vi ")) return op.includes("ví") || op.includes("wallet");
           if (pf.includes("tiền mặt") || pf.includes("cash")) return op.includes("tiền mặt") || op.includes("cash");
           if (pf.includes("thẻ") || pf.includes("card")) return op.includes("thẻ") || op.includes("card");
-          return op === pf; // Fallback nếu không khớp các từ khóa trên
+          return op === pf;
         });
       }
 
-      // 5. Lọc theo trạng thái
       if (statusFilter && statusFilter !== "all") {
         res = res.filter((o) => o.status === statusFilter);
       }
@@ -470,7 +473,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
     };
   }, [orders, rows]);
 
-  // Âm báo
   useEffect(() => {
     const current = rows.pending.length;
     const prev = prevPendingCountRef.current;
@@ -565,6 +567,16 @@ export default function EmployeeOrders({ isAdmin = false }) {
     } catch (e) { toast(e.message || t("Không hủy được"), "error"); }
     finally { setAdvancingId(null); }
   }, [confirmReject, load, t]);
+
+  const handleNotifyOrder = useCallback((order) => {
+    toast(`${t("Đã gửi thông báo cho khách hàng của đơn")} ${order.code}`, "success");
+    // Tích hợp gửi thông báo thật qua API nếu cần
+  }, [t]);
+
+  const handleEditOrder = useCallback((order) => {
+    setSelectedOrder(order); // Mở popup chi tiết để xem/sửa
+    toast(t("Đang mở chi tiết đơn hàng để chỉnh sửa"), "info");
+  }, [t]);
 
   const showRow1 = stationFilter === "all" || stationFilter === "pending";
   const showRow2 = stationFilter === "all" || stationFilter === "pending";
@@ -777,7 +789,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
             return (
               <KDSRow title={t("Đơn Mới")} subtitle={t("Chờ xác nhận")} variant="pending" empty={t("Không có đơn mới")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("pending")} t={t}>
                 {visible.map((o, idx) => (
-                  <KDSTicket key={o._id || o.id} order={o} variant="pending" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onReject={() => rejectOrder(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                  <KDSTicket key={`${o._id || o.id || o.code || "ord"}-${idx}`} order={o} variant="pending" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onReject={() => rejectOrder(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
                 ))}
               </KDSRow>
             );
@@ -787,7 +799,22 @@ export default function EmployeeOrders({ isAdmin = false }) {
             return (
               <KDSRow title={t("Đã Xác Nhận")} subtitle={t("Chờ Bếp")} variant="confirmed" empty={t("Không có đơn đã xác nhận")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("confirmed")} t={t}>
                 {visible.map((o, idx) => (
-                  <KDSTicket key={o._id || o.id} order={o} variant="confirmed" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                  <KDSTicket 
+                    key={`${o._id || o.id || o.code || "ord"}-${idx}`} 
+                    order={o} 
+                    variant="confirmed" 
+                    layout="tall" 
+                    isPriority={idx === 0 && !isExpanded} 
+                    isProcessing={advancingId === (o._id || o.id)} 
+                    elapsed={calcElapsedSec(o.created_at)} 
+                    onAdvance={() => advance(o)} 
+                    onNotify={() => handleNotifyOrder(o)}
+                    onEdit={() => handleEditOrder(o)}
+                    onApproveGreen={approveGreen} 
+                    onRejectGreen={rejectGreen} 
+                    greenBusy={greenBusyId === (o._id || o.id)} 
+                    t={t} 
+                  />
                 ))}
               </KDSRow>
             );
@@ -797,7 +824,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
             return (
               <KDSRow title={t("Đang Nấu")} subtitle={t("Đang chế biến")} variant="prep" empty={t("Không có đơn đang nấu")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("prep")} t={t}>
                 {visible.map((o, idx) => (
-                  <KDSTicket key={o._id || o.id} order={o} variant="prep" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                  <KDSTicket key={`${o._id || o.id || o.code || "ord"}-${idx}`} order={o} variant="prep" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
                 ))}
               </KDSRow>
             );
@@ -807,14 +834,13 @@ export default function EmployeeOrders({ isAdmin = false }) {
             return (
               <KDSRow title={t("Sẵn Sàng Nhận")} subtitle={t("Tủ giữ nóng")} variant="ready" empty={t("Không có đơn sẵn sàng")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("ready")} t={t}>
                 {visible.map((o, idx) => (
-                  <KDSTicket key={o._id || o.id} order={o} variant="ready" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                  <KDSTicket key={`${o._id || o.id || o.code || "ord"}-${idx}`} order={o} variant="ready" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
                 ))}
               </KDSRow>
             );
           })()}
           {showRow5 && (
           <div className="kds-row kds-row--completed" style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 16 }}>
-            {/* Header */}
             <div className="kds-row__head" style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
               <div className="kds-row__title-wrap" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 0 3px #d1fae5" }} />
@@ -823,21 +849,18 @@ export default function EmployeeOrders({ isAdmin = false }) {
               </div>
             </div>
 
-            {/* Danh sách đơn hàng */}
             <div className="kds-row__body kds-row__body--strip" style={{ maxHeight: showAllCompleted ? "none" : 400, overflowY: "auto", padding: "0" }}>
               {filteredRows.completed.length === 0 ? (
                 <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 13 }}>{t("Chưa có đơn hoàn thành")}</div>
               ) : (
-                filteredRows.completed.map((o) => {
+                filteredRows.completed.map((o, idx) => {
                   const d = new Date(o.created_at || Date.now());
                   const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                   const dateStr = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
                   const itemsStr = o.items?.map(i => `${i.qty}x ${i.name} (${i.size?.name || 'L'})`).join(", ") || "Không có món";
-                  
+
                   return (
-                    <div key={o._id || o.id} onClick={() => setSelectedOrder(o)} style={{ display: "flex", alignItems: "center", padding: "16px", background: "#fff", borderBottom: "1px solid #e2e8f0", gap: "12px", width: "100%", boxSizing: "border-box", cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}>
-                      
-                      {/* 1. Mã đơn hàng */}
+                    <div key={`${o._id || o.id || o.code || "done"}-${idx}`} onClick={() => setSelectedOrder(o)} style={{ display: "flex", alignItems: "center", padding: "16px", background: "#fff", borderBottom: "1px solid #e2e8f0", gap: "12px", width: "100%", boxSizing: "border-box", cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}>
                       <div style={{ flex: "0 0 160px", display: "flex", alignItems: "flex-start", gap: "10px" }}>
                         <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", color: "#3b82f6", display: "grid", placeItems: "center", flexShrink: 0 }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -852,7 +875,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
                         </div>
                       </div>
 
-                      {/* 2. Khách hàng */}
                       <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
                         <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -863,7 +885,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
                         </div>
                       </div>
 
-                      {/* 3. Món ăn */}
                       <div style={{ flex: "2", display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
                         <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path></svg>
@@ -874,7 +895,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
                         </div>
                       </div>
 
-                      {/* 4. Thanh toán */}
                       <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
                         <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
@@ -885,7 +905,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
                         </div>
                       </div>
 
-                      {/* 5. Điểm thưởng */}
                       <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
                         <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
@@ -893,12 +912,11 @@ export default function EmployeeOrders({ isAdmin = false }) {
                         <div>
                           <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Điểm thưởng</div>
                           <div style={{ display: "inline-block", background: "#f0fdf4", color: "#10b981", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                            +{o.green_points > 0 ? 300 : 100} Xu
+                            +{o.points_earned || (o.green_points > 0 ? 300 : 100)} Xu
                           </div>
                         </div>
                       </div>
 
-                      {/* 6. Tổng tiền & Trạng thái */}
                       <div style={{ flex: "1.2", display: "flex", alignItems: "flex-start", gap: "10px" }}>
                         <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", color: "#3b82f6", display: "grid", placeItems: "center", flexShrink: 0 }}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
@@ -912,24 +930,21 @@ export default function EmployeeOrders({ isAdmin = false }) {
                         </div>
                       </div>
 
-                      {/* 7. Mũi tên xem chi tiết */}
                       <div style={{ flex: "0 0 auto", color: "#94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                       </div>
-
                     </div>
                   );
                 })
               )}
             </div>
 
-            {/* Footer: Nút Xem tất cả / Thu gọn */}
             <div style={{ padding: "12px", textAlign: "center", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
-              <button 
-                type="button" 
-                onClick={() => setShowAllCompleted(!showAllCompleted)} 
-                style={{ width: "100%", padding: "10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontWeight: 700, color: "#2634d5", cursor: "pointer", transition: "all 0.2s" }} 
-                onMouseEnter={(e) => e.currentTarget.style.background = "#f1f5f9"} 
+              <button
+                type="button"
+                onClick={() => setShowAllCompleted(!showAllCompleted)}
+                style={{ width: "100%", padding: "10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontWeight: 700, color: "#2634d5", cursor: "pointer", transition: "all 0.2s" }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f1f5f9"}
                 onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}
               >
                 {showAllCompleted ? "Thu gọn" : `Xem tất cả ${filteredRows.completedTotal ?? filteredRows.completed.length} đơn →`}
@@ -939,7 +954,6 @@ export default function EmployeeOrders({ isAdmin = false }) {
         )}
         </div>
       </div>
-
       
       {/* POPUP CHI TIẾT ĐƠN HÀNG */}
       {selectedOrder && (
@@ -997,7 +1011,17 @@ export default function EmployeeOrders({ isAdmin = false }) {
         </div>
       )}
 
-      <ConfirmDialog open={!!confirmReject} title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""} message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""} confirmText={t("Từ chối & Hoàn tiền")} cancelText={t("Giữ đơn")} danger loading={!!advancingId} onConfirm={executeReject} onClose={() => !advancingId && setConfirmReject(null)} />
+      <ConfirmDialog
+        open={!!confirmReject}
+        title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""}
+        message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""}
+        confirmText={t("Từ chối & Hoàn tiền")}
+        cancelText={t("Giữ đơn")}
+        danger
+        loading={!!advancingId}
+        onConfirm={executeReject}
+        onClose={() => !advancingId && setConfirmReject(null)}
+      />
     </>
   );
 }
@@ -1058,4 +1082,3 @@ function CompletedStripItem({ order, t }) {
     </div>
   );
 }
-

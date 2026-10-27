@@ -1,5 +1,15 @@
 // ============================================================
-// CHATBOTWIDGET.JSX — Chat popup nổi (V6 - FIX RACE CONDITION)
+// CHATBOTWIDGET.JSX — Chat popup nổi (V7 - FIX AUTH GUARD)
+// ============================================================
+// V7 (2026-11):
+//   🔧 FIX: Thêm getToken() guard cho:
+//     - loadStaff (polling 3s — spam 401 nếu session hết)
+//     - settings fetch (mount)
+//     - currentStaff fetch (khi mở widget)
+//     - sendStaff / sendOrderSupport (toast rõ ràng)
+//   🔧 FIX: useEffect supportRequest thêm onSupportRequestHandled vào deps
+// V6 (2026-10):
+//   - Fix race poll vs send (isSendingRef)
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -7,7 +17,7 @@ import {
   Bot, X, Send, ShoppingCart, Store, MessageCircleHeart, Loader2,
   AlertCircle, RefreshCw, Sparkles, Headset, ArrowRight, Flame, Phone,
 } from "lucide-react";
-import { api } from "../api";
+import { api, getToken } from "../api";
 import { money } from "./UI";
 import { toast } from "./Effects";
 import { getBotReply } from "./ChatBot";
@@ -132,7 +142,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffError, setStaffError] = useState("");
   const [orderSupportRequest, setOrderSupportRequest] = useState(null);
-  
+
   // DIRECT ORDER SUPPORT PROP
   useEffect(() => {
     if (!supportRequest?.message) return;
@@ -142,6 +152,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
     if (typeof onSupportRequestHandled === "function") {
       onSupportRequestHandled();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supportRequest]);
 
   // Data
@@ -165,7 +176,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   const aiBottomRef = useRef(null);
   const staffBottomRef = useRef(null);
   const lastUserIdRef = useRef(user?.id);
-  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
+  const isSendingRef = useRef(false);
 
   // ============================================================
   // LOAD MENU + SETTINGS
@@ -184,14 +195,19 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
         if (!cancelled) setMenuItems([]);
       });
 
-    api.settings
-      .get()
-      .then((d) => {
-        if (!cancelled) setSettings(d || null);
-      })
-      .catch(() => {
-        if (!cancelled) setSettings(null);
-      });
+    // 🔧 FIX V7: guard token cho settings (endpoint yêu cầu auth)
+    if (!getToken()) {
+      setSettings(null);
+    } else {
+      api.settings
+        .get()
+        .then((d) => {
+          if (!cancelled) setSettings(d || null);
+        })
+        .catch(() => {
+          if (!cancelled) setSettings(null);
+        });
+    }
 
     return () => {
       cancelled = true;
@@ -203,6 +219,13 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   // ============================================================
   useEffect(() => {
     if (!open) return;
+
+    // 🔧 FIX V7: guard token — tránh 401 khi widget mở sau khi session hết
+    if (!getToken()) {
+      setCurrentStaff(null);
+      setShiftLoading(false);
+      return;
+    }
 
     let cancelled = false;
     setShiftLoading(true);
@@ -282,7 +305,10 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
   // ============================================================
   const loadStaff = useCallback(
     async (silent = true) => {
-      // 🔴 FIX: Chặn Polling nếu đang gửi tin
+      // 🔧 FIX V7 CRITICAL: guard token — polling 3s sẽ spam 401 khi session hết
+      if (!getToken()) return;
+
+      // 🔴 FIX V6: Chặn Polling nếu đang gửi tin
       if (silent && isSendingRef.current) return;
 
       const myReqId = ++staffReqIdRef.current;
@@ -462,6 +488,12 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
     const val = staffText.trim();
     if (!val || staffSending) return;
 
+    // 🔧 FIX V7: guard token với thông báo rõ ràng
+    if (!getToken()) {
+      toast(t("Vui lòng đăng nhập để gửi tin nhắn"), "error");
+      return;
+    }
+
     if (val.length > MAX_MESSAGE_LENGTH) {
       toast(
         t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH),
@@ -470,13 +502,12 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       return;
     }
 
-    isSendingRef.current = true; // 🔴
+    isSendingRef.current = true;
     setStaffSending(true);
     try {
       const msg = await api.chat.send({ content: val });
       setStaffText("");
       setStaffMessages((m) => {
-        // 🔴 Chống trùng lặp key
         if (m.some((x) => x.id === msg.id)) return m;
         return [...m, msg];
       });
@@ -484,7 +515,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       toast(e.message || t("Không gửi được tin nhắn"), "error");
     } finally {
       setStaffSending(false);
-      isSendingRef.current = false; // 🔴
+      isSendingRef.current = false;
     }
   }, [staffText, staffSending, t]);
 
@@ -495,8 +526,14 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
     if (!request?.message || staffSending) return;
     if (orderSupportSentRef.current === request.requestId) return;
 
+    // 🔧 FIX V7: guard token
+    if (!getToken()) {
+      toast(t("Vui lòng đăng nhập để gửi yêu cầu"), "error");
+      return;
+    }
+
     orderSupportSentRef.current = request.requestId;
-    isSendingRef.current = true; // 🔴
+    isSendingRef.current = true;
     setStaffSending(true);
 
     try {
@@ -517,7 +554,6 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       setOrderSupportRequest((current) =>
         current?.requestId === request.requestId ? null : current
       );
-      // loadStaff(true); -> Đã bỏ vì đã tự cập nhật state
       toast(t("Đã gửi yêu cầu kiểm tra đơn tới quầy bếp."), "success");
     } catch (e) {
       orderSupportSentRef.current = null;
@@ -528,7 +564,7 @@ export default function ChatBotWidget({ cart, setCart, user, hideLauncher = fals
       );
     } finally {
       setStaffSending(false);
-      isSendingRef.current = false; // 🔴
+      isSendingRef.current = false;
     }
   }, [orderSupportRequest, staffSending, t]);
 

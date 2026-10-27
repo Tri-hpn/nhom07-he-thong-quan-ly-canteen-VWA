@@ -10,7 +10,7 @@ import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import {Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings, History, Zap, Info} from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
@@ -236,30 +236,35 @@ export default function OwnerVouchers() {
   // ---------- Load ----------
 
   const load = useCallback(async () => {
-    const myReqId = ++reqIdRef.current;
-    setLoading(true);
-    setError("");
+  // 🔧 FIX: guard chống 401 spam khi session hết hạn
+  if (!getToken()) {
+    setLoading(false);
+    return;
+  }
+  const myReqId = ++reqIdRef.current;
+  setLoading(true);
+  setError("");
 
-    try {
-      const [vRes, uRes, cfgRes] = await Promise.all([
-        api.vouchers.all().catch(() => []),
-        api.users.list("CUSTOMER").catch(() => []),
-        api.points.config().catch(() => null),
-      ]);
+  try {
+    const [vRes, uRes, cfgRes] = await Promise.all([
+      api.vouchers.all().catch(() => []),
+      api.users.list("CUSTOMER").catch(() => []),
+      api.points.config().catch(() => null),
+    ]);
 
-      if (myReqId !== reqIdRef.current) return;
+    if (myReqId !== reqIdRef.current) return;
 
-      setList(Array.isArray(vRes) ? vRes : []);
-      setCustomers(Array.isArray(uRes) ? uRes : []);
-      if (cfgRes) setPointsConfig(cfgRes);
-    } catch (e) {
-      if (myReqId === reqIdRef.current) {
-        setError(e.message || t("Không tải được danh sách voucher"));
-      }
-    } finally {
-      if (myReqId === reqIdRef.current) setLoading(false);
+    setList(Array.isArray(vRes) ? vRes : []);
+    setCustomers(Array.isArray(uRes) ? uRes : []);
+    if (cfgRes) setPointsConfig(cfgRes);
+  } catch (e) {
+    if (myReqId === reqIdRef.current) {
+      setError(e.message || t("Không tải được danh sách voucher"));
     }
-  }, [t]);
+  } finally {
+    if (myReqId === reqIdRef.current) setLoading(false);
+  }
+}, [t]);
 
   useEffect(() => {
     load();

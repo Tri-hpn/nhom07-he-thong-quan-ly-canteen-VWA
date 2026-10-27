@@ -9,7 +9,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   TrendingUp, TrendingDown, Search, Calendar, X, Loader2, AlertCircle, History, Minus,
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { useI18n } from "../../hooks/useI18n";
 import { SkeletonStats } from "../../components/Skeleton";
@@ -79,22 +79,27 @@ export default function OwnerPriceHistory() {
 
   // ---------- Load ALL history (race-safe) ----------
   const loadHistory = useCallback(async () => {
-    const myReqId = ++reqIdRef.current;
-    setLoading(true);
-    setError("");
+  // 🔧 FIX: guard chống 401 spam khi session hết hạn
+  if (!getToken()) {
+    setLoading(false);
+    return;
+  }
+  const myReqId = ++reqIdRef.current;
+  setLoading(true);
+  setError("");
 
-    try {
-      const data = await api.priceHistory.list();
-      if (myReqId !== reqIdRef.current) return;
-      setHistory(Array.isArray(data) ? data : []);
-    } catch (e) {
-      if (myReqId !== reqIdRef.current) return;
-      setError(e.message || t("Không tải được lịch sử giá"));
-      setHistory([]);
-    } finally {
-      if (myReqId === reqIdRef.current) setLoading(false);
-    }
-  }, [t]);
+  try {
+    const data = await api.priceHistory.list();
+    if (myReqId !== reqIdRef.current) return;
+    setHistory(Array.isArray(data) ? data : []);
+  } catch (e) {
+    if (myReqId !== reqIdRef.current) return;
+    setError(e.message || t("Không tải được lịch sử giá"));
+    setHistory([]);
+  } finally {
+    if (myReqId === reqIdRef.current) setLoading(false);
+  }
+}, [t]);
 
   useEffect(() => {
     loadHistory();

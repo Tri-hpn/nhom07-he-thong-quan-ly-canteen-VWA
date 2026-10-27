@@ -1,13 +1,10 @@
 // ============================================================
-// EMPLOYEESHIFTS.JSX — Trang "Ca làm việc" (gộp CheckInOut + History)
+// EMPLOYEESHIFTS.JSX — Ca làm việc (V4 - FIXED)
 // ============================================================
-// Layout:
-//   - Hero: đồng hồ realtime + nút Đăng ký ca + In phiếu giao ca
-//   - Chấm công: chọn ca, check-in/out, trạng thái hôm nay
-//   - Nhật ký ca: timeline check-in/out hôm nay
-//   - Kíp trực hôm nay: đồng nghiệp
-//   - Lịch sử chấm công gần nhất
-//   - ✅ V3: Thêm block "Công Việc Được Giao" + Hiển thị Quầy được phân
+// V4 (2026-11) FIX:
+//   🔴 getToken() guard trong load() — chống spam 401 khi mất phiên
+//   🔴 Pending shifts persist qua reload — merge từ api.shifts.all({ include_pending: 1 })
+//   🟡 Xóa dead code phaseOf()
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -16,7 +13,7 @@ import {
   RefreshCw, Loader2, Printer, History, Users, BadgeCheck, Timer,
   CalendarX, Store, PlusCircle, Save, X, ClipboardList, CheckSquare, Check,
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api"; // 🔧 FIX #1
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import { useAuth } from "../../contexts/AuthContext";
@@ -27,60 +24,40 @@ const REFRESH_MS = 30000;
 const RECENT_LIMIT = 8;
 const MODAL_Z = 2147483600;
 
-// 🔧 FIX #84: formatter cố định VN timezone cho clock
 const CLOCK_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
 });
 
 const CLOCK_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
-  weekday: "long",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
+  weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
 });
 
 const PRINT_DATETIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
   timeZone: "Asia/Ho_Chi_Minh",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
+  day: "2-digit", month: "2-digit", year: "numeric",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
 });
 
 const PRINT_DATE_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
   timeZone: "Asia/Ho_Chi_Minh",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
+  day: "2-digit", month: "2-digit", year: "numeric",
 });
 
 const PRINT_TIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
   timeZone: "Asia/Ho_Chi_Minh",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
+  hour: "2-digit", minute: "2-digit", hour12: false,
 });
 
 const SHIFTS = [
   {
-    id: "Ca sáng",
-    label: "Ca sáng",
-    time: "06:30 - 12:30",
+    id: "Ca sáng", label: "Ca sáng", time: "06:30 - 12:30",
     startHour: 6, startMin: 30, endHour: 12, endMin: 30,
     icon: Sunrise, color: "#f59e0b",
   },
   {
-    id: "Ca chiều",
-    label: "Ca chiều",
-    time: "12:30 - 18:30",
+    id: "Ca chiều", label: "Ca chiều", time: "12:30 - 18:30",
     startHour: 12, startMin: 30, endHour: 18, endMin: 30,
     icon: Sun, color: "#2634d5",
   },
@@ -114,21 +91,7 @@ function getInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function phaseOf(shift, minutes, att) {
-  if (att?.checkIn && att?.checkOut) {
-    return { key: "done", label: "Đã kết thúc", variant: "neutral" };
-  }
-  if (att?.checkIn) {
-    return { key: "active", label: "Đang trong ca", variant: "success" };
-  }
-  if (minutes < shift.start) {
-    return { key: "upcoming", label: "Sắp tới", variant: "info" };
-  }
-  if (minutes <= shift.end) {
-    return { key: "missed", label: "Chưa check-in", variant: "warning" };
-  }
-  return { key: "passed", label: "Đã qua", variant: "neutral" };
-}
+// 🔧 FIX #4: XÓA function phaseOf() — dead code không dùng
 
 function pillVariant(status) {
   return STATUS_VARIANT[status] || "neutral";
@@ -163,8 +126,7 @@ export default function EmployeeShifts() {
   const [upcoming, setUpcoming] = useState([]);
   const [team, setTeam] = useState([]);
   const [todayAtt, setTodayAtt] = useState(null);
-  
-  // ✅ State cho Tasks
+
   const [tasks, setTasks] = useState([]);
   const [togglingTaskId, setTogglingTaskId] = useState(null);
 
@@ -198,6 +160,12 @@ export default function EmployeeShifts() {
   // ---- LOAD ----
   const load = useCallback(
     async (silent = false) => {
+      // 🔧 FIX #2: Guard chống spam 401
+      if (!getToken()) {
+        setLoading(false);
+        return;
+      }
+
       if (!silent) setRefreshing(true);
       setError("");
 
@@ -209,7 +177,7 @@ export default function EmployeeShifts() {
         api.shifts.mine(),
         api.attendance.all({ from: todayStr, to: todayStr }),
         api.attendance.today(),
-        api.tasks.me(), // ✅ Load tasks
+        api.tasks.me(),
       ]);
 
       const [meRes, todayRes, mineRes, teamRes, attRes, tasksRes] = results;
@@ -220,13 +188,24 @@ export default function EmployeeShifts() {
       if (todayRes.status === "fulfilled") {
         setTodayShifts(Array.isArray(todayRes.value) ? todayRes.value : []);
       }
+      // 🔧 FIX #3: Merge approved + pending từ server → persist qua reload
       if (mineRes.status === "fulfilled") {
         const fetched = Array.isArray(mineRes.value) ? mineRes.value : [];
-        setUpcoming(prev => {
-          const fetchedKeys = new Set(fetched.map(s => `${s.date}-${s.shift}`));
-          const localPending = prev.filter(s => s.status === 'pending' && !fetchedKeys.has(`${s.date}-${s.shift}`));
-          return [...fetched, ...localPending];
-        });
+        try {
+          const allShifts = await api.shifts.all({ include_pending: 1 });
+          const myPending = (Array.isArray(allShifts) ? allShifts : []).filter(
+            (s) =>
+              s.status === "pending" &&
+              String(s.employee_id) === String(user?.id)
+          );
+          const map = new Map();
+          [...fetched, ...myPending].forEach((s) => {
+            map.set(`${s.date}-${s.shift}`, s);
+          });
+          setUpcoming(Array.from(map.values()));
+        } catch {
+          setUpcoming(fetched);
+        }
       }
       if (teamRes.status === "fulfilled") {
         setTeam(Array.isArray(teamRes.value) ? teamRes.value : []);
@@ -244,7 +223,7 @@ export default function EmployeeShifts() {
       setLoading(false);
       setRefreshing(false);
     },
-    [t]
+    [t, user?.id]
   );
 
   useEffect(() => {
@@ -262,24 +241,11 @@ export default function EmployeeShifts() {
     [me, today]
   );
 
-  const attByShift = useMemo(() => {
-    const map = {};
-    filteredTodayAtt.forEach((a) => {
-      if (a.shift) map[a.shift] = a;
-    });
-    return map;
-  }, [filteredTodayAtt]);
-
   const kpi = useMemo(() => {
     const total = todayShifts.length;
     const checkedIn = filteredTodayAtt.filter((a) => a.checkIn).length;
-    const hours = filteredTodayAtt.reduce(
-      (s, a) => s + (Number(a.hours) || 0),
-      0
-    );
-    const late = filteredTodayAtt.filter((a) =>
-      String(a.status || "").includes("Đi muộn")
-    ).length;
+    const hours = filteredTodayAtt.reduce((s, a) => s + (Number(a.hours) || 0), 0);
+    const late = filteredTodayAtt.filter((a) => String(a.status || "").includes("Đi muộn")).length;
     return { total, checkedIn, hours, late };
   }, [todayShifts, filteredTodayAtt]);
 
@@ -289,22 +255,10 @@ export default function EmployeeShifts() {
     const events = [];
     filteredTodayAtt.forEach((a, idx) => {
       if (a.checkIn) {
-        events.push({
-          key: `in-${a.id ?? idx}`,
-          shift: a.shift,
-          type: "in",
-          at: a.checkIn,
-          status: a.status,
-        });
+        events.push({ key: `in-${a.id ?? idx}`, shift: a.shift, type: "in", at: a.checkIn, status: a.status });
       }
       if (a.checkOut) {
-        events.push({
-          key: `out-${a.id ?? idx}`,
-          shift: a.shift,
-          type: "out",
-          at: a.checkOut,
-          status: a.status,
-        });
+        events.push({ key: `out-${a.id ?? idx}`, shift: a.shift, type: "out", at: a.checkOut, status: a.status });
       }
     });
     return events.sort((a, b) => new Date(a.at) - new Date(b.at));
@@ -315,11 +269,8 @@ export default function EmployeeShifts() {
     [minutes]
   );
 
-  // ✅ Cập nhật hiển thị ca làm + quầy do admin phân
   const shiftLabel = useMemo(() => {
     if (todayShifts.length === 0) return t("Chưa được phân ca hôm nay");
-    
-    // Map từng ca và kèm thông tin quầy (nếu có)
     return todayShifts.map((s) => {
       const station = s.station ? ` (${s.station})` : "";
       return `${s.shift}${station}`;
@@ -329,7 +280,6 @@ export default function EmployeeShifts() {
   const clockLabel = CLOCK_TIME_FORMATTER.format(clock);
   const clockDateLabel = CLOCK_DATE_FORMATTER.format(clock);
 
-  // ✅ Computed cho Tasks
   const pendingTasks = useMemo(() => tasks.filter((tk) => tk.status === "pending"), [tasks]);
   const doneTasks = useMemo(() => tasks.filter((tk) => tk.status === "done"), [tasks]);
 
@@ -346,12 +296,7 @@ export default function EmployeeShifts() {
   );
 
   const handoverShiftCode = useMemo(() => {
-    const suffix =
-      handoverShiftId === "Ca sáng"
-        ? "S"
-        : handoverShiftId === "Ca chiều"
-        ? "C"
-        : "A";
+    const suffix = handoverShiftId === "Ca sáng" ? "S" : handoverShiftId === "Ca chiều" ? "C" : "A";
     return genShiftCode(clock, suffix);
   }, [clock, handoverShiftId]);
 
@@ -360,18 +305,13 @@ export default function EmployeeShifts() {
   const handoverPrintTimeOnly = PRINT_TIME_FORMATTER.format(clock);
 
   const handoverStaffName = user?.name || "—";
-  const handoverStaffCode =
-    user?.employeeCode || user?.code || "NV-2024-08";
+  const handoverStaffCode = user?.employeeCode || user?.code || "NV-2024-08";
 
   const handoverAttStatus = todayAtt?.checkIn
-    ? todayAtt?.checkOut
-      ? t("Đã hoàn thành ca")
-      : t("Đang trong ca")
+    ? todayAtt?.checkOut ? t("Đã hoàn thành ca") : t("Đang trong ca")
     : t("Chưa check-in");
 
-  // ============================================================
   // CHECK-IN/OUT
-  // ============================================================
   const handleCheckIn = async () => {
     if (checkingIn || checkingOut) return;
     if (!todayShifts.length) {
@@ -411,7 +351,6 @@ export default function EmployeeShifts() {
     }
   };
 
-  // ✅ Hàm xử lý Toggle Task
   const handleToggleTask = useCallback(async (task) => {
     const id = task.id;
     if (togglingTaskId) return;
@@ -437,7 +376,6 @@ export default function EmployeeShifts() {
   const handleCloseHandover = useCallback(() => setShowHandover(false), []);
   const handlePrintHandover = useCallback(() => setTimeout(() => window.print(), 100), []);
 
-  // ---- RENDER ----
   if (loading) {
     return (
       <div className="shifthist-loading">
@@ -446,7 +384,7 @@ export default function EmployeeShifts() {
       </div>
     );
   }
-
+  
   return (
     <div className="shifthist">
       {error && (
@@ -578,9 +516,7 @@ export default function EmployeeShifts() {
           </div>
           <span className="shift-checkin-card__status">
             {todayAtt?.checkIn
-              ? todayAtt?.checkOut
-                ? t("Đã hoàn thành ca")
-                : t("Đang trong ca")
+              ? todayAtt?.checkOut ? t("Đã hoàn thành ca") : t("Đang trong ca")
               : t("Chưa check-in")}
           </span>
         </div>
@@ -677,7 +613,7 @@ export default function EmployeeShifts() {
         </p>
       </div>
 
-            {/* ============ LỊCH SỬ ĐĂNG KÝ CA ============ */}
+      {/* ============ LỊCH SỬ ĐĂNG KÝ CA ============ */}
       <div className="shifthist-card" style={{ marginBottom: 20 }}>
         <div className="shifthist-card__head">
           <h3 className="shifthist-card__title">
@@ -814,7 +750,7 @@ export default function EmployeeShifts() {
         </div>
       </div>
 
-      {/* ============ CÔNG VIỆC ĐƯỢC GIAO (MỚI THÊM) ============ */}
+      {/* ============ CÔNG VIỆC ĐƯỢC GIAO ============ */}
       <section className="tasks-card">
         <div className="tasks-card__head">
           <div className="tasks-card__head-left">
@@ -947,24 +883,20 @@ export default function EmployeeShifts() {
               "success"
             );
 
-            // Cập nhật ngay lập tức vào Lịch sử đăng ký
             const newShifts = [];
             Object.entries(data.dateShifts).forEach(([date, shiftList]) => {
-              shiftList.forEach(shift => {
+              shiftList.forEach((shift) => {
                 newShifts.push({
                   id: `temp-${Date.now()}-${Math.random()}`,
-                  date,
-                  shift,
-                  status: 'pending',
-                  employee_id: user?.id,
-                  station: null
+                  date, shift, status: "pending",
+                  employee_id: user?.id, station: null,
                 });
               });
             });
 
-            setUpcoming(prev => {
-              const existing = new Set(prev.map(s => `${s.date}-${s.shift}`));
-              const uniqueNew = newShifts.filter(s => !existing.has(`${s.date}-${s.shift}`));
+            setUpcoming((prev) => {
+              const existing = new Set(prev.map((s) => `${s.date}-${s.shift}`));
+              const uniqueNew = newShifts.filter((s) => !existing.has(`${s.date}-${s.shift}`));
               return [...prev, ...uniqueNew];
             });
 
@@ -1085,323 +1017,109 @@ export default function EmployeeShifts() {
       )}
 
       <style>{`
-        /* ---------- Modal overlay ---------- */
         .handover-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 9999;
+          position: fixed; inset: 0; z-index: 9999;
           background: rgba(15, 23, 42, 0.6);
           backdrop-filter: blur(4px);
-          display: flex;
-          align-items: flex-start;
-          justify-content: center;
-          padding: 24px 16px;
-          overflow-y: auto;
+          display: flex; align-items: flex-start; justify-content: center;
+          padding: 24px 16px; overflow-y: auto;
         }
-
         .handover-modal {
-          width: 100%;
-          max-width: 820px;
+          width: 100%; max-width: 820px;
           background: var(--st-surface);
           border-radius: 12px;
           box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
           overflow: hidden;
         }
-
         .handover-modal__toolbar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 12px 16px;
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; padding: 12px 16px;
           background: var(--st-surface-low);
           border-bottom: 1px solid var(--st-outline-light);
         }
-
         .handover-modal__toolbar-title {
-          margin: 0;
-          font-family: var(--st-font-head);
-          font-size: 15px;
-          font-weight: 700;
-          color: var(--st-text);
+          margin: 0; font-family: var(--st-font-head);
+          font-size: 15px; font-weight: 700; color: var(--st-text);
         }
-
-        .handover-modal__toolbar-actions {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
+        .handover-modal__toolbar-actions { display: flex; align-items: center; gap: 8px; }
         .handover-modal__btn {
-          height: 38px;
-          padding: 0 14px;
-          border-radius: 8px;
-          border: 0;
-          font-family: var(--st-font-head);
-          font-size: 13px;
-          font-weight: 700;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          cursor: pointer;
-          transition: all 0.15s;
+          height: 38px; padding: 0 14px; border-radius: 8px;
+          border: 0; font-family: var(--st-font-head);
+          font-size: 13px; font-weight: 700;
+          display: inline-flex; align-items: center; gap: 6px;
+          cursor: pointer; transition: all 0.15s;
         }
-
         .handover-modal__btn--ghost {
-          background: var(--st-surface-container);
-          color: var(--st-text);
+          background: var(--st-surface-container); color: var(--st-text);
         }
-        .handover-modal__btn--ghost:hover {
-          background: var(--st-surface-high);
-        }
-
         .handover-modal__btn--primary {
-          background: var(--st-primary-container);
-          color: var(--st-on-primary);
+          background: var(--st-primary-container); color: var(--st-on-primary);
         }
-        .handover-modal__btn--primary:hover {
-          background: var(--st-primary);
-        }
-
-        /* ---------- Tờ phiếu giao ca ---------- */
         .handover-sheet {
-          background: #ffffff;
-          color: #111827;
+          background: #ffffff; color: #111827;
           padding: 28px 32px 32px;
           font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          font-size: 13px;
-          line-height: 1.5;
+          font-size: 13px; line-height: 1.5;
         }
-
         .handover-sheet__header {
-          display: grid;
-          grid-template-columns: auto 1fr auto;
-          align-items: center;
-          gap: 16px;
-          padding-bottom: 14px;
-          border-bottom: 2px solid #111827;
+          display: grid; grid-template-columns: auto 1fr auto;
+          align-items: center; gap: 16px;
+          padding-bottom: 14px; border-bottom: 2px solid #111827;
         }
-
-        .handover-sheet__logo {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .handover-sheet__logo-text {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
+        .handover-sheet__logo { display: flex; align-items: center; gap: 10px; }
+        .handover-sheet__logo-text { display: flex; flex-direction: column; gap: 2px; }
         .handover-sheet__logo-text b {
           font-family: "Plus Jakarta Sans", sans-serif;
-          font-size: 13px;
-          font-weight: 800;
-          letter-spacing: 0.02em;
-          color: #111827;
+          font-size: 13px; font-weight: 800;
+          letter-spacing: 0.02em; color: #111827;
         }
-
-        .handover-sheet__logo-text span {
-          font-size: 11px;
-          color: #6b7280;
-        }
-
-        .handover-sheet__title-wrap {
-          text-align: center;
-          min-width: 0;
-        }
-
+        .handover-sheet__logo-text span { font-size: 11px; color: #6b7280; }
+        .handover-sheet__title-wrap { text-align: center; min-width: 0; }
         .handover-sheet__title {
-          margin: 0;
-          font-family: "Plus Jakarta Sans", sans-serif;
-          font-size: 22px;
-          font-weight: 800;
-          letter-spacing: 0.06em;
-          color: #111827;
+          margin: 0; font-family: "Plus Jakarta Sans", sans-serif;
+          font-size: 22px; font-weight: 800;
+          letter-spacing: 0.06em; color: #111827;
         }
-
         .handover-sheet__subtitle {
-          display: block;
-          font-size: 11px;
-          color: #6b7280;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          margin-top: 2px;
+          display: block; font-size: 11px; color: #6b7280;
+          letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px;
         }
-
         .handover-sheet__meta-right {
-          text-align: right;
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          font-size: 12px;
-          white-space: nowrap;
+          text-align: right; display: flex; flex-direction: column;
+          gap: 2px; font-size: 12px; white-space: nowrap;
         }
-
-        .handover-sheet__meta-right b {
-          color: #374151;
-          font-weight: 700;
-        }
-
-        .handover-sheet__section {
-          margin-top: 18px;
-        }
-
+        .handover-sheet__section { margin-top: 18px; }
         .handover-sheet__section-title {
           font-family: "Plus Jakarta Sans", sans-serif;
-          font-size: 12px;
-          font-weight: 800;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-          color: #004ac6;
-          padding-bottom: 4px;
-          border-bottom: 1px solid #e5e7eb;
-          margin-bottom: 8px;
+          font-size: 12px; font-weight: 800;
+          letter-spacing: 0.06em; text-transform: uppercase;
+          color: #004ac6; padding-bottom: 4px;
+          border-bottom: 1px solid #e5e7eb; margin-bottom: 8px;
         }
-
-        .handover-sheet__grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 4px 24px;
-        }
-
-        .handover-sheet__row {
-          display: flex;
-          align-items: baseline;
-          gap: 8px;
-          padding: 3px 0;
-        }
-
-        .handover-sheet__label {
-          color: #6b7280;
-          min-width: 110px;
-        }
-
-        .handover-sheet__value {
-          font-weight: 600;
-          color: #111827;
-          flex: 1;
-        }
-
-        .handover-sheet__table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 12.5px;
-        }
-
-        .handover-sheet__table td {
-          padding: 5px 8px;
-          border-bottom: 1px dashed #e5e7eb;
-        }
-
-        .handover-sheet__table tr:last-child td {
-          border-bottom: 0;
-        }
-
-        .handover-sheet__num {
-          text-align: right;
-          font-variant-numeric: tabular-nums;
-          font-weight: 700;
-          color: #111827;
-          white-space: nowrap;
-        }
-
-        .handover-sheet__num--big {
-          font-size: 15px;
-          color: #004ac6;
-        }
-
-        .handover-sheet__note-box {
-          padding: 4px 0;
-          display: flex;
-          flex-direction: column;
-          gap: 18px;
-        }
-
-        .handover-sheet__note-line {
-          border-bottom: 1px dotted #9ca3af;
-          height: 1px;
-        }
-
-        .handover-sheet__signatures {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 24px;
-          margin-top: 24px;
-        }
-
-        .handover-sheet__sign {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 2px;
-          text-align: center;
-        }
-
-        .handover-sheet__sign b {
-          font-family: "Plus Jakarta Sans", sans-serif;
-          font-size: 12.5px;
-          font-weight: 800;
-          color: #111827;
-        }
-
-        .handover-sheet__sign span {
-          font-size: 11px;
-          color: #6b7280;
-          font-style: italic;
-        }
-
-        .handover-sheet__sign-space {
-          height: 56px;
-        }
-
-        .handover-sheet__sign-name {
-          font-family: "Plus Jakarta Sans", sans-serif;
-          font-size: 13px;
-          font-weight: 700;
-          color: #111827;
-          border-top: 1px solid #111827;
-          padding-top: 4px;
-          min-width: 160px;
-        }
-
-        .handover-sheet__footer {
-          margin-top: 20px;
-          padding-top: 10px;
-          border-top: 1px solid #e5e7eb;
-          text-align: center;
-          font-size: 10.5px;
-          color: #9ca3af;
-        }
-
-        /* ---------- @media print ---------- */
+        .handover-sheet__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+        .handover-sheet__row { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+        .handover-sheet__label { color: #6b7280; min-width: 110px; }
+        .handover-sheet__value { font-weight: 600; color: #111827; flex: 1; }
+        .handover-sheet__table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        .handover-sheet__table td { padding: 5px 8px; border-bottom: 1px dashed #e5e7eb; }
+        .handover-sheet__num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: #111827; white-space: nowrap; }
+        .handover-sheet__num--big { font-size: 15px; color: #004ac6; }
+        .handover-sheet__note-box { padding: 4px 0; display: flex; flex-direction: column; gap: 18px; }
+        .handover-sheet__note-line { border-bottom: 1px dotted #9ca3af; height: 1px; }
+        .handover-sheet__signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; }
+        .handover-sheet__sign { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+        .handover-sheet__sign b { font-family: "Plus Jakarta Sans", sans-serif; font-size: 12.5px; font-weight: 800; color: #111827; }
+        .handover-sheet__sign span { font-size: 11px; color: #6b7280; font-style: italic; }
+        .handover-sheet__sign-space { height: 56px; }
+        .handover-sheet__sign-name { font-family: "Plus Jakarta Sans", sans-serif; font-size: 13px; font-weight: 700; color: #111827; border-top: 1px solid #111827; padding-top: 4px; min-width: 160px; }
+        .handover-sheet__footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10.5px; color: #9ca3af; }
         @media print {
           body * { visibility: hidden !important; }
           #handover-print-area, #handover-print-area * { visibility: visible !important; }
-          #handover-print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            background: #fff !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 20px 24px !important;
-          }
+          #handover-print-area { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; box-shadow: none !important; border-radius: 0 !important; padding: 20px 24px !important; }
           .no-print { display: none !important; }
-          .handover-overlay {
-            position: static !important;
-            background: #fff !important;
-            backdrop-filter: none !important;
-            padding: 0 !important;
-            overflow: visible !important;
-          }
-          .handover-modal {
-            max-width: none !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-          }
+          .handover-overlay { position: static !important; background: #fff !important; backdrop-filter: none !important; padding: 0 !important; overflow: visible !important; }
+          .handover-modal { max-width: none !important; box-shadow: none !important; border-radius: 0 !important; }
           @page { size: A4; margin: 12mm; }
         }
       `}</style>
@@ -1477,9 +1195,7 @@ function RegisterModal({ existingShifts = [], onSave, onClose }) {
   const submit = async (e) => {
     e.preventDefault();
     if (submitting) return;
-    const dates = Object.keys(dateShifts).filter(
-      (d) => dateShifts[d]?.length > 0
-    );
+    const dates = Object.keys(dateShifts).filter((d) => dateShifts[d]?.length > 0);
     if (!dates.length) {
       toast(t("Chọn ít nhất 1 ngày và 1 ca"), "error");
       return;
@@ -1497,10 +1213,7 @@ function RegisterModal({ existingShifts = [], onSave, onClose }) {
     }
   };
 
-  const totalAssignments = Object.values(dateShifts).reduce(
-    (s, arr) => s + (arr?.length || 0),
-    0
-  );
+  const totalAssignments = Object.values(dateShifts).reduce((s, arr) => s + (arr?.length || 0), 0);
 
   return (
     <div
@@ -1508,169 +1221,69 @@ function RegisterModal({ existingShifts = [], onSave, onClose }) {
       role="dialog"
       aria-modal="true"
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: MODAL_Z,
-        padding: 20,
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+        display: "grid", placeItems: "center", zIndex: MODAL_Z, padding: 20,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--st-surface, #fff)",
-          borderRadius: 14,
-          padding: 24,
-          width: "100%",
-          maxWidth: 560,
-          maxHeight: "90vh",
-          overflowY: "auto",
+          background: "var(--st-surface, #fff)", borderRadius: 14, padding: 24,
+          width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <h3
-            style={{
-              margin: 0,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              color: "var(--st-text, #172033)",
-            }}
-          >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, color: "var(--st-text, #172033)" }}>
             <ClipboardList size={20} /> {t("Đăng ký ca làm")}
           </h3>
           <button
             onClick={() => !submitting && onClose()}
-            type="button"
-            aria-label={t("Đóng")}
-            style={{
-              background: "transparent",
-              border: 0,
-              cursor: "pointer",
-              color: "var(--st-text-muted, #8993a3)",
-              padding: 4,
-            }}
+            type="button" aria-label={t("Đóng")}
+            style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--st-text-muted, #8993a3)", padding: 4 }}
           >
             <X size={20} />
           </button>
         </div>
 
-        <div
-          style={{
-            marginBottom: 14,
-            padding: "8px 12px",
-            background: "rgba(38, 52, 213, 0.08)",
-            borderRadius: 8,
-            fontSize: 12,
-            color: "#2634d5",
-            fontWeight: 600,
-          }}
-        >
+        <div style={{ marginBottom: 14, padding: "8px 12px", background: "rgba(38, 52, 213, 0.08)", borderRadius: 8, fontSize: 12, color: "#2634d5", fontWeight: 600 }}>
           📅 {t("Đăng ký cho tuần sau")} · {t("Admin sẽ duyệt")}
         </div>
 
         <form onSubmit={submit}>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              fontWeight: 600,
-              marginBottom: 8,
-              marginTop: 12,
-              color: "var(--st-text-muted, #475569)",
-            }}
-          >
-            {t("Ngày")} *{" "}
-            <span style={{ fontWeight: 400, color: "#94a3b8" }}>
-              ({t("bấm ngày → chọn ca")})
-            </span>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 8, marginTop: 12, color: "var(--st-text-muted, #475569)" }}>
+            {t("Ngày")} * <span style={{ fontWeight: 400, color: "#94a3b8" }}>({t("bấm ngày → chọn ca")})</span>
           </label>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 6,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 6 }}>
             {displayWeekDays.map((d) => {
               const isActive = activeDate === d;
               const isAssigned = dateShifts[d] && dateShifts[d].length > 0;
-              const dayLabel = new Date(d + "T00:00:00").toLocaleDateString(
-                "vi-VN",
-                { weekday: "short" }
-              );
+              const dayLabel = new Date(d + "T00:00:00").toLocaleDateString("vi-VN", { weekday: "short" });
               let bg = "var(--st-surface-low, #f5f7fb)";
               let color = "var(--st-text, #172033)";
               let border = "1px solid var(--st-outline, #e5e9ef)";
-              if (isAssigned && !isActive) {
-                bg = "#d1fae5";
-                color = "#065f46";
-                border = "1px solid #18a967";
-              }
-              if (isActive) {
-                bg = isAssigned ? "#18a967" : "#2634d5";
-                color = "#fff";
-                border = "2px solid " + (isAssigned ? "#18a967" : "#2634d5");
-              }
+              if (isAssigned && !isActive) { bg = "#d1fae5"; color = "#065f46"; border = "1px solid #18a967"; }
+              if (isActive) { bg = isAssigned ? "#18a967" : "#2634d5"; color = "#fff"; border = "2px solid " + (isAssigned ? "#18a967" : "#2634d5"); }
               return (
                 <button
                   key={d}
                   type="button"
                   onClick={() => setActiveDate(d)}
                   disabled={submitting}
-                  style={{
-                    padding: "8px 4px",
-                    borderRadius: 8,
-                    background: bg,
-                    color,
-                    border,
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                  }}
+                  style={{ padding: "8px 4px", borderRadius: 8, background: bg, color, border, cursor: "pointer", display: "flex", flexDirection: "column", gap: 2 }}
                 >
-                  <span style={{ fontSize: 10, fontWeight: 600 }}>
-                    {dayLabel}
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>
-                    {d.slice(8)}
-                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 600 }}>{dayLabel}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>{d.slice(8)}</span>
                 </button>
               );
             })}
           </div>
 
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              fontWeight: 600,
-              marginBottom: 8,
-              marginTop: 16,
-              color: "var(--st-text-muted, #475569)",
-            }}
-          >
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 8, marginTop: 16, color: "var(--st-text-muted, #475569)" }}>
             {t("Ca làm")} *
           </label>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
-              gap: 10,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
             {SHIFTS.map((s) => {
               const Icon = s.icon;
               const sel = currentShifts.includes(s.id);
@@ -1681,50 +1294,24 @@ function RegisterModal({ existingShifts = [], onSave, onClose }) {
                   onClick={() => toggleShift(s.id)}
                   disabled={submitting}
                   style={{
-                    padding: "10px 8px",
-                    borderRadius: 10,
+                    padding: "10px 8px", borderRadius: 10,
                     background: sel ? s.color + "20" : "var(--st-surface, #fff)",
-                    border: sel
-                      ? "2px solid " + s.color
-                      : "2px solid var(--st-outline, #e5e9ef)",
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
+                    border: sel ? "2px solid " + s.color : "2px solid var(--st-outline, #e5e9ef)",
+                    cursor: "pointer", display: "flex", flexDirection: "column",
+                    alignItems: "center", gap: 4,
                   }}
                 >
-                  <Icon
-                    size={18}
-                    style={{ color: sel ? s.color : "#94a3b8" }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: sel ? s.color : "var(--st-text-muted, #475569)",
-                    }}
-                  >
+                  <Icon size={18} style={{ color: sel ? s.color : "#94a3b8" }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: sel ? s.color : "var(--st-text-muted, #475569)" }}>
                     {s.label}
                   </span>
-                  <span style={{ fontSize: 9, color: "#94a3b8" }}>
-                    {s.time}
-                  </span>
+                  <span style={{ fontSize: 9, color: "#94a3b8" }}>{s.time}</span>
                 </button>
               );
             })}
           </div>
 
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              fontWeight: 600,
-              marginBottom: 4,
-              marginTop: 12,
-              color: "var(--st-text-muted, #475569)",
-            }}
-          >
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, marginTop: 12, color: "var(--st-text-muted, #475569)" }}>
             {t("Ghi chú")}
           </label>
           <input
@@ -1732,49 +1319,19 @@ function RegisterModal({ existingShifts = [], onSave, onClose }) {
             onChange={(e) => setNote(e.target.value)}
             placeholder={t("VD: Có thể đến trễ 10 phút...")}
             disabled={submitting}
-            style={{
-              width: "100%",
-              padding: 10,
-              border: "1px solid var(--st-outline, #e5e9ef)",
-              borderRadius: 8,
-              outline: "none",
-              fontSize: 13,
-              boxSizing: "border-box",
-            }}
+            style={{ width: "100%", padding: 10, border: "1px solid var(--st-outline, #e5e9ef)", borderRadius: 8, outline: "none", fontSize: 13, boxSizing: "border-box" }}
           />
 
           {totalAssignments > 0 && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: "10px 14px",
-                background: "rgba(38, 52, 213, 0.08)",
-                borderRadius: 8,
-                fontSize: 12,
-                color: "#2634d5",
-                fontWeight: 600,
-              }}
-            >
-              📋 {t("Sẽ đăng ký")} <b>{totalAssignments}</b> {t("ca")} —{" "}
-              {t("chờ admin duyệt")}
+            <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(38, 52, 213, 0.08)", borderRadius: 8, fontSize: 12, color: "#2634d5", fontWeight: 600 }}>
+              📋 {t("Sẽ đăng ký")} <b>{totalAssignments}</b> {t("ca")} — {t("chờ admin duyệt")}
             </div>
           )}
 
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              style={{
-                flex: 1,
-                padding: 12,
-                border: "1px solid var(--st-outline, #e5e9ef)",
-                borderRadius: 8,
-                background: "var(--st-surface, #fff)",
-                cursor: "pointer",
-                color: "var(--st-text, #172033)",
-                fontWeight: 600,
-              }}
+              type="button" onClick={onClose} disabled={submitting}
+              style={{ flex: 1, padding: 12, border: "1px solid var(--st-outline, #e5e9ef)", borderRadius: 8, background: "var(--st-surface, #fff)", cursor: "pointer", color: "var(--st-text, #172033)", fontWeight: 600 }}
             >
               {t("Hủy")}
             </button>
@@ -1782,26 +1339,14 @@ function RegisterModal({ existingShifts = [], onSave, onClose }) {
               type="submit"
               disabled={submitting || totalAssignments === 0}
               style={{
-                flex: 1,
-                padding: 12,
-                background:
-                  submitting || totalAssignments === 0 ? "#94a3b8" : "#2634d5",
-                color: "#fff",
-                border: 0,
-                borderRadius: 8,
-                fontWeight: 700,
-                cursor:
-                  submitting || totalAssignments === 0
-                    ? "not-allowed"
-                    : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
+                flex: 1, padding: 12,
+                background: submitting || totalAssignments === 0 ? "#94a3b8" : "#2634d5",
+                color: "#fff", border: 0, borderRadius: 8, fontWeight: 700,
+                cursor: submitting || totalAssignments === 0 ? "not-allowed" : "pointer",
+                display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
               }}
             >
-              <Save size={14} />{" "}
-              {submitting ? t("Đang gửi...") : t("Đăng ký ca")}
+              <Save size={14} /> {submitting ? t("Đang gửi...") : t("Đăng ký ca")}
             </button>
           </div>
         </form>

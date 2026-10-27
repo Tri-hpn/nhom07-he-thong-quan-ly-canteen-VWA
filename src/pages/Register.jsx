@@ -1,9 +1,13 @@
 ﻿// ============================================================
-// REGISTER.JSX — Đăng ký tài khoản (V9 — AuthLayout + background VWA)
+// REGISTER.JSX — Đăng ký tài khoản (V10 — AuthLayout + bg VWA)
 // ============================================================
+// V10 (2026-11):
+//   🔧 FIX CRITICAL: startMicrosoftOAuth dùng nhầm URL
+//      `/api/auth/callback/microsoft-entra-id` (backend) → user thấy
+//      raw JSON thay vì app. Đổi sang `/auth/microsoft-entra-id/callback`
+//      (frontend route → OAuthCallback → POST backend).
 // V9 (2026-10):
-//   - 🎨 Dùng AuthLayout wrapper, background ảnh trường
-//   - Giữ 100% logic: MSSV, OAuth, validate, i18n
+//   - Dùng AuthLayout wrapper
 // ============================================================
 
 import { useState, useEffect } from "react";
@@ -62,8 +66,10 @@ function startMicrosoftOAuth(t) {
     toast(t("Chưa cấu hình Microsoft Client ID"), "error");
     return;
   }
+  // 🔧 FIX V10: dùng frontend route (khớp Login.jsx) — backend sẽ nhận
+  // qua POST /api/auth/microsoft-entra-id/callback từ OAuthCallback
   const redirectUri = encodeURIComponent(
-    window.location.origin + "/api/auth/callback/microsoft-entra-id"
+    window.location.origin + "/auth/microsoft-entra-id/callback"
   );
   const scope = encodeURIComponent("openid email profile User.Read");
   const tenant = tenantId || "organizations";
@@ -216,7 +222,7 @@ export default function Register({ onRegister }) {
       <p className="v10-auth-subtitle">
         {t("Đăng ký miễn phí — chỉ mất 30 giây.")}
       </p>
-{error && <div className="v10-auth-error">{error}</div>}
+      {error && <div className="v10-auth-error">{error}</div>}
 
       <form onSubmit={submit} autoComplete="off" name="register-form">
         <label className="v10-auth-label" htmlFor="register-name">

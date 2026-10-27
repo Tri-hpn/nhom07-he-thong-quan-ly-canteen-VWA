@@ -1,9 +1,11 @@
 // ============================================================
-// TOPBAR.JSX — Top navigation cho Customer (V7)
+// TOPBAR.JSX — Top navigation cho Customer (V8)
 // ============================================================
+// V8 (2026-11):
+//   🔧 FIX: readNotifications khi !getToken() reset state
+//           (đồng bộ với readOrders — tránh badge cũ còn sót)
 // V7 (2026-11):
-//   - 🔧 FIX: Thêm getToken() guard vào readNotifications & readOrders.
-//             Tránh spam lỗi 401/403 khi chưa đăng nhập / hết phiên.
+//   - Guard getToken() cho readNotifications & readOrders
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -16,10 +18,6 @@ import { api, getToken } from "../api";
 import { useI18n } from "../hooks/useI18n";
 import { LogoVWACompact } from "./LogoVWA";
 import SettingsModal from "./SettingsModal";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
 
 const CART_KEY = "canteen_cart";
 const ORDERS_SEEN_KEY = "orders_last_seen";
@@ -40,10 +38,6 @@ const ACTIVE_ORDER_STATUSES = [
   "Đang chuẩn bị",
   "Sẵn sàng nhận",
 ];
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function getInitials(name) {
   if (!name) return "VWA";
@@ -73,10 +67,6 @@ function isPathActive(currentPath, targetPath) {
   return currentPath.startsWith(targetPath + "/");
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function CustomerTopbar({
   user,
   cart,
@@ -97,15 +87,18 @@ export default function CustomerTopbar({
   const orderReqIdRef = useRef(0);
   const notificationMenuRef = useRef(null);
 
-  // ---------- READ CART ----------
   const readCart = useCallback(() => {
     setCartCount(readCartCount());
   }, []);
 
   const readNotifications = useCallback(async () => {
-    // 🔧 FIX: Chặn gọi API khi chưa đăng nhập (tránh 401/403)
-    if (!getToken()) return;
-    
+    // 🔧 FIX V8: Reset state khi không có token (đồng bộ với readOrders)
+    if (!getToken()) {
+      setNotifications([]);
+      setNotificationUnread(0);
+      return;
+    }
+
     try {
       const data = await api.notifications.list();
       const list = Array.isArray(data?.list) ? data.list : [];
@@ -181,9 +174,7 @@ export default function CustomerTopbar({
     }
   };
 
-  // ---------- READ ORDERS ----------
   const readOrders = useCallback(async () => {
-    // 🔧 FIX: Chặn gọi API khi chưa đăng nhập (tránh 401/403)
     if (!getToken()) {
       setOrderPending(0);
       return;
@@ -232,7 +223,6 @@ export default function CustomerTopbar({
     };
   }, [readCart, readOrders]);
 
-  // ---------- HANDLERS ----------
   const openSettings = useCallback(() => {
     setShowSettings(true);
   }, []);
@@ -250,12 +240,8 @@ export default function CustomerTopbar({
     );
   };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
     <header className="customer-topbar">
-      {/* ROLE BAR */}
       <div className="customer-topbar__rolebar">
         <div className="customer-topbar__rolebar-inner">
           <div className="customer-topbar__status">
@@ -270,7 +256,6 @@ export default function CustomerTopbar({
         </div>
       </div>
 
-      {/* MAIN BAR */}
       <div className="customer-topbar__main">
         <div className="customer-topbar__main-inner">
           <div className="customer-topbar__left">
@@ -309,7 +294,6 @@ export default function CustomerTopbar({
             </nav>
           </div>
 
-          {/* RIGHT ACTIONS */}
           <div className="customer-topbar__right">
             <Link
               to="/customer/cart"

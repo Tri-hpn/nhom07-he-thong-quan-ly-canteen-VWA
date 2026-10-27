@@ -1,5 +1,12 @@
 // ============================================================
-// OWNERCHAT.JSX — Trang quản lý Chat cho Admin (V3 - FIX RACE CONDITION)
+// OWNERCHAT.JSX — Trang quản lý Chat cho Admin (V4 - FIX CRITICAL)
+// ============================================================
+// V4 (2025-11):
+//   🔧 FIX #1 (CRITICAL): Import getToken + guard 4 hàm load/send
+//   🔧 FIX #2: msgsReqIdRef.current += 1 sau send() → không bị poll cũ đè
+//   🔧 FIX #3: Order Inspector show price × qty (thành tiền)
+//   🔧 FIX #4: isAdmin = m.from_role === "ADMIN" (backend trả from="staff"
+//              cho cả ADMIN/EMPLOYEE, phân biệt qua from_role)
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -10,7 +17,7 @@ import {
   CheckCircle2, XCircle, ChevronLeft, Pin, PinOff, Bell,
   Ticket, Heart, Microwave, Smartphone, Utensils, ChevronRight
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api"; // 🔧 FIX #1
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import AdminChatControls from "../../components/AdminChatControls";
@@ -95,40 +102,32 @@ export default function OwnerChat() {
   const { t } = useI18n();
   const navigate = useNavigate();
 
-  // ---------- Data ----------
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [convsError, setConvsError] = useState("");
 
-  // ---------- Filter ----------
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all"); // all | unread | transfer | mine
+  const [filter, setFilter] = useState("all");
 
-  // ---------- Selected conversation ----------
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
-  // ---------- Context Data (Customer Info) ----------
   const [contextData, setContextData] = useState(null);
   const [customerOrders, setCustomerOrders] = useState([]);
   const [currentOrderIdx, setCurrentOrderIdx] = useState(0);
 
-  // ---------- Compose ----------
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
-  // ---------- Pinned ----------
   const [pinnedIds, setPinnedIds] = useState(() => readPinned());
-
-  // ---------- Transfer requests (badge) ----------
   const [transferCount, setTransferCount] = useState(0);
 
   const bottomRef = useRef(null);
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);
   const msgsReqIdRef = useRef(0);
-  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
+  const isSendingRef = useRef(false);
   const lastMsgCountRef = useRef(0);
   const lastConvIdRef = useRef(null);
   const tabVisibleRef = useRef(
@@ -152,6 +151,7 @@ export default function OwnerChat() {
   // ============================================================
   const loadConvs = useCallback(
     async (silent = false) => {
+      if (!getToken()) { setLoadingConvs(false); return; } // 🔧 FIX #1
       try {
         const data = await api.chat.admin.conversations();
         setConversations(Array.isArray(data) ? data : []);
@@ -168,11 +168,12 @@ export default function OwnerChat() {
   const loadMessages = useCallback(
     async (userId, silent = false) => {
       if (!userId) return;
-      if (silent && isSendingRef.current) return; // 🔴 CHẶN POLLING
+      if (!getToken()) return; // 🔧 FIX #1
+      if (silent && isSendingRef.current) return;
 
       const myReqId = ++msgsReqIdRef.current;
       if (!silent) setLoadingMsgs(true);
-      
+
       try {
         const data = await api.chat.admin.messagesWith(userId);
         if (myReqId !== msgsReqIdRef.current) return;
@@ -190,6 +191,7 @@ export default function OwnerChat() {
   );
 
   const loadTransferCount = useCallback(async () => {
+    if (!getToken()) return; // 🔧 FIX #1
     try {
       const list = await api.chat.admin.transferRequests("pending");
       setTransferCount(Array.isArray(list) ? list.length : 0);
@@ -198,13 +200,11 @@ export default function OwnerChat() {
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     loadConvs(false);
     loadTransferCount();
   }, [loadConvs, loadTransferCount]);
 
-  // Polling
   useEffect(() => {
     const timer = setInterval(() => {
       if (!tabVisibleRef.current) return;
@@ -231,8 +231,7 @@ export default function OwnerChat() {
           x.user_id === c.user_id ? { ...x, unread: 0 } : x
         )
       );
-      
-      // Reset context data
+
       setContextData(null);
       setCustomerOrders([]);
       setCurrentOrderIdx(0);
@@ -240,12 +239,10 @@ export default function OwnerChat() {
       await loadMessages(c.user_id, false);
       loadConvs(true);
 
-      // Fetch context data
       api.chat.getContext(c.user_id).then(data => {
         if (selectedRef.current?.user_id === c.user_id) setContextData(data);
       }).catch(() => {});
 
-      // Fetch orders
       api.orders.all("Tất cả").then(allOrders => {
         if (selectedRef.current?.user_id !== c.user_id) return;
         const list = Array.isArray(allOrders) ? allOrders : [];
@@ -304,18 +301,20 @@ export default function OwnerChat() {
   // ============================================================
   const send = useCallback(async () => {
     const val = text.trim();
-    if (!val || !selected || sending) return;
+    // 🔧 FIX #2: Chặn double-click bằng isSendingRef (sync)
+    if (!val || !selected || sending || isSendingRef.current) return;
     if (val.length > MAX_MESSAGE_LENGTH) {
       toast(t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH), "error");
       return;
     }
 
-    isSendingRef.current = true; // 🔴
+    isSendingRef.current = true;
     setSending(true);
     const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
     const tempMsg = {
       id: tempId,
       from: "staff",
+      from_role: "ADMIN",
       from_name: t("Admin"),
       content: val,
       created_at: new Date().toISOString(),
@@ -331,16 +330,18 @@ export default function OwnerChat() {
         id: msg?.id || tempId,
         created_at: msg?.created_at || new Date().toISOString(),
         from: msg?.from || "staff",
+        from_role: msg?.from_role || "ADMIN",
         from_name: msg?.from_name || t("Admin"),
       };
       setMessages((m) => m.map((x) => (x.id === tempId ? safeMsg : x)));
-      // loadMessages(selected.user_id, true); -> Đã bỏ
+      // 🔧 FIX #2: Invalidate poll đang chạy (bắt đầu TRƯỚC khi gửi)
+      msgsReqIdRef.current += 1;
     } catch (e) {
       setMessages((m) => m.filter((x) => x.id !== tempId));
       toast(e.message || t("Không gửi được"), "error");
     } finally {
       setSending(false);
-      isSendingRef.current = false; // 🔴
+      isSendingRef.current = false;
     }
   }, [text, selected, sending, t]);
 
@@ -399,7 +400,7 @@ export default function OwnerChat() {
   }, [selected, loadConvs, t]);
 
   // ============================================================
-  // COMPUTED — filtered conversations
+  // COMPUTED
   // ============================================================
   const filteredConversations = useMemo(() => {
     let list = conversations;
@@ -437,7 +438,6 @@ export default function OwnerChat() {
   // ============================================================
   return (
     <div className="chat-workspace">
-      {/* HERO */}
       <section className="chat-hero">
         <div className="chat-hero__left">
           <span className="chat-hero__eyebrow">
@@ -466,9 +466,8 @@ export default function OwnerChat() {
         </div>
       </section>
 
-      {/* 3-COLUMN GRID */}
       <div className="chat-workspace-grid">
-        {/* ============== COLUMN 1: CONVERSATIONS ============== */}
+        {/* COLUMN 1: CONVERSATIONS */}
         <div className="chat-conv">
           <div className="chat-conv__head">
             <div className="chat-conv__search">
@@ -484,14 +483,8 @@ export default function OwnerChat() {
                   type="button"
                   onClick={() => setSearch("")}
                   style={{
-                    position: "absolute",
-                    right: 10,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "transparent",
-                    border: 0,
-                    cursor: "pointer",
-                    color: "var(--st-text-light)",
+                    position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                    background: "transparent", border: 0, cursor: "pointer", color: "var(--st-text-light)",
                   }}
                   aria-label={t("Xoá tìm kiếm")}
                 >
@@ -535,15 +528,9 @@ export default function OwnerChat() {
                   type="button"
                   onClick={() => loadConvs(false)}
                   style={{
-                    padding: "6px 14px",
-                    background: "var(--st-primary-container)",
-                    color: "var(--st-on-primary)",
-                    border: 0,
-                    borderRadius: "var(--st-radius-md)",
-                    cursor: "pointer",
-                    fontFamily: "var(--st-font-head)",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    padding: "6px 14px", background: "var(--st-primary-container)",
+                    color: "var(--st-on-primary)", border: 0, borderRadius: "var(--st-radius-md)",
+                    cursor: "pointer", fontFamily: "var(--st-font-head)", fontSize: 12, fontWeight: 600,
                   }}
                 >
                   {t("Thử lại")}
@@ -584,9 +571,7 @@ export default function OwnerChat() {
                   >
                     <div className="chat-conv__row1">
                       <div className="chat-conv__user">
-                        <div className="chat-conv__avatar">
-                          {getInitials(c.user_name)}
-                        </div>
+                        <div className="chat-conv__avatar">{getInitials(c.user_name)}</div>
                         <div className="chat-conv__user-info">
                           <span className={`chat-conv__user-name ${hasUnread ? "chat-conv__user-name--unread" : ""}`}>
                             {isPinned && (
@@ -629,44 +614,26 @@ export default function OwnerChat() {
           </div>
         </div>
 
-        {/* ============== COLUMN 2: CHAT STREAM ============== */}
+        {/* COLUMN 2: CHAT STREAM */}
         <div className="chat-main">
           {!selected ? (
             <div className="chat-main--empty">
               <div>
                 <MessageCircle size={64} style={{ opacity: 0.3, marginBottom: 12 }} />
-                <p
-                  style={{
-                    margin: 0,
-                    fontFamily: "var(--st-font-head)",
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: "var(--st-text)",
-                  }}
-                >
+                <p style={{ margin: 0, fontFamily: "var(--st-font-head)", fontSize: 16, fontWeight: 600, color: "var(--st-text)" }}>
                   {t("Chọn 1 cuộc trò chuyện để bắt đầu")}
                 </p>
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    fontFamily: "var(--st-font-body)",
-                    fontSize: 13,
-                    color: "var(--st-text-muted)",
-                  }}
-                >
+                <p style={{ margin: "6px 0 0", fontFamily: "var(--st-font-body)", fontSize: 13, color: "var(--st-text-muted)" }}>
                   {t("Admin có thể xem mọi hội thoại giữa nhân viên và khách")}
                 </p>
               </div>
             </div>
           ) : (
             <>
-              {/* HEADER */}
               <div className="chat-main__header">
                 <div className="chat-main__header-left">
                   <div className="chat-main__avatar-wrap">
-                    <div className="chat-main__avatar">
-                      {getInitials(selected.user_name)}
-                    </div>
+                    <div className="chat-main__avatar">{getInitials(selected.user_name)}</div>
                     <span className="chat-main__online-dot" />
                   </div>
                   <div className="chat-main__header-info">
@@ -719,7 +686,6 @@ export default function OwnerChat() {
                 </div>
               </div>
 
-              {/* FEED */}
               <div ref={messagesEndRef} className="chat-main__feed">
                 {loadingMsgs ? (
                   <div className="chat-main--empty">
@@ -735,7 +701,8 @@ export default function OwnerChat() {
                 ) : (
                   messages.map((m, idx) => {
                     const isOwn = m.from === "staff" || m.from === "admin";
-                    const isAdmin = m.from === "admin";
+                    // 🔧 FIX #4: phân biệt Admin vs Employee qua from_role
+                    const isAdminMsg = m.from_role === "ADMIN";
                     const prev = messages[idx - 1];
                     const showDate = !prev || !sameDay(prev.created_at, m.created_at);
 
@@ -750,7 +717,7 @@ export default function OwnerChat() {
                           )}
                           <div className="chat-msg-body">
                             <div className={`chat-msg-bubble ${isOwn ? "chat-msg-bubble--own" : ""}`}>
-                              {isAdmin && (
+                              {isAdminMsg && (
                                 <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.8, marginBottom: 2 }}>
                                   <Headset size={10} style={{ verticalAlign: "middle" }} /> ADMIN
                                 </div>
@@ -765,7 +732,7 @@ export default function OwnerChat() {
                           </div>
                           {isOwn && (
                             <div className="chat-msg-avatar chat-msg-avatar--staff">
-                              {isAdmin ? <Headset size={14} /> : getInitials(m.from_name || "NV")}
+                              {isAdminMsg ? <Headset size={14} /> : getInitials(m.from_name || "NV")}
                             </div>
                           )}
                         </div>
@@ -776,7 +743,6 @@ export default function OwnerChat() {
                 <div ref={bottomRef} />
               </div>
 
-              {/* INPUT */}
               <div className="chat-input-area">
                 <div className="chat-input-tools">
                   <span className="chat-input-hint">
@@ -818,14 +784,10 @@ export default function OwnerChat() {
           )}
         </div>
 
-        {/* ============== COLUMN 3: ADMIN CONTROLS & CUSTOMER INFO ============== */}
+        {/* COLUMN 3: ADMIN CONTROLS & CUSTOMER INFO */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16, overflowY: "auto" }}>
-          
-          {/* BLOCK HỒ SƠ KHÁCH HÀNG */}
           {selected && (
             <div className="chat-context-card" style={{ background: "#fff", borderRadius: 12, padding: 16, border: "1px solid #e7ebf0" }}>
-              
-              {/* Nút Tặng Voucher */}
               <button
                 onClick={() => navigate(`/owner/vouchers?action=create&userId=${selected.user_id}&userName=${encodeURIComponent(selected.user_name)}`)}
                 style={{
@@ -837,7 +799,6 @@ export default function OwnerChat() {
                 <Ticket size={16} /> {t("Tặng voucher cho khách")}
               </button>
 
-              {/* Hồ sơ */}
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                 <span style={{ fontWeight: 700, color: "var(--st-text)" }}>{t("Hồ sơ khách dùng bữa")}</span>
                 <span style={{ padding: "2px 8px", background: "#f0f4ff", color: "#2634d5", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
@@ -877,7 +838,6 @@ export default function OwnerChat() {
                 </div>
               </div>
 
-              {/* Đơn đang xử lý */}
               {customerOrders.length > 0 ? (() => {
                 const currentOrder = customerOrders[currentOrderIdx];
                 return (
@@ -906,7 +866,8 @@ export default function OwnerChat() {
                     {(currentOrder.items || []).map((item, idx) => (
                       <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "6px 0", borderBottom: "1px dashed #e7ebf0" }}>
                         <div><span style={{ fontWeight: 700 }}>{item.qty}x</span> {t(item.name)}</div>
-                        <div style={{ fontWeight: 600 }}>{fmtMoney(item.price)}</div>
+                        {/* 🔧 FIX #3: thành tiền = price × qty */}
+                        <div style={{ fontWeight: 600 }}>{fmtMoney((Number(item.price) || 0) * (Number(item.qty) || 1))}</div>
                       </div>
                     ))}
 
@@ -957,18 +918,9 @@ export default function OwnerChat() {
           font-size: 12px;
           color: var(--st-text);
         }
-        .chat-kpi-chip--danger {
-          background: rgba(239, 68, 68, 0.12);
-          color: #dc2626;
-        }
-        .chat-kpi-chip--warning {
-          background: rgba(245, 158, 11, 0.12);
-          color: #b45309;
-        }
-        .chat-kpi-chip--info {
-          background: rgba(38, 52, 213, 0.12);
-          color: #2634d5;
-        }
+        .chat-kpi-chip--danger { background: rgba(239, 68, 68, 0.12); color: #dc2626; }
+        .chat-kpi-chip--warning { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+        .chat-kpi-chip--info { background: rgba(38, 52, 213, 0.12); color: #2634d5; }
       `}</style>
     </div>
   );

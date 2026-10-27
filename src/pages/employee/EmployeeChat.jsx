@@ -1,5 +1,13 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V16 - FIX RACE CONDITION)
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V18)
+// ============================================================
+// V18 (2026-11):
+//   🔧 FIX: Bỏ hardcode "2151010088", "K21" -> dùng dữ liệu thật.
+//   🔧 FIX: Reset contextData(null) khi đổi hội thoại.
+//   🔧 FIX: Avatar tin nhắn staff lấy từ user context.
+//   🔧 FIX: Bỏ ghi chú khẩu vị hardcode -> lấy từ contextData.
+// V17 (2025-11):
+//   🔧 FIX CRITICAL: Import getToken, invalidate poll, thành tiền.
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -10,9 +18,10 @@ import {
   CheckCircle2, Heart, Edit3, Megaphone, Bell, ArrowLeftRight,
   Microwave, Sparkles, Check, PinOff, Lock, ChevronLeft, ChevronRight
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   fmtTime,
   fmtDateLabel,
@@ -759,6 +768,7 @@ function PrintLabelModal({ open, customer, order, onClose }) {
 
 export default function EmployeeChat() {
   const { t, locale } = useI18n();
+  const { user } = useAuth();
 
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
@@ -814,6 +824,7 @@ export default function EmployeeChat() {
     let cancelled = false;
 
     const load = async () => {
+      if (!getToken()) { setLoadingPermission(false); return; }
       try {
         const res = await api.chat.admin.myChatStatus();
         if (cancelled) return;
@@ -844,6 +855,7 @@ export default function EmployeeChat() {
 
   const loadConvs = useCallback(
     async (silent = false) => {
+      if (!getToken()) { setLoadingConvs(false); return; }
       try {
         const data = await api.chat.conversations();
         setConversations(Array.isArray(data) ? data : []);
@@ -860,7 +872,8 @@ export default function EmployeeChat() {
   const loadMessages = useCallback(
     async (userId, silent = false) => {
       if (!userId) return;
-      if (silent && isSendingRef.current) return; // 🔴 CHẶN POLLING
+      if (!getToken()) return;
+      if (silent && isSendingRef.current) return;
 
       const myReqId = ++msgsReqIdRef.current;
       if (!silent) setLoadingMsgs(true);
@@ -902,6 +915,7 @@ export default function EmployeeChat() {
     let cancelled = false;
 
     const loadStaff = () => {
+      if (!getToken()) return;
       api.shifts
         .currentStaff()
         .then((data) => {
@@ -933,6 +947,7 @@ export default function EmployeeChat() {
       setInternalNote(c.note || "");
       setCustomerOrders([]);
       setCurrentOrderIdx(0);
+      setContextData(null); // 🔧 FIX: Reset data để không lẫn khách cũ
       lastMsgCountRef.current = 0;
       lastConvIdRef.current = null;
 
@@ -1052,7 +1067,7 @@ export default function EmployeeChat() {
   const send = useCallback(
     async (contentOverride) => {
       const val = (contentOverride ?? text).trim();
-      if (!val || !selected || sending) return;
+      if (!val || !selected || sending || isSendingRef.current) return;
 
       if (!chatPermission.enabled) {
         toast(
@@ -1077,7 +1092,7 @@ export default function EmployeeChat() {
         return;
       }
 
-      isSendingRef.current = true; // 🔴
+      isSendingRef.current = true;
       setSending(true);
       const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
 
@@ -1107,13 +1122,14 @@ export default function EmployeeChat() {
         };
 
         setMessages((m) => m.map((x) => (x.id === tempId ? safeMsg : x)));
-        // loadMessages(selected.user_id, true); -> Đã bỏ vì không cần thiết
+
+        msgsReqIdRef.current += 1;
       } catch (e) {
         setMessages((m) => m.filter((x) => x.id !== tempId));
         toast(e.message || t("Không gửi được"), "error");
       } finally {
         setSending(false);
-        isSendingRef.current = false; // 🔴
+        isSendingRef.current = false;
       }
     },
     [text, selected, sending, loadMessages, t, chatPermission.enabled, isSelectedHeldByAdmin]
@@ -1517,7 +1533,7 @@ export default function EmployeeChat() {
                             )}
                           </span>
                           <span className="chat-conv__user-meta">
-                            {c.studentId || "2151010088"} • {c.cohort || "K21"}
+                            {c.student_code ? `${t("MSSV:")} ${c.student_code}` : t("Chưa có MSSV")}
                           </span>
                         </div>
                       </div>
@@ -1628,9 +1644,9 @@ export default function EmployeeChat() {
                       <span className="chat-main__header-name">
                         {selected.user_name || t("Khách")}
                       </span>
-                      {selected.studentId && (
+                      {selected.student_code && (
                         <span className="chat-main__header-mssv">
-                          {t("MSSV:")} {selected.studentId}
+                          {t("MSSV:")} {selected.student_code}
                         </span>
                       )}
                     </div>
@@ -1783,7 +1799,7 @@ export default function EmployeeChat() {
 
                           {isOwn && (
                             <div className="chat-msg-avatar chat-msg-avatar--staff">
-                              {getInitials("Trần Thị Mai")}
+                              {user?.name ? getInitials(user.name) : <Headset size={18} />}
                             </div>
                           )}
                         </div>
@@ -1837,17 +1853,6 @@ export default function EmployeeChat() {
                     aria-label={t("Mẫu câu sẵn")}
                   >
                     <MessageSquareMore size={18} />
-                  </button>
-                  <button type="button" onClick={() => { 
-      const uid = selected?.user_id; 
-      const uname = selected?.user_name; 
-      if(uid) { window.location.href = `/owner/vouchers?action=create&userId=${uid}&userName=${encodeURIComponent(uname)}`; } 
-      else { alert("Vui lòng chọn khách hàng trước!"); }
-    }} className="chat-input-tool chat-input-tool--voucher"
-                    title={t("Tặng Voucher")}
-                    aria-label={t("Tặng Voucher")}
-                  >
-                    <Ticket size={18} />
                   </button>
                   <span className="chat-input-hint">
                     {t("Phím tắt: Enter gửi • Shift+Enter xuống dòng")}
@@ -1970,9 +1975,7 @@ export default function EmployeeChat() {
                   </span>
                   <span className="chat-context-note__content">
                     "
-                    {t(
-                      "Không ăn cay nhiều, ưu tiên cơm nóng, dùng ít đá giải khát."
-                    )}
+                    {contextData?.user?.note || t("Chưa có ghi chú khẩu vị.")}
                     "
                   </span>
                 </div>
@@ -2051,7 +2054,7 @@ export default function EmployeeChat() {
                         </span>
                       </div>
                       <span className="chat-order-inspector__item-price">
-                        {fmtMoney(item.price)}
+                        {fmtMoney((Number(item.price) || 0) * (Number(item.qty) || 1))}
                       </span>
                     </div>
                   ))}
@@ -2171,7 +2174,6 @@ export default function EmployeeChat() {
           background: rgba(245, 158, 11, 0.12) !important;
         }
 
-        /* ✅ V7: banner tắt chat / admin giữ */
         .emp-chat-banner {
           display: flex;
           align-items: center;

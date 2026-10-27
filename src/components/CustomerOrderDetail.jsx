@@ -1,12 +1,11 @@
 // ============================================================
 // CUSTOMERORDERDETAIL.JSX — Modal chi tiết đơn hàng (Customer)
 // ============================================================
-// V3 (2026-11):
-//   - 🔧 FIX: pointsPerReview đọc từ usePointsConfig() thay vì
-//     hardcode 10 — trước đây lệch với config backend (5 hoặc 500)
-//     khiến toast "Nhận X điểm" sai.
-//   - Giữ nguyên vị trí: src/components/CustomerOrderDetail.jsx
-//   - Giữ nguyên import path (../api, ./UI, ...)
+// V4 (2026-11):
+//   🔴 FIX #1: Xóa block duplicate `{t("Bạn đã nhận được...")` — gây SyntaxError
+//   🟡 FIX #2: Xóa `getReviewedKey()` unused
+//   🟡 FIX #3: Xóa `lastCodeRef` unused
+//   ✅ Giữ nguyên fix V3: pointsPerReview đọc từ usePointsConfig()
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -79,10 +78,6 @@ function getOrderId(order) {
   return order?._id || order?.id || null;
 }
 
-function getReviewedKey(code) {
-  return `reviewed_order_${code}`;
-}
-
 export default function CustomerOrderDetail({
   order: initialOrder,
   user,
@@ -92,8 +87,6 @@ export default function CustomerOrderDetail({
   const { t, tData } = useI18n();
   const ptsCfg = usePointsConfig();
 
-  // 🔧 FIX: đọc từ config admin thay vì hardcode (trước đây = 10,
-  // backend có thể = 5 hoặc 500 → toast hiển thị sai số điểm).
   const pointsPerReview = Math.max(
     1,
     Number(ptsCfg?.earn?.review_points) || 10
@@ -118,7 +111,6 @@ export default function CustomerOrderDetail({
 
   const [confirmAction, setConfirmAction] = useState(null);
 
-  const lastCodeRef = useRef(null);
   const submittingRef = useRef(false);
 
   useEffect(() => {
@@ -137,28 +129,33 @@ export default function CustomerOrderDetail({
     setChecking(true);
     setCheckError("");
 
-    const itemIds = [...new Set(
-      (initialOrder.items || [])
-        .map((it) => it.menu_item_id)
-        .filter((id) => id != null)
-        .map(String)
-    )];
+    const itemIds = [
+      ...new Set(
+        (initialOrder.items || [])
+          .map((it) => it.menu_item_id)
+          .filter((id) => id != null)
+          .map(String)
+      ),
+    ];
 
-    api.reviews.me()
+    api.reviews
+      .me()
       .then((list) => {
         if (cancelled) return;
 
-        const mine = (list || []).filter((r) =>
-          String(r.order_id) === String(orderId) &&
-          itemIds.includes(String(r.menu_item_id))
+        const mine = (list || []).filter(
+          (r) =>
+            String(r.order_id) === String(orderId) &&
+            itemIds.includes(String(r.menu_item_id))
         );
 
         setMyReviews(mine);
         setReviewedCount(mine.length);
-        setReviewed(itemIds.length > 0 &&
-          itemIds.every((id) =>
-            mine.some((r) => String(r.menu_item_id) === id)
-          )
+        setReviewed(
+          itemIds.length > 0 &&
+            itemIds.every((id) =>
+              mine.some((r) => String(r.menu_item_id) === id)
+            )
         );
       })
       .catch((e) => {
@@ -259,19 +256,21 @@ export default function CustomerOrderDetail({
     setShowMyReviews(true);
     setShowReview(false);
 
-    const itemIds = [...new Set(
-      items
-        .map((it) => it.menu_item_id)
-        .filter((id) => id != null)
-        .map(String)
-    )];
+    const itemIds = [
+      ...new Set(
+        items
+          .map((it) => it.menu_item_id)
+          .filter((id) => id != null)
+          .map(String)
+      ),
+    ];
 
     try {
       const results = await Promise.all(
         itemIds.map((id) => api.reviews.list(id))
       );
       setAllReviews(
-        results.flatMap((list) => Array.isArray(list) ? list : [])
+        results.flatMap((list) => (Array.isArray(list) ? list : []))
       );
     } catch {
       setAllReviews([]);
@@ -293,11 +292,13 @@ export default function CustomerOrderDetail({
     let firstError = null;
     let firstNonDuplicateError = null;
     const trimmedComment = comment.trim().slice(0, MAX_COMMENT_LENGTH);
-    const uniqueItems = [...new Map(
-      items
-        .filter((it) => it.menu_item_id != null)
-        .map((it) => [String(it.menu_item_id), it])
-    ).values()];
+    const uniqueItems = [
+      ...new Map(
+        items
+          .filter((it) => it.menu_item_id != null)
+          .map((it) => [String(it.menu_item_id), it])
+      ).values(),
+    ];
 
     for (const it of uniqueItems) {
       try {
@@ -325,17 +326,19 @@ export default function CustomerOrderDetail({
     try {
       const list = await api.reviews.me();
       const itemIds = uniqueItems.map((it) => String(it.menu_item_id));
-      const mine = (list || []).filter((r) =>
-        String(r.order_id) === String(orderId) &&
-        itemIds.includes(String(r.menu_item_id))
+      const mine = (list || []).filter(
+        (r) =>
+          String(r.order_id) === String(orderId) &&
+          itemIds.includes(String(r.menu_item_id))
       );
 
       setMyReviews(mine);
       setReviewedCount(mine.length);
-      setReviewed(itemIds.length > 0 &&
-        itemIds.every((id) =>
-          mine.some((r) => String(r.menu_item_id) === id)
-        )
+      setReviewed(
+        itemIds.length > 0 &&
+          itemIds.every((id) =>
+            mine.some((r) => String(r.menu_item_id) === id)
+          )
       );
     } catch {
       // Không để lỗi tải lại danh sách làm mất kết quả đánh giá vừa gửi.
@@ -777,8 +780,10 @@ export default function CustomerOrderDetail({
                     }}
                   >
                     💡{" "}
-                    {t("Đánh giá sẽ được áp dụng cho tất cả {n} món trong đơn.")
-                      .replace("{n}", itemsCount)}
+                    {t("Đánh giá sẽ được áp dụng cho tất cả {n} món trong đơn.").replace(
+                      "{n}",
+                      itemsCount
+                    )}
                   </div>
 
                   <label style={labelStyle}>{t("Số sao đánh giá")}</label>
@@ -1050,8 +1055,10 @@ export default function CustomerOrderDetail({
       <ConfirmDialog
         open={confirmAction === "cancel"}
         title={t("Hủy đơn hàng này?")}
-        message={t("Đơn hàng {code} sẽ bị hủy và không thể khôi phục.")
-          .replace("{code}", order.code)}
+        message={t("Đơn hàng {code} sẽ bị hủy và không thể khôi phục.").replace(
+          "{code}",
+          order.code
+        )}
         confirmText={t("Hủy đơn")}
         cancelText={t("Giữ đơn")}
         danger
@@ -1236,10 +1243,12 @@ function MyReviewsView({
         </button>
       </div>
 
+      {/* 🔧 FIX #1: Xóa block duplicate — chỉ giữ 1 dòng đúng */}
       <div
         style={{
           padding: 14,
-          background: "linear-gradient(135deg, rgba(24,169,103,.1), rgba(38,52,213,.1))",
+          background:
+            "linear-gradient(135deg, rgba(24,169,103,.1), rgba(38,52,213,.1))",
           borderRadius: 10,
           marginBottom: 18,
           fontSize: 13,
@@ -1248,8 +1257,8 @@ function MyReviewsView({
           textAlign: "center",
         }}
       >
-        ✨ {t("Bạn đã nhận được {points} xu thưởng").replace(
-        {t("Bạn đã nhận được {points} điểm thưởng").replace(
+        ✨{" "}
+        {t("Bạn đã nhận được {points} xu thưởng").replace(
           "{points}",
           totalPoints
         )}
@@ -1266,7 +1275,9 @@ function MyReviewsView({
         myReviews.map((r, i) => renderReview(r, i, false))
       )}
 
-      <h4 style={{ margin: "22px 0 10px", color: "var(--text-primary, #172033)" }}>
+      <h4
+        style={{ margin: "22px 0 10px", color: "var(--text-primary, #172033)" }}
+      >
         {t("Đánh giá từ khách hàng khác")}
       </h4>
       {otherReviews.length === 0 ? (
@@ -1298,6 +1309,7 @@ function MyReviewsView({
     </div>
   );
 }
+
 const labelStyle = {
   display: "block",
   fontSize: 12,

@@ -1,18 +1,16 @@
 // ============================================================
-// KDSTICKET.JSX — Ticket đơn trong KDS board (V6 - LIVE TIMER)
+// KDSTICKET.JSX — Ticket đơn trong KDS board (V7)
 // ============================================================
+// V7 (2026-11):
+//   🔧 Thêm nút "Thông báo" & "Sửa món" (hiển thị ở Đã Xác Nhận).
 // V6 (2026-10):
-//   - ⏱ Tự động tick timer mỗi 1s (không phụ thuộc cha re-render).
-//   - 🔧 Fix hiển thị Xu Sống Xanh Học Đường (điểm/Xu, không phải đ).
-//   - 🎯 Ngưỡng urgency dùng prep_time nếu có.
-//   - ♿ Thêm aria-label cho các nút action.
-//   - ⚡ useMemo cho items/total/paymentLabel.
+//   - Live timer, fix hiển thị Xu.
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
 import {
   Check, Volume2, CheckCircle2, Soup, AlertTriangle,
-  XCircle, PackageCheck, Loader2, Timer, Leaf,
+  XCircle, PackageCheck, Loader2, Timer, Leaf, Bell, Edit
 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 import { money } from "./UI";
@@ -130,6 +128,8 @@ export default function KDSTicket({
   onAdvance,
   onReject,
   onRecall,
+  onNotify,
+  onEdit,
   onApproveGreen,
   onRejectGreen,
   greenBusy = false,
@@ -485,7 +485,6 @@ export default function KDSTicket({
             }}
           >
             <Leaf size={12} />
-            {/* FIX: dùng "Xu" thay vì "đ" (tiền) */}
             <span style={{ whiteSpace: "nowrap", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", padding: "2px 6px", borderRadius: 4 }}>
   {t("Sống Xanh Học Đường")} (+{order.green_points || 10} {t("Xu")})
 </span>
@@ -494,6 +493,38 @@ export default function KDSTicket({
 
       {/* ACTIONS */}
       <div className={`kds-card__actions ${showReject ? "kds-card__actions--stack" : ""}`}>
+        {/* NÚT THÔNG BÁO & SỬA MÓN (chỉ hiện khi Đã xác nhận) */}
+        {(onNotify || onEdit) && (
+          <div style={{ display: "flex", gap: 6, width: "100%", marginBottom: 6 }}>
+            {onNotify && (
+              <button
+                type="button"
+                className="kds-card__btn kds-card__btn--ghost"
+                style={{ flex: 1, fontSize: 12, padding: "6px 0" }}
+                onClick={() => onNotify(order)}
+                disabled={processing}
+                aria-label={t("Gửi thông báo")}
+              >
+                <Bell size={16} />
+                <span>{t("Thông báo")}</span>
+              </button>
+            )}
+            {onEdit && (
+              <button
+                type="button"
+                className="kds-card__btn kds-card__btn--ghost"
+                style={{ flex: 1, fontSize: 12, padding: "6px 0" }}
+                onClick={() => onEdit(order)}
+                disabled={processing}
+                aria-label={t("Sửa món")}
+              >
+                <Edit size={16} />
+                <span>{t("Sửa món")}</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {showReject && (
           <button
             type="button"

@@ -1,12 +1,16 @@
 // ============================================================
-// OWNERFINANCE.JSX — Quản lý tài chính (Admin)
+// OWNERFINANCE.JSX — Quản lý tài chính (Admin) (V2)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-// 🔧 FIX #87: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
-// 🔧 Batch 11 FIX:
-//   - Import getToken
-//   - Guard 8 hàm load (Overview, Account, Revenue, Transactions,
-//     Expenses, Stats, Reconcile, Export) chống spam 401
+// V2 (2026-11):
+//   🔧 FIX CRITICAL: ExportTab.handleExport — `new Date("YYYY-MM-DD")` là
+//      UTC midnight (07:00 VN) → mất đơn 00:00-06:59 ngày đầu kỳ. Đổi sang
+//      parse local VN: `new Date(from + "T00:00:00")`.
+//   🔧 FIX: OverviewTab.load / AccountTab.load — setLoading(false) trước
+//      return khi !getToken() (tránh spinner kẹt nếu F5 khi hết phiên).
+//   🔧 FIX: ExpensesTab / StatsTab / ReconcileTab / TransactionsTab —
+//      thêm cancelled flag chống setState on unmounted.
+// V1 (Batch 11):
+//   - Import getToken + guard 8 hàm load chống spam 401
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -332,7 +336,11 @@ function OverviewTab() {
   const [customTo, setCustomTo] = useState(getLocalDateStr());
 
   const load = useCallback(async (silent = false) => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    // 🔧 FIX V2: setLoading(false) trước return (tránh spinner kẹt khi F5 không token)
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
     if (!silent) setRefreshing(true);
     setError("");
     try {
@@ -568,7 +576,11 @@ function AccountTab() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    // 🔧 FIX V2: setLoading(false) trước return (tránh spinner kẹt)
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -871,7 +883,7 @@ function RevenueTab() {
   );
 
   useEffect(() => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    if (!getToken()) return;
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -984,9 +996,14 @@ function TransactionsTab() {
   );
 
   useEffect(() => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    // 🔧 FIX V2: setLoading(false) trước return
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
+    setError("");
     api.orders
       .all("Tất cả")
       .then((d) => !cancelled && setOrders(Array.isArray(d) ? d : []))
@@ -1122,13 +1139,26 @@ function ExpensesTab() {
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    // 🔧 FIX V2: setLoading(false) + cancelled flag
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
     setLoading(true);
     api.settings
       .get()
-      .then((d) => setExpenses(Array.isArray(d.expenses) ? d.expenses : []))
+      .then((d) => {
+        if (cancelled) return;
+        setExpenses(Array.isArray(d.expenses) ? d.expenses : []);
+      })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const closeConfirm = () => {
@@ -1164,6 +1194,7 @@ function ExpensesTab() {
     const newList = [...expenses, newItem];
 
     try {
+      // 🔧 NOTE V2: cần backend whitelist `expenses` trong PUT /api/settings
       await api.settings.update({ expenses: newList });
       setExpenses(newList);
       setForm({ title: "", amount: "", category: t("Nguyên liệu"), note: "" });
@@ -1523,7 +1554,11 @@ function StatsTab() {
   );
 
   useEffect(() => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    // 🔧 FIX V2: setLoading(false) + cancelled
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     Promise.all([
@@ -1535,7 +1570,9 @@ function StatsTab() {
         setRevenue(r);
         setExpenses(Array.isArray(s.expenses) ? s.expenses : []);
       })
-      .finally(() => !cancelled && setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -1658,11 +1695,18 @@ function ReconcileTab() {
   const [actualInput, setActualInput] = useState("");
 
   useEffect(() => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    if (!getToken()) return;
+    let cancelled = false;
     api.orders
       .all("Tất cả")
-      .then((d) => setOrders(Array.isArray(d) ? d : []))
+      .then((d) => {
+        if (cancelled) return;
+        setOrders(Array.isArray(d) ? d : []);
+      })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const systemTotal = useMemo(
@@ -1788,7 +1832,7 @@ function ExportTab() {
   };
 
   const handleExport = async () => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
+    if (!getToken()) return;
     if (new Date(from) > new Date(to)) {
       return toast(t("Ngày bắt đầu phải trước ngày kết thúc"), "error");
     }
@@ -1799,12 +1843,16 @@ function ExportTab() {
     try {
       const orders = await api.orders.all("Tất cả");
 
-      const fromDate = new Date(from);
-      const toDate = new Date(to);
-      toDate.setHours(23, 59, 59, 999);
+      // 🔧 FIX V2 CRITICAL: dùng local time VN thay vì UTC midnight.
+      // `new Date("2026-10-01")` = 00:00 UTC = 07:00 VN → mất đơn 00:00-06:59 VN.
+      // `new Date("2026-10-01T00:00:00")` = 00:00 local VN ✅
+      const fromDate = new Date(from + "T00:00:00");
+      const toDate = new Date(to + "T23:59:59.999");
 
       const filteredOrders = (orders || []).filter((o) => {
+        if (!o.created_at) return false;
         const d = new Date(o.created_at);
+        if (isNaN(d.getTime())) return false;
         return d >= fromDate && d <= toDate;
       });
 
@@ -1826,7 +1874,7 @@ function ExportTab() {
           "TONG DOANH THU",
           filteredOrders
             .filter((o) => o.status === "Hoàn thành")
-            .reduce((s, o) => s + o.total, 0),
+            .reduce((s, o) => s + (Number(o.total) || 0), 0),
         ],
         ["SO DON", filteredOrders.length],
       ];

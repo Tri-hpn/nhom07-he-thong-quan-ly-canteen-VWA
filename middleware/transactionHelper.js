@@ -34,13 +34,6 @@ export async function supportsTransactions() {
  *
  * @param {(session: any|null) => Promise<T>} fn
  * @returns {Promise<T>}
- *
- * @example
- *   const order = await withTransaction(async (session) => {
- *     await ordersColl.insertOne(order, { session });
- *     await walletsColl.updateOne(filter, update, { session });
- *     return order;
- *   });
  */
 export async function withTransaction(fn) {
   const canTx = await supportsTransactions();
@@ -71,12 +64,6 @@ export async function withTransaction(fn) {
 /**
  * Atomic decrement có điều kiện — CHỐNG ÂM KHO.
  * Chỉ update nếu stock hiện tại >= qty. Trả true nếu update thành công.
- *
- * @param {Collection} coll
- * @param {object} filter  — { _id } hoặc { id }
- * @param {string} field   — "stock" | "balance"
- * @param {number} amount  — số dương, sẽ trừ đi
- * @param {object|null} session
  */
 export async function atomicDecrement(coll, filter, field, amount, session) {
   if (!Number.isFinite(amount) || amount <= 0) {

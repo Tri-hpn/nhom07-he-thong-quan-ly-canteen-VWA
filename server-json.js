@@ -1,10 +1,21 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V22 - FIXED ASYNC AUTH)
+// SERVER-JSON.JS — Backend Express (V26 - ATOMIC + SAGA)
 // ============================================================
-// V22 (2026-10) — FIX TRIỆT ĐỂ 503/401:
-//   🔴 auth() là async, chờ Mongo tối đa 8s (Vercel cold start)
-//   🔴 Đọc token từ req.query.token cho SSE
-//   🔴 Vẫn giữ toàn bộ patches V21 (transaction, SSE, cookie, etc.)
+// V26 (Batch 16 - FIX RACE + SAGA):
+//   🔧 FIX C1: Thêm getNextSequence() — atomic counter cho orders.id
+//   🔧 FIX C2: ensureIndexes tạo unique index orders.id + init counter
+//   🔧 FIX C3a: POST /api/orders dùng getNextSequence thay nextId
+//   🔧 FIX C3b: Saga rollback cho fallback M0 (không transaction)
+//
+// V25 (Batch 15):
+//   🔧 FIX #1: POST /api/orders — xóa block duplicate const total/isWalletPay
+//   🔧 FIX #2: POST /api/reviews — xóa block duplicate
+//   🔧 FIX #3: Thêm recordPointsTransaction (missing helper)
+//   🔧 FIX #4: Guard supportsTransactions() cho Mongo M0
+//   🔧 FIX #5: Logout dùng access+sid (không phải refresh+jti)
+//   🔧 FIX #6: Xóa duplicate chat route
+//   🔧 FIX #7: Xóa duplicate time-slots block
+//   🔧 FIX #8: /api/settings PUT await saveDBOrThrow
 // ============================================================
 
 import express from "express";
@@ -69,7 +80,7 @@ import {
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v22-final-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v26-atomic-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -200,6 +211,30 @@ function generateOrderCode(db) {
   return code;
 }
 
+// ============================================================
+// 🔧 FIX C1 — ATOMIC SEQUENCE (fix race nextId Vercel multi-container)
+// ============================================================
+// Trước đây: nextId(db.orders) → đọc cache RAM từng container → race → trùng id.
+// Sau: dùng Mongo findOneAndUpdate $inc → atomic ở DB level, không race.
+// ============================================================
+async function getNextSequence(mongoDb, name) {
+  if (!mongoDb) return null;
+  try {
+    const res = await mongoDb.collection("counters").findOneAndUpdate(
+      { _id: name },
+      { $inc: { seq: 1 } },
+      { upsert: true, returnDocument: "after" }
+    );
+    // Mongo driver v5: res.value | v6: res trực tiếp
+    const doc = res?.value || res;
+    const seq = Number(doc?.seq);
+    return Number.isFinite(seq) && seq > 0 ? seq : null;
+  } catch (e) {
+    console.warn(`[counter] ${name} fail:`, e.message);
+    return null;
+  }
+}
+// ============================================================
 const TEMP_PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 function generateTempPassword(len = 8) {
   const bytes = crypto.randomBytes(len);
@@ -324,6 +359,34 @@ function getPointsConfig(db) {
     };
   }
   return mergeConfig(db.points_config);
+}
+
+// 🔧 FIX #3: recordPointsTransaction (missing in original)
+function recordPointsTransaction(db, user, delta, reason, extra = {}) {
+  if (!user || !Number.isFinite(Number(delta)) || Number(delta) === 0) return;
+  if (!Array.isArray(db.points_history)) db.points_history = [];
+  const change = Number(delta);
+  const newPoints = Number.isFinite(Number(extra.new_points))
+    ? Number(extra.new_points)
+    : (Number(user.points) || 0);
+  const oldPoints = Number.isFinite(Number(extra.old_points))
+    ? Number(extra.old_points)
+    : newPoints - change;
+  db.points_history.push({
+    id: nextId(db.points_history),
+    user_id: user.id,
+    user_name: user.name || "",
+    old_points: oldPoints,
+    new_points: newPoints,
+    delta: change,
+    reason,
+    order_code: extra.order_code || "",
+    voucher_code: extra.voucher_code || "",
+    source: extra.source || "",
+    changed_by: extra.changed_by || "Hệ thống",
+    changed_by_id: extra.changed_by_id ?? null,
+    created_at: extra.created_at || new Date().toISOString(),
+  });
 }
 
 // ============================================================
@@ -457,8 +520,45 @@ function buildSeedData() {
   };
 }
 
+// ============================================================
+// 🔧 FIX C2 — ensureIndexes: Unique index orders.id + Init counter
+// ============================================================
+// - Unique index: chặn insert trùng id ở DB level (kể cả race multi-container)
+// - Init counter: lấy max(orders.id) làm giá trị khởi đầu cho counters.orders.seq
+// Nếu có duplicate → log warning, không throw (server vẫn khởi động), admin tự dedupe.
+// ============================================================
 async function ensureIndexes(db) {
   try {
+    // 🔧 FIX C2a: Unique index orders.id — chặn race vĩnh viễn
+    try {
+      await db.collection("orders").createIndex({ id: 1 }, { unique: true });
+      console.log("✅ [ensureIndexes] Unique index orders.id OK");
+    } catch (e) {
+      console.warn(
+        "[ensureIndexes] KHÔNG tạo được unique index orders.id — có thể có duplicate. Chạy script dedupe trước:",
+        e.message
+      );
+    }
+
+    // 🔧 FIX C2b: Init counter từ max(orders.id) nếu chưa có
+    try {
+      const maxDoc = await db.collection("orders").find({}).sort({ id: -1 }).limit(1).toArray();
+      const maxId = Number(maxDoc[0]?.id) || 0;
+      const counter = await db.collection("counters").findOne({ _id: "orders" });
+      if (!counter) {
+        await db.collection("counters").insertOne({ _id: "orders", seq: maxId });
+        console.log(`✅ [counter] Init orders.seq = ${maxId}`);
+      } else if (Number(counter.seq) < maxId) {
+        await db.collection("counters").updateOne({ _id: "orders" }, { $set: { seq: maxId } });
+        console.log(`✅ [counter] Sync orders.seq = ${maxId} (was ${counter.seq})`);
+      } else {
+        console.log(`✅ [counter] orders.seq = ${counter.seq} (OK)`);
+      }
+    } catch (e) {
+      console.warn("[counter] Init fail:", e.message);
+    }
+
+    // ── Sessions index (giữ nguyên) ──
     try {
       const sessColl = db.collection("sessions");
       const sessIndexes = await sessColl.indexes().catch(() => []);
@@ -475,6 +575,7 @@ async function ensureIndexes(db) {
       console.warn("[ensureIndexes] sessions index setup:", e.message);
     }
 
+    // ── Các index phụ (giữ nguyên) ──
     const idx = [
       ["orders", { customer_id: 1, created_at: -1 }],
       ["orders", { status: 1 }],
@@ -513,13 +614,12 @@ async function initMongo() {
 
       console.log("🔌 Đang kết nối MongoDB...");
       await mongoose.connect(MONGO_URI, {
-        serverSelectionTimeoutMS: 6000,
-        socketTimeoutMS: 45000,
-        connectTimeoutMS: 6000,
-        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 30000,
+        socketTimeoutMS: 60000,
+        connectTimeoutMS: 30000,
+        maxPoolSize: 5,
         minPoolSize: 0,
         bufferCommands: false,
-        family: 4,
         retryWrites: true,
         retryReads: true,
       });
@@ -628,7 +728,9 @@ async function initMongo() {
 
   return mongoConnecting;
 }
-
+// ============================================================
+// LOAD DB
+// ============================================================
 function loadDB() {
   if (dbCache) return dbCache;
   initMongo().catch(() => {});
@@ -686,21 +788,21 @@ async function _writeCollection(db, key, value) {
         await coll.bulkWrite(ops, { ordered: false });
       } catch (e) {
         const writeErrors = e.result?.getWriteErrors?.() || e.writeErrors || [];
-        if (writeErrors.length >= ops.length) throw e;
+        if (writeErrors.length > 0) throw e;
         console.warn(`bulkWrite ${key}: ${writeErrors.length}/${ops.length} ops failed`);
       }
     }
 
     if (keys.length > 0) {
-          await coll.deleteMany({ [uniqueField]: { $nin: keys } });
-        } else {
-          const PROTECTED_COLLECTIONS = new Set(["users", "orders", "vouchers", "wallets", "menu_items", "points_history", "points_config", "settings", "reviews", "attendances"]);
-          if (PROTECTED_COLLECTIONS.has(key)) {
-            console.warn(`[SAFETY] TỪ CHỐI XOÁ SẠCH bảng ${key} vì mảng dữ liệu tải lên bị rỗng!`);
-          } else {
-            await coll.deleteMany({});
-          }
-        }
+      await coll.deleteMany({ [uniqueField]: { $nin: keys } });
+    } else {
+      const PROTECTED_COLLECTIONS = new Set(["users", "orders", "vouchers", "wallets", "menu_items", "points_history", "points_config", "settings", "reviews", "attendances"]);
+      if (PROTECTED_COLLECTIONS.has(key)) {
+        console.warn(`[SAFETY] TỪ CHỐI XOÁ SẠCH bảng ${key} vì mảng dữ liệu tải lên bị rỗng!`);
+      } else {
+        await coll.deleteMany({});
+      }
+    }
     return;
   }
 
@@ -735,30 +837,39 @@ async function _flushChanges(db, data) {
   if (hadError) throw hadError;
 }
 
-function saveDB(data) {
+function enqueueSaveDB(data) {
   dbCache = data;
   if (!mongoReady || !mongoose.connection.db) return Promise.resolve();
-  const db = mongoose.connection.db;
-  saveQueue = saveQueue
+  const mongoDb = mongoose.connection.db;
+  const operation = saveQueue
     .catch(() => {})
-    .then(() => _flushChanges(db, data))
-    .catch((e) => console.error("Mongo save error:", e.message));
-  return saveQueue;
+    .then(() => _flushChanges(mongoDb, data));
+  saveQueue = operation.catch((e) => {
+    console.error("Mongo save error:", e.message);
+  });
+  return operation;
+}
+
+function saveDB(data) {
+  return enqueueSaveDB(data).catch((e) => {
+    console.error("Mongo save error:", e.message);
+  });
 }
 
 async function saveDBOrThrow(data) {
   dbCache = data;
-  if (!mongoReady || !mongoose.connection.db) return;
-  const db = mongoose.connection.db;
-  try {
-    await _flushChanges(db, data);
-  } catch (e) {
-    console.error("saveDBOrThrow error:", e.message);
-    throw e;
+  if (!mongoReady || !mongoose.connection.db) {
+    throw new Error("MongoDB chưa sẵn sàng; thao tác chưa được lưu. Vui lòng thử lại.");
   }
+  return enqueueSaveDB(data);
 }
 
-const saveDBStrict = saveDBOrThrow;
+async function saveDBStrict(data) {
+  dbCache = data;
+  if (!mongoReady || !mongoose.connection.db) return;
+  const mongoDb = mongoose.connection.db;
+  await _flushChanges(mongoDb, data);
+}
 
 function invalidateMenuCache() {
   menuCache.data = null;
@@ -778,7 +889,7 @@ function notifyNewOrder(db, order) {
   staff.forEach((s) => {
     const id = nextId(db.notifications);
     db.notifications.push({
-      id, user_id: s.id, title: "Đơn hàng mới",
+      id, user_id: Number(s.id), title: "Đơn hàng mới",
       content: order.customer_name + " vừa đặt đơn " + order.code + " (" + order.total.toLocaleString("vi-VN") + "đ)",
       type: "order", link: s.role === "ADMIN" ? "/owner" : "/employee/orders", read: false, created_at: new Date().toISOString(),
     });
@@ -826,16 +937,35 @@ function rollbackCancelledOrder(db, order) {
     m.stock = (m.stock || 0) + (it.qty || 0);
     m.sold = Math.max(0, (m.sold || 0) - (it.qty || 0));
   });
-  const earned = Number(order.points_earned) || 0;
-  if (earned > 0) {
-    const customer = (db.users || []).find((u) => u.id === order.customer_id);
-    if (customer) customer.points = Math.max(0, (customer.points || 0) - earned);
-    order.points_earned = 0;
+  const earned = Math.max(0, Number(order.points_earned) || 0);
+  const greenBonus = order.green_status === "approved" ? Math.max(0, Number(order.green_points) || 0) : 0;
+  const baseEarned = Math.max(0, earned - greenBonus);
+  const customer = (db.users || []).find((u) => String(u.id) === String(order.customer_id));
+
+  if (customer && baseEarned > 0) {
+    const before = Math.max(0, Number(customer.points) || 0);
+    customer.points = Math.max(0, before - baseEarned);
+    const actualDelta = customer.points - before;
+    if (actualDelta !== 0) {
+      recordPointsTransaction(db, customer, actualDelta,
+        `Thu hồi xu tích lũy do hủy đơn ${order.code || order.id}`,
+        { order_code: order.code || "", source: "order_cancel_earn" });
+    }
   }
-  const __greenBonus = Number(order.green_points) || 0;
-  if (order.green_status === "approved" && __greenBonus > 0) {
-    const __cust = (db.users || []).find((u) => u.id === order.customer_id);
-    if (__cust) __cust.points = Math.max(0, (__cust.points || 0) - __greenBonus);
+
+  if (customer && greenBonus > 0) {
+    const before = Math.max(0, Number(customer.points) || 0);
+    customer.points = Math.max(0, before - greenBonus);
+    const actualDelta = customer.points - before;
+    if (actualDelta !== 0) {
+      recordPointsTransaction(db, customer, actualDelta,
+        `Thu hồi thưởng VWA Green do hủy đơn ${order.code || order.id}`,
+        { order_code: order.code || "", source: "order_cancel_green" });
+    }
+  }
+
+  if (earned > 0) order.points_earned = 0;
+  if (order.green_status === "approved" && greenBonus > 0) {
     order.green_status = "cancelled";
     order.green_points = 0;
   }
@@ -932,7 +1062,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// 🔴 COLD START INTERCEPTOR v3: Biến 503 GET thành 200 rỗng
+// COLD START INTERCEPTOR: Biến 503 GET thành 200 rỗng
 app.use((req, res, next) => {
   const origJson = res.json.bind(res);
   res.json = function(body) {
@@ -952,14 +1082,29 @@ app.use((req, res, next) => {
 
 app.get("/api/uploads/menu/:id", async (req, res) => {
   try {
+    if (!mongoReady) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
     const image = await getMenuImage(req.params.id);
-    if (!image) return res.status(404).json({ message: "Không tìm thấy ảnh" });
+    if (!image) {
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.send(
+        `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text></svg>`
+      );
+    }
     if (image.redirectTo) return res.redirect(302, image.redirectTo);
     res.setHeader("Content-Type", image.contentType || "image/jpeg");
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     res.setHeader("ETag", '"' + req.params.id + "-" + image.rev + '"');
     res.send(image.buffer);
-  } catch (e) { res.status(500).json({ message: "Lỗi tải ảnh: " + e.message }); }
+  } catch (e) {
+    console.error(`[Image Error] ID ${req.params.id}:`, e.message);
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(
+      `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text></svg>`
+    );
+  }
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
@@ -973,11 +1118,10 @@ if (!JWT_SECRET) {
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_IN_PROD";
 
 // ============================================================
-// [P3-V22] AUTH MIDDLEWARE — Async + Wait for Mongo
+// AUTH MIDDLEWARE — Async + Wait for Mongo
 // ============================================================
 function auth(roles = []) {
   return async (req, res, next) => {
-    // Vercel cold start
     if (MONGO_URI && !mongoReady) {
       const deadline = Date.now() + 5000;
       while (!mongoReady && Date.now() < deadline) {
@@ -991,7 +1135,6 @@ function auth(roles = []) {
       }
     }
 
-    // SSE: token qua query
     if (req.query.token && !req.headers.authorization) {
       req.headers.authorization = `Bearer ${req.query.token}`;
     }
@@ -1006,7 +1149,6 @@ function auth(roles = []) {
 
     const payload = v.payload;
 
-    // ─── SESSION REVOKED CHECK ───
     if (payload.sid) {
       const sv = await verifySession(payload.sid);
       if (!sv.ok) {
@@ -1019,7 +1161,9 @@ function auth(roles = []) {
     }
 
     const db = loadDB();
-    const currentUser = findByIdOrMongo(db.users, payload.id);
+    const userId = Number(payload.id);
+    const currentUser = findByIdOrMongo(db.users, userId);
+
     if (!currentUser)
       return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
     if (currentUser.status === "Bị khóa")
@@ -1028,11 +1172,11 @@ function auth(roles = []) {
       return res.status(403).json({ message: "Không có quyền" });
 
     req.user = {
-      ...payload,
-      sid: payload.sid || null,
+      id: currentUser.id,
       role: currentUser.role,
       name: currentUser.name,
       email: currentUser.email,
+      sid: payload.sid || null,
     };
     req.tokenSource = v.source;
     next();
@@ -1043,7 +1187,6 @@ function auth(roles = []) {
 // AUTH ENDPOINTS
 // ============================================================
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
-// 🔧 V24 FIX: chống spam tạo account ảo (3 req/phút/IP)
 const registerLimiter = rateLimit({ windowMs: 60_000, max: 3 });
 
 app.post("/api/auth/login", loginLimiter, async (req, res) => {
@@ -1068,7 +1211,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
 
     res.json({
-      token: accessToken, // 🔴 TRẢ LẠI TOKEN CHO FRONTEND
+      token: accessToken,
       user: {
         id: user.id,
         email: user.email,
@@ -1083,7 +1226,6 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
   }
 });
 
-// 🔧 V24 FIX: thêm registerLimiter middleware
 app.post("/api/auth/register", registerLimiter, async (req, res) => {
   try {
     const { email, password, name, phone, student_code } = req.body || {};
@@ -1114,7 +1256,7 @@ app.post("/api/auth/register", registerLimiter, async (req, res) => {
 
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.status(201).json({
-      token: accessToken, // 🔴 TRẢ LẠI TOKEN
+      token: accessToken,
       user: {
         id: user.id,
         email: user.email,
@@ -1130,7 +1272,6 @@ app.post("/api/auth/register", registerLimiter, async (req, res) => {
 });
 
 app.post("/api/auth/refresh", async (req, res) => {
-  // 🔴 ĐÃ TẮT: Không dùng refresh token nữa (Bearer-only mode)
   return res.status(410).json({
     ok: false,
     message: "Refresh endpoint đã tắt. Vui lòng đăng nhập lại.",
@@ -1138,12 +1279,12 @@ app.post("/api/auth/refresh", async (req, res) => {
   });
 });
 
+// 🔧 FIX #5: Logout dùng "access" + sid (không phải "refresh" + jti)
 app.post("/api/auth/logout", async (req, res) => {
   try {
-    // Revoke refresh session nếu verify được
-    const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "refresh");
-    if (v.ok && v.payload?.jti) {
-      await revokeSession(v.payload.jti);
+    const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
+    if (v.ok && v.payload?.sid) {
+      await revokeSession(v.payload.sid);
     }
     clearAuthCookies(res, req);
     res.json({ ok: true, message: "Đã đăng xuất" });
@@ -1162,12 +1303,11 @@ app.put("/api/auth/password", auth(), async (req, res) => {
     if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
     const ok = bcrypt.compareSync(currentPassword, u.password);
     if (!ok) return res.status(401).json({ message: "Mật khẩu hiện tại không đúng" });
-        u.password = bcrypt.hashSync(newPassword, 10);
+    u.password = bcrypt.hashSync(newPassword, 10);
     u.must_change_password = false;
     u.password_changed_at = new Date().toISOString();
     await saveDBOrThrow(db);
 
-    // Revoke toàn bộ session khác (giữ session hiện tại)
     const currentJti = req.user?.sid || null;
     await revokeAllSessions(u.id, currentJti);
 
@@ -1185,6 +1325,7 @@ app.get("/api/auth/me", auth(), async (req, res) => {
     id: u.id, email: u.email, name: u.name, role: u.role, points: u.points || 0, phone: u.phone || "", address: u.address || "", avatar: u.avatar || "",
     student_code: u.student_code || "", teacher_code: u.teacher_code || "", year_in: u.year_in || null, major_code: u.major_code || "",
     major_code_full: u.major_code_full || "", major_name: u.major_name || "", faculty: u.faculty || "", unit_code: u.unit_code || "",
+    class_name: u.class_name || "", birth_date: u.birth_date || "", gender: u.gender || "",
     manual_override: !!u.manual_override, must_change_password: !!u.must_change_password,
   });
 });
@@ -1194,7 +1335,7 @@ app.put("/api/auth/profile", auth(), async (req, res) => {
     const db = loadDB();
     const u = findByIdOrMongo(db.users, req.user.id);
     if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
-    const { name, phone, avatar, address, email, student_code } = req.body;
+    const { name, phone, avatar, address, email, student_code, class_name, birth_date, gender } = req.body;
     if (student_code !== undefined) {
       const clean = String(student_code || "").trim();
       if (u.student_code && u.student_code !== clean) return res.status(403).json({ message: "MSSV đã liên kết, không thể thay đổi.", code: "MSSV_LOCKED" });
@@ -1220,8 +1361,11 @@ app.put("/api/auth/profile", auth(), async (req, res) => {
     }
     if (avatar !== undefined) u.avatar = avatar;
     if (address !== undefined) u.address = address.trim();
+    if (class_name !== undefined) u.class_name = String(class_name || "").trim();
+    if (birth_date !== undefined) u.birth_date = String(birth_date || "").trim();
+    if (gender !== undefined) u.gender = String(gender || "").trim();
     await saveDBOrThrow(db);
-    res.json({ id: u.id, email: u.email, name: u.name, role: u.role, phone: u.phone, avatar: u.avatar, address: u.address, points: u.points, student_code: u.student_code || "", teacher_code: u.teacher_code || "", year_in: u.year_in || null, major_code: u.major_code || "", major_name: u.major_name || "", faculty: u.faculty || "" });
+    res.json({ id: u.id, email: u.email, name: u.name, role: u.role, phone: u.phone, avatar: u.avatar, address: u.address, class_name: u.class_name || "", birth_date: u.birth_date || "", gender: u.gender || "", points: u.points, student_code: u.student_code || "", teacher_code: u.teacher_code || "", year_in: u.year_in || null, major_code: u.major_code || "", major_name: u.major_name || "", faculty: u.faculty || "" });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -1256,21 +1400,17 @@ app.post("/api/auth/google/callback", async (req, res) => {
       const id = nextId(db.users);
       user = { id, email: emailNorm, password: "", name: profile.name || emailNorm.split("@")[0], phone: "", role: "CUSTOMER", status: "Hoạt động", points: 0, provider: "google", avatar: profile.picture || "", created_at: new Date().toISOString() };
       db.users.push(user);
-      await saveDBOrThrow(db);
+      try { await saveDBOrThrow(db); } catch (saveErr) { console.error("[OAuth Google] Save user failed:", saveErr.message); }
     } else if (profile.picture && !user.avatar) {
       user.avatar = profile.picture;
-      await saveDBOrThrow(db);
+      try { await saveDBOrThrow(db); } catch (saveErr) { console.error("[OAuth Google] Save avatar failed:", saveErr.message); }
     }
-            const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
-      token: accessToken, // 🔴 TRẢ LẠI TOKEN
+      token: accessToken,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        avatar: user.avatar || "",
-        must_change_password: !!user.must_change_password,
+        id: user.id, email: user.email, name: user.name, role: user.role,
+        avatar: user.avatar || "", must_change_password: !!user.must_change_password,
       },
     });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Google: " + e.message }); }
@@ -1295,20 +1435,17 @@ app.post("/api/auth/facebook/callback", async (req, res) => {
       const id = nextId(db.users);
       user = { id, email: emailNorm, password: "", name: profile.name || "FB User", phone: "", role: "CUSTOMER", status: "Hoạt động", points: 0, provider: "facebook", avatar: profile.picture?.data?.url || "", created_at: new Date().toISOString() };
       db.users.push(user);
-      await saveDBOrThrow(db);
+      try { await saveDBOrThrow(db); } catch (saveErr) { console.error("[OAuth FB] Save user failed:", saveErr.message); }
     } else if (profile.picture?.data?.url && !user.avatar) {
       user.avatar = profile.picture.data.url;
-      await saveDBOrThrow(db);
+      try { await saveDBOrThrow(db); } catch (saveErr) { console.error("[OAuth FB] Save avatar failed:", saveErr.message); }
     }
-    await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
+      token: accessToken,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        avatar: user.avatar || "",
-        must_change_password: !!user.must_change_password,
+        id: user.id, email: user.email, name: user.name, role: user.role,
+        avatar: user.avatar || "", must_change_password: !!user.must_change_password,
       },
     });
   } catch (e) { res.status(500).json({ message: "Lỗi xác thực Facebook: " + e.message }); }
@@ -1354,38 +1491,34 @@ async function microsoftCallbackHandler(req, res) {
         if (/^\d{6}-\d{7}$/.test(local)) user.teacher_code = local;
       }
       autoFilled = autoFillFromCode(db, user);
-      await saveDBOrThrow(db);
+      try { await saveDBOrThrow(db); } catch (saveErr) { console.error("[OAuth MS] Save existing user failed:", saveErr.message); }
     } else {
       const id = nextId(db.users);
-      const local = emailNorm.split("@")[0];
-      const isStudent = emailNorm.endsWith("@hpn.edu.vn");
-      const isTeacher = emailNorm.endsWith("@vwa.edu.vn");
-      const isTeacherWithCode = isTeacher && /^\d{6}-\d{7}$/.test(local);
-      user = { id, email: emailNorm, password: "", name: profile.displayName || local, phone: profile.mobilePhone || "", role: "CUSTOMER", status: "Hoạt động", points: 0, provider: "microsoft", avatar: "", student_code: isStudent ? (classify.code || "") : "", teacher_code: isTeacherWithCode ? local : "", created_at: new Date().toISOString() };
+      user = {
+        id, email: emailNorm, password: "", name: profile.displayName || emailNorm.split("@")[0] || "MS User", phone: "",
+        role: "CUSTOMER", status: "Hoạt động", points: 0, provider: "microsoft", avatar: "",
+        student_code: emailNorm.endsWith("@hpn.edu.vn") ? classify.code : "",
+        teacher_code: emailNorm.endsWith("@vwa.edu.vn") ? classify.code : "",
+        created_at: new Date().toISOString(),
+      };
       db.users.push(user);
-      if (!db.wallets) db.wallets = [];
-      db.wallets.push({ user_id: id, balance: 0, bank_name: "", bank_account: "", bank_account_name: "", linked_at: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      if (!Array.isArray(db.wallets)) db.wallets = [];
+      if (!db.wallets.find((w) => Number(w.user_id) === Number(id))) {
+        db.wallets.push({ user_id: id, balance: 0, bank_name: "", bank_account: "", bank_account_name: "", linked_at: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      }
       autoFilled = autoFillFromCode(db, user);
-      await saveDBOrThrow(db);
+      try { await saveDBOrThrow(db); } catch (saveErr) { console.error("[OAuth MS] Save new user failed:", saveErr.message); }
       isNewUser = true;
     }
-            const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
+    const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
-      token: accessToken, // 🔴 TRẢ LẠI TOKEN
+      token: accessToken,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        avatar: user.avatar || "",
-        must_change_password: !!user.must_change_password,
-        student_code: user.student_code || "",
-        teacher_code: user.teacher_code || "",
-        major_name: user.major_name || "",
-        faculty: user.faculty || "",
-        year_in: user.year_in || null,
-        is_new_user: isNewUser,
-        auto_filled: autoFilled,
+        id: user.id, email: user.email, name: user.name, role: user.role,
+        avatar: user.avatar || "", must_change_password: !!user.must_change_password,
+        student_code: user.student_code || "", teacher_code: user.teacher_code || "",
+        major_name: user.major_name || "", faculty: user.faculty || "",
+        year_in: user.year_in || null, is_new_user: isNewUser, auto_filled: autoFilled,
       },
     });
   } catch (e) {
@@ -1718,6 +1851,9 @@ app.post("/api/school/majors-map/reset", auth(["ADMIN"]), async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// ============================================================
+// USERS — Points & School Info
+// ============================================================
 app.put("/api/users/:id/points", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -1774,12 +1910,12 @@ app.delete("/api/users/:id/unlink-mssv", auth(["ADMIN"]), async (req, res) => {
 });
 
 // ============================================================
-// [P7+P8] POST /api/orders — TRANSACTION + SSE BROADCAST
+// SUBSIDY HELPERS
 // ============================================================
-
 function getCurrentMonth() {
   return new Date().toISOString().slice(0, 7);
 }
+
 function getUserSubsidyStatus(user) {
   const cm = getCurrentMonth();
   if (!user.subsidy_month || user.subsidy_month !== cm) {
@@ -1789,10 +1925,15 @@ function getUserSubsidyStatus(user) {
   }
   return {
     remaining: user.subsidy_remaining ?? 500000,
-    used: user.subsidy_used ?? 0
+    used: user.subsidy_used ?? 0,
   };
 }
 
+// ============================================================
+// POST /api/orders — TRANSACTION + SAGA ROLLBACK + SSE BROADCAST
+// 🔧 FIX C3a: Atomic counter cho order.id
+// 🔧 FIX C3b: Saga rollback cho fallback M0 (không transaction)
+// ============================================================
 app.post("/api/orders", auth(), async (req, res) => {
   try {
     const {
@@ -1825,6 +1966,7 @@ app.post("/api/orders", auth(), async (req, res) => {
     const detailed = [];
     let subtotal = 0;
 
+    // ─── Validate từng món ───
     for (const it of items) {
       const q = Number(it.qty);
       if (!Number.isFinite(q) || q <= 0 || !Number.isInteger(q)) {
@@ -1871,6 +2013,7 @@ app.post("/api/orders", auth(), async (req, res) => {
       });
     }
 
+    // ─── Check tồn kho ───
     for (const [mid, qty] of qtyByItem) {
       const m = menuById.get(mid);
       if ((Number(m.stock) || 0) < qty) {
@@ -1878,25 +2021,15 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
+    // ─── Parse khung giờ nhận ───
     const pickupSlotId = (() => {
       const direct = String(pickupTime || "").replace(/\s/g, "");
       if (/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(direct)) return direct;
       const match = String(note).match(/Nhận (?:lúc|hàng)\s*:?\s*(\d{2}:\d{2}\s*-\s*\d{2}:\d{2})/);
       return match ? match[1].replace(/\s/g, "") : "";
     })();
-      const total = Math.max(0, subtotal - computedDiscount - xuDiscount);
-      if (payment === "CARD") {
-        const studentCard = (db.student_cards || []).find(
-          (item) => Number(item.user_id) === Number(req.user.id)
-        );
-        if (studentCard?.locked) {
-          return res.status(400).json({
-            message: "Thẻ sinh viên đang bị khóa. Vui lòng mở khóa thẻ trước khi thanh toán."
-          });
-        }
-      }
-      const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
 
+    // ─── Validate khung giờ ───
     if (pickupSlotId) {
       const slots = getTimeSlots(db);
       const slot = slots.find((s) => s.id === pickupSlotId);
@@ -1904,6 +2037,7 @@ app.post("/api/orders", auth(), async (req, res) => {
       if (!slot.enabled) return res.status(400).json({ message: `Khung giờ ${pickupSlotId} đã kín hoặc tạm ngưng.` });
     }
 
+    // ─── Voucher ───
     let computedDiscount = 0;
     let usedVoucher = null;
     if (voucherCode) {
@@ -1920,18 +2054,21 @@ app.post("/api/orders", auth(), async (req, res) => {
     if (!voucherCode && clientDiscount > 0) return res.status(400).json({ message: "Giảm giá không hợp lệ (không có voucher)" });
     if (voucherCode && Math.abs(clientDiscount - computedDiscount) > 1) return res.status(400).json({ message: "Giảm giá không khớp với voucher" });
 
+    // ─── Customer + Subsidy ───
     const useSubsidy = req.body.useSubsidy === true;
     const customer = findByIdOrMongo(db.users, req.user.id);
+    if (!customer) return res.status(400).json({ message: "Không tìm thấy tài khoản" });
+
     let subsidyDiscount = 0;
-    if (useSubsidy && customer && subtotal >= 25000) {
+    if (useSubsidy && subtotal >= 25000) {
       const status = getUserSubsidyStatus(customer);
       const subsidyCfg = getPointsConfig(db);
       const subsidyMaxPerOrder = Number(subsidyCfg.earn?.subsidy_points) || 10000;
       subsidyDiscount = Math.min(subsidyMaxPerOrder, status.remaining);
     }
-    
+
+    // ─── Xu ───
     const useXu = useXuRaw === true;
-    // [FIX v2] const customer = findByIdOrMongo(db.users, req.user.id); // ← đã khai báo ở block useSubsidy
     let xuDiscount = 0;
     if (useXu && customer) {
       const pointsConfig = getPointsConfig(db);
@@ -1942,9 +2079,23 @@ app.post("/api/orders", auth(), async (req, res) => {
       xuDiscount = Math.min(availableXu, maxXuAllowed);
     }
 
+    // ─── Total (SAU khi đã có đủ discount) ───
     const total = Math.max(0, subtotal - computedDiscount - xuDiscount - subsidyDiscount);
-    const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
 
+    // ─── CARD check ───
+    if (payment === "CARD") {
+      const studentCard = (db.student_cards || []).find(
+        (item) => Number(item.user_id) === Number(req.user.id)
+      );
+      if (studentCard?.locked) {
+        return res.status(400).json({
+          message: "Thẻ sinh viên đang bị khóa. Vui lòng mở khóa thẻ trước khi thanh toán.",
+        });
+      }
+    }
+
+    // ─── Wallet check ───
+    const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
     if (isWalletPay) {
       const wallet = getOrCreateWallet(db, req.user.id);
       if ((Number(wallet.balance) || 0) < total) {
@@ -1952,35 +2103,48 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
     }
 
-    const orderId = nextId(db.orders);
+    // ─── Points ───
+    // 🔧 FIX C3a: Atomic counter — không race kể cả Vercel multi-container
+    let orderId = null;
+    if (mongoReady && mongoose.connection.db) {
+      orderId = await getNextSequence(mongoose.connection.db, "orders");
+    }
+    if (!orderId) {
+      orderId = nextId(db.orders);
+      console.warn("[POST /api/orders] Fallback nextId — có thể trùng id nếu concurrent");
+    }
     const orderCode = generateOrderCode(db);
     const __cfg = getPointsConfig(db);
-    const basePointsEarned = 100; // Ép cứng 100 Xu
-    const __greenBonus = isGreen ? 200 : 0; // Ép cứng 200 Xu nếu có Sống Xanh
-    const __greenRequireApproval = false; // Luôn tự động duyệt
-    const finalPointsEarned = isGreen ? basePointsEarned + __greenBonus : basePointsEarned; // Tổng: 100 hoặc 300
+    const basePointsEarned = calcEarnPoints(total, __cfg);
+    const __greenBonus = isGreen ? calcGreenBonus(__cfg) : 0;
+    const __greenRequireApproval = isGreen && __cfg.earn.green_require_approval !== false;
+    const __greenBonusAwarded = isGreen && !__greenRequireApproval ? __greenBonus : 0;
+    const finalPointsEarned = basePointsEarned + __greenBonusAwarded;
 
     const orderCreated = {
-      subsidy_discount: subsidyDiscount,
-      subsidy_applied: useSubsidy && subsidyDiscount > 0,
       id: orderId,
       code: orderCode,
       customer_id: req.user.id,
       customer_name: req.user.name,
+      items: detailed,
       subtotal,
       discount: computedDiscount,
       xu_discount: xuDiscount,
+      subsidy_discount: subsidyDiscount,
+      subsidy_applied: useSubsidy && subsidyDiscount > 0,
       total,
-      points_earned: finalPointsEarned,
-      status: "Chờ xác nhận",
+      payment,
+      note: String(note || "").slice(0, 500),
+      pickup_time: pickupSlotId || "",
+      voucher_code: usedVoucher?.code || "",
+      is_green: !!isGreen,
       green_requested: !!isGreen,
       green_status: isGreen ? (__greenRequireApproval ? "pending" : "approved") : null,
-      green_points: isGreen ? __greenBonus : 0,
-      payment,
-      note,
-      items: detailed,
-      voucher_code: usedVoucher ? usedVoucher.code : "",
+      green_points: __greenBonus,
+      points_earned: finalPointsEarned,
+      status: "Chờ xác nhận",
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
     const walletTx = isWalletPay
@@ -2001,68 +2165,198 @@ app.post("/api/orders", auth(), async (req, res) => {
         }
       : null;
 
+    // 🔧 FIX #4: Guard supportsTransactions() cho Mongo M0
+    const canUseTx = supportsTransactions() && mongoReady && mongoose.connection.db;
+    const mongoDb = mongoose.connection.db;
+    if (!mongoDb) {
+      return res.status(503).json({ message: "MongoDB chưa sẵn sàng. Vui lòng thử lại sau vài giây." });
+    }
+
     try {
-      await withTransaction(async (session) => {
-        const mongoDb = mongoose.connection.db;
+      if (canUseTx) {
+        // ═══════════════════════════════════════════════════════
+        // NHÁNH A: Có transaction (Mongo M10+) — an toàn 100%
+        // ═══════════════════════════════════════════════════════
+        await withTransaction(async (session) => {
+          for (const [mid, qty] of qtyByItem) {
+            const m = menuById.get(mid);
+            const filter = m._id ? { _id: m._id } : { id: m.id };
+            const ok = await atomicDecrement(mongoDb.collection("menu_items"), filter, "stock", qty, session);
+            if (!ok) throw new Error(`${m.name} vừa hết hàng. Vui lòng chọn món khác.`);
+            await mongoDb.collection("menu_items").updateOne(filter, { $inc: { sold: qty } }, { session });
+          }
 
-        for (const [mid, qty] of qtyByItem) {
-          const m = menuById.get(mid);
-          const filter = m._id ? { _id: m._id } : { id: m.id };
-          const ok = await atomicDecrement(mongoDb.collection("menu_items"), filter, "stock", qty, session);
-          if (!ok) throw new Error(`${m.name} vừa hết hàng. Vui lòng chọn món khác.`);
-          await mongoDb.collection("menu_items").updateOne(filter, { $inc: { sold: qty } }, { session });
+          if (isWalletPay) {
+            const ok = await atomicDecrement(mongoDb.collection("wallets"), { user_id: req.user.id }, "balance", total, session);
+            if (!ok) throw new Error("Số dư ví không đủ (có thể do giao dịch đồng thời). Vui lòng thử lại.");
+            const { _id, ...txDoc } = walletTx;
+            await mongoDb.collection("wallet_transactions").insertOne(txDoc, { session });
+          }
+
+          if (useXu && xuDiscount > 0 && customer) {
+            const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+            const ok = await atomicDecrement(mongoDb.collection("users"), userFilter, "points", xuDiscount, session);
+            if (!ok) throw new Error("Điểm Xu không đủ (có thể do giao dịch đồng thời). Vui lòng thử lại.");
+          }
+
+          if (useSubsidy && subsidyDiscount > 0 && customer) {
+            const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+            const upd = await mongoDb.collection("users").updateOne(
+              { ...userFilter, subsidy_remaining: { $gte: subsidyDiscount } },
+              { $inc: { subsidy_remaining: -subsidyDiscount, subsidy_used: subsidyDiscount }, $set: { subsidy_month: getCurrentMonth() } },
+              { session }
+            );
+            if (upd.modifiedCount !== 1) throw new Error("Hạn mức trợ giá không đủ. Vui lòng thử lại.");
+          }
+
+          if (finalPointsEarned > 0 && customer) {
+            const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+            await atomicIncrement(mongoDb.collection("users"), userFilter, "points", finalPointsEarned, session);
+          }
+
+          if (usedVoucher) {
+            const vcFilter = usedVoucher._id ? { _id: usedVoucher._id } : { id: usedVoucher.id };
+            const upd = await mongoDb.collection("vouchers").updateOne(
+              { ...vcFilter, used: false },
+              { $set: { used: true, used_at: new Date().toISOString(), order_code: orderCode } },
+              { session }
+            );
+            if (upd.modifiedCount !== 1) throw new Error("Voucher đã được sử dụng bởi giao dịch khác.");
+          }
+
+          const { _id, ...orderDoc } = orderCreated;
+          await mongoDb.collection("orders").insertOne(orderDoc, { session });
+        });
+      } else {
+        // ═══════════════════════════════════════════════════════
+        // NHÁNH B: Không có transaction (M0) — SAGA ROLLBACK
+        // 🔧 FIX C3b: Thay vì partial fail gây mất kho, rollback thủ công
+        // ═══════════════════════════════════════════════════════
+        const reserved = { stocks: [], wallet: null, voucher: null, xu: 0, subsidy: 0, userFilter: null };
+
+        try {
+          // Bước 1: Reserve stocks
+          for (const [mid, qty] of qtyByItem) {
+            const m = menuById.get(mid);
+            const filter = m._id ? { _id: m._id } : { id: m.id };
+            const ok = await atomicDecrement(mongoDb.collection("menu_items"), filter, "stock", qty, null);
+            if (!ok) throw new Error(`${m.name} vừa hết hàng. Vui lòng chọn món khác.`);
+            reserved.stocks.push({ filter, qty });
+            await mongoDb.collection("menu_items").updateOne(filter, { $inc: { sold: qty } });
+          }
+
+          // Bước 2: Wallet
+          if (isWalletPay) {
+            const ok = await atomicDecrement(mongoDb.collection("wallets"), { user_id: req.user.id }, "balance", total, null);
+            if (!ok) throw new Error("Số dư ví không đủ.");
+            reserved.wallet = { user_id: req.user.id, amount: total };
+            const { _id, ...txDoc } = walletTx;
+            await mongoDb.collection("wallet_transactions").insertOne(txDoc);
+          }
+
+          // Bước 3: Xu
+          if (useXu && xuDiscount > 0 && customer) {
+            const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+            const ok = await atomicDecrement(mongoDb.collection("users"), userFilter, "points", xuDiscount, null);
+            if (!ok) throw new Error("Điểm Xu không đủ.");
+            reserved.xu = xuDiscount;
+            reserved.userFilter = userFilter;
+          }
+
+          // Bước 4: Subsidy
+          if (useSubsidy && subsidyDiscount > 0 && customer) {
+            const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+            const upd = await mongoDb.collection("users").updateOne(
+              { ...userFilter, subsidy_remaining: { $gte: subsidyDiscount } },
+              { $inc: { subsidy_remaining: -subsidyDiscount, subsidy_used: subsidyDiscount }, $set: { subsidy_month: getCurrentMonth() } }
+            );
+            if (upd.modifiedCount !== 1) throw new Error("Hạn mức trợ giá không đủ.");
+            reserved.subsidy = subsidyDiscount;
+          }
+
+          // Bước 5: Points earned
+          if (finalPointsEarned > 0 && customer) {
+            const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+            await atomicIncrement(mongoDb.collection("users"), userFilter, "points", finalPointsEarned, null);
+          }
+
+          // Bước 6: Voucher
+          if (usedVoucher) {
+            const vcFilter = usedVoucher._id ? { _id: usedVoucher._id } : { id: usedVoucher.id };
+            const upd = await mongoDb.collection("vouchers").updateOne(
+              { ...vcFilter, used: false },
+              { $set: { used: true, used_at: new Date().toISOString(), order_code: orderCode } }
+            );
+            if (upd.modifiedCount !== 1) throw new Error("Voucher đã được sử dụng bởi giao dịch khác.");
+            reserved.voucher = vcFilter;
+          }
+
+          // Bước 7: Insert order
+          const { _id, ...orderDoc } = orderCreated;
+          await mongoDb.collection("orders").insertOne(orderDoc);
+        } catch (err) {
+          // 🔧 SAGA ROLLBACK — hoàn tác tất cả đã làm
+          console.error("[checkoutOrder/M0] Fail:", err.message, "→ rollback");
+
+          for (const { filter, qty } of reserved.stocks) {
+            try {
+              await mongoDb.collection("menu_items").updateOne(filter, { $inc: { stock: qty, sold: -qty } });
+            } catch (rbErr) {
+              console.error("[rollback stock] fail:", rbErr.message);
+            }
+          }
+
+          if (reserved.wallet) {
+            try {
+              await atomicIncrement(mongoDb.collection("wallets"), { user_id: reserved.wallet.user_id }, "balance", reserved.wallet.amount, null);
+              if (walletTx?.code) {
+                await mongoDb.collection("wallet_transactions").deleteOne({ code: walletTx.code });
+              }
+            } catch (rbErr) {
+              console.error("[rollback wallet] fail:", rbErr.message);
+            }
+          }
+
+          if (reserved.xu > 0 && reserved.userFilter) {
+            try {
+              await atomicIncrement(mongoDb.collection("users"), reserved.userFilter, "points", reserved.xu, null);
+            } catch (rbErr) {
+              console.error("[rollback xu] fail:", rbErr.message);
+            }
+          }
+
+          if (reserved.subsidy > 0 && customer) {
+            const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
+            try {
+              await mongoDb.collection("users").updateOne(
+                userFilter,
+                { $inc: { subsidy_remaining: reserved.subsidy, subsidy_used: -reserved.subsidy } }
+              );
+            } catch (rbErr) {
+              console.error("[rollback subsidy] fail:", rbErr.message);
+            }
+          }
+
+          if (reserved.voucher) {
+            try {
+              await mongoDb.collection("vouchers").updateOne(
+                reserved.voucher,
+                { $set: { used: false }, $unset: { used_at: "", order_code: "" } }
+              );
+            } catch (rbErr) {
+              console.error("[rollback voucher] fail:", rbErr.message);
+            }
+          }
+
+          throw err;
         }
-
-        if (isWalletPay) {
-          const walletColl = mongoDb.collection("wallets");
-          const ok = await atomicDecrement(walletColl, { user_id: req.user.id }, "balance", total, session);
-          if (!ok) throw new Error("Số dư ví không đủ (có thể do giao dịch đồng thời). Vui lòng thử lại.");
-          const { _id, ...txDoc } = walletTx;
-          await mongoDb.collection("wallet_transactions").insertOne(txDoc, { session });
-        }
-
-        if (useXu && xuDiscount > 0 && customer) {
-          const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
-          const ok = await atomicDecrement(mongoDb.collection("users"), userFilter, "points", xuDiscount, session);
-          if (!ok) throw new Error("Điểm Xu không đủ (có thể do giao dịch đồng thời). Vui lòng thử lại.");
-        }
-
-        if (useSubsidy && subsidyDiscount > 0 && customer) {
-          const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
-          await mongoDb.collection("users").updateOne(userFilter, 
-            { $set: { subsidy_remaining: customer.subsidy_remaining ?? 500000 } }, 
-            { session });
-          const upd = await mongoDb.collection("users").updateOne(
-            { ...userFilter, subsidy_remaining: { $gte: subsidyDiscount } },
-            { $inc: { subsidy_remaining: -subsidyDiscount, subsidy_used: subsidyDiscount }, $set: { subsidy_month: getCurrentMonth() } },
-            { session }
-          );
-          if (upd.modifiedCount !== 1) throw new Error("Hạn mức trợ giá không đủ. Vui lòng thử lại.");
-        }
-
-        if (finalPointsEarned > 0 && customer) {
-          const userFilter = customer._id ? { _id: customer._id } : { id: customer.id };
-          await atomicIncrement(mongoDb.collection("users"), userFilter, "points", finalPointsEarned, session);
-        }
-
-        if (usedVoucher) {
-          const vcFilter = usedVoucher._id ? { _id: usedVoucher._id } : { id: usedVoucher.id };
-          const upd = await mongoDb.collection("vouchers").updateOne(
-            { ...vcFilter, used: false },
-            { $set: { used: true, used_at: new Date().toISOString(), order_code: orderCode } },
-            { session }
-          );
-          if (upd.modifiedCount !== 1) throw new Error("Voucher đã được sử dụng bởi giao dịch khác.");
-        }
-
-        const { _id, ...orderDoc } = orderCreated;
-        await mongoDb.collection("orders").insertOne(orderDoc, { session });
-      });
+      }
     } catch (txErr) {
       console.error("[checkoutOrder] Transaction failed:", txErr.message);
       return res.status(400).json({ message: txErr.message });
     }
 
+    // ─── Mirror sang dbCache ───
     try {
       for (const [mid, qty] of qtyByItem) {
         const m = menuById.get(mid);
@@ -2071,6 +2365,7 @@ app.post("/api/orders", auth(), async (req, res) => {
           m.sold = (Number(m.sold) || 0) + qty;
         }
       }
+
       if (isWalletPay) {
         const w = getOrCreateWallet(db, req.user.id);
         w.balance = Math.max(0, (Number(w.balance) || 0) - total);
@@ -2078,15 +2373,27 @@ app.post("/api/orders", auth(), async (req, res) => {
         if (!db.wallet_transactions) db.wallet_transactions = [];
         db.wallet_transactions.push(walletTx);
       }
+
       if (customer) {
-        if (useXu && xuDiscount > 0) customer.points = Math.max(0, (Number(customer.points) || 0) - xuDiscount);
-        if (finalPointsEarned > 0) customer.points = (Number(customer.points) || 0) + finalPointsEarned;
+        if (useXu && xuDiscount > 0) {
+          customer.points = Math.max(0, (Number(customer.points) || 0) - xuDiscount);
+        }
+        if (finalPointsEarned > 0) {
+          customer.points = (Number(customer.points) || 0) + finalPointsEarned;
+        }
+        if (useSubsidy && subsidyDiscount > 0) {
+          const status = getUserSubsidyStatus(customer);
+          customer.subsidy_remaining = Math.max(0, status.remaining - subsidyDiscount);
+          customer.subsidy_used = (status.used || 0) + subsidyDiscount;
+        }
       }
+
       if (usedVoucher) {
         usedVoucher.used = true;
         usedVoucher.used_at = new Date().toISOString();
         usedVoucher.order_code = orderCode;
       }
+
       db.orders.push(orderCreated);
     } catch (cacheErr) {
       console.warn("[checkoutOrder] dbCache mirror failed:", cacheErr.message);
@@ -2094,7 +2401,6 @@ app.post("/api/orders", auth(), async (req, res) => {
 
     invalidateMenuCache();
     invalidateStatsCache();
-
     notifyNewOrder(db, orderCreated);
 
     try {
@@ -2111,7 +2417,8 @@ app.post("/api/orders", auth(), async (req, res) => {
       console.warn("[KDS] broadcast order.new fail:", e.message);
     }
 
-    try { await saveDBOrThrow(db); } catch (e) { console.warn("[POST /api/orders] save after commit failed:", e.message); }
+    try { await saveDBOrThrow(db); }
+    catch (e) { console.warn("[POST /api/orders] save after commit failed:", e.message); }
 
     res.status(201).json({ ...orderCreated, _id: orderCreated.id });
   } catch (e) {
@@ -2119,9 +2426,8 @@ app.post("/api/orders", auth(), async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
-
 // ============================================================
-// [P10] KDS — REAL-TIME (SSE + Polling)
+// KDS — REAL-TIME (SSE + Polling)
 // ============================================================
 app.get(
   "/api/kds/stream",
@@ -2134,12 +2440,10 @@ app.get("/api/kds/poll", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
     const since = Number(req.query.since) || 0;
     const db = loadDB();
     const now = Date.now();
-
     const changed = (db.orders || []).filter((o) => {
       const t = new Date(o.updated_at || o.created_at || 0).getTime();
       return t > since;
     });
-
     res.set("Cache-Control", "no-store");
     res.json({
       server_time: now,
@@ -2168,8 +2472,16 @@ app.get("/api/kds/stats", auth(["ADMIN"]), (_req, res) => {
 // ============================================================
 app.get("/api/orders/me", auth(), (req, res) => {
   const db = loadDB();
-  const enrich = (o) => ({ ...o, items: (o.items || []).map((it) => { const menu = (db.menu_items || []).find((m) => m.id == it.menu_item_id); return { ...it, image: menu?.image || "", category: menu?.category || "" }; }), _id: o.id });
-  res.json(db.orders.filter((o) => o.customer_id === req.user.id).map(enrich));
+  const userId = Number(req.user.id);
+  const enrich = (o) => ({
+    ...o,
+    items: (o.items || []).map((it) => {
+      const menu = (db.menu_items || []).find((m) => m.id == it.menu_item_id);
+      return { ...it, image: menu?.image || "", category: menu?.category || "" };
+    }),
+    _id: o.id,
+  });
+  res.json(db.orders.filter((o) => Number(o.customer_id) === userId).map(enrich));
 });
 
 app.get("/api/orders", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
@@ -2188,9 +2500,53 @@ app.get("/api/orders/public-qr/:code", (req, res) => {
     if (!order) return res.status(404).json({ message: "Không tìm thấy đơn hàng." });
     const items = (order.items || []).map((item) => ({ name: String(item.name || "Món ăn"), quantity: Math.max(1, Number(item.qty ?? 1) || 1), unitPrice: Number(item.price ?? 0) || 0 }));
     res.set("Cache-Control", "no-store");
-    return res.json({ order: { code: order.code, status: order.status || "Chờ xác nhận", created_at: order.created_at || null, updated_at: order.updated_at || null, total: Number(order.total ?? 0) || 0, discount: Number(order.discount || 0) || 0, items } });
-  } catch (e) { return res.status(500).json({ message: "Không thể tra cứu đơn hàng." }); }
+    return res.json({
+      order: {
+        code: order.code,
+        status: order.status || "Chờ xác nhận",
+        created_at: order.created_at || null,
+        updated_at: order.updated_at || null,
+        total: Number(order.total ?? 0) || 0,
+        discount: Number(order.discount || 0) || 0,
+        items,
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({ message: "Không thể tra cứu đơn hàng." });
+  }
 });
+
+// ============================================================
+// ORDERS — Permission + Pickup helpers
+// ============================================================
+const VALID_ORDER_STATUSES = ["Chờ xác nhận", "Đã xác nhận", "Đang chuẩn bị", "Sẵn sàng nhận", "Hoàn thành", "Đã hủy"];
+
+function hasOrderProcessPermission(db, user) {
+  if (user?.role === "ADMIN") return true;
+  if (user?.role !== "EMPLOYEE") return false;
+  const emp = findByIdOrMongo(db.users, user.id);
+  const rolePerms = ROLE_PERMISSIONS.EMPLOYEE || [];
+  const customPerms = emp?.permissions || [];
+  const allPerms = new Set([...rolePerms, ...customPerms]);
+  return allPerms.has("orders.process") || allPerms.has("orders.cancel");
+}
+
+function awardPickupPointsOnce(db, order, actor) {
+  if (!order || order.pickup_points_awarded) return 0;
+  const customer = findByIdOrMongo(db.users, order.customer_id);
+  if (!customer) return 0;
+  const oldPoints = Number(customer.points) || 0;
+  const pointsAwarded = 5;
+  const now = new Date().toISOString();
+  customer.points = oldPoints + pointsAwarded;
+  order.pickup_points_awarded = true;
+  order.pickup_points_earned = pointsAwarded;
+  order.pickup_points_awarded_at = now;
+  recordPointsTransaction(db, customer, pointsAwarded,
+    `Thưởng xác nhận nhận món đơn ${order.code}`,
+    { order_code: order.code || "", source: "pickup_bonus", old_points: oldPoints, new_points: customer.points });
+  return pointsAwarded;
+}
 
 app.post("/api/orders/scan-pickup/lookup", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   try {
@@ -2199,15 +2555,24 @@ app.post("/api/orders/scan-pickup/lookup", auth(["ADMIN", "EMPLOYEE"]), (req, re
     const rawCode = String(req.body?.orderCode || "").trim();
     let orderCode = rawCode.replace(/^CANTEEN_VWA_ORDER\|/i, "").trim();
     if (/^https?:\/\//i.test(orderCode)) {
-      try { const qrUrl = new URL(orderCode); const match = qrUrl.pathname.match(/\/order-qr\/([^/]+)\/?$/i); if (match) orderCode = decodeURIComponent(match[1]); } catch { }
+      try {
+        const qrUrl = new URL(orderCode);
+        const match = qrUrl.pathname.match(/\/order-qr\/([^/]+)\/?$/i);
+        if (match) orderCode = decodeURIComponent(match[1]);
+      } catch {}
     }
     if (!orderCode) return res.status(400).json({ message: "Thiếu mã đơn hàng trong QR" });
     const order = (db.orders || []).find((item) => String(item.code || "").toUpperCase() === orderCode.toUpperCase());
     if (!order) return res.status(404).json({ message: `Không tìm thấy đơn hàng ${orderCode}` });
     const customer = findByIdOrMongo(db.users, order.customer_id);
-    const items = (order.items || []).map((item) => { const menu = (db.menu_items || []).find((entry) => entry.id == item.menu_item_id); return { ...item, image: item.image || menu?.image || "", category: item.category || menu?.category || "" }; });
+    const items = (order.items || []).map((item) => {
+      const menu = (db.menu_items || []).find((entry) => entry.id == item.menu_item_id);
+      return { ...item, image: item.image || menu?.image || "", category: item.category || menu?.category || "" };
+    });
     res.json({ order: { ...order, _id: order.id, items, customer_student_code: customer?.student_code || "" } });
-  } catch (e) { res.status(500).json({ message: e.message || "Không tra cứu được đơn hàng" }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message || "Không tra cứu được đơn hàng" });
+  }
 });
 
 app.post("/api/orders/:id/scan-received", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
@@ -2239,36 +2604,10 @@ app.post("/api/orders/:id/scan-received", auth(["ADMIN", "EMPLOYEE"]), async (re
       delete order._scanning;
       throw e;
     }
-  } catch (e) { res.status(500).json({ message: e.message || "Không thể xác nhận nhận món" }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message || "Không thể xác nhận nhận món" });
+  }
 });
-
-const VALID_ORDER_STATUSES = ["Chờ xác nhận", "Đã xác nhận", "Đang chuẩn bị", "Sẵn sàng nhận", "Hoàn thành", "Đã hủy"];
-
-function hasOrderProcessPermission(db, user) {
-  if (user?.role === "ADMIN") return true;
-  if (user?.role !== "EMPLOYEE") return false;
-  const emp = findByIdOrMongo(db.users, user.id);
-  const rolePerms = ROLE_PERMISSIONS.EMPLOYEE || [];
-  const customPerms = emp?.permissions || [];
-  const allPerms = new Set([...rolePerms, ...customPerms]);
-  return allPerms.has("orders.process") || allPerms.has("orders.cancel");
-}
-
-function awardPickupPointsOnce(db, order, actor) {
-  if (!order || order.pickup_points_awarded) return 0;
-  const customer = findByIdOrMongo(db.users, order.customer_id);
-  if (!customer) return 0;
-  const oldPoints = Number(customer.points) || 0;
-  const pointsAwarded = 5;
-  const now = new Date().toISOString();
-  customer.points = oldPoints + pointsAwarded;
-  order.pickup_points_awarded = true;
-  order.pickup_points_earned = pointsAwarded;
-  order.pickup_points_awarded_at = now;
-  if (!db.points_history) db.points_history = [];
-  db.points_history.push({ id: nextId(db.points_history), user_id: customer.id, user_name: customer.name, old_points: oldPoints, new_points: customer.points, delta: pointsAwarded, reason: `Thưởng xác nhận nhận món đơn ${order.code}`, order_code: order.code || "", changed_by: actor?.name || "Hệ thống", changed_by_id: actor?.id ?? null, created_at: now });
-  return pointsAwarded;
-}
 
 app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
@@ -2287,7 +2626,8 @@ app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     const previousStatus = o.status;
     if (newStatus === "Đã hủy" && previousStatus !== "Đã hủy") rollbackCancelledOrder(db, o);
     const now = new Date().toISOString();
-    o.status = newStatus; o.updated_at = now;
+    o.status = newStatus;
+    o.updated_at = now;
     let pointsAwarded = 0;
     if (newStatus === "Hoàn thành" && previousStatus === "Sẵn sàng nhận") {
       o.received_at = o.received_at || now;
@@ -2314,7 +2654,9 @@ app.patch("/api/orders/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
     await saveDBOrThrow(db);
     invalidateStatsCache();
     res.json({ ok: true, pointsAwarded });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.post("/api/orders/:id/received", auth(), async (req, res) => {
@@ -2325,14 +2667,20 @@ app.post("/api/orders/:id/received", auth(), async (req, res) => {
     if (order.customer_id !== req.user.id) return res.status(403).json({ message: "Không có quyền" });
     if (order.status !== "Sẵn sàng nhận") return res.status(400).json({ message: "Đơn chưa sẵn sàng nhận" });
     const now = new Date().toISOString();
-    order.status = "Hoàn thành"; order.received_at = now; order.updated_at = now;
+    order.status = "Hoàn thành";
+    order.received_at = now;
+    order.updated_at = now;
     const pointsAwarded = awardPickupPointsOnce(db, order, req.user);
     notifyOrderStatus(db, order, "Hoàn thành");
-    try { broadcastSse("order.updated", { id: order.id, code: order.code, status: "Hoàn thành", updated_at: now }); } catch {}
+    try {
+      broadcastSse("order.updated", { id: order.id, code: order.code, status: "Hoàn thành", updated_at: now });
+    } catch {}
     await saveDBOrThrow(db);
     invalidateStatsCache();
     res.json({ ok: true, order, pointsAwarded });
-  } catch (e) { res.status(500).json({ message: e.message || "Không thể xác nhận nhận món" }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message || "Không thể xác nhận nhận món" });
+  }
 });
 
 app.post("/api/orders/:id/cancel", auth(), async (req, res) => {
@@ -2342,9 +2690,12 @@ app.post("/api/orders/:id/cancel", auth(), async (req, res) => {
   if (o.customer_id !== req.user.id) return res.status(403).json({ message: "Không có quyền" });
   if (o.status !== "Chờ xác nhận") return res.status(400).json({ message: "Chỉ hủy được đơn chờ xác nhận" });
   rollbackCancelledOrder(db, o);
-  o.status = "Đã hủy"; o.updated_at = new Date().toISOString();
+  o.status = "Đã hủy";
+  o.updated_at = new Date().toISOString();
   notifyOrderStatus(db, o, "Đã hủy");
-  try { broadcastSse("order.updated", { id: o.id, code: o.code, status: "Đã hủy", updated_at: o.updated_at }); } catch {}
+  try {
+    broadcastSse("order.updated", { id: o.id, code: o.code, status: "Đã hủy", updated_at: o.updated_at });
+  } catch {}
   await saveDBOrThrow(db);
   invalidateStatsCache();
   invalidateMenuCache();
@@ -2357,13 +2708,18 @@ app.post("/api/orders/:id/call", auth(["ADMIN", "EMPLOYEE"]), async (req, res) =
     const o = findByIdOrMongo(db.orders, req.params.id);
     if (!o) return res.status(404).json({ message: "Không tìm thấy đơn" });
     const { mode = "name", message = "" } = req.body || {};
-    o.call_count = (o.call_count || 0) + 1; o.last_called_at = new Date().toISOString(); o.last_call_mode = mode; o.last_call_by = req.user.name;
+    o.call_count = (o.call_count || 0) + 1;
+    o.last_called_at = new Date().toISOString();
+    o.last_call_mode = mode;
+    o.last_call_by = req.user.name;
     if (!Array.isArray(o.call_history)) o.call_history = [];
     o.call_history.push({ at: o.last_called_at, by: req.user.name, by_id: req.user.id, mode, message: String(message).slice(0, 200) });
     if (o.call_history.length > 20) o.call_history = o.call_history.slice(-20);
     await saveDBOrThrow(db);
     res.json({ ok: true, call_count: o.call_count, last_called_at: o.last_called_at });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.post("/api/orders/:id/reminder", auth(), async (req, res) => {
@@ -2379,7 +2735,10 @@ app.post("/api/orders/:id/reminder", auth(), async (req, res) => {
   const enabled = req.body?.enabled === true;
   let reminder = db.orderReminders.find((r) => String(r.order_id) === orderId && String(r.user_id) === String(userId));
   if (!enabled) {
-    if (reminder) { reminder.active = false; reminder.cancelled_at = new Date().toISOString(); }
+    if (reminder) {
+      reminder.active = false;
+      reminder.cancelled_at = new Date().toISOString();
+    }
     await saveDBOrThrow(db);
     return res.json({ ok: true, active: false });
   }
@@ -2429,7 +2788,9 @@ app.post("/api/eco-rewards", auth(), async (req, res) => {
     db.eco_rewards.push(request);
     await saveDBOrThrow(db);
     return res.status(201).json({ ok: true, request, message: "Đã gửi yêu cầu." });
-  } catch (e) { return res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
 });
 
 app.get("/api/eco-rewards/pending", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
@@ -2463,7 +2824,9 @@ app.patch("/api/eco-rewards/:id", auth(["ADMIN", "EMPLOYEE"]), async (req, res) 
     }
     await saveDBOrThrow(db);
     return res.json({ ok: true, request, pointsAwarded, message: nextStatus === "approved" ? "Đã duyệt và cộng 10 điểm Sống Xanh" : "Đã từ chối yêu cầu Sống Xanh" });
-  } catch (e) { return res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
 });
 
 function checkGreenPermission(db, req, res) {
@@ -2472,7 +2835,10 @@ function checkGreenPermission(db, req, res) {
   const rolePerms = ROLE_PERMISSIONS.EMPLOYEE || [];
   const customPerms = emp?.permissions || [];
   const allPerms = new Set([...rolePerms, ...customPerms]);
-  if (!allPerms.has("orders.approve_green")) { res.status(403).json({ message: "Bạn không có quyền duyệt Sống Xanh" }); return false; }
+  if (!allPerms.has("orders.approve_green")) {
+    res.status(403).json({ message: "Bạn không có quyền duyệt Sống Xanh" });
+    return false;
+  }
   return true;
 }
 
@@ -2489,7 +2855,15 @@ app.post("/api/orders/:id/green/approve", auth(["ADMIN", "EMPLOYEE"]), async (re
     const cfg = getPointsConfig(db);
     const bonus = Number(o.green_points) || calcGreenBonus(cfg);
     const customer = findByIdOrMongo(db.users, o.customer_id);
-    if (customer) customer.points = (customer.points || 0) + bonus;
+    if (customer) {
+      const oldPoints = Number(customer.points) || 0;
+      customer.points = oldPoints + bonus;
+      if (bonus > 0) {
+        recordPointsTransaction(db, customer, bonus,
+          `Thưởng VWA Green từ đơn hàng ${o.code}`,
+          { order_code: o.code || "", source: "green_bonus_approval", old_points: oldPoints, new_points: customer.points });
+      }
+    }
     o.green_status = "approved";
     o.green_approved_by = req.user.id;
     o.green_approved_by_name = req.user.name;
@@ -2499,7 +2873,9 @@ app.post("/api/orders/:id/green/approve", auth(["ADMIN", "EMPLOYEE"]), async (re
     db.notifications.push({ id: nextId(db.notifications), user_id: o.customer_id, title: "Sống Xanh đã được duyệt", content: "Bạn được cộng " + bonus + " điểm từ đơn " + o.code, type: "points", link: "/customer/profile", read: false, created_at: new Date().toISOString() });
     await saveDBOrThrow(db);
     res.json({ ok: true, bonus, customer_points: customer?.points || 0 });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.post("/api/orders/:id/green/reject", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
@@ -2518,7 +2894,9 @@ app.post("/api/orders/:id/green/reject", auth(["ADMIN", "EMPLOYEE"]), async (req
     if (req.body?.reason) o.green_reject_reason = String(req.body.reason).slice(0, 200);
     await saveDBOrThrow(db);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 // ============================================================
@@ -2639,15 +3017,6 @@ app.post("/api/reviews", auth(), async (req, res) => {
     };
 
     db.reviews.push(review);
-    const itemReviews = db.reviews.filter((r) => r.menu_item_id == menuItemId);
-    const avgRating = itemReviews.reduce((s, r) => s + r.rating, 0) / itemReviews.length;
-    const mi = (db.menu_items || []).find((m) => m.id == menuItemId);
-    if (mi) { mi.rating = Math.round(avgRating * 10) / 10; mi.review_count = itemReviews.length; }
-    const __cfg = getPointsConfig(db);
-    const __reviewBonus = Number(__cfg.earn?.review_points) || 500;
-    review.points_earned = __reviewBonus;
-    const authorUser = findByIdOrMongo(db.users, req.user.id);
-    if (authorUser) authorUser.points = (authorUser.points || 0) + __reviewBonus;
 
     const itemReviews = db.reviews.filter(
       (r) => String(r.menu_item_id) === String(menuItemId)
@@ -2691,11 +3060,12 @@ app.post("/api/reviews", auth(), async (req, res) => {
     return res.status(500).json({ message: e.message });
   }
 });
-
 // ============================================================
 // POINTS CONFIG & POINTS
 // ============================================================
-app.get("/api/points/config", auth(), (req, res) => { try { res.json(getPointsConfig(loadDB())); } catch (e) { res.status(500).json({ message: e.message }); } });
+app.get("/api/points/config", auth(), (req, res) => {
+  try { res.json(getPointsConfig(loadDB())); } catch (e) { res.status(500).json({ message: e.message }); }
+});
 
 app.get("/api/points/config-history", auth(["ADMIN"]), (req, res) => {
   try {
@@ -2704,7 +3074,6 @@ app.get("/api/points/config-history", auth(["ADMIN"]), (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// 🔧 V24 FIX: async + saveDBOrThrow để tránh mất history
 app.put("/api/points/config", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
@@ -2728,14 +3097,23 @@ app.put("/api/points/config", auth(["ADMIN"]), async (req, res) => {
       });
     }
     db.points_config = nextConfig;
-    // 🔧 V24 FIX: saveDBOrThrow thay vì saveDB
     await saveDBOrThrow(db);
     res.json({ ok: true, config: nextConfig });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.post("/api/points/preview", auth(), (req, res) => {
-  try { const db = loadDB(); const cfg = getPointsConfig(db); const total = Number(req.body?.total) || 0; const isGreen = !!req.body?.isGreen; const base = calcEarnPoints(total, cfg); const green = isGreen ? calcGreenBonus(cfg) : 0; res.json({ base, green, total: base + green }); } catch (e) { res.status(500).json({ message: e.message }); }
+  try {
+    const db = loadDB();
+    const cfg = getPointsConfig(db);
+    const total = Number(req.body?.total) || 0;
+    const isGreen = !!req.body?.isGreen;
+    const base = calcEarnPoints(total, cfg);
+    const green = isGreen ? calcGreenBonus(cfg) : 0;
+    res.json({ base, green, total: base + green });
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/points/history", auth(), (req, res) => {
@@ -2745,13 +3123,137 @@ app.get("/api/points/history", auth(), (req, res) => {
 
 app.get("/api/points/me", auth(), (req, res) => {
   const db = loadDB();
-  const u = findByIdOrMongo(db.users, req.user.id);
+  const u = (db.users || []).find(
+    (x) => String(x.id) === String(req.user.id)
+  );
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
-  const orderHistory = (db.orders || []).filter((o) => o.customer_id === req.user.id && Number(o.points_earned) > 0 && !/(đã hủy|đã huỷ|cancel)/i.test(String(o.status || ""))).map((o) => ({ code: o.code || "", total: Number(o.total) || 0, points: Number(o.points_earned) || 0, date: o.created_at || "", type: "earn", title: "Tích điểm đơn hàng", detail: `Đơn hàng #${o.code || o.id || ""}` }));
-  const voucherHistory = (db.vouchers || []).filter((v) => v.user_id === req.user.id && Number(v.points_used) > 0).map((v) => ({ code: v.code || "", total: Number(v.value) || 0, points: -(Number(v.points_used) || 0), date: v.created_at || "", type: "redeem", title: "Đổi điểm lấy voucher", detail: `Voucher #${v.code || ""}` }));
-  const pickupHistory = (db.points_history || []).filter((h) => h.user_id === req.user.id && Number(h.delta) > 0 && /nhận món/i.test(String(h.reason || ""))).map((h) => ({ code: h.order_code || "", total: 0, points: Number(h.delta) || 0, date: h.created_at || "", type: "pickup", title: "Thưởng nhận món", detail: h.reason || "Thưởng nhận món" }));
-  const reviewHistory = (db.reviews || []).filter((r) => r.user_id === req.user.id && Number(r.points_earned) > 0).map((r) => ({ code: "", total: 0, points: Number(r.points_earned) || 0, date: r.created_at || "", type: "review", title: "Thưởng đánh giá món ăn", detail: r.comment || "Đánh giá món ăn" }));
-  const history = [...orderHistory, ...voucherHistory, ...pickupHistory, ...reviewHistory].sort((a, b) => { const dateA = new Date(a.date || 0).getTime() || 0; const dateB = new Date(b.date || 0).getTime() || 0; return dateB - dateA; });
+
+  const userId = String(req.user.id);
+  const ledger = (db.points_history || []).filter(
+    (h) => String(h.user_id) === userId && Number(h.delta) !== 0
+  );
+
+  const ledgerOrderCodes = new Set(
+    ledger
+      .filter((h) =>
+        ["order_earn", "order_redeem", "green_bonus", "green_bonus_approval", "order_cancel_earn", "order_cancel_green"]
+          .includes(String(h.source || ""))
+      )
+      .map((h) => String(h.order_code || ""))
+      .filter(Boolean)
+  );
+
+  const ledgerVoucherCodes = new Set(
+    ledger
+      .map((h) => String(h.voucher_code || ""))
+      .filter(Boolean)
+  );
+
+  const ledgerHistory = ledger.map((h) => {
+    const delta = Number(h.delta) || 0;
+    const reason = String(h.reason || "Điều chỉnh xu");
+    const source = String(h.source || "");
+    let type = delta < 0 ? "redeem" : "earn";
+    let title = reason;
+
+    if (/nhận món/i.test(reason)) {
+      type = "pickup";
+      title = "Thưởng nhận món";
+    } else if (source === "order_redeem") {
+      type = "redeem";
+      title = "Dùng xu giảm giá đơn hàng";
+    } else if (source === "order_earn") {
+      type = "earn";
+      title = "Tích xu đơn hàng";
+    } else if (source === "green_bonus" || source === "green_bonus_approval") {
+      type = "green";
+      title = "Thưởng VWA Green";
+    } else if (source === "voucher_redeem") {
+      type = "redeem";
+      title = "Đổi xu lấy voucher";
+    } else if (source === "review_bonus") {
+      type = "review";
+      title = "Thưởng đánh giá món ăn";
+    } else if (source.startsWith("order_cancel_")) {
+      type = "reversal";
+      title = "Thu hồi xu do hủy đơn";
+    }
+
+    return {
+      id: h.id,
+      code: h.order_code || h.voucher_code || "",
+      total: 0,
+      points: delta,
+      date: h.created_at || "",
+      type,
+      title,
+      detail: reason,
+      old_points: Number.isFinite(Number(h.old_points)) ? Number(h.old_points) : null,
+      new_points: Number.isFinite(Number(h.new_points)) ? Number(h.new_points) : null,
+      source,
+    };
+  });
+
+  const orderHistory = (db.orders || [])
+    .filter((o) =>
+      String(o.customer_id) === userId &&
+      Number(o.points_earned) > 0 &&
+      !/(đã hủy|đã huỷ|cancel)/i.test(String(o.status || "")) &&
+      !ledgerOrderCodes.has(String(o.code || ""))
+    )
+    .map((o) => ({
+      code: o.code || "",
+      total: Number(o.total) || 0,
+      points: Number(o.points_earned) || 0,
+      date: o.created_at || "",
+      type: "earn",
+      title: "Tích xu đơn hàng",
+      detail: `Đơn hàng #${o.code || o.id || ""}`,
+    }));
+
+  const voucherHistory = (db.vouchers || [])
+    .filter((v) =>
+      String(v.user_id) === userId &&
+      Number(v.points_used) > 0 &&
+      !ledgerVoucherCodes.has(String(v.code || ""))
+    )
+    .map((v) => ({
+      code: v.code || "",
+      total: Number(v.value) || 0,
+      points: -(Number(v.points_used) || 0),
+      date: v.created_at || "",
+      type: "redeem",
+      title: "Đổi xu lấy voucher",
+      detail: `Voucher #${v.code || ""}`,
+    }));
+
+  const reviewHistory = (db.reviews || [])
+    .filter((r) => {
+      if (String(r.user_id) !== userId || Number(r.points_earned) <= 0) return false;
+      return !ledger.some((h) => {
+        if (String(h.source || "") !== "review_bonus") return false;
+        if (Number(h.delta) !== Number(r.points_earned)) return false;
+        const ledgerTime = new Date(h.created_at || 0).getTime();
+        const reviewTime = new Date(r.created_at || 0).getTime();
+        return Number.isFinite(ledgerTime) && Number.isFinite(reviewTime) && Math.abs(ledgerTime - reviewTime) <= 60000;
+      });
+    })
+    .map((r) => ({
+      code: "",
+      total: 0,
+      points: Number(r.points_earned) || 0,
+      date: r.created_at || "",
+      type: "review",
+      title: "Thưởng đánh giá món ăn",
+      detail: r.comment || "Đánh giá món ăn",
+    }));
+
+  const history = [...ledgerHistory, ...orderHistory, ...voucherHistory, ...reviewHistory].sort((a, b) => {
+    const dateA = new Date(a.date || 0).getTime() || 0;
+    const dateB = new Date(b.date || 0).getTime() || 0;
+    return dateB - dateA;
+  });
+
   res.json({ points: Number(u.points) || 0, history });
 });
 
@@ -2770,32 +3272,65 @@ app.post("/api/points/redeem", auth(), async (req, res) => {
     if (!check.ok) return res.status(400).json({ message: check.reason });
     u.points = (Number(u.points) || 0) - pointsToRedeem;
     const voucherId = nextId(db.vouchers);
-    const voucher = { id: voucherId, code: "VOUCHER" + String(voucherId).padStart(4, "0"), user_id: req.user.id, value: check.value, points_used: pointsToRedeem, used: false, created_at: new Date().toISOString() };
+    const voucher = {
+      id: voucherId,
+      code: "VOUCHER" + String(voucherId).padStart(4, "0"),
+      user_id: req.user.id,
+      value: check.value,
+      points_used: pointsToRedeem,
+      used: false,
+      created_at: new Date().toISOString(),
+      expires_at: req.body.expires_at || null,
+      max_claims: +req.body.max_claims || 0,
+      is_flash_sale: !!req.body.is_flash_sale,
+    };
     db.vouchers.push(voucher);
+    recordPointsTransaction(db, u, -pointsToRedeem,
+      `Đổi ${pointsToRedeem} xu lấy voucher ${voucher.code}`,
+      { voucher_code: voucher.code, source: "voucher_redeem" });
     await saveDBOrThrow(db);
     res.status(201).json(voucher);
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 // ============================================================
 // VOUCHERS
 // ============================================================
-app.get("/api/vouchers", auth(["ADMIN"]), (req, res) => { res.json((loadDB().vouchers || []).sort((a, b) => (b.id || 0) - (a.id || 0))); });
+app.get("/api/vouchers", auth(["ADMIN"]), (req, res) => {
+  res.json((loadDB().vouchers || []).sort((a, b) => (b.id || 0) - (a.id || 0)));
+});
 
 app.post("/api/vouchers", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     if (!db.vouchers) db.vouchers = [];
-    const { code, value, user_id, points_used, publish_date, is_flash_sale, duration, duration_unit, isFlashSale } = req.body;
+    const { code, value, user_id, points_used, publish_date, is_flash_sale, duration, duration_unit, isFlashSale, max_claims, expires_at } = req.body;
     if (!code || !value) return res.status(400).json({ message: "Thiếu mã hoặc giá trị" });
     const codeNorm = String(code).toUpperCase().trim();
     if (db.vouchers.find((v) => v.code.toUpperCase() === codeNorm)) return res.status(400).json({ message: "Mã voucher đã tồn tại" });
     const id = nextId(db.vouchers);
-    const voucher = { id, code: codeNorm, value: +value, user_id: user_id ? +user_id : null, points_used: +points_used || 0, used: false, isFlashSale: !!isFlashSale, is_flash_sale: !!(is_flash_sale || isFlashSale), created_at: new Date().toISOString() };
+    const voucher = {
+      id,
+      code: codeNorm,
+      value: +value,
+      user_id: user_id ? +user_id : null,
+      points_used: +points_used || 0,
+      used: false,
+      isFlashSale: !!isFlashSale,
+      is_flash_sale: !!(is_flash_sale || isFlashSale),
+      max_claims: Number(max_claims) || 0,
+      expires_at: expires_at || null,
+      publish_date: publish_date || null,
+      created_at: new Date().toISOString(),
+    };
     db.vouchers.push(voucher);
     await saveDBOrThrow(db);
     res.status(201).json(voucher);
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.put("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
@@ -2806,15 +3341,10 @@ app.put("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
   if (req.body.publish_date !== undefined) v.publish_date = req.body.publish_date;
   if (req.body.is_flash_sale !== undefined) v.is_flash_sale = !!req.body.is_flash_sale;
   if (req.body.isFlashSale !== undefined) v.isFlashSale = !!req.body.isFlashSale;
+  if (req.body.max_claims !== undefined) v.max_claims = Number(req.body.max_claims) || 0;
+  if (req.body.expires_at !== undefined) v.expires_at = req.body.expires_at;
   if (req.body.duration !== undefined) v.duration = Number(req.body.duration);
   if (req.body.duration_unit !== undefined) v.duration_unit = req.body.duration_unit;
-  if (v.is_flash_sale) {
-    const d = new Date(v.publish_date || Date.now());
-    const ms = v.duration_unit === "hours" ? v.duration * 60 * 60 * 1000 : v.duration * 60 * 1000;
-    v.expires_at = new Date(d.getTime() + ms).toISOString();
-  } else {
-    v.expires_at = null;
-  }
   if (req.body.used !== undefined) v.used = req.body.used;
   if (req.body.code) {
     const codeNorm = req.body.code.toUpperCase();
@@ -2832,7 +3362,9 @@ app.delete("/api/vouchers/:id", auth(["ADMIN"]), async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/vouchers/me", auth(), (req, res) => { res.json((loadDB().vouchers || []).filter((v) => v.user_id === req.user.id)); });
+app.get("/api/vouchers/me", auth(), (req, res) => {
+  res.json((loadDB().vouchers || []).filter((v) => v.user_id === req.user.id));
+});
 
 app.post("/api/vouchers/validate", auth(), (req, res) => {
   try {
@@ -2859,11 +3391,22 @@ app.post("/api/vouchers/claim/:id", auth(), async (req, res) => {
     if (!template) return res.status(404).json({ message: "Voucher không tồn tại hoặc đã hết" });
     if ((db.vouchers || []).find((v) => v.user_id === req.user.id && v.claimed_from === template.id)) return res.status(400).json({ message: "Bạn đã nhận voucher này rồi" });
     const claimCode = `${template.code}-U${req.user.id}-${Date.now().toString(36).toUpperCase()}`;
-    const newVoucher = { id: nextId(db.vouchers), code: claimCode, value: template.value, user_id: req.user.id, points_used: 0, used: false, claimed_from: template.id, created_at: new Date().toISOString() };
+    const newVoucher = {
+      id: nextId(db.vouchers),
+      code: claimCode,
+      value: template.value,
+      user_id: req.user.id,
+      points_used: 0,
+      used: false,
+      claimed_from: template.id,
+      created_at: new Date().toISOString(),
+    };
     db.vouchers.push(newVoucher);
     await saveDBOrThrow(db);
     res.status(201).json({ ok: true, voucher: newVoucher });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.get("/api/vouchers/stats", auth(["ADMIN"]), (req, res) => {
@@ -2874,12 +3417,24 @@ app.get("/api/vouchers/stats", auth(["ADMIN"]), (req, res) => {
   const used = all.filter((v) => v.used);
   let totalClaims = 0;
   publicTemplates.forEach((t) => { totalClaims += all.filter((v) => v.claimed_from === t.id).length; });
-  res.json({ total: all.length, public: publicTemplates.length, personal: personal.length, used: used.length, available: personal.filter((v) => !v.used).length, totalClaims, totalValue: all.reduce((s, v) => s + (v.value || 0), 0), usedValue: used.reduce((s, v) => s + (v.value || 0), 0) });
+  res.json({
+    total: all.length,
+    public: publicTemplates.length,
+    personal: personal.length,
+    used: used.length,
+    available: personal.filter((v) => !v.used).length,
+    totalClaims,
+    totalValue: all.reduce((s, v) => s + (v.value || 0), 0),
+    usedValue: used.reduce((s, v) => s + (v.value || 0), 0),
+  });
 });
 
 app.get("/api/vouchers/claims/:templateId", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
-  res.json((db.vouchers || []).filter((v) => v.claimed_from == req.params.templateId).map((v) => { const user = findByIdOrMongo(db.users, v.user_id); return { id: v.id, code: v.code, user_id: v.user_id, user_name: user?.name || "User #" + v.user_id, user_email: user?.email || "", used: v.used, used_at: v.used_at, created_at: v.created_at }; }));
+  res.json((db.vouchers || []).filter((v) => v.claimed_from == req.params.templateId).map((v) => {
+    const user = findByIdOrMongo(db.users, v.user_id);
+    return { id: v.id, code: v.code, user_id: v.user_id, user_name: user?.name || "User #" + v.user_id, user_email: user?.email || "", used: v.used, used_at: v.used_at, created_at: v.created_at };
+  }));
 });
 
 app.get("/api/vouchers/user/:userId", auth(["ADMIN"]), (req, res) => {
@@ -2888,7 +3443,16 @@ app.get("/api/vouchers/user/:userId", auth(["ADMIN"]), (req, res) => {
   const user = findByIdOrMongo(db.users, userId);
   if (!user) return res.status(404).json({ message: "Không tìm thấy user" });
   const list = (db.vouchers || []).filter((v) => v.user_id === userId);
-  res.json({ user: { id: user.id, name: user.name, email: user.email, phone: user.phone, points: user.points || 0 }, vouchers: list, stats: { total: list.length, used: list.filter((v) => v.used).length, available: list.filter((v) => !v.used).length, totalValue: list.reduce((s, v) => s + (v.value || 0), 0) } });
+  res.json({
+    user: { id: user.id, name: user.name, email: user.email, phone: user.phone, points: user.points || 0 },
+    vouchers: list,
+    stats: {
+      total: list.length,
+      used: list.filter((v) => v.used).length,
+      available: list.filter((v) => !v.used).length,
+      totalValue: list.reduce((s, v) => s + (v.value || 0), 0),
+    },
+  });
 });
 
 app.delete("/api/vouchers/revoke/:id", auth(["ADMIN"]), async (req, res) => {
@@ -2900,13 +3464,16 @@ app.delete("/api/vouchers/revoke/:id", auth(["ADMIN"]), async (req, res) => {
   await saveDBOrThrow(db);
   res.json({ ok: true });
 });
-
 // ============================================================
 // PROMOTIONS & CATEGORIES
 // ============================================================
 app.get("/api/promotions", (req, res) => {
   const db = loadDB();
-  res.json((db.menu_items || []).filter((m) => m.active && m.discount_percent && m.discount_percent > 0).map((m) => ({ id: m.id, name: m.name, image: m.image, category: m.category, description: m.description, original_price: m.original_price || m.price, price: m.price, discount_percent: m.discount_percent, stock: m.stock, sold: m.sold || 0, rating: m.rating || 0 })));
+  res.json((db.menu_items || []).filter((m) => m.active && m.discount_percent && m.discount_percent > 0).map((m) => ({
+    id: m.id, name: m.name, image: m.image, category: m.category, description: m.description,
+    original_price: m.original_price || m.price, price: m.price, discount_percent: m.discount_percent,
+    stock: m.stock, sold: m.sold || 0, rating: m.rating || 0,
+  })));
 });
 
 const DEFAULT_CATEGORIES = [
@@ -3001,7 +3568,7 @@ app.delete("/api/categories/:id", auth(["ADMIN"]), async (req, res) => {
 });
 
 // ============================================================
-// WALLET
+// WALLET — helper + student-card
 // ============================================================
 function getOrCreateWallet(db, userId) {
   if (!db.wallets) db.wallets = [];
@@ -3030,47 +3597,52 @@ app.get("/api/student-card/me", auth(), (req, res) => {
 app.post("/api/student-card/lock", auth(), async (req, res) => {
   try {
     const { pin, locked } = req.body || {};
-
     if (String(pin || "") !== "123456") {
       return res.status(400).json({ message: "PIN không chính xác." });
     }
-
     if (typeof locked !== "boolean") {
       return res.status(400).json({ message: "Trạng thái thẻ không hợp lệ." });
     }
-
     const db = loadDB();
     if (!Array.isArray(db.student_cards)) db.student_cards = [];
-
     let card = db.student_cards.find(
       (item) => Number(item.user_id) === Number(req.user.id)
     );
-
     if (!card) {
       card = { user_id: Number(req.user.id), locked: false };
       db.student_cards.push(card);
     }
-
     card.locked = locked;
     card.updated_at = new Date().toISOString();
-
     await saveDBOrThrow(db);
     res.json({ locked: card.locked });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
 });
+
 app.get("/api/wallet/me", auth(), async (req, res) => {
   try {
     const db = loadDB();
     const existed = (db.wallets || []).some((x) => Number(x.user_id) === Number(req.user.id));
     const w = getOrCreateWallet(db, req.user.id);
     if (!existed) await saveDBOrThrow(db);
-    res.json({ balance: w.balance || 0, bank_name: w.bank_name || "", bank_account: w.bank_account || "", bank_account_name: w.bank_account_name || "", linked_at: w.linked_at || "" });
+    res.json({
+      balance: w.balance || 0,
+      bank_name: w.bank_name || "",
+      bank_account: w.bank_account || "",
+      bank_account_name: w.bank_account_name || "",
+      linked_at: w.linked_at || "",
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.get("/api/wallet/transactions", auth(), (req, res) => { res.json((loadDB().wallet_transactions || []).filter((t) => t.user_id === req.user.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 100)); });
+app.get("/api/wallet/transactions", auth(), (req, res) => {
+  res.json((loadDB().wallet_transactions || [])
+    .filter((t) => t.user_id === req.user.id)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 100));
+});
 
 app.post("/api/wallet/deposit", auth(), async (req, res) => {
   try {
@@ -3081,7 +3653,13 @@ app.post("/api/wallet/deposit", auth(), async (req, res) => {
     if (amt > 50000000) return res.status(400).json({ message: "Số tiền tối đa 50.000.000đ" });
     if (!["QR", "CASH"].includes(method)) return res.status(400).json({ message: "Phương thức không hợp lệ" });
     if (!db.wallet_transactions) db.wallet_transactions = [];
-    const tx = { id: nextId(db.wallet_transactions), code: "DEP" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(), user_id: req.user.id, user_name: req.user.name, user_email: req.user.email, type: "deposit", amount: amt, method, status: "pending", note: note || "", admin_note: "", created_at: new Date().toISOString() };
+    const tx = {
+      id: nextId(db.wallet_transactions),
+      code: "DEP" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(),
+      user_id: req.user.id, user_name: req.user.name, user_email: req.user.email,
+      type: "deposit", amount: amt, method, status: "pending",
+      note: note || "", admin_note: "", created_at: new Date().toISOString(),
+    };
     db.wallet_transactions.push(tx);
     await saveDBOrThrow(db);
     res.status(201).json({ ok: true, transaction: tx });
@@ -3103,7 +3681,15 @@ app.post("/api/wallet/withdraw", auth(), async (req, res) => {
     const oldBalance = w.balance;
     w.balance -= amt;
     w.updated_at = new Date().toISOString();
-    const tx = { id: nextId(db.wallet_transactions), code: "WDR" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(), user_id: req.user.id, user_name: req.user.name, user_email: req.user.email, type: "withdraw", amount: amt, method: "BANK", status: "pending", note: note || "", admin_note: "", bank_name: w.bank_name, bank_account: w.bank_account, bank_account_name: w.bank_account_name, created_at: new Date().toISOString() };
+    const tx = {
+      id: nextId(db.wallet_transactions),
+      code: "WDR" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(),
+      user_id: req.user.id, user_name: req.user.name, user_email: req.user.email,
+      type: "withdraw", amount: amt, method: "BANK", status: "pending",
+      note: note || "", admin_note: "",
+      bank_name: w.bank_name, bank_account: w.bank_account, bank_account_name: w.bank_account_name,
+      created_at: new Date().toISOString(),
+    };
     db.wallet_transactions.push(tx);
     try {
       await saveDBOrThrow(db);
@@ -3122,7 +3708,11 @@ app.post("/api/wallet/link-bank", auth(), async (req, res) => {
     const { bank_name, bank_account, bank_account_name } = req.body;
     if (!bank_name || !bank_account || !bank_account_name) return res.status(400).json({ message: "Thiếu thông tin ngân hàng" });
     const w = getOrCreateWallet(db, req.user.id);
-    w.bank_name = bank_name; w.bank_account = String(bank_account).trim(); w.bank_account_name = bank_account_name.toUpperCase().trim(); w.linked_at = new Date().toISOString(); w.updated_at = new Date().toISOString();
+    w.bank_name = bank_name;
+    w.bank_account = String(bank_account).trim();
+    w.bank_account_name = bank_account_name.toUpperCase().trim();
+    w.linked_at = new Date().toISOString();
+    w.updated_at = new Date().toISOString();
     await saveDBOrThrow(db);
     res.json({ ok: true, wallet: w });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -3137,17 +3727,22 @@ app.get("/api/wallet/requests", auth(["ADMIN"]), (req, res) => {
   res.json(list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
 });
 
-app.get("/api/wallet/all", auth(["ADMIN"]), (req, res) => { res.json([...(loadDB().wallet_transactions || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))); });
+app.get("/api/wallet/all", auth(["ADMIN"]), (req, res) => {
+  res.json([...(loadDB().wallet_transactions || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+});
 
 app.get("/api/wallet/stats", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   const all = db.wallet_transactions || [];
   res.json({
-    totalBalance: (db.wallets || []).reduce((s, w) => s + (w.balance || 0), 0), totalUsers: (db.wallets || []).length,
+    totalBalance: (db.wallets || []).reduce((s, w) => s + (w.balance || 0), 0),
+    totalUsers: (db.wallets || []).length,
     totalDeposited: all.filter((t) => t.type === "deposit" && t.status === "approved").reduce((s, t) => s + (t.amount || 0), 0),
     totalWithdrawn: all.filter((t) => t.type === "withdraw" && t.status === "approved").reduce((s, t) => s + (t.amount || 0), 0),
     totalPaid: all.filter((t) => t.type === "payment" && t.status === "approved").reduce((s, t) => s + (t.amount || 0), 0),
-    pendingCount: all.filter((t) => t.status === "pending").length, pendingDepositCount: all.filter((t) => t.type === "deposit" && t.status === "pending").length, pendingWithdrawCount: all.filter((t) => t.type === "withdraw" && t.status === "pending").length,
+    pendingCount: all.filter((t) => t.status === "pending").length,
+    pendingDepositCount: all.filter((t) => t.type === "deposit" && t.status === "pending").length,
+    pendingWithdrawCount: all.filter((t) => t.type === "withdraw" && t.status === "pending").length,
   });
 });
 
@@ -3160,7 +3755,9 @@ app.patch("/api/wallet/requests/:id/approve", auth(["ADMIN"]), async (req, res) 
     const w = getOrCreateWallet(db, tx.user_id);
     if (tx.type === "deposit") w.balance += tx.amount;
     w.updated_at = new Date().toISOString();
-    tx.status = "approved"; tx.approved_by = req.user.name; tx.approved_at = new Date().toISOString();
+    tx.status = "approved";
+    tx.approved_by = req.user.name;
+    tx.approved_at = new Date().toISOString();
     if (req.body.admin_note) tx.admin_note = req.body.admin_note;
     await saveDBOrThrow(db);
     res.json({ ok: true, transaction: tx, newBalance: w.balance });
@@ -3174,8 +3771,13 @@ app.patch("/api/wallet/requests/:id/reject", auth(["ADMIN"]), async (req, res) =
     if (!tx) return res.status(404).json({ message: "Không tìm thấy giao dịch" });
     if (tx.status !== "pending") return res.status(400).json({ message: "Giao dịch đã xử lý" });
     const w = getOrCreateWallet(db, tx.user_id);
-    if (tx.type === "withdraw") { w.balance += tx.amount; w.updated_at = new Date().toISOString(); }
-    tx.status = "rejected"; tx.approved_by = req.user.name; tx.approved_at = new Date().toISOString();
+    if (tx.type === "withdraw") {
+      w.balance += tx.amount;
+      w.updated_at = new Date().toISOString();
+    }
+    tx.status = "rejected";
+    tx.approved_by = req.user.name;
+    tx.approved_at = new Date().toISOString();
     if (req.body.admin_note) tx.admin_note = req.body.admin_note;
     await saveDBOrThrow(db);
     res.json({ ok: true, transaction: tx });
@@ -3191,18 +3793,26 @@ app.post("/api/wallet/pay", auth(), async (req, res) => {
     const w = getOrCreateWallet(db, req.user.id);
     if (w.balance < amt) return res.status(400).json({ message: "Số dư ví không đủ" });
     if (!db.wallet_transactions) db.wallet_transactions = [];
-    const tx = { id: nextId(db.wallet_transactions), code: "PAY" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(), user_id: req.user.id, user_name: req.user.name, type: "payment", amount: amt, method: "WALLET", status: "approved", note: "Thanh toán đơn " + (order_code || ""), order_code: order_code || "", created_at: new Date().toISOString(), approved_at: new Date().toISOString() };
+    const tx = {
+      id: nextId(db.wallet_transactions),
+      code: "PAY" + Date.now().toString().slice(-8) + Math.random().toString(36).slice(2, 5).toUpperCase(),
+      user_id: req.user.id, user_name: req.user.name,
+      type: "payment", amount: amt, method: "WALLET", status: "approved",
+      note: "Thanh toán đơn " + (order_code || ""), order_code: order_code || "",
+      created_at: new Date().toISOString(), approved_at: new Date().toISOString(),
+    };
     db.wallet_transactions.push(tx);
-    w.balance -= amt; w.updated_at = new Date().toISOString();
+    w.balance -= amt;
+    w.updated_at = new Date().toISOString();
     await saveDBOrThrow(db);
     res.status(201).json({ ok: true, transaction: tx, newBalance: w.balance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
-
 // ============================================================
 // CHAT SYSTEM
 // ============================================================
 let chatTTLRefreshAt = 0;
+
 function cleanupExpiredChatMessages(db) {
   if (!db || !Array.isArray(db.messages) || db.messages.length === 0) return false;
   const now = Date.now();
@@ -3231,10 +3841,15 @@ function ensureChatSchema(db) {
   if (cleanupExpiredChatMessages(db)) changed = true;
   return changed;
 }
+
 function getAdminAssignedUserIds(db) {
   if (!db.chat_conversations) return [];
-  return Object.entries(db.chat_conversations).filter(([, meta]) => meta && meta.assigned_to === "admin").map(([uid]) => Number(uid)).filter((n) => !isNaN(n));
+  return Object.entries(db.chat_conversations)
+    .filter(([, meta]) => meta && meta.assigned_to === "admin")
+    .map(([uid]) => Number(uid))
+    .filter((n) => !isNaN(n));
 }
+
 function isStaffAllowedToChat(db, userId) {
   if (!db) return false;
   if (db.settings?.chat_enabled_global === false) return false;
@@ -3244,10 +3859,12 @@ function isStaffAllowedToChat(db, userId) {
   if (u.role === "ADMIN") return true;
   return u.chat_enabled !== false;
 }
+
 function findPendingTransferForCustomer(db, customerId) {
   if (!Array.isArray(db.chat_transfer_requests)) return null;
   return db.chat_transfer_requests.find((r) => r.customer_id === customerId && r.status === "pending") || null;
 }
+
 function buildAdminConversations(db) {
   const convMap = {};
   (db.messages || []).forEach((m) => {
@@ -3256,7 +3873,11 @@ function buildAdminConversations(db) {
     if (uid === null) return;
     if (!convMap[uid]) convMap[uid] = { user_id: uid, user_name: m.user_name || "Khách", last_message: m.content, last_time: m.created_at, unread: 0 };
     if (m.from === "customer" && !m.read) convMap[uid].unread += 1;
-    if (new Date(m.created_at) > new Date(convMap[uid].last_time)) { convMap[uid].last_message = m.content; convMap[uid].last_time = m.created_at; convMap[uid].user_name = m.user_name || convMap[uid].user_name; }
+    if (new Date(m.created_at) > new Date(convMap[uid].last_time)) {
+      convMap[uid].last_message = m.content;
+      convMap[uid].last_time = m.created_at;
+      convMap[uid].user_name = m.user_name || convMap[uid].user_name;
+    }
   });
   return Object.values(convMap).map((c) => {
     const meta = db.chat_conversations?.[String(c.user_id)] || {};
@@ -3264,9 +3885,19 @@ function buildAdminConversations(db) {
     return { ...c, assigned_to: meta.assigned_to || null, assigned_admin_id: meta.assigned_admin_id || null, has_pending_transfer: !!pendingReq };
   }).sort((a, b) => new Date(b.last_time) - new Date(a.last_time));
 }
+
 const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
-function isRecentMessage(m) { if (!m || !m.created_at) return false; const t = new Date(m.created_at).getTime(); if (isNaN(t)) return false; return Date.now() - t <= CHAT_TTL_MS; }
-function normalizeUserId(id) { if (id === undefined || id === null) return null; const n = Number(id); return isNaN(n) ? id : n; }
+function isRecentMessage(m) {
+  if (!m || !m.created_at) return false;
+  const t = new Date(m.created_at).getTime();
+  if (isNaN(t)) return false;
+  return Date.now() - t <= CHAT_TTL_MS;
+}
+function normalizeUserId(id) {
+  if (id === undefined || id === null) return null;
+  const n = Number(id);
+  return isNaN(n) ? id : n;
+}
 
 app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
@@ -3282,18 +3913,24 @@ app.get("/api/chat/conversations", auth(["ADMIN", "EMPLOYEE"]), async (req, res)
       const docs = await coll.aggregate(pipeline).toArray();
       return res.json(docs.map((d) => ({ user_id: d._id, user_name: d.user_name || "Khách", last_message: d.last_message, last_time: d.last_time, unread: d.unread || 0 })));
     }
-    const db = loadDB(); ensureChatSchema(db); const convMap = {};
+    const db = loadDB();
+    ensureChatSchema(db);
+    const convMap = {};
     (db.messages || []).forEach((m) => {
       if (!isRecentMessage(m)) return;
-      const uid = normalizeUserId(m.user_id); if (uid === null) return;
+      const uid = normalizeUserId(m.user_id);
+      if (uid === null) return;
       if (!convMap[uid]) convMap[uid] = { user_id: uid, user_name: m.user_name || "Khách", last_message: m.content, last_time: m.created_at, unread: 0 };
       if (m.from === "customer" && !m.read) convMap[uid].unread += 1;
-      if (new Date(m.created_at) > new Date(convMap[uid].last_time)) { convMap[uid].last_message = m.content; convMap[uid].last_time = m.created_at; convMap[uid].user_name = m.user_name || convMap[uid].user_name; }
+      if (new Date(m.created_at) > new Date(convMap[uid].last_time)) {
+        convMap[uid].last_message = m.content;
+        convMap[uid].last_time = m.created_at;
+        convMap[uid].user_name = m.user_name || convMap[uid].user_name;
+      }
     });
     res.json(Object.values(convMap).sort((a, b) => new Date(b.last_time) - new Date(a.last_time)));
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
-
 
 app.get("/api/chat/me", auth(), async (req, res) => {
   try {
@@ -3305,7 +3942,9 @@ app.get("/api/chat/me", auth(), async (req, res) => {
       return res.json(list.map(({ _id, ...rest }) => rest));
     }
     const db = loadDB();
-    res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+    res.json((db.messages || [])
+      .filter((m) => normalizeUserId(m.user_id) === myId && isRecentMessage(m))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -3320,9 +3959,16 @@ app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), async (req, res) 
       return res.json(list.map(({ _id, ...rest }) => rest));
     }
     const db = loadDB();
-    const list = (db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const list = (db.messages || [])
+      .filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     let changed = false;
-    (db.messages || []).forEach((m) => { if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) { m.read = true; changed = true; } });
+    (db.messages || []).forEach((m) => {
+      if (normalizeUserId(m.user_id) === targetId && m.from === "customer" && !m.read) {
+        m.read = true;
+        changed = true;
+      }
+    });
     if (changed) await saveDBOrThrow(db);
     res.json(list);
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -3330,21 +3976,46 @@ app.get("/api/chat/with/:userId", auth(["ADMIN", "EMPLOYEE"]), async (req, res) 
 
 app.get("/api/chat/context/:userId", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   try {
-    const db = loadDB(); const userId = normalizeUserId(req.params.userId);
+    const db = loadDB();
+    const userId = normalizeUserId(req.params.userId);
     if (userId === null) return res.status(400).json({ message: "userId không hợp lệ" });
     const user = findByIdOrMongo(db.users, userId);
     if (!user) return res.status(404).json({ message: "Không tìm thấy khách" });
     const wallet = (db.wallets || []).find((w) => Number(w.user_id) === userId);
     const now = new Date();
-    const ordersThisMonth = (db.orders || []).filter((o) => { if (o.customer_id !== userId) return false; const d = new Date(o.created_at); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); });
-    const activeOrders = (db.orders || []).filter((o) => o.customer_id === userId && !["Hoàn thành", "Đã hủy"].includes(o.status)).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    res.json({ user: { id: user.id, name: user.name, email: user.email, phone: user.phone || "", avatar: user.avatar || "", points: user.points || 0, faculty: user.faculty || "", tier: user.points >= 1000 ? "Hạng Vàng" : user.points >= 500 ? "Hạng Bạc" : "Hạng Đồng" }, wallet: { balance: wallet?.balance || 0 }, ordersThisMonth: ordersThisMonth.length, currentOrder: activeOrders[0] ? { code: activeOrders[0].code, status: activeOrders[0].status, items: (activeOrders[0].items || []).map((it) => ({ name: it.name, qty: it.qty, price: it.price })), subtotal: activeOrders[0].subtotal || 0, discount: activeOrders[0].discount || 0, total: activeOrders[0].total || 0, payment: activeOrders[0].payment || "" } : null });
+    const ordersThisMonth = (db.orders || []).filter((o) => {
+      if (o.customer_id !== userId) return false;
+      const d = new Date(o.created_at);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+    const activeOrders = (db.orders || [])
+      .filter((o) => o.customer_id === userId && !["Hoàn thành", "Đã hủy"].includes(o.status))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json({
+      user: {
+        id: user.id, name: user.name, email: user.email, phone: user.phone || "",
+        avatar: user.avatar || "", points: user.points || 0, faculty: user.faculty || "",
+        tier: user.points >= 1000 ? "Hạng Vàng" : user.points >= 500 ? "Hạng Bạc" : "Hạng Đồng",
+      },
+      wallet: { balance: wallet?.balance || 0 },
+      ordersThisMonth: ordersThisMonth.length,
+      currentOrder: activeOrders[0] ? {
+        code: activeOrders[0].code,
+        status: activeOrders[0].status,
+        items: (activeOrders[0].items || []).map((it) => ({ name: it.name, qty: it.qty, price: it.price })),
+        subtotal: activeOrders[0].subtotal || 0,
+        discount: activeOrders[0].discount || 0,
+        total: activeOrders[0].total || 0,
+        payment: activeOrders[0].payment || "",
+      } : null,
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.post("/api/chat/send", auth(), async (req, res) => {
   try {
-    const db = loadDB(); ensureChatSchema(db);
+    const db = loadDB();
+    ensureChatSchema(db);
     const { content, toUserId } = req.body;
     if (!content?.trim()) return res.status(400).json({ message: "Tin nhắn trống" });
     const isStaff = req.user.role === "ADMIN" || req.user.role === "EMPLOYEE";
@@ -3359,10 +4030,20 @@ app.post("/api/chat/send", auth(), async (req, res) => {
         const meta = db.chat_conversations?.[String(userId)];
         if (meta && meta.assigned_to === "admin") return res.status(403).json({ message: "Admin đang xử lý hội thoại này.", code: "CHAT_HELD_BY_ADMIN" });
       }
-    } else { userId = normalizeUserId(req.user.id); userName = req.user.name; }
-    
-    const message = { id: nextId(db.messages || []), user_id: userId, user_name: userName, from: isStaff ? "staff" : "customer", from_name: req.user.name, from_role: isStaff ? req.user.role : "CUSTOMER", content: content.trim(), read: false, created_at: new Date().toISOString() };
-    
+    } else {
+      userId = normalizeUserId(req.user.id);
+      userName = req.user.name;
+    }
+
+    const message = {
+      id: nextId(db.messages || []),
+      user_id: userId, user_name: userName,
+      from: isStaff ? "staff" : "customer",
+      from_name: req.user.name,
+      from_role: isStaff ? req.user.role : "CUSTOMER",
+      content: content.trim(), read: false, created_at: new Date().toISOString(),
+    };
+
     if (mongoReady && mongoose.connection.db) {
       const coll = mongoose.connection.db.collection("messages");
       const maxDoc = await coll.find({}).sort({ id: -1 }).limit(1).toArray();
@@ -3395,13 +4076,21 @@ app.get("/api/chat/admin/conversations", auth(["ADMIN"]), async (req, res) => {
       return res.json(docs.map((d) => {
         const meta = db.chat_conversations?.[String(d._id)] || {};
         const pendingReq = findPendingTransferForCustomer(db, d._id);
-        return { user_id: d._id, user_name: d.user_name || "Khách", last_message: d.last_message, last_time: d.last_time, unread: d.unread || 0, assigned_to: meta.assigned_to || null, assigned_admin_id: meta.assigned_admin_id || null, has_pending_transfer: !!pendingReq };
+        return {
+          user_id: d._id, user_name: d.user_name || "Khách",
+          last_message: d.last_message, last_time: d.last_time, unread: d.unread || 0,
+          assigned_to: meta.assigned_to || null, assigned_admin_id: meta.assigned_admin_id || null,
+          has_pending_transfer: !!pendingReq,
+        };
       }));
     }
-    const db = loadDB(); ensureChatSchema(db); res.json(buildAdminConversations(db));
+    const db = loadDB();
+    ensureChatSchema(db);
+    res.json(buildAdminConversations(db));
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// 🔧 FIX #6: CHỈ 1 route duy nhất (không có bản duplicate)
 app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
     const targetId = normalizeUserId(req.params.userId);
@@ -3413,46 +4102,29 @@ app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) =>
       return res.json(list.map(({ _id, ...rest }) => rest));
     }
     const db = loadDB();
-    res.json((db.messages || []).filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {
-  try {
-    const targetId = normalizeUserId(req.params.userId);
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-
-    if (mongoReady && mongoose.connection.db) {
-      const coll = mongoose.connection.db.collection("messages");
-      const list = await coll
-        .find({ user_id: targetId, created_at: { $gte: cutoff } })
-        .sort({ created_at: 1 })
-        .toArray();
-      await coll.updateMany(
-        { user_id: targetId, from: "customer", read: false },
-        { $set: { read: true } }
-      );
-      return res.json(list.map(({ _id, ...rest }) => rest));
-    }
-    const db = loadDB();
-    res.json(
-      (db.messages || [])
-        .filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m))
-        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-    );
+    res.json((db.messages || [])
+      .filter((m) => normalizeUserId(m.user_id) === targetId && isRecentMessage(m))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
 });
 
 app.get("/api/chat/admin/staff-status", auth(["ADMIN"]), (req, res) => {
-  const db = loadDB(); ensureChatSchema(db);
-  res.json({ global_enabled: db.settings?.chat_enabled_global !== false, staff: (db.users || []).filter((u) => u.role === "EMPLOYEE").map((u) => ({ id: u.id, name: u.name, email: u.email, chat_enabled: u.chat_enabled !== false })) });
+  const db = loadDB();
+  ensureChatSchema(db);
+  res.json({
+    global_enabled: db.settings?.chat_enabled_global !== false,
+    staff: (db.users || []).filter((u) => u.role === "EMPLOYEE").map((u) => ({
+      id: u.id, name: u.name, email: u.email, chat_enabled: u.chat_enabled !== false,
+    })),
+  });
 });
 
 app.patch("/api/chat/admin/staff/:id/chat", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); ensureChatSchema(db);
+    const db = loadDB();
+    ensureChatSchema(db);
     const u = findByIdOrMongo(db.users, req.params.id);
     if (!u) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
     if (u.role !== "EMPLOYEE") return res.status(400).json({ message: "Chỉ áp dụng cho nhân viên" });
@@ -3463,28 +4135,51 @@ app.patch("/api/chat/admin/staff/:id/chat", auth(["ADMIN"]), async (req, res) =>
 });
 
 app.patch("/api/chat/admin/global-chat", auth(["ADMIN"]), async (req, res) => {
-  try { const db = loadDB(); ensureChatSchema(db); db.settings.chat_enabled_global = req.body?.enabled !== false; await saveDBOrThrow(db); res.json({ ok: true, global_enabled: db.settings.chat_enabled_global }); } catch (e) { res.status(500).json({ message: e.message }); }
+  try {
+    const db = loadDB();
+    ensureChatSchema(db);
+    db.settings.chat_enabled_global = req.body?.enabled !== false;
+    await saveDBOrThrow(db);
+    res.json({ ok: true, global_enabled: db.settings.chat_enabled_global });
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/chat/admin/transfer-requests", auth(["ADMIN"]), (req, res) => {
-  const db = loadDB(); ensureChatSchema(db);
+  const db = loadDB();
+  ensureChatSchema(db);
   const status = String(req.query.status || "pending").toLowerCase();
   let list = [...(db.chat_transfer_requests || [])];
   if (status !== "all") list = list.filter((r) => r.status === status);
-  res.json(list.map((r) => { const customer = findByIdOrMongo(db.users, r.customer_id); const staff = findByIdOrMongo(db.users, r.from_staff_id); return { ...r, customer_name: customer?.name || `Khách #${r.customer_id}`, customer_email: customer?.email || "", from_staff_name: staff?.name || `NV #${r.from_staff_id}` }; }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+  res.json(list.map((r) => {
+    const customer = findByIdOrMongo(db.users, r.customer_id);
+    const staff = findByIdOrMongo(db.users, r.from_staff_id);
+    return {
+      ...r,
+      customer_name: customer?.name || `Khách #${r.customer_id}`,
+      customer_email: customer?.email || "",
+      from_staff_name: staff?.name || `NV #${r.from_staff_id}`,
+    };
+  }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 });
 
 app.patch("/api/chat/admin/transfer-requests/:id", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); ensureChatSchema(db);
+    const db = loadDB();
+    ensureChatSchema(db);
     const r = findByIdOrMongo(db.chat_transfer_requests, req.params.id);
     if (!r) return res.status(404).json({ message: "Không tìm thấy yêu cầu" });
     if (r.status !== "pending") return res.status(400).json({ message: "Yêu cầu đã được xử lý" });
     const newStatus = String(req.body?.status || "").toLowerCase();
     if (!["accepted", "rejected"].includes(newStatus)) return res.status(400).json({ message: "status không hợp lệ" });
-    r.status = newStatus; r.resolved_at = new Date().toISOString(); r.resolved_by = req.user.id; r.resolved_by_name = req.user.name;
+    r.status = newStatus;
+    r.resolved_at = new Date().toISOString();
+    r.resolved_by = req.user.id;
+    r.resolved_by_name = req.user.name;
     if (req.body?.note) r.note = String(req.body.note).slice(0, 500);
-    if (newStatus === "accepted") { if (!db.chat_conversations) db.chat_conversations = {}; db.chat_conversations[String(r.customer_id)] = { assigned_to: "admin", assigned_admin_id: req.user.id, assigned_at: new Date().toISOString() }; }
+    if (newStatus === "accepted") {
+      if (!db.chat_conversations) db.chat_conversations = {};
+      db.chat_conversations[String(r.customer_id)] = { assigned_to: "admin", assigned_admin_id: req.user.id, assigned_at: new Date().toISOString() };
+    }
     await saveDBOrThrow(db);
     res.json({ ok: true, request: r });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -3492,16 +4187,30 @@ app.patch("/api/chat/admin/transfer-requests/:id", auth(["ADMIN"]), async (req, 
 
 app.post("/api/chat/transfer-request", auth(["EMPLOYEE", "ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); ensureChatSchema(db);
+    const db = loadDB();
+    ensureChatSchema(db);
     const customerId = normalizeUserId(req.body?.customerId ?? req.body?.user_id);
     if (customerId === null) return res.status(400).json({ message: "Thiếu customerId" });
     const customer = findByIdOrMongo(db.users, customerId);
     if (!customer) return res.status(404).json({ message: "Không tìm thấy khách" });
     if (findPendingTransferForCustomer(db, customerId)) return res.status(400).json({ message: "Đã có yêu cầu chuyển tiếp đang chờ", code: "ALREADY_PENDING" });
-    const record = { id: nextId(db.chat_transfer_requests), customer_id: customerId, from_staff_id: req.user.id, from_staff_name: req.user.name, from_staff_role: req.user.role, reason: String(req.body?.reason || "").slice(0, 500), status: "pending", created_at: new Date().toISOString(), resolved_at: null, resolved_by: null };
+    const record = {
+      id: nextId(db.chat_transfer_requests),
+      customer_id: customerId,
+      from_staff_id: req.user.id, from_staff_name: req.user.name, from_staff_role: req.user.role,
+      reason: String(req.body?.reason || "").slice(0, 500),
+      status: "pending", created_at: new Date().toISOString(), resolved_at: null, resolved_by: null,
+    };
     db.chat_transfer_requests.push(record);
     if (!db.notifications) db.notifications = [];
-    (db.users || []).filter((u) => u.role === "ADMIN").forEach((adm) => { db.notifications.push({ id: nextId(db.notifications), user_id: adm.id, title: "Yêu cầu chuyển tiếp chat", content: `${req.user.name} xin chuyển hội thoại với "${customer.name}" lên Admin`, type: "chat", link: "/owner/chat", read: false, created_at: new Date().toISOString() }); });
+    (db.users || []).filter((u) => u.role === "ADMIN").forEach((adm) => {
+      db.notifications.push({
+        id: nextId(db.notifications), user_id: adm.id,
+        title: "Yêu cầu chuyển tiếp chat",
+        content: `${req.user.name} xin chuyển hội thoại với "${customer.name}" lên Admin`,
+        type: "chat", link: "/owner/chat", read: false, created_at: new Date().toISOString(),
+      });
+    });
     await saveDBOrThrow(db);
     res.status(201).json({ ok: true, request: record });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -3509,12 +4218,20 @@ app.post("/api/chat/transfer-request", auth(["EMPLOYEE", "ADMIN"]), async (req, 
 
 app.post("/api/chat/admin/takeover/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); ensureChatSchema(db);
+    const db = loadDB();
+    ensureChatSchema(db);
     const targetId = normalizeUserId(req.params.userId);
     if (targetId === null) return res.status(400).json({ message: "userId không hợp lệ" });
     if (!db.chat_conversations) db.chat_conversations = {};
     db.chat_conversations[String(targetId)] = { assigned_to: "admin", assigned_admin_id: req.user.id, assigned_at: new Date().toISOString() };
-    (db.chat_transfer_requests || []).forEach((r) => { if (r.customer_id === targetId && r.status === "pending") { r.status = "accepted"; r.resolved_at = new Date().toISOString(); r.resolved_by = req.user.id; r.resolved_by_name = req.user.name; } });
+    (db.chat_transfer_requests || []).forEach((r) => {
+      if (r.customer_id === targetId && r.status === "pending") {
+        r.status = "accepted";
+        r.resolved_at = new Date().toISOString();
+        r.resolved_by = req.user.id;
+        r.resolved_by_name = req.user.name;
+      }
+    });
     await saveDBOrThrow(db);
     res.json({ ok: true, assigned_to: "admin" });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -3522,7 +4239,8 @@ app.post("/api/chat/admin/takeover/:userId", auth(["ADMIN"]), async (req, res) =
 
 app.post("/api/chat/admin/release/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); ensureChatSchema(db);
+    const db = loadDB();
+    ensureChatSchema(db);
     const targetId = normalizeUserId(req.params.userId);
     if (db.chat_conversations) delete db.chat_conversations[String(targetId)];
     await saveDBOrThrow(db);
@@ -3531,18 +4249,28 @@ app.post("/api/chat/admin/release/:userId", auth(["ADMIN"]), async (req, res) =>
 });
 
 app.get("/api/chat/my-status", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
-  const db = loadDB(); ensureChatSchema(db);
-  res.json({ enabled: isStaffAllowedToChat(db, req.user.id), global_enabled: db.settings?.chat_enabled_global !== false, assigned_to_admin_users: getAdminAssignedUserIds(db) });
+  const db = loadDB();
+  ensureChatSchema(db);
+  res.json({
+    enabled: isStaffAllowedToChat(db, req.user.id),
+    global_enabled: db.settings?.chat_enabled_global !== false,
+    assigned_to_admin_users: getAdminAssignedUserIds(db),
+  });
 });
 
 // ============================================================
-// NOTIFICATIONS & SHIFTS & INVENTORY
+// NOTIFICATIONS
 // ============================================================
 app.get("/api/notifications", auth(), (req, res) => {
   const db = loadDB();
-  const list = (db.notifications || []).filter((n) => n.user_id === req.user.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 50);
+  const userId = Number(req.user.id);
+  const list = (db.notifications || [])
+    .filter((n) => Number(n.user_id) === userId)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 50);
   res.json({ list, unread: list.filter((n) => !n.read).length });
 });
+
 app.post("/api/notifications/:id/read", auth(), async (req, res) => {
   const db = loadDB();
   const n = findByIdOrMongo((db.notifications || []).filter((x) => x.user_id === req.user.id), req.params.id);
@@ -3550,13 +4278,19 @@ app.post("/api/notifications/:id/read", auth(), async (req, res) => {
   await saveDBOrThrow(db);
   res.json({ ok: true });
 });
+
 app.post("/api/notifications/read-all", auth(), async (req, res) => {
   const db = loadDB();
-  (db.notifications || []).forEach((n) => { if (n.user_id === req.user.id) n.read = true; });
+  (db.notifications || []).forEach((n) => {
+    if (n.user_id === req.user.id) n.read = true;
+  });
   await saveDBOrThrow(db);
   res.json({ ok: true });
 });
 
+// ============================================================
+// TOPPINGS & SIZES
+// ============================================================
 app.get("/api/toppings", (req, res) => {
   const db = loadDB();
   const { category } = req.query;
@@ -3565,11 +4299,37 @@ app.get("/api/toppings", (req, res) => {
   res.json(list);
 });
 
+app.post("/api/toppings", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
+  try {
+    const db = loadDB();
+    const { name, price, applies_to } = req.body;
+    if (!name || !String(name).trim()) return res.status(400).json({ message: "Thiếu tên topping" });
+    if (!db.toppings) db.toppings = [];
+    const id = "tp-" + Date.now();
+    const newTopping = {
+      id,
+      name: String(name).trim(),
+      price: Math.max(0, Number(price) || 0),
+      applies_to: Array.isArray(applies_to) ? applies_to : [],
+      created_at: new Date().toISOString(),
+    };
+    db.toppings.push(newTopping);
+    await saveDBOrThrow(db);
+    res.status(201).json(newTopping);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 app.get("/api/sizes", (req, res) => {
   const db = loadDB();
   const list = Array.isArray(db.sizes) && db.sizes.length > 0
     ? db.sizes
-    : [ { id: "S", name: "Nhỏ", extra_price: 0 }, { id: "M", name: "Vừa", extra_price: 5000 }, { id: "L", name: "Lớn", extra_price: 10000 } ];
+    : [
+        { id: "S", name: "Nhỏ", extra_price: 0 },
+        { id: "M", name: "Vừa", extra_price: 5000 },
+        { id: "L", name: "Lớn", extra_price: 10000 },
+      ];
   res.json(list);
 });
 
@@ -3598,25 +4358,35 @@ app.get("/api/stats", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
     res.json(data);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
-
-app.get("/api/inventory", auth(["ADMIN", "EMPLOYEE"]), (req, res) => { res.json(loadDB().inventory); });
+// ============================================================
+// INVENTORY
+// ============================================================
+app.get("/api/inventory", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+  res.json(loadDB().inventory);
+});
 
 app.post("/api/inventory", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); if (!db.inventory) db.inventory = [];
+    const db = loadDB();
+    if (!db.inventory) db.inventory = [];
     const { code, name, qty, unit, min } = req.body;
     if (!code || !name) return res.status(400).json({ message: "Thiếu mã hoặc tên" });
     if (db.inventory.find((x) => x.code === code)) return res.status(400).json({ message: "Mã đã tồn tại" });
     const item = { code, name, qty: +qty || 0, unit: unit || "kg", min: +min || 0 };
-    db.inventory.push(item); await saveDBOrThrow(db); res.status(201).json(item);
+    db.inventory.push(item);
+    await saveDBOrThrow(db);
+    res.status(201).json(item);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.put("/api/inventory/:code", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); const item = db.inventory?.find((x) => x.code === req.params.code);
+    const db = loadDB();
+    const item = db.inventory?.find((x) => x.code === req.params.code);
     if (!item) return res.status(404).json({ message: "Không tìm thấy" });
-    Object.assign(item, req.body); await saveDBOrThrow(db); res.json(item);
+    Object.assign(item, req.body);
+    await saveDBOrThrow(db);
+    res.json(item);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -3629,22 +4399,45 @@ app.delete("/api/inventory/:code", auth(["ADMIN"]), async (req, res) => {
 
 app.post("/api/inventory/:code/import", auth(["ADMIN", "EMPLOYEE"]), async (req, res) => {
   try {
-    const db = loadDB(); const item = db.inventory?.find((x) => x.code === req.params.code);
+    const db = loadDB();
+    const item = db.inventory?.find((x) => x.code === req.params.code);
     if (!item) return res.status(404).json({ message: "Không tìm thấy" });
     const { qty, note, supplier, unitCost } = req.body;
     if (!qty || +qty <= 0) return res.status(400).json({ message: "Số lượng không hợp lệ" });
-    const importQty = +qty; const cost = unitCost ? importQty * +unitCost : 0; const before = item.qty;
-    item.qty += importQty; item.last_import = new Date().toISOString();
+    const importQty = +qty;
+    const cost = unitCost ? importQty * +unitCost : 0;
+    const before = item.qty;
+    item.qty += importQty;
+    item.last_import = new Date().toISOString();
     if (!db.imports) db.imports = [];
-    const record = { id: nextId(db.imports), code: item.code, name: item.name, qty: importQty, before, after: item.qty, unit: item.unit, supplier: supplier || "", note: note || "", unit_cost: +unitCost || 0, cost, imported_by: req.user.name, imported_by_id: req.user.id, created_at: new Date().toISOString() };
+    const record = {
+      id: nextId(db.imports),
+      code: item.code, name: item.name, qty: importQty,
+      before, after: item.qty, unit: item.unit,
+      supplier: supplier || "", note: note || "",
+      unit_cost: +unitCost || 0, cost,
+      imported_by: req.user.name, imported_by_id: req.user.id,
+      created_at: new Date().toISOString(),
+    };
     db.imports.push(record);
-    if (cost > 0) { if (!db.settings) db.settings = {}; if (!db.settings.expenses) db.settings.expenses = []; db.settings.expenses.push({ id: Date.now(), title: "Nhập " + importQty + item.unit + " " + item.name, amount: cost, category: "Nhập hàng", note: "Mã NL: " + item.code, date: new Date().toISOString(), source: "import", import_id: record.id }); }
+    if (cost > 0) {
+      if (!db.settings) db.settings = {};
+      if (!db.settings.expenses) db.settings.expenses = [];
+      db.settings.expenses.push({
+        id: Date.now(),
+        title: "Nhập " + importQty + item.unit + " " + item.name,
+        amount: cost, category: "Nhập hàng", note: "Mã NL: " + item.code,
+        date: new Date().toISOString(), source: "import", import_id: record.id,
+      });
+    }
     await saveDBOrThrow(db);
     res.status(201).json({ message: "Nhập kho thành công", item, record });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.get("/api/inventory/imports", auth(["ADMIN", "EMPLOYEE"]), (req, res) => { res.json((loadDB().imports || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))); });
+app.get("/api/inventory/imports", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
+  res.json((loadDB().imports || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+});
 
 // ============================================================
 // ATTENDANCE / SHIFTS
@@ -3653,12 +4446,19 @@ const SHIFT_START_HOUR = { "Ca sáng": 6, "Ca chiều": 12 };
 const SHIFT_START_MIN = { "Ca sáng": 30, "Ca chiều": 30 };
 const SHIFT_END_HOUR = { "Ca sáng": 12, "Ca chiều": 18 };
 const SHIFT_END_MIN = { "Ca sáng": 30, "Ca chiều": 30 };
-function todayStr() { return getLocalDateStr(); }
+
+function todayStr() {
+  return getLocalDateStr();
+}
 
 app.post("/api/attendance/checkin", auth(["EMPLOYEE", "ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); if (!db.attendances) db.attendances = [];
-    const today = todayStr(); const now = new Date(); const { hour, minute } = getVNTime(now); const nowMinutes = hour * 60 + minute;
+    const db = loadDB();
+    if (!db.attendances) db.attendances = [];
+    const today = todayStr();
+    const now = new Date();
+    const { hour, minute } = getVNTime(now);
+    const nowMinutes = hour * 60 + minute;
     let shift = req.body?.shift || "";
     if (!shift) {
       if (nowMinutes >= 6 * 60 + 30 && nowMinutes < 12 * 60 + 30) shift = "Ca sáng";
@@ -3671,15 +4471,27 @@ app.post("/api/attendance/checkin", auth(["EMPLOYEE", "ADMIN"]), async (req, res
     if (db.attendances.find((a) => a.employee_id === req.user.id && a.date === today && a.shift === shift && a.checkIn)) return res.status(400).json({ message: "Đã check-in rồi" });
     const shiftStartMinutes = SHIFT_START_HOUR[shift] * 60 + SHIFT_START_MIN[shift];
     const late = nowMinutes > shiftStartMinutes + 15;
-    const attendance = { id: nextId(db.attendances), employee_id: req.user.id, employee_name: req.user.name, date: today, shift, checkIn: now.toISOString(), checkOut: null, hours: 0, status: late ? "Đi muộn" : "Đúng giờ", note: "", created_at: now.toISOString() };
-    db.attendances.push(attendance); await saveDBOrThrow(db);
+    const attendance = {
+      id: nextId(db.attendances),
+      employee_id: req.user.id, employee_name: req.user.name,
+      date: today, shift,
+      checkIn: now.toISOString(), checkOut: null, hours: 0,
+      status: late ? "Đi muộn" : "Đúng giờ", note: "",
+      created_at: now.toISOString(),
+    };
+    db.attendances.push(attendance);
+    await saveDBOrThrow(db);
     res.status(201).json({ message: "Check-in thành công", attendance });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.post("/api/attendance/checkout", auth(["EMPLOYEE", "ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); const today = todayStr(); const now = new Date(); const { hour, minute } = getVNTime(now); const nowMinutes = hour * 60 + minute;
+    const db = loadDB();
+    const today = todayStr();
+    const now = new Date();
+    const { hour, minute } = getVNTime(now);
+    const nowMinutes = hour * 60 + minute;
     let shift = req.body?.shift || "";
     if (!shift) {
       if (nowMinutes >= 6 * 60 && nowMinutes < 12 * 60 + 30) shift = "Ca sáng";
@@ -3688,11 +4500,15 @@ app.post("/api/attendance/checkout", auth(["EMPLOYEE", "ADMIN"]), async (req, re
     }
     const att = db.attendances?.find((a) => a.employee_id === req.user.id && a.date === today && a.shift === shift && a.checkIn && !a.checkOut);
     if (!att) return res.status(400).json({ message: "Chưa check-in" });
-    att.checkOut = now.toISOString(); att.hours = Math.round(((now - new Date(att.checkIn)) / 3600000) * 100) / 100;
+    att.checkOut = now.toISOString();
+    att.hours = Math.round(((now - new Date(att.checkIn)) / 3600000) * 100) / 100;
     const shiftEndMinutes = SHIFT_END_HOUR[shift] * 60 + SHIFT_END_MIN[shift];
-    const early = nowMinutes < shiftEndMinutes - 15; const wasLate = att.status === "Đi muộn";
-    if (early && wasLate) att.status = "Đi muộn · Về sớm"; else if (early && !wasLate) att.status = "Về sớm";
-    await saveDBOrThrow(db); res.json({ message: "Check-out thành công", attendance: att });
+    const early = nowMinutes < shiftEndMinutes - 15;
+    const wasLate = att.status === "Đi muộn";
+    if (early && wasLate) att.status = "Đi muộn · Về sớm";
+    else if (early && !wasLate) att.status = "Về sớm";
+    await saveDBOrThrow(db);
+    res.json({ message: "Check-out thành công", attendance: att });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -3705,79 +4521,156 @@ app.get("/api/attendance/today", auth(), (req, res) => {
   res.json(list[0] || null);
 });
 
-app.get("/api/attendance/me", auth(), (req, res) => { res.json((loadDB().attendances || []).filter((a) => a.employee_id === req.user.id).sort((a, b) => b.date.localeCompare(a.date))); });
+app.get("/api/attendance/me", auth(), (req, res) => {
+  res.json((loadDB().attendances || [])
+    .filter((a) => a.employee_id === req.user.id)
+    .sort((a, b) => b.date.localeCompare(a.date)));
+});
 
 app.get("/api/attendance", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
-  const db = loadDB(); let list = db.attendances || [];
+  const db = loadDB();
+  let list = db.attendances || [];
   const { from, to, employee_id, month } = req.query;
-  if (month) list = list.filter((a) => a.date && a.date.startsWith(month)); else if (from && to) list = list.filter((a) => a.date >= from && a.date <= to);
+  if (month) list = list.filter((a) => a.date && a.date.startsWith(month));
+  else if (from && to) list = list.filter((a) => a.date >= from && a.date <= to);
   if (employee_id) list = list.filter((a) => a.employee_id == employee_id);
   res.json(list.sort((a, b) => b.date.localeCompare(a.date)));
 });
 
-app.get("/api/attendance/employees", auth(["ADMIN"]), (req, res) => { res.json(loadDB().users.filter((u) => u.role === "EMPLOYEE").map((u) => ({ id: u.id, name: u.name, role: u.role }))); });
+app.get("/api/attendance/employees", auth(["ADMIN"]), (req, res) => {
+  res.json(loadDB().users.filter((u) => u.role === "EMPLOYEE").map((u) => ({ id: u.id, name: u.name, role: u.role })));
+});
 
-app.get("/api/shifts/me", auth(), (req, res) => { const today = getLocalDateStr(); res.json((loadDB().shifts || []).filter((s) => s.employee_id === req.user.id && s.date >= today && s.status === "approved").sort((a, b) => a.date.localeCompare(b.date))); });
+app.get("/api/shifts/me", auth(), (req, res) => {
+  const today = getLocalDateStr();
+  res.json((loadDB().shifts || [])
+    .filter((s) => s.employee_id === req.user.id && s.date >= today && s.status === "approved")
+    .sort((a, b) => a.date.localeCompare(b.date)));
+});
 
-app.get("/api/shifts/approved-today", auth(["EMPLOYEE", "ADMIN"]), (req, res) => { const today = getLocalDateStr(); res.json((loadDB().shifts || []).filter((s) => s.employee_id === req.user.id && s.date === today && s.status === "approved").sort((a, b) => { const order = { "Ca sáng": 1, "Ca chiều": 2 }; return (order[a.shift] || 99) - (order[b.shift] || 99); })); });
+app.get("/api/shifts/approved-today", auth(["EMPLOYEE", "ADMIN"]), (req, res) => {
+  const today = getLocalDateStr();
+  res.json((loadDB().shifts || [])
+    .filter((s) => s.employee_id === req.user.id && s.date === today && s.status === "approved")
+    .sort((a, b) => {
+      const order = { "Ca sáng": 1, "Ca chiều": 2 };
+      return (order[a.shift] || 99) - (order[b.shift] || 99);
+    }));
+});
 
-app.get("/api/shifts/pending", auth(["ADMIN"]), (req, res) => { res.json((loadDB().shifts || []).filter((s) => s.status === "pending").sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id)); });
+app.get("/api/shifts/pending", auth(["ADMIN"]), (req, res) => {
+  res.json((loadDB().shifts || [])
+    .filter((s) => s.status === "pending")
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id));
+});
 
 app.get("/api/shifts", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
-  let list = loadDB().shifts || []; const { date, employee_id, shift, include_pending } = req.query;
+  let list = loadDB().shifts || [];
+  const { date, employee_id, shift, include_pending } = req.query;
   if (!include_pending) list = list.filter((s) => !s.status || s.status === "approved");
-  if (date) list = list.filter((s) => s.date === date); if (employee_id) list = list.filter((s) => s.employee_id == employee_id); if (shift) list = list.filter((s) => s.shift === shift);
+  if (date) list = list.filter((s) => s.date === date);
+  if (employee_id) list = list.filter((s) => s.employee_id == employee_id);
+  if (shift) list = list.filter((s) => s.shift === shift);
   res.json(list);
 });
 
 app.post("/api/shifts/register", auth(["EMPLOYEE", "ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); if (!db.shifts) db.shifts = [];
+    const db = loadDB();
+    if (!db.shifts) db.shifts = [];
     const { dates, shifts, note } = req.body;
     if (!dates?.length || !shifts?.length) return res.status(400).json({ message: "Thiếu thông tin" });
     const emp = findByIdOrMongo(db.users, req.user.id);
-    let created = 0; let skipped = 0;
+    let created = 0;
+    let skipped = 0;
     dates.forEach((date) => {
       shifts.forEach((shift) => {
         if (db.shifts.find((s) => s.employee_id === req.user.id && s.date === date && s.shift === shift)) skipped++;
-        else { db.shifts.push({ id: nextId(db.shifts) + created, employee_id: req.user.id, employee_name: emp.name, date, shift, note: note || "", status: "pending", source: "employee", created_by: emp.name, created_at: new Date().toISOString() }); created++; }
+        else {
+          db.shifts.push({
+            id: nextId(db.shifts) + created,
+            employee_id: req.user.id, employee_name: emp.name,
+            date, shift, note: note || "",
+            status: "pending", source: "employee", created_by: emp.name,
+            created_at: new Date().toISOString(),
+          });
+          created++;
+        }
       });
     });
-    await saveDBOrThrow(db); res.status(201).json({ created, skipped });
+    await saveDBOrThrow(db);
+    res.status(201).json({ created, skipped });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.patch("/api/shifts/:id/approve", auth(["ADMIN"]), async (req, res) => {
-  try { const db = loadDB(); const s = findByIdOrMongo(db.shifts, req.params.id); if (!s) return res.status(404).json({ message: "Không tìm thấy" }); s.status = "approved"; s.approved_by = req.user.name; s.approved_at = new Date().toISOString(); await saveDBOrThrow(db); res.json({ ok: true, shift: s }); } catch (e) { res.status(500).json({ message: e.message }); }
+  try {
+    const db = loadDB();
+    const s = findByIdOrMongo(db.shifts, req.params.id);
+    if (!s) return res.status(404).json({ message: "Không tìm thấy" });
+    s.status = "approved";
+    s.approved_by = req.user.name;
+    s.approved_at = new Date().toISOString();
+    await saveDBOrThrow(db);
+    res.json({ ok: true, shift: s });
+  } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.delete("/api/shifts/:id/reject", auth(["ADMIN"]), async (req, res) => { const db = loadDB(); const before = (db.shifts || []).length; db.shifts = (db.shifts || []).filter((x) => x.id != req.params.id); await saveDBOrThrow(db); res.json({ ok: true, removed: before - db.shifts.length }); });
+app.delete("/api/shifts/:id/reject", auth(["ADMIN"]), async (req, res) => {
+  const db = loadDB();
+  const before = (db.shifts || []).length;
+  db.shifts = (db.shifts || []).filter((x) => x.id != req.params.id);
+  await saveDBOrThrow(db);
+  res.json({ ok: true, removed: before - db.shifts.length });
+});
 
 app.post("/api/shifts/bulk", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); if (!db.shifts) db.shifts = [];
+    const db = loadDB();
+    if (!db.shifts) db.shifts = [];
     const { employee_id, dates, shifts, note } = req.body;
     if (!employee_id || !dates?.length || !shifts?.length) return res.status(400).json({ message: "Thiếu thông tin" });
-    const emp = findByIdOrMongo(db.users, employee_id); let created = 0; let skipped = 0;
+    const emp = findByIdOrMongo(db.users, employee_id);
+    let created = 0;
+    let skipped = 0;
     dates.forEach((date) => {
       shifts.forEach((shift) => {
         if (db.shifts.find((s) => s.employee_id == employee_id && s.date === date && s.shift === shift)) skipped++;
-        else { db.shifts.push({ id: nextId(db.shifts) + created, employee_id: +employee_id, employee_name: emp.name, date, shift, note: note || "", status: "approved", source: "admin", created_by: req.user.name, created_at: new Date().toISOString() }); created++; }
+        else {
+          db.shifts.push({
+            id: nextId(db.shifts) + created,
+            employee_id: +employee_id, employee_name: emp.name,
+            date, shift, note: note || "",
+            status: "approved", source: "admin", created_by: req.user.name,
+            created_at: new Date().toISOString(),
+          });
+          created++;
+        }
       });
     });
-    await saveDBOrThrow(db); res.status(201).json({ created, skipped });
+    await saveDBOrThrow(db);
+    res.status(201).json({ created, skipped });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.post("/api/shifts", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); if (!db.shifts) db.shifts = [];
+    const db = loadDB();
+    if (!db.shifts) db.shifts = [];
     const { employee_id, date, shift, note } = req.body;
     if (!employee_id || !date || !shift) return res.status(400).json({ message: "Thiếu thông tin" });
     const emp = findByIdOrMongo(db.users, employee_id);
     if (db.shifts.find((s) => s.employee_id == employee_id && s.date === date && s.shift === shift)) return res.status(400).json({ message: "Đã được phân ca này rồi" });
-    const record = { id: nextId(db.shifts), employee_id: +employee_id, employee_name: emp.name, date, shift, note: note || "", status: "approved", source: "admin", created_by: req.user.name, created_at: new Date().toISOString() };
-    db.shifts.push(record); await saveDBOrThrow(db); res.status(201).json(record);
+    const record = {
+      id: nextId(db.shifts),
+      employee_id: +employee_id, employee_name: emp.name,
+      date, shift, note: note || "",
+      status: "approved", source: "admin", created_by: req.user.name,
+      created_at: new Date().toISOString(),
+    };
+    db.shifts.push(record);
+    await saveDBOrThrow(db);
+    res.status(201).json(record);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -3788,7 +4681,8 @@ app.put("/api/shifts/:id", auth(["ADMIN"]), async (req, res) => {
   if (req.body.date) s.date = req.body.date;
   if (req.body.shift) s.shift = req.body.shift;
   if (req.body.note !== undefined) s.note = req.body.note;
-  await saveDBOrThrow(db); res.json(s);
+  await saveDBOrThrow(db);
+  res.json(s);
 });
 
 app.delete("/api/shifts/:id", auth(["ADMIN"]), async (req, res) => {
@@ -3799,34 +4693,73 @@ app.delete("/api/shifts/:id", auth(["ADMIN"]), async (req, res) => {
 });
 
 app.get("/api/shifts/current-staff", auth(), (req, res) => {
-  const db = loadDB(); const today = getLocalDateStr();
+  const db = loadDB();
+  const today = getLocalDateStr();
   const active = (db.attendances || []).filter((a) => a.date === today && a.checkIn && !a.checkOut);
-  if (active.length > 0) return res.json(active.map((a) => ({ id: a.employee_id, name: a.employee_name, employee_code: "", shift: a.shift, checkIn: a.checkIn, station: "", phone: "" })));
-  res.json((db.shifts || []).filter((s) => s.date === today && s.status === "approved").map((s) => ({ id: s.employee_id, name: s.employee_name, employee_code: "", shift: s.shift, checkIn: null, station: s.station || "", phone: "" })));
+  if (active.length > 0) {
+    return res.json(active.map((a) => ({
+      id: a.employee_id, name: a.employee_name, employee_code: "",
+      shift: a.shift, checkIn: a.checkIn, station: "", phone: "",
+    })));
+  }
+  res.json((db.shifts || [])
+    .filter((s) => s.date === today && s.status === "approved")
+    .map((s) => ({
+      id: s.employee_id, name: s.employee_name, employee_code: "",
+      shift: s.shift, checkIn: null, station: s.station || "", phone: "",
+    })));
 });
 
 // ============================================================
 // TASKS
 // ============================================================
 app.get("/api/tasks/me", auth(), (req, res) => {
-  const db = loadDB(); if (!db.tasks) db.tasks = []; const today = getLocalDateStr();
-  res.json(db.tasks.filter((t) => t.assigned_to === req.user.id && t.status !== "cancelled" && (!t.due_date || t.due_date >= today)).sort((a, b) => { if (a.status !== b.status) return a.status === "pending" ? -1 : 1; const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 }; const pa = pOrder[a.priority] ?? 2; const pb = pOrder[b.priority] ?? 2; if (pa !== pb) return pa - pb; return new Date(b.created_at) - new Date(a.created_at); }));
+  const db = loadDB();
+  if (!db.tasks) db.tasks = [];
+  const today = getLocalDateStr();
+  res.json(db.tasks
+    .filter((t) => t.assigned_to === req.user.id && t.status !== "cancelled" && (!t.due_date || t.due_date >= today))
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === "pending" ? -1 : 1;
+      const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+      const pa = pOrder[a.priority] ?? 2;
+      const pb = pOrder[b.priority] ?? 2;
+      if (pa !== pb) return pa - pb;
+      return new Date(b.created_at) - new Date(a.created_at);
+    }));
 });
 
 app.get("/api/tasks", auth(["ADMIN"]), (req, res) => {
-  const db = loadDB(); if (!db.tasks) db.tasks = []; const { assigned_to, status } = req.query;
-  let list = [...db.tasks]; if (assigned_to) list = list.filter((t) => t.assigned_to == assigned_to); if (status && status !== "all") list = list.filter((t) => t.status === status);
+  const db = loadDB();
+  if (!db.tasks) db.tasks = [];
+  const { assigned_to, status } = req.query;
+  let list = [...db.tasks];
+  if (assigned_to) list = list.filter((t) => t.assigned_to == assigned_to);
+  if (status && status !== "all") list = list.filter((t) => t.status === status);
   res.json(list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 });
 
 app.post("/api/tasks", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); if (!db.tasks) db.tasks = [];
+    const db = loadDB();
+    if (!db.tasks) db.tasks = [];
     const { title, description, assigned_to, due_date, shift, priority } = req.body || {};
     if (!title || !String(title).trim()) return res.status(400).json({ message: "Thiếu tiêu đề" });
     if (!findByIdOrMongo(db.users, assigned_to)) return res.status(404).json({ message: "Không tìm thấy nhân viên" });
-    const task = { id: nextId(db.tasks), title: String(title).trim(), description: String(description || "").trim(), assigned_to: Number(assigned_to), assigned_by: req.user.id, assigned_by_name: req.user.name, due_date: due_date || "", shift: shift || "", status: "pending", priority: ["low", "normal", "high", "urgent"].includes(priority) ? priority : "normal", created_at: new Date().toISOString(), completed_at: null };
-    db.tasks.push(task); await saveDBOrThrow(db); res.status(201).json(task);
+    const task = {
+      id: nextId(db.tasks),
+      title: String(title).trim(),
+      description: String(description || "").trim(),
+      assigned_to: Number(assigned_to),
+      assigned_by: req.user.id, assigned_by_name: req.user.name,
+      due_date: due_date || "", shift: shift || "",
+      status: "pending",
+      priority: ["low", "normal", "high", "urgent"].includes(priority) ? priority : "normal",
+      created_at: new Date().toISOString(), completed_at: null,
+    };
+    db.tasks.push(task);
+    await saveDBOrThrow(db);
+    res.status(201).json(task);
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -3840,8 +4773,12 @@ app.put("/api/tasks/:id", auth(["ADMIN"]), async (req, res) => {
   if (due_date !== undefined) t.due_date = due_date;
   if (shift !== undefined) t.shift = shift;
   if (priority !== undefined && ["low", "normal", "high", "urgent"].includes(priority)) t.priority = priority;
-  if (status !== undefined && ["pending", "done", "cancelled"].includes(status)) { t.status = status; if (status === "done") t.completed_at = new Date().toISOString(); }
-  await saveDBOrThrow(db); res.json(t);
+  if (status !== undefined && ["pending", "done", "cancelled"].includes(status)) {
+    t.status = status;
+    if (status === "done") t.completed_at = new Date().toISOString();
+  }
+  await saveDBOrThrow(db);
+  res.json(t);
 });
 
 app.delete("/api/tasks/:id", auth(["ADMIN"]), async (req, res) => {
@@ -3858,29 +4795,49 @@ app.patch("/api/tasks/:id/complete", auth(), async (req, res) => {
   if (t.assigned_to !== req.user.id && req.user.role !== "ADMIN") return res.status(403).json({ message: "Không có quyền" });
   t.status = t.status === "done" ? "pending" : "done";
   t.completed_at = t.status === "done" ? new Date().toISOString() : null;
-  await saveDBOrThrow(db); res.json(t);
+  await saveDBOrThrow(db);
+  res.json(t);
 });
 
 // ============================================================
 // PERMISSIONS
 // ============================================================
 const ALL_PERMISSIONS = [
-  { key: "menu.view", label: "Xem thực đơn" }, { key: "menu.create", label: "Thêm món" }, { key: "menu.update", label: "Sửa món" }, { key: "menu.toggle", label: "Tắt / Bật món" }, { key: "menu.delete", label: "Xóa món" },
-  { key: "orders.view", label: "Xem đơn hàng" }, { key: "orders.process", label: "Xử lý đơn hàng" }, { key: "orders.cancel", label: "Hủy đơn hàng" }, { key: "orders.approve_green", label: "Duyệt Sống Xanh" },
-  { key: "inventory.view", label: "Xem kho" }, { key: "inventory.import", label: "Nhập kho" }, { key: "inventory.manage", label: "Quản lý kho" },
-  { key: "customers.view", label: "Xem khách hàng" }, { key: "customers.manage", label: "Quản lý khách hàng" },
-  { key: "employees.view", label: "Xem nhân viên" }, { key: "employees.manage", label: "Quản lý nhân viên" },
-  { key: "attendance.view", label: "Xem chấm công" }, { key: "attendance.manage", label: "Quản lý chấm công" },
-  { key: "reports.view", label: "Xem báo cáo" }, { key: "backup.export", label: "Xuất backup" }, { key: "backup.import", label: "Nhập backup" }, { key: "backup.reset", label: "Reset database" },
-  { key: "settings.view", label: "Xem cài đặt" }, { key: "settings.manage", label: "Quản lý cài đặt" },
+  { key: "menu.view", label: "Xem thực đơn" },
+  { key: "menu.create", label: "Thêm món" },
+  { key: "menu.update", label: "Sửa món" },
+  { key: "menu.toggle", label: "Tắt / Bật món" },
+  { key: "menu.delete", label: "Xóa món" },
+  { key: "orders.view", label: "Xem đơn hàng" },
+  { key: "orders.process", label: "Xử lý đơn hàng" },
+  { key: "orders.cancel", label: "Hủy đơn hàng" },
+  { key: "orders.approve_green", label: "Duyệt Sống Xanh" },
+  { key: "inventory.view", label: "Xem kho" },
+  { key: "inventory.import", label: "Nhập kho" },
+  { key: "inventory.manage", label: "Quản lý kho" },
+  { key: "customers.view", label: "Xem khách hàng" },
+  { key: "customers.manage", label: "Quản lý khách hàng" },
+  { key: "employees.view", label: "Xem nhân viên" },
+  { key: "employees.manage", label: "Quản lý nhân viên" },
+  { key: "attendance.view", label: "Xem chấm công" },
+  { key: "attendance.manage", label: "Quản lý chấm công" },
+  { key: "reports.view", label: "Xem báo cáo" },
+  { key: "backup.export", label: "Xuất backup" },
+  { key: "backup.import", label: "Nhập backup" },
+  { key: "backup.reset", label: "Reset database" },
+  { key: "settings.view", label: "Xem cài đặt" },
+  { key: "settings.manage", label: "Quản lý cài đặt" },
 ];
+
 const ROLE_PERMISSIONS = {
   ADMIN: ALL_PERMISSIONS.map((p) => p.key),
   EMPLOYEE: ["menu.view", "menu.update", "orders.view", "orders.process", "orders.approve_green", "inventory.view", "inventory.import", "customers.view", "attendance.view"],
   CUSTOMER: [],
 };
 
-app.get("/api/permissions", auth(["ADMIN"]), (req, res) => { res.json({ all: ALL_PERMISSIONS, roles: ROLE_PERMISSIONS }); });
+app.get("/api/permissions", auth(["ADMIN"]), (req, res) => {
+  res.json({ all: ALL_PERMISSIONS, roles: ROLE_PERMISSIONS });
+});
 
 app.get("/api/permissions/me", auth(), (req, res) => {
   const db = loadDB();
@@ -3917,19 +4874,27 @@ app.put("/api/permissions/:userId", auth(["ADMIN"]), async (req, res) => {
 });
 
 // ============================================================
-// SETTINGS / TIME SLOTS / BACKUP / REPORTS / HEALTH
+// SETTINGS
+// 🔧 FIX #8: PUT /api/settings dùng await saveDBOrThrow
 // ============================================================
 app.get("/api/settings", auth(), (req, res) => {
-  const db = loadDB(); ensureChatSchema(db);
+  const db = loadDB();
+  ensureChatSchema(db);
   const empty = { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "" };
   res.json({ ...empty, ...(db.settings || {}) });
 });
 
 app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); if (!db.settings) db.settings = {};
-    const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "custom_programs", "rate_desc", "green_desc", "review_desc", "subsidy_desc"];
-    const ruleLabels = { rate_points: "Hoàn thành đơn hàng", green_points: "Sống Xanh Học Đường", review_points: "Đánh giá món ăn", subsidy_points: "Trợ giá sinh viên" };
+    const db = loadDB();
+    if (!db.settings) db.settings = {};
+   const allowed = ["bank", "account", "accountName", "hotline", "email", "address", "qrCustomImage", "timeSlots", "rate_points", "green_points", "review_points", "subsidy_points", "custom_programs", "rate_desc", "green_desc", "review_desc", "subsidy_desc", "expenses"];
+    const ruleLabels = {
+      rate_points: "Hoàn thành đơn hàng",
+      green_points: "Sống Xanh Học Đường",
+      review_points: "Đánh giá món ăn",
+      subsidy_points: "Trợ giá sinh viên",
+    };
     if (!db.settings.rules_history) db.settings.rules_history = [];
 
     allowed.forEach((k) => {
@@ -3947,85 +4912,110 @@ app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
         db.settings[k] = req.body[k];
       }
     });
-    saveDB(db);
+    await saveDBOrThrow(db);
     res.json({ ok: true, settings: db.settings });
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
 });
 
+// ============================================================
+// TIME SLOTS
+// 🔧 FIX #7: CHỈ 1 block duy nhất (async + await), không có duplicate
+// ============================================================
+app.get("/api/time-slots", (req, res) => {
+  try {
+    const db = loadDB();
+    const slots = getTimeSlots(db);
+    res.json([...slots].sort((a, b) => String(a.start || "").localeCompare(String(b.start || ""))));
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
 app.post("/api/time-slots", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     const slots = getTimeSlots(db);
     const { start, end } = req.body;
-    if (!start || !end) return res.status(400).json({ message: "Thiếu dữ liệu" });
+    if (!start || !end) return res.status(400).json({ message: "Thiếu giờ bắt đầu/kết thúc" });
     if (start >= end) return res.status(400).json({ message: "Giờ kết thúc phải lớn hơn giờ bắt đầu" });
-    const id = start + " - " + end;
-    if (slots.find(x => x.id === id || (x.start === start && x.end === end))) {
+    const id = start + "-" + end;
+    if (slots.find((x) => x.id === id || (x.start === start && x.end === end))) {
       return res.status(400).json({ message: "Khung giờ này đã tồn tại trong hệ thống!" });
     }
     slots.push({ id, start, end, enabled: true, note: "" });
     db.settings.timeSlots = slots;
     await saveDBOrThrow(db);
     res.status(201).json({ ok: true, slot: { id, start, end, enabled: true } });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
-
-app.delete("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
-  try {
-    const db = loadDB();
-    let slots = getTimeSlots(db);
-    slots = slots.filter(s => s.id !== req.params.id);
-    db.settings.timeSlots = slots;
-    saveDB(db);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-app.get("/api/time-slots", (req, res) => { try { const db = loadDB(); const slots = getTimeSlots(db); res.json([...slots].sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")))); } catch (e) { res.status(500).json({ message: e.message }); } });
 
 app.patch("/api/time-slots/:id", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     const slots = getTimeSlots(db);
     const oldId = req.params.id;
-    const idx = slots.findIndex(s => s.id === oldId);
-    
+    const idx = slots.findIndex((s) => s.id === oldId);
     if (idx < 0) return res.status(404).json({ message: "Không tìm thấy khung giờ" });
 
-    const { start, end, enabled } = req.body || {};
-    
+    const { start, end, enabled, note } = req.body || {};
     if (start && end) {
       if (start >= end) return res.status(400).json({ message: "Giờ kết thúc phải lớn hơn giờ bắt đầu" });
-      
-      const newId = start + " - " + end;
-      // Kiểm tra trùng lặp với khung giờ khác (trừ chính nó)
+      const newId = start + "-" + end;
       const isDuplicate = slots.find((s, i) => i !== idx && (s.id === newId || (s.start === start && s.end === end)));
       if (isDuplicate) {
         return res.status(400).json({ message: "Khung giờ này đã tồn tại trong hệ thống!" });
       }
-      
       slots[idx].start = start;
       slots[idx].end = end;
       slots[idx].id = newId;
     }
-    
     if (enabled !== undefined) slots[idx].enabled = !!enabled;
+    if (note !== undefined) slots[idx].note = String(note).slice(0, 100).trim();
 
     db.settings.timeSlots = slots;
     await saveDBOrThrow(db);
-    
     res.json({ ok: true, slot: slots[idx] });
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.delete("/api/time-slots/:id", auth(["ADMIN"]), async (req, res) => {
+  try {
+    const db = loadDB();
+    let slots = getTimeSlots(db);
+    slots = slots.filter((s) => s.id !== req.params.id);
+    db.settings.timeSlots = slots;
+    await saveDBOrThrow(db);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
 app.post("/api/time-slots/reset", auth(["ADMIN"]), async (req, res) => {
-  try { const db = loadDB(); if (!db.settings) db.settings = {}; db.settings.timeSlots = [...DEFAULT_TIME_SLOTS]; await saveDBOrThrow(db); res.json({ ok: true, slots: db.settings.timeSlots }); } catch (e) { res.status(500).json({ message: e.message }); }
+  try {
+    const db = loadDB();
+    if (!db.settings) db.settings = {};
+    db.settings.timeSlots = [...DEFAULT_TIME_SLOTS];
+    await saveDBOrThrow(db);
+    res.json({ ok: true, slots: db.settings.timeSlots });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
 });
 
-app.get("/api/backup/export", auth(["ADMIN"]), (req, res) => { const db = loadDB(); res.json({ version: "1.0", exported_at: new Date().toISOString(), exported_by: req.user.name, data: db }); });
+// ============================================================
+// BACKUP
+// ============================================================
+app.get("/api/backup/export", auth(["ADMIN"]), (req, res) => {
+  const db = loadDB();
+  res.json({ version: "1.0", exported_at: new Date().toISOString(), exported_by: req.user.name, data: db });
+});
 
 const ALLOWED_BACKUP_COLLECTIONS = [
   "users", "sizes", "menu_items", "categories", "toppings", "orders", "inventory",
@@ -4053,29 +5043,67 @@ app.post("/api/backup/import", auth(["ADMIN"]), async (req, res) => {
     await saveDBOrThrow(cleanData);
     invalidateMenuCache();
     invalidateStatsCache();
-    res.json({ message: "Import thành công!", stats: { users: cleanData.users?.length || 0, menu_items: cleanData.menu_items?.length || 0, orders: cleanData.orders?.length || 0, inventory: cleanData.inventory?.length || 0 } });
+    res.json({
+      message: "Import thành công!",
+      stats: {
+        users: cleanData.users?.length || 0,
+        menu_items: cleanData.menu_items?.length || 0,
+        orders: cleanData.orders?.length || 0,
+        inventory: cleanData.inventory?.length || 0,
+      },
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
 app.get("/api/backup/stats", auth(["ADMIN"]), (req, res) => {
   const db = loadDB();
   res.json({
-    users: db.users?.length || 0, customers: db.users?.filter((u) => u.role === "CUSTOMER").length || 0, employees: db.users?.filter((u) => u.role === "EMPLOYEE").length || 0,
-    menu_items: db.menu_items?.length || 0, orders: db.orders?.length || 0, inventory: db.inventory?.length || 0, toppings: db.toppings?.length || 0, sizes: db.sizes?.length || 0,
-    reviews: db.reviews?.length || 0, vouchers: db.vouchers?.length || 0, notifications: db.notifications?.length || 0, messages: db.messages?.length || 0,
-    attendances: db.attendances?.length || 0, imports: db.imports?.length || 0, price_history: db.price_history?.length || 0, tasks: db.tasks?.length || 0,
-    points_history: db.points_history?.length || 0, chat_transfer_requests: db.chat_transfer_requests?.length || 0, db_size_bytes: JSON.stringify(db).length,
+    users: db.users?.length || 0,
+    customers: db.users?.filter((u) => u.role === "CUSTOMER").length || 0,
+    employees: db.users?.filter((u) => u.role === "EMPLOYEE").length || 0,
+    menu_items: db.menu_items?.length || 0,
+    orders: db.orders?.length || 0,
+    inventory: db.inventory?.length || 0,
+    toppings: db.toppings?.length || 0,
+    sizes: db.sizes?.length || 0,
+    reviews: db.reviews?.length || 0,
+    vouchers: db.vouchers?.length || 0,
+    notifications: db.notifications?.length || 0,
+    messages: db.messages?.length || 0,
+    attendances: db.attendances?.length || 0,
+    imports: db.imports?.length || 0,
+    price_history: db.price_history?.length || 0,
+    tasks: db.tasks?.length || 0,
+    points_history: db.points_history?.length || 0,
+    chat_transfer_requests: db.chat_transfer_requests?.length || 0,
+    db_size_bytes: JSON.stringify(db).length,
   });
 });
 
 app.post("/api/backup/reset", auth(["ADMIN"]), async (req, res) => {
   try {
-    const { confirm } = req.body; const RESET_TOKEN = process.env.RESET_CONFIRM_TOKEN || "RESET";
+    const { confirm } = req.body;
+    const RESET_TOKEN = process.env.RESET_CONFIRM_TOKEN || "RESET";
     if (confirm !== RESET_TOKEN) return res.status(400).json({ message: `Cần xác nhận '${RESET_TOKEN}'` });
     const db = loadDB();
-    db.orders = []; db.wallets = []; db.wallet_transactions = []; db.notifications = []; db.messages = []; db.attendances = []; db.shifts = []; db.imports = []; db.price_history = []; db.reviews = []; db.points_history = []; db.chat_transfer_requests = []; db.chat_conversations = {};
+    db.orders = [];
+    db.wallets = [];
+    db.wallet_transactions = [];
+    db.notifications = [];
+    db.messages = [];
+    db.attendances = [];
+    db.shifts = [];
+    db.imports = [];
+    db.price_history = [];
+    db.reviews = [];
+    db.points_history = [];
+    db.chat_transfer_requests = [];
+    db.chat_conversations = {};
     (db.users || []).forEach((u) => { u.points = 0; });
-    (db.menu_items || []).forEach((m) => { if (m.stock !== undefined) m.stock = Math.max(m.stock, 30); m.sold = 0; });
+    (db.menu_items || []).forEach((m) => {
+      if (m.stock !== undefined) m.stock = Math.max(m.stock, 30);
+      m.sold = 0;
+    });
     await saveDBOrThrow(db);
     invalidateMenuCache();
     invalidateStatsCache();
@@ -4083,31 +5111,116 @@ app.post("/api/backup/reset", auth(["ADMIN"]), async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// ============================================================
+// REPORTS
+// ============================================================
 app.get("/api/reports/revenue", auth(["ADMIN", "EMPLOYEE"]), (req, res) => {
   try {
-    const db = loadDB(); const { period = "day" } = req.query; const now = new Date(); const completedOrders = (db.orders || []).filter((o) => o.status === "Hoàn thành");
-    let result = []; let totalRevenue = 0; let totalOrders = 0;
-    if (period === "day") { for (let i = 6; i >= 0; i--) { const d = new Date(now); d.setDate(d.getDate() - i); const dateStr = getLocalDateStr(d); const dayOrders = completedOrders.filter((o) => toLocalDateStr(o.created_at) === dateStr); const revenue = dayOrders.reduce((s, o) => s + (o.total || 0), 0); const dayLabel = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][d.getDay()]; result.push({ label: dayLabel, date: dateStr, revenue, orders: dayOrders.length }); totalRevenue += revenue; totalOrders += dayOrders.length; } }
-    else if (period === "week") { for (let i = 3; i >= 0; i--) { const weekEnd = new Date(now); weekEnd.setDate(weekEnd.getDate() - i * 7); const weekStart = new Date(weekEnd); weekStart.setDate(weekStart.getDate() - 6); const weekOrders = completedOrders.filter((o) => { const d = new Date(o.created_at); return d >= weekStart && d <= weekEnd; }); const revenue = weekOrders.reduce((s, o) => s + (o.total || 0), 0); result.push({ label: "Tuần " + (4 - i), date: getLocalDateStr(weekStart) + " - " + getLocalDateStr(weekEnd), revenue, orders: weekOrders.length }); totalRevenue += revenue; totalOrders += weekOrders.length; } }
-    else if (period === "month") { for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const year = d.getFullYear(); const month = d.getMonth(); const monthOrders = completedOrders.filter((o) => { const od = new Date(o.created_at); return od.getFullYear() === year && od.getMonth() === month; }); const revenue = monthOrders.reduce((s, o) => s + (o.total || 0), 0); result.push({ label: "T" + (month + 1), date: year + "-" + String(month + 1).padStart(2, "0"), revenue, orders: monthOrders.length }); totalRevenue += revenue; totalOrders += monthOrders.length; } }
-    else if (period === "year") { for (let i = 4; i >= 0; i--) { const year = now.getFullYear() - i; const yearOrders = completedOrders.filter((o) => { const od = new Date(o.created_at); return od.getFullYear() === year; }); const revenue = yearOrders.reduce((s, o) => s + (o.total || 0), 0); result.push({ label: String(year), date: String(year), revenue, orders: yearOrders.length }); totalRevenue += revenue; totalOrders += yearOrders.length; } }
+    const db = loadDB();
+    const { period = "day" } = req.query;
+    const now = new Date();
+    const completedOrders = (db.orders || []).filter((o) => o.status === "Hoàn thành");
+    let result = [];
+    let totalRevenue = 0;
+    let totalOrders = 0;
+
+    if (period === "day") {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = getLocalDateStr(d);
+        const dayOrders = completedOrders.filter((o) => toLocalDateStr(o.created_at) === dateStr);
+        const revenue = dayOrders.reduce((s, o) => s + (o.total || 0), 0);
+        const dayLabel = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"][d.getDay()];
+        result.push({ label: dayLabel, date: dateStr, revenue, orders: dayOrders.length });
+        totalRevenue += revenue;
+        totalOrders += dayOrders.length;
+      }
+    } else if (period === "week") {
+      for (let i = 3; i >= 0; i--) {
+        const weekEnd = new Date(now);
+        weekEnd.setDate(weekEnd.getDate() - i * 7);
+        const weekStart = new Date(weekEnd);
+        weekStart.setDate(weekStart.getDate() - 6);
+        const weekOrders = completedOrders.filter((o) => {
+          const d = new Date(o.created_at);
+          return d >= weekStart && d <= weekEnd;
+        });
+        const revenue = weekOrders.reduce((s, o) => s + (o.total || 0), 0);
+        result.push({ label: "Tuần " + (4 - i), date: getLocalDateStr(weekStart) + " - " + getLocalDateStr(weekEnd), revenue, orders: weekOrders.length });
+        totalRevenue += revenue;
+        totalOrders += weekOrders.length;
+      }
+    } else if (period === "month") {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const year = d.getFullYear();
+        const month = d.getMonth();
+        const monthOrders = completedOrders.filter((o) => {
+          const od = new Date(o.created_at);
+          return od.getFullYear() === year && od.getMonth() === month;
+        });
+        const revenue = monthOrders.reduce((s, o) => s + (o.total || 0), 0);
+        result.push({ label: "T" + (month + 1), date: year + "-" + String(month + 1).padStart(2, "0"), revenue, orders: monthOrders.length });
+        totalRevenue += revenue;
+        totalOrders += monthOrders.length;
+      }
+    } else if (period === "year") {
+      for (let i = 4; i >= 0; i--) {
+        const year = now.getFullYear() - i;
+        const yearOrders = completedOrders.filter((o) => {
+          const od = new Date(o.created_at);
+          return od.getFullYear() === year;
+        });
+        const revenue = yearOrders.reduce((s, o) => s + (o.total || 0), 0);
+        result.push({ label: String(year), date: String(year), revenue, orders: yearOrders.length });
+        totalRevenue += revenue;
+        totalOrders += yearOrders.length;
+      }
+    }
+
     const menuSold = {};
-    (db.orders || []).forEach((o) => { if (o.status !== "Hoàn thành") return; (o.items || []).forEach((it) => { if (!menuSold[it.menu_item_id]) menuSold[it.menu_item_id] = { id: it.menu_item_id, name: it.name, sold: 0, revenue: 0 }; menuSold[it.menu_item_id].sold += it.qty; menuSold[it.menu_item_id].revenue += it.price * it.qty; }); });
+    (db.orders || []).forEach((o) => {
+      if (o.status !== "Hoàn thành") return;
+      (o.items || []).forEach((it) => {
+        if (!menuSold[it.menu_item_id]) menuSold[it.menu_item_id] = { id: it.menu_item_id, name: it.name, sold: 0, revenue: 0 };
+        menuSold[it.menu_item_id].sold += it.qty;
+        menuSold[it.menu_item_id].revenue += it.price * it.qty;
+      });
+    });
     const topItems = Object.values(menuSold).sort((a, b) => b.sold - a.sold).slice(0, 5);
-    res.json({ period, data: result, totalRevenue, totalOrders, avgOrder: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0, topItems });
+
+    res.json({
+      period,
+      data: result,
+      totalRevenue,
+      totalOrders,
+      avgOrder: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0,
+      topItems,
+    });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// ============================================================
+// ADMIN — Backfill translations
+// ============================================================
 app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
-    const FIELDS_MENU = ["name", "description"]; const FIELDS_CAT = ["name"]; const LANGS = ["en", "ja", "ko", "zh"];
-    let menuTodo = []; let catTodo = [];
+    const FIELDS_MENU = ["name", "description"];
+    const FIELDS_CAT = ["name"];
+    const LANGS = ["en", "ja", "ko", "zh"];
+    let menuTodo = [];
+    let catTodo = [];
+
     for (const m of db.menu_items || []) {
       let need = false;
       for (const f of FIELDS_MENU) {
         if (!m[f] || !String(m[f]).trim()) continue;
-        for (const l of LANGS) { const tr = m[`${f}_${l}`]; if (!tr || tr === m[f]) { need = true; break; } }
+        for (const l of LANGS) {
+          const tr = m[`${f}_${l}`];
+          if (!tr || tr === m[f]) { need = true; break; }
+        }
         if (need) break;
       }
       if (need) menuTodo.push(m);
@@ -4116,21 +5229,35 @@ app.post("/api/admin/backfill-translations", auth(["ADMIN"]), async (req, res) =
       let need = false;
       for (const f of FIELDS_CAT) {
         if (!c[f] || !String(c[f]).trim()) continue;
-        for (const l of LANGS) { const tr = c[`${f}_${l}`]; if (!tr || tr === c[f]) { need = true; break; } }
+        for (const l of LANGS) {
+          const tr = c[`${f}_${l}`];
+          if (!tr || tr === c[f]) { need = true; break; }
+        }
         if (need) break;
       }
       if (need) catTodo.push(c);
     }
-    for (const m of menuTodo) { try { await autoTranslateMenuItem(db, m, null); } catch (e) { console.warn("Backfill menu fail:", m?.name, e.message); } }
-    for (const c of catTodo) { try { await autoTranslateCategory(db, c, null); } catch (e) { console.warn("Backfill category fail:", c?.name, e.message); } }
+
+    for (const m of menuTodo) {
+      try { await autoTranslateMenuItem(db, m, null); }
+      catch (e) { console.warn("Backfill menu fail:", m?.name, e.message); }
+    }
+    for (const c of catTodo) {
+      try { await autoTranslateCategory(db, c, null); }
+      catch (e) { console.warn("Backfill category fail:", c?.name, e.message); }
+    }
+
     await saveDBOrThrow(db);
     invalidateMenuCache();
     res.json({ ok: true, queued: { menu: menuTodo.length, category: catTodo.length }, message: `Đã dịch ${menuTodo.length} món và ${catTodo.length} danh mục.` });
-  } catch (e) { console.error("BACKFILL ERROR:", e); res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    console.error("BACKFILL ERROR:", e);
+    res.status(500).json({ message: e.message });
+  }
 });
 
 // ============================================================
-// ERROR HANDLING & HEALTH
+// ERROR HANDLING
 // ============================================================
 app.use((err, req, res, next) => {
   console.error("🔥 GLOBAL ERROR:", req.method, req.path, "→", err.message);
@@ -4147,93 +5274,50 @@ app.use((req, res) => {
   res.status(404).send("Not Found");
 });
 
+// ============================================================
+// HEALTH
+// ============================================================
 const healthHandler = (_, res) =>
   res.json({
     ok: true,
-    name: "Canteen VWA API (V22)",
+    name: "Canteen VWA API (V26)",
     version: BUILD_VERSION,
     timezone: VN_TIMEZONE,
     autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
     chat: { ttlHours: 24, admin: true },
     oauth: { google: GOOGLE_OAUTH_ENABLED, facebook: FACEBOOK_OAUTH_ENABLED, microsoft: MICROSOFT_OAUTH_ENABLED },
     mongo: mongoReady ? "connected" : "not-connected",
-    auth: { mode: "dual (Bearer + HttpOnly Cookie)", refresh: true },
+    auth: { mode: "Bearer-only", refresh: false },
     cloudinary: !!(process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)),
     kds: { sse: true, polling: true, ...sseStats() },
+    counter: { mode: "atomic-mongo", collection: "counters" },
     vercel: !!process.env.VERCEL,
     timestamp: new Date().toISOString(),
   });
-
-
-// ============================================================
-// API THÊM / SỬA / XÓA KHUNG GIỜ
-// ============================================================
-app.post("/api/time-slots", auth(["ADMIN"]), (req, res) => {
-  try {
-    const db = loadDB();
-    const slots = getTimeSlots(db);
-    const { start, end } = req.body;
-    if (!start || !end) return res.status(400).json({ message: "Thiếu giờ bắt đầu/kết thúc" });
-    const id = `${start}-${end}`;
-    if (slots.find(x => x.id === id)) return res.status(400).json({ message: "Khung giờ đã tồn tại" });
-    
-    slots.push({ id, start, end, enabled: true, note: "" });
-    db.settings.timeSlots = slots;
-    saveDB(db);
-    res.status(201).json({ ok: true });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-app.patch("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
-  try {
-    const db = loadDB();
-    const slots = getTimeSlots(db);
-    const idx = slots.findIndex(s => s.id === req.params.id);
-    if (idx < 0) return res.status(404).json({ message: "Không tìm thấy khung giờ" });
-    
-    const { start, end, enabled } = req.body || {};
-    if (start && end) {
-      slots[idx].start = start;
-      slots[idx].end = end;
-      slots[idx].id = `${start}-${end}`;
-    }
-    if (enabled !== undefined) slots[idx].enabled = !!enabled;
-    
-    db.settings.timeSlots = slots;
-    saveDB(db);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
-
-app.delete("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
-  try {
-    const db = loadDB();
-    let slots = getTimeSlots(db);
-    slots = slots.filter(s => s.id !== req.params.id);
-    db.settings.timeSlots = slots;
-    saveDB(db);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
 
 app.get("/", healthHandler);
 app.get("/api", healthHandler);
 app.get("/api/", healthHandler);
 
+// ============================================================
+// BOOTSTRAP
+// ============================================================
 const PORT = process.env.PORT || 3000;
 export default app;
 
 const IS_VERCEL = !!process.env.VERCEL;
 if (!IS_VERCEL) {
   app.listen(PORT, () => {
-    console.log("🚀 API (V22): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
-    console.log("   💬 Chat TTL: 24h | Auth: HttpOnly Cookie");
+    console.log("🚀 API (V26): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+    console.log("   💬 Chat TTL: 24h | Auth: Bearer token");
     console.log("   🖼️  Cloudinary:", process.env.CLOUDINARY_URL ? "ON" : "OFF (fallback menu_images)");
     console.log("   ⚡ KDS: SSE + Polling");
     console.log("   🛡️  Register limit: 3 req/phút/IP");
+    console.log("   🔢 Counter: Atomic (Mongo counters collection)");
+    console.log("   🔄 Orders: " + (supportsTransactions() ? "Transaction (M10+)" : "Saga rollback (M0)"));
   });
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
-  console.log("🚀 API V22 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  console.log("🚀 API V26 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }

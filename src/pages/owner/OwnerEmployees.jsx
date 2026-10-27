@@ -1,19 +1,15 @@
 // ============================================================
-// OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin) V3
+// OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin) V4
 // ============================================================
-// Layout: Card grid (đồng bộ với OwnerMenu)
-//   - Toolbar: search + filter trạng thái + nút "Thêm nhân viên"
-//   - Grid card: avatar + info + ca hôm nay + chấm công + actions
-//   - Pagination 12 NV/trang
-//   - Modal: Xem/Sửa/Thêm + Giao việc + Danh sách task
-//
-// 🔧 Batch 10 FIX:
-//   - Import getToken + guard 5 hàm load (chống spam 401)
-//   - Guard load() bên trong OwnerShiftsInner
-//   - Xóa import OwnerAttendance (dead)
-//   - Xóa state assignShiftModal / pendingModalOpen / pendingShifts (dead)
-//   - Xóa loadPendingShifts() (dead)
-//   - Xóa activeTab state trùng trong OwnerShiftsInner
+// V4 (2025-11) — FINAL FIX:
+//   🔧 FIX #1 (CRITICAL): OwnerShiftsInner.load() setLoading(false) trước
+//                          return khi !getToken → không kẹt skeleton.
+//   🔧 FIX #2 (MEDIUM): Tách state todayAttendances, fetch riêng
+//                        (from=to=today) → KPI không bị ảnh hưởng bởi
+//                        historyMonth filter.
+//   🔧 FIX #3 (MEDIUM): Guard getToken() trong onViewShifts.
+//   🔧 FIX #4 (LOW): Đổi nhãn "Ca làm hôm nay" → "Ca làm sắp tới".
+//   🔧 FIX #5 (LOW): Thay window.confirm bằng setConfirm.
 // ============================================================
 
 import { SkeletonList, Skeleton, SkeletonStats } from "../../components/Skeleton";
@@ -167,7 +163,7 @@ function OwnerEmployeesInner() {
   // ============================================================
 
   const load = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    if (!getToken()) return;
     setLoading(true);
     setError("");
     try {
@@ -182,7 +178,7 @@ function OwnerEmployeesInner() {
   }, [t]);
 
   const loadAllUsers = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    if (!getToken()) return;
     try {
       const data = await api.users.list();
       setAllUsers(Array.isArray(data) ? data : []);
@@ -192,7 +188,7 @@ function OwnerEmployeesInner() {
   }, []);
 
   const loadTodayShifts = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    if (!getToken()) return;
     try {
       const data = await api.shifts.all();
       const today = new Date().toISOString().split("T")[0];
@@ -210,7 +206,7 @@ function OwnerEmployeesInner() {
   }, []);
 
   const loadTodayAttendance = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    if (!getToken()) return;
     try {
       const todayStr = new Date().toISOString().slice(0, 10);
       const data = await api.attendance.all({ from: todayStr, to: todayStr });
@@ -225,7 +221,7 @@ function OwnerEmployeesInner() {
   }, []);
 
   const loadTaskCounts = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    if (!getToken()) return;
     try {
       const data = await api.tasks.all({ status: "pending" });
       const map = {};
@@ -836,6 +832,8 @@ function OwnerEmployeesInner() {
                   onPermissions={() => setPermModal(emp)}
                   onAssign={() => openAssign(emp)}
                   onViewShifts={async () => {
+                    // 🔧 FIX #3: chặn spam 401 khi mất phiên
+                    if (!getToken()) return;
                     setChartWeekOffset(0);
                     try {
                       const data = await api.shifts.all();
@@ -995,7 +993,7 @@ function OwnerEmployeesInner() {
 
                 <InfoRow
                   icon={<Calendar size={16} />}
-                  label={t("Ca làm hôm nay")}
+                  label={t("Ca làm sắp tới")}
                   value={
                     (todayShiftsMap[detailModal.employee.id] || []).length > 0
                       ? (todayShiftsMap[detailModal.employee.id] || []).map(s => s.shift || s).join(", ")
@@ -1831,15 +1829,26 @@ function OwnerEmployeesInner() {
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                 <span style={{ fontSize: 12, fontWeight: 600, color: s.status === 'pending' ? "#f59e0b" : "#172033" }}>{s.shift}</span>
                                 <button
-                                  onClick={async () => {
-                                    if(!window.confirm("Bạn có chắc muốn hủy ca làm này?")) return;
-                                    try {
-                                      await api.shifts.remove(s.id);
-                                      toast("Đã hủy ca làm", "success");
-                                      const updatedShifts = viewShiftsModal.shifts.filter(x => x.id !== s.id);
-                                      setViewShiftsModal({ ...viewShiftsModal, shifts: updatedShifts });
-                                      loadTodayShifts();
-                                    } catch(e) { toast("Lỗi khi hủy ca", "error"); }
+                                  onClick={() => {
+                                    // 🔧 FIX #5: dùng ConfirmDialog thay window.confirm
+                                    setConfirm({
+                                      title: "Hủy ca làm này?",
+                                      message: `Ca "${s.shift}" ngày ${s.date} của ${viewShiftsModal.employee.name} sẽ bị xóa khỏi lịch.`,
+                                      confirmText: "Hủy ca",
+                                      cancelText: "Giữ lại",
+                                      danger: true,
+                                      onConfirm: async () => {
+                                        try {
+                                          await api.shifts.remove(s.id);
+                                          toast("Đã hủy ca làm", "success");
+                                          setViewShiftsModal({ ...viewShiftsModal, shifts: viewShiftsModal.shifts.filter(x => x.id !== s.id) });
+                                          loadTodayShifts();
+                                          setConfirm(null);
+                                        } catch(e) {
+                                          toast("Lỗi khi hủy ca", "error");
+                                        }
+                                      },
+                                    });
                                   }}
                                   style={{ background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "none", padding: 4, borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center" }}
                                   title="Hủy ca này"
@@ -1871,6 +1880,7 @@ function OwnerEmployeesInner() {
     </>
   );
 }
+
 // ============================================================
 // SUB-COMPONENT: EmployeeCard — Card grid (đồng bộ OwnerMenu)
 // ============================================================
@@ -2216,12 +2226,12 @@ const REFRESH_MS = 30000;
 
 function OwnerShiftsInner() {
   const { t } = useI18n();
-  // 🔧 Batch 10 FIX: đã xóa `activeTab` state trùng (chỉ giữ `tab`)
   const [tab, setTab] = useState("today");
 
   const [shifts, setShifts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [attendances, setAttendances] = useState([]);
+  const [todayAttendances, setTodayAttendances] = useState([]); // 🔧 FIX #2
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -2249,16 +2259,20 @@ function OwnerShiftsInner() {
   }, []);
 
   const load = useCallback(async (silent = false) => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    // 🔧 FIX #1 (CRITICAL): setLoading(false) trước return để không kẹt skeleton vĩnh viễn
+    if (!getToken()) { setLoading(false); return; }
     const myReqId = ++reqIdRef.current;
     if (!silent) setLoading(true);
     setError("");
 
     try {
-      const [empsRes, attsRes, shiftsRes] = await Promise.all([
+      const todayStr = getToday();
+      const [empsRes, attsRes, shiftsRes, todayAttsRes] = await Promise.all([
         api.users.list("EMPLOYEE").catch(() => []),
         api.attendance.all({ month: historyMonth }).catch(() => []),
         api.shifts.all({ include_pending: 1 }).catch(() => []),
+        // 🔧 FIX #2: luôn fetch attendance hôm nay riêng (không phụ thuộc historyMonth)
+        api.attendance.all({ from: todayStr, to: todayStr }).catch(() => []),
       ]);
 
       if (myReqId !== reqIdRef.current) return;
@@ -2266,6 +2280,7 @@ function OwnerShiftsInner() {
       setEmployees(Array.isArray(empsRes) ? empsRes : []);
       setAttendances(Array.isArray(attsRes) ? attsRes : []);
       setShifts(Array.isArray(shiftsRes) ? shiftsRes : []);
+      setTodayAttendances(Array.isArray(todayAttsRes) ? todayAttsRes : []);
     } catch (e) {
       if (myReqId === reqIdRef.current) {
         setError(e.message || t("Không tải được dữ liệu ca làm"));
@@ -2286,15 +2301,16 @@ function OwnerShiftsInner() {
   }, [load, tabVisible]);
 
   const stats = useMemo(() => {
+    // 🔧 FIX #2: dùng todayAttendances thay vì attendances
     const today = getToday();
-    const todayAtts = attendances.filter((a) => a.date === today);
+    const todayAtts = todayAttendances.filter((a) => a.date === today);
     return {
       total: employees.length,
       working: todayAtts.filter((a) => a.checkIn && !a.checkOut).length,
       late: todayAtts.filter((a) => a.status === "Đi muộn").length,
       absent: Math.max(0, employees.length - todayAtts.length),
     };
-  }, [employees, attendances]);
+  }, [employees, todayAttendances]);
 
   const todayShifts = useMemo(() => {
     const today = getToday();
