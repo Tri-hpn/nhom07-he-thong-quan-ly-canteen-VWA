@@ -7,7 +7,7 @@ const MAX_RETRY_503 = 5;
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
-// 🔧 FIX: Danh sách các API cho phép gọi khi chưa đăng nhập
+// 🔧 Danh sách các API cho phép gọi khi chưa đăng nhập
 const PUBLIC_PATHS = [
   "/auth/login", "/auth/register", "/auth/refresh", "/auth/logout",
   "/auth/google/callback", "/auth/facebook/callback", "/auth/microsoft-entra-id/callback",
@@ -49,7 +49,7 @@ async function req(path, options = {}, _retryCount = 0) {
   const token = getToken();
   const isPublic = PUBLIC_PATHS.some(p => path.startsWith(p));
 
-  // 🔧 FIX: Chặn request nếu không có token và không phải API công khai
+  // 🔧 Chặn request nếu không có token và không phải API công khai
   if (!token && !isPublic) {
     const err = new Error("Chưa đăng nhập hoặc phiên đã hết hạn");
     err.status = 401;
@@ -98,21 +98,8 @@ async function req(path, options = {}, _retryCount = 0) {
     return req(path, options, _retryCount + 1);
   }
 
-  // 401 → hết phiên (trừ auth endpoints)
-  if (res.status === 401 && token) {
-    const isAuthEndpoint =
-      path.includes("/auth/login") ||
-      path.includes("/auth/register") ||
-      path.includes("/auth/refresh") ||
-      path.includes("/auth/logout") ||
-      path.includes("/auth/me") ||
-      path.includes("/auth/password") ||
-      /\/auth\/[^/]+\/callback/.test(path);
-    if (!isAuthEndpoint) {
-      clearToken();
-      dispatchAuthExpired();
-    }
-  }
+  // 🔧 BỎ logic tự động xóa token ở đây. AuthContext sẽ xử lý khi gọi /auth/me.
+  // if (res.status === 401 && token) { ... clearToken() ... }
 
   const contentType = res.headers.get("content-type") || "";
   let data;
