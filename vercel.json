@@ -6,15 +6,9 @@
   "outputDirectory": "dist",
   "installCommand": "npm install --include=dev",
   "regions": ["sin1"],
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 60,
-      "memory": 1024
-    }
-  },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],
