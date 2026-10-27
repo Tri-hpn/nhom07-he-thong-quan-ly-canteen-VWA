@@ -1,21 +1,5 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V26 - ATOMIC + SAGA)
-// ============================================================
-// V26 (Batch 16 - FIX RACE + SAGA):
-//   🔧 FIX C1: Thêm getNextSequence() — atomic counter cho orders.id
-//   🔧 FIX C2: ensureIndexes tạo unique index orders.id + init counter
-//   🔧 FIX C3a: POST /api/orders dùng getNextSequence thay nextId
-//   🔧 FIX C3b: Saga rollback cho fallback M0 (không transaction)
-//
-// V25 (Batch 15):
-//   🔧 FIX #1: POST /api/orders — xóa block duplicate const total/isWalletPay
-//   🔧 FIX #2: POST /api/reviews — xóa block duplicate
-//   🔧 FIX #3: Thêm recordPointsTransaction (missing helper)
-//   🔧 FIX #4: Guard supportsTransactions() cho Mongo M0
-//   🔧 FIX #5: Logout dùng access+sid (không phải refresh+jti)
-//   🔧 FIX #6: Xóa duplicate chat route
-//   🔧 FIX #7: Xóa duplicate time-slots block
-//   🔧 FIX #8: /api/settings PUT await saveDBOrThrow
+// SERVER-JSON.JS — Backend Express (V27 - FIX DIRECT MONGO QUERY)
 // ============================================================
 
 import express from "express";
@@ -80,7 +64,7 @@ import {
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v26-atomic-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v27-direct-mongo-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -211,12 +195,6 @@ function generateOrderCode(db) {
   return code;
 }
 
-// ============================================================
-// 🔧 FIX C1 — ATOMIC SEQUENCE (fix race nextId Vercel multi-container)
-// ============================================================
-// Trước đây: nextId(db.orders) → đọc cache RAM từng container → race → trùng id.
-// Sau: dùng Mongo findOneAndUpdate $inc → atomic ở DB level, không race.
-// ============================================================
 async function getNextSequence(mongoDb, name) {
   if (!mongoDb) return null;
   try {
@@ -225,7 +203,6 @@ async function getNextSequence(mongoDb, name) {
       { $inc: { seq: 1 } },
       { upsert: true, returnDocument: "after" }
     );
-    // Mongo driver v5: res.value | v6: res trực tiếp
     const doc = res?.value || res;
     const seq = Number(doc?.seq);
     return Number.isFinite(seq) && seq > 0 ? seq : null;
@@ -234,7 +211,7 @@ async function getNextSequence(mongoDb, name) {
     return null;
   }
 }
-// ============================================================
+
 const TEMP_PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 function generateTempPassword(len = 8) {
   const bytes = crypto.randomBytes(len);
@@ -361,7 +338,6 @@ function getPointsConfig(db) {
   return mergeConfig(db.points_config);
 }
 
-// 🔧 FIX #3: recordPointsTransaction (missing in original)
 function recordPointsTransaction(db, user, delta, reason, extra = {}) {
   if (!user || !Number.isFinite(Number(delta)) || Number(delta) === 0) return;
   if (!Array.isArray(db.points_history)) db.points_history = [];
@@ -389,9 +365,6 @@ function recordPointsTransaction(db, user, delta, reason, extra = {}) {
   });
 }
 
-// ============================================================
-// MONGODB SETUP
-// ============================================================
 const MONGO_URI = process.env.MONGO_URI;
 let dbCache = null;
 let mongoReady = false;
@@ -520,62 +493,39 @@ function buildSeedData() {
   };
 }
 
-// ============================================================
-// 🔧 FIX C2 — ensureIndexes: Unique index orders.id + Init counter
-// ============================================================
-// - Unique index: chặn insert trùng id ở DB level (kể cả race multi-container)
-// - Init counter: lấy max(orders.id) làm giá trị khởi đầu cho counters.orders.seq
-// Nếu có duplicate → log warning, không throw (server vẫn khởi động), admin tự dedupe.
-// ============================================================
 async function ensureIndexes(db) {
   try {
-    // 🔧 FIX C2a: Unique index orders.id — chặn race vĩnh viễn
     try {
       await db.collection("orders").createIndex({ id: 1 }, { unique: true });
       console.log("✅ [ensureIndexes] Unique index orders.id OK");
     } catch (e) {
-      console.warn(
-        "[ensureIndexes] KHÔNG tạo được unique index orders.id — có thể có duplicate. Chạy script dedupe trước:",
-        e.message
-      );
+      console.warn("[ensureIndexes] KHÔNG tạo được unique index orders.id:", e.message);
     }
 
-    // 🔧 FIX C2b: Init counter từ max(orders.id) nếu chưa có
     try {
       const maxDoc = await db.collection("orders").find({}).sort({ id: -1 }).limit(1).toArray();
       const maxId = Number(maxDoc[0]?.id) || 0;
       const counter = await db.collection("counters").findOne({ _id: "orders" });
       if (!counter) {
         await db.collection("counters").insertOne({ _id: "orders", seq: maxId });
-        console.log(`✅ [counter] Init orders.seq = ${maxId}`);
       } else if (Number(counter.seq) < maxId) {
         await db.collection("counters").updateOne({ _id: "orders" }, { $set: { seq: maxId } });
-        console.log(`✅ [counter] Sync orders.seq = ${maxId} (was ${counter.seq})`);
-      } else {
-        console.log(`✅ [counter] orders.seq = ${counter.seq} (OK)`);
       }
-    } catch (e) {
-      console.warn("[counter] Init fail:", e.message);
-    }
+    } catch (e) {}
 
-    // ── Sessions index (giữ nguyên) ──
     try {
       const sessColl = db.collection("sessions");
       const sessIndexes = await sessColl.indexes().catch(() => []);
       for (const idx of sessIndexes) {
         if (idx.unique && idx.key && (idx.key.user_id !== undefined)) {
-          console.warn(`[ensureIndexes] Drop unique index ${idx.name} trên sessions.user_id`);
           await sessColl.dropIndex(idx.name).catch(() => {});
         }
       }
       await sessColl.createIndex({ jti: 1 }, { unique: true }).catch(() => {});
       await sessColl.createIndex({ user_id: 1 }).catch(() => {});
       await sessColl.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }).catch(() => {});
-    } catch (e) {
-      console.warn("[ensureIndexes] sessions index setup:", e.message);
-    }
+    } catch (e) {}
 
-    // ── Các index phụ (giữ nguyên) ──
     const idx = [
       ["orders", { customer_id: 1, created_at: -1 }],
       ["orders", { status: 1 }],
@@ -595,9 +545,7 @@ async function ensureIndexes(db) {
     for (const [coll, spec] of idx) {
       try { await db.collection(coll).createIndex(spec); } catch (e) {}
     }
-  } catch (e) {
-    console.warn("ensureIndexes failed:", e.message);
-  }
+  } catch (e) {}
 }
 
 async function initMongo() {
@@ -612,7 +560,6 @@ async function initMongo() {
         return false;
       }
 
-      console.log("🔌 Đang kết nối MongoDB...");
       await mongoose.connect(MONGO_URI, {
         serverSelectionTimeoutMS: 30000,
         socketTimeoutMS: 60000,
@@ -624,9 +571,7 @@ async function initMongo() {
         retryReads: true,
       });
 
-      console.log("✅ Đã kết nối MongoDB");
       const db = mongoose.connection.db;
-
       await ensureIndexes(db);
 
       const seed = buildSeedData();
@@ -704,8 +649,6 @@ async function initMongo() {
       const chatChanged = ensureChatSchema(dbCache);
       if (chatChanged) await saveDBStrict(dbCache);
 
-      console.log("✅ MONGO READY");
-
       setImmediate(() => {
         try { migrateMenuNutrition(); }
         catch (e) { console.error("migrateMenuNutrition bg:", e.message); }
@@ -728,9 +671,7 @@ async function initMongo() {
 
   return mongoConnecting;
 }
-// ============================================================
-// LOAD DB
-// ============================================================
+
 function loadDB() {
   if (dbCache) return dbCache;
   initMongo().catch(() => {});
@@ -754,9 +695,6 @@ function buildEmptyShape() {
   };
 }
 
-// ============================================================
-// SAVE DB
-// ============================================================
 let saveQueue = Promise.resolve();
 const UNIQUE_KEY_BY_COLL = { wallets: "user_id", inventory: "code", student_cards: "user_id" };
 const lastSavedJson = new Map();
@@ -789,7 +727,6 @@ async function _writeCollection(db, key, value) {
       } catch (e) {
         const writeErrors = e.result?.getWriteErrors?.() || e.writeErrors || [];
         if (writeErrors.length > 0) throw e;
-        console.warn(`bulkWrite ${key}: ${writeErrors.length}/${ops.length} ops failed`);
       }
     }
 
@@ -822,14 +759,14 @@ async function _flushChanges(db, data) {
 
     let json;
     try { json = JSON.stringify(value); }
-    catch (e) { console.error(`saveDB ${key} serialize error:`, e.message); continue; }
+    catch (e) { continue; }
 
     if (lastSavedJson.get(key) === json) continue;
 
     tasks.push(
       _writeCollection(db, key, value)
         .then(() => lastSavedJson.set(key, json))
-        .catch((e) => { hadError = e; console.error(`saveDB ${key} write error:`, e.message); })
+        .catch((e) => { hadError = e; })
     );
   }
 
@@ -844,16 +781,12 @@ function enqueueSaveDB(data) {
   const operation = saveQueue
     .catch(() => {})
     .then(() => _flushChanges(mongoDb, data));
-  saveQueue = operation.catch((e) => {
-    console.error("Mongo save error:", e.message);
-  });
+  saveQueue = operation.catch(() => {});
   return operation;
 }
 
 function saveDB(data) {
-  return enqueueSaveDB(data).catch((e) => {
-    console.error("Mongo save error:", e.message);
-  });
+  return enqueueSaveDB(data).catch(() => {});
 }
 
 async function saveDBOrThrow(data) {
@@ -880,9 +813,6 @@ function invalidateStatsCache() {
   statsCache.expiresAt = 0;
 }
 
-// ============================================================
-// NOTIFICATIONS
-// ============================================================
 function notifyNewOrder(db, order) {
   if (!db.notifications) db.notifications = [];
   const staff = db.users.filter((u) => u.role === "ADMIN" || u.role === "EMPLOYEE");
@@ -996,9 +926,6 @@ function rollbackCancelledOrder(db, order) {
   order._stock_rolled_back = true;
 }
 
-// ============================================================
-// EXPRESS APP SETUP
-// ============================================================
 const app = express();
 app.set("trust proxy", 1);
 
@@ -1006,7 +933,7 @@ app.use(cors({
   origin: [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://canteenvwa.vercel.app",
+    "https://canteenwa.vercel.app",
     /\.vercel\.app$/,
     /\.onrender\.com$/,
   ],
@@ -1062,7 +989,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// COLD START INTERCEPTOR: Biến 503 GET thành 200 rỗng
 app.use((req, res, next) => {
   const origJson = res.json.bind(res);
   res.json = function(body) {
@@ -1099,7 +1025,6 @@ app.get("/api/uploads/menu/:id", async (req, res) => {
     res.setHeader("ETag", '"' + req.params.id + "-" + image.rev + '"');
     res.send(image.buffer);
   } catch (e) {
-    console.error(`[Image Error] ID ${req.params.id}:`, e.message);
     res.setHeader("Content-Type", "image/svg+xml");
     res.send(
       `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='#f5f7fb' width='100' height='100'/><text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text></svg>`
@@ -1117,9 +1042,6 @@ if (!JWT_SECRET) {
 }
 const EFFECTIVE_JWT_SECRET = JWT_SECRET || "DEV_ONLY_FALLBACK_SECRET_DO_NOT_USE_IN_PROD";
 
-// ============================================================
-// AUTH MIDDLEWARE — Async + Wait for Mongo
-// ============================================================
 function auth(roles = []) {
   return async (req, res, next) => {
     if (MONGO_URI && !mongoReady) {
@@ -1184,7 +1106,7 @@ function auth(roles = []) {
 }
 
 // ============================================================
-// AUTH ENDPOINTS
+// AUTH ENDPOINTS (FIXED: DIRECT MONGO QUERY)
 // ============================================================
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
 const registerLimiter = rateLimit({ windowMs: 60_000, max: 3 });
@@ -1196,14 +1118,31 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     if (!emailNorm || !password)
       return res.status(400).json({ message: "Thiếu email/mật khẩu" });
 
-    const db = loadDB();
-    const user = db.users.find((u) => normalizeEmail(u.email) === emailNorm);
+    let user = null;
+    // 🔧 FIX TRIỆT ĐỂ: Luôn query trực tiếp Mongo cho API Login
+    if (mongoReady && mongoose.connection.db) {
+      const dbUser = await mongoose.connection.db.collection("users").findOne({ email: emailNorm });
+      if (dbUser) user = { ...dbUser, _id: dbUser._id };
+    }
+    if (!user) {
+      const db = loadDB();
+      user = db.users.find((u) => normalizeEmail(u.email) === emailNorm);
+    }
+
     if (!user)
       return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
 
     const ok = bcrypt.compareSync(password, user.password);
     if (!ok)
       return res.status(401).json({ message: "Sai tài khoản hoặc mật khẩu" });
+
+    const db = loadDB();
+    // Đảm bảo user này có trong dbCache hiện tại để các luồng sau dùng
+    if (mongoReady) {
+      const idx = db.users.findIndex(u => String(u.id) === String(user.id));
+      if (idx >= 0) db.users[idx] = user;
+      else db.users.push(user);
+    }
 
     const filled = autoFillFromCode(db, user);
     if (filled) await saveDBOrThrow(db);
@@ -1279,7 +1218,6 @@ app.post("/api/auth/refresh", async (req, res) => {
   });
 });
 
-// 🔧 FIX #5: Logout dùng "access" + sid (không phải "refresh" + jti)
 app.post("/api/auth/logout", async (req, res) => {
   try {
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
@@ -1316,9 +1254,22 @@ app.put("/api/auth/password", auth(), async (req, res) => {
 });
 
 app.get("/api/auth/me", auth(), async (req, res) => {
-  const db = loadDB();
-  const u = findByIdOrMongo(db.users, req.user.id);
+  let u = null;
+  if (mongoReady && mongoose.connection.db) {
+    u = await mongoose.connection.db.collection("users").findOne({ id: Number(req.user.id) });
+  }
+  if (!u) {
+    const db = loadDB();
+    u = findByIdOrMongo(db.users, req.user.id);
+  }
   if (!u) return res.status(404).json({ message: "Không tìm thấy user" });
+
+  const db = loadDB();
+  // Cập nhật lại vào cache
+  const idx = db.users.findIndex(x => String(x.id) === String(u.id));
+  if (idx >= 0) db.users[idx] = u;
+  else db.users.push(u);
+
   const changed = autoFillFromCode(db, u);
   if (changed) await saveDBOrThrow(db);
   res.json({
@@ -4090,7 +4041,6 @@ app.get("/api/chat/admin/conversations", auth(["ADMIN"]), async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// 🔧 FIX #6: CHỈ 1 route duy nhất (không có bản duplicate)
 app.get("/api/chat/admin/messages/:userId", auth(["ADMIN"]), async (req, res) => {
   try {
     const targetId = normalizeUserId(req.params.userId);
@@ -4875,7 +4825,6 @@ app.put("/api/permissions/:userId", auth(["ADMIN"]), async (req, res) => {
 
 // ============================================================
 // SETTINGS
-// 🔧 FIX #8: PUT /api/settings dùng await saveDBOrThrow
 // ============================================================
 app.get("/api/settings", auth(), (req, res) => {
   const db = loadDB();
@@ -4921,7 +4870,6 @@ app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
 
 // ============================================================
 // TIME SLOTS
-// 🔧 FIX #7: CHỈ 1 block duy nhất (async + await), không có duplicate
 // ============================================================
 app.get("/api/time-slots", (req, res) => {
   try {
@@ -5280,7 +5228,7 @@ app.use((req, res) => {
 const healthHandler = (_, res) =>
   res.json({
     ok: true,
-    name: "Canteen VWA API (V26)",
+    name: "Canteen VWA API (V27)",
     version: BUILD_VERSION,
     timezone: VN_TIMEZONE,
     autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
@@ -5308,7 +5256,7 @@ export default app;
 const IS_VERCEL = !!process.env.VERCEL;
 if (!IS_VERCEL) {
   app.listen(PORT, () => {
-    console.log("🚀 API (V26): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+    console.log("🚀 API (V27): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
     console.log("   💬 Chat TTL: 24h | Auth: Bearer token");
     console.log("   🖼️  Cloudinary:", process.env.CLOUDINARY_URL ? "ON" : "OFF (fallback menu_images)");
     console.log("   ⚡ KDS: SSE + Polling");
@@ -5318,6 +5266,6 @@ if (!IS_VERCEL) {
   });
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
-  console.log("🚀 API V26 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  console.log("🚀 API V27 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }
