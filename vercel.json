@@ -16,6 +16,16 @@
       }
     }
   ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": [
+        "autoTranslate.js",
+        "menuImageStore.js",
+        "middleware/**",
+        "src/lib/**"
+      ]
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
