@@ -3760,14 +3760,70 @@ app.put("/api/settings", auth(["ADMIN"]), async (req, res) => {
   }
 });
 
+
+app.post("/api/time-slots", auth(["ADMIN"]), async (req, res) => {
+  try {
+    const db = loadDB();
+    const slots = getTimeSlots(db);
+    const { start, end } = req.body;
+    if (!start || !end) return res.status(400).json({ message: "Thiếu dữ liệu" });
+    if (start >= end) return res.status(400).json({ message: "Giờ kết thúc phải lớn hơn giờ bắt đầu" });
+    const id = start + " - " + end;
+    if (slots.find(x => x.id === id || (x.start === start && x.end === end))) {
+      return res.status(400).json({ message: "Khung giờ này đã tồn tại trong hệ thống!" });
+    }
+    slots.push({ id, start, end, enabled: true, note: "" });
+    db.settings.timeSlots = slots;
+    await saveDBOrThrow(db);
+    res.status(201).json({ ok: true, slot: { id, start, end, enabled: true } });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+app.delete("/api/time-slots/:id", auth(["ADMIN"]), (req, res) => {
+  try {
+    const db = loadDB();
+    let slots = getTimeSlots(db);
+    slots = slots.filter(s => s.id !== req.params.id);
+    db.settings.timeSlots = slots;
+    saveDB(db);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 app.get("/api/time-slots", (req, res) => { try { const db = loadDB(); const slots = getTimeSlots(db); res.json([...slots].sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")))); } catch (e) { res.status(500).json({ message: e.message }); } });
 
 app.patch("/api/time-slots/:id", auth(["ADMIN"]), async (req, res) => {
   try {
-    const db = loadDB(); const slots = getTimeSlots(db); const slotId = req.params.id; const idx = slots.findIndex((s) => s.id === slotId);
-    if (idx < 0) return res.status(404).json({ message: "Khung giờ không tồn tại" });
-    const { enabled, note } = req.body || {}; if (enabled !== undefined) slots[idx].enabled = !!enabled; if (note !== undefined) slots[idx].note = String(note).slice(0, 100).trim();
-    db.settings.timeSlots = slots; await saveDBOrThrow(db); res.json({ ok: true, slot: slots[idx] });
+    const db = loadDB();
+    const slots = getTimeSlots(db);
+    const oldId = req.params.id;
+    const idx = slots.findIndex(s => s.id === oldId);
+    
+    if (idx < 0) return res.status(404).json({ message: "Không tìm thấy khung giờ" });
+
+    const { start, end, enabled } = req.body || {};
+    
+    if (start && end) {
+      if (start >= end) return res.status(400).json({ message: "Giờ kết thúc phải lớn hơn giờ bắt đầu" });
+      
+      const newId = start + " - " + end;
+      // Kiểm tra trùng lặp với khung giờ khác (trừ chính nó)
+      const isDuplicate = slots.find((s, i) => i !== idx && (s.id === newId || (s.start === start && s.end === end)));
+      if (isDuplicate) {
+        return res.status(400).json({ message: "Khung giờ này đã tồn tại trong hệ thống!" });
+      }
+      
+      slots[idx].start = start;
+      slots[idx].end = end;
+      slots[idx].id = newId;
+    }
+    
+    if (enabled !== undefined) slots[idx].enabled = !!enabled;
+
+    db.settings.timeSlots = slots;
+    await saveDBOrThrow(db);
+    
+    res.json({ ok: true, slot: slots[idx] });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 

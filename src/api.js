@@ -1,4 +1,4 @@
-// src/api.js
+﻿// src/api.js
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
@@ -54,17 +54,17 @@ async function req(path, options = {}, _retryCount = 0) {
       ...options,
       headers,
       cache: "no-store",
-      credentials: "omit", // 🔴 KHÔNG gửi cookie nữa
+      credentials: "omit", // đŸ”´ KHĂ”NG gá»­i cookie ná»¯a
       signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === "AbortError") { const err = new Error("Yêu cầu quá thời gian."); err.status = 0; throw err; }
+    if (e.name === "AbortError") { const err = new Error("YĂªu cáº§u quĂ¡ thá»i gian."); err.status = 0; throw err; }
     if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
       return req(path, options, _retryCount + 1);
     }
-    const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown")); err.status = 0; throw err;
+    const err = new Error("KhĂ´ng káº¿t ná»‘i Ä‘Æ°á»£c mĂ¡y chá»§: " + (e.message || "unknown")); err.status = 0; throw err;
   } finally { clearTimeout(timeoutId); }
 
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
@@ -72,7 +72,7 @@ async function req(path, options = {}, _retryCount = 0) {
     return req(path, options, _retryCount + 1);
   }
 
-  // 🔴 KHÔNG tự động refresh nữa — 401 là hết phiên
+  // đŸ”´ KHĂ”NG tá»± Ä‘á»™ng refresh ná»¯a â€” 401 lĂ  háº¿t phiĂªn
   if (res.status === 401 && token) {
     const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/refresh") || path.includes("/auth/logout") || path.includes("/auth/me") || path.includes("/auth/");
     if (!isAuthEndpoint) {
@@ -115,12 +115,12 @@ export const api = {
   },
   stats: () => req("/stats"),
   menu: {
-    list: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams(); if (q) p.set("q", q); if (category && category !== "Tất cả") p.set("category", category); if (sort) p.set("sort", sort);
+    list: (q = "", category = "Táº¥t cáº£", sort = "popular") => {
+      const p = new URLSearchParams(); if (q) p.set("q", q); if (category && category !== "Táº¥t cáº£") p.set("category", category); if (sort) p.set("sort", sort);
       const qs = p.toString(); return req("/menu" + (qs ? "?" + qs : ""));
     },
-    listActive: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams(); p.set("active_only", "1"); if (q) p.set("q", q); if (category && category !== "Tất cả") p.set("category", category); if (sort) p.set("sort", sort);
+    listActive: (q = "", category = "Táº¥t cáº£", sort = "popular") => {
+      const p = new URLSearchParams(); p.set("active_only", "1"); if (q) p.set("q", q); if (category && category !== "Táº¥t cáº£") p.set("category", category); if (sort) p.set("sort", sort);
       return req("/menu?" + p.toString());
     },
     get: (id) => req(`/menu/${id}`),
@@ -132,7 +132,7 @@ export const api = {
   orders: {
     create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
     myOrders: () => req("/orders/me"),
-    all: (status = "Tất cả") => { const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : ""; return req("/orders" + qs); },
+    all: (status = "Táº¥t cáº£") => { const qs = status && status !== "Táº¥t cáº£" ? `?status=${encodeURIComponent(status)}` : ""; return req("/orders" + qs); },
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received: (id) => req(`/orders/${id}/received`, { method: "POST" }),
     lookupQr: (orderCode) => req("/orders/scan-pickup/lookup", { method: "POST", body: JSON.stringify({ orderCode }) }),
@@ -299,7 +299,9 @@ export const api = {
     update: (data) => req("/settings", { method: "PUT", body: JSON.stringify(data) }),
   },
   timeSlots: {
+    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
     list: () => req("/time-slots"),
+    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },

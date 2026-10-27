@@ -16,6 +16,7 @@ const money = (n) => (Number(n) || 0).toLocaleString("vi-VN") + "đ";
 export default function OwnerDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [chartRange, setChartRange] = useState("7d");
   const [data, setData] = useState({
     orders: [], menu: [], users: [], vouchers: [], inventory: []
   });
@@ -47,14 +48,19 @@ export default function OwnerDashboard() {
   }, []);
 
   const stats = useMemo(() => {
-    const todayObj = new Date();
-    const today = todayObj.toISOString().split("T")[0];
+    const getLocalDateStrKPI = (dateInput) => {
+      const d = new Date(dateInput);
+      if (isNaN(d.getTime())) return "";
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    
+    const today = getLocalDateStrKPI(new Date());
     const yesterdayObj = new Date();
     yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-    const yesterday = yesterdayObj.toISOString().split("T")[0];
+    const yesterday = getLocalDateStrKPI(yesterdayObj);
     
     // 1. Doanh thu & Đơn hàng (Hôm nay vs Hôm qua)
-    const getOrdersByDate = (dateStr) => data.orders.filter(o => o.created_at?.startsWith(dateStr));
+    const getOrdersByDate = (dateStr) => data.orders.filter(o => getLocalDateStrKPI(o.created_at) === dateStr);
     const todayOrdersList = getOrdersByDate(today);
     const yesterdayOrdersList = getOrdersByDate(yesterday);
 
@@ -80,19 +86,40 @@ export default function OwnerDashboard() {
     const lowStockText = lowStockNames.length > 0 ? `Cần bổ sung: ${lowStockNames.join(", ")}...` : "Tồn kho đang ở mức an toàn.";
 
     // 4. Biểu đồ 7 ngày
+    // Hàm lấy ngày chuẩn theo giờ Việt Nam
+    const getLocalDateStr = (dateInput) => {
+      const d = new Date(dateInput);
+      if (isNaN(d.getTime())) return "";
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dt = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + dt;
+    };
+
     const chartData = [];
-    for (let i = 6; i >= 0; i--) {
+    let daysToShow = chartRange === "today" ? 1 : chartRange === "7d" ? 7 : 30;
+    let totalChartRev = 0;
+    let totalChartOrd = 0;
+
+    for (let i = daysToShow - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
-      const dayOrders = data.orders.filter(o => o.created_at?.startsWith(dateStr));
-      const dayRev = dayOrders.filter(o => o.status === "Hoàn thành").reduce((sum, o) => sum + (o.total || 0), 0);
+      const dateStr = getLocalDateStr(d);
+      
+      const dayOrders = data.orders.filter(o => o.status === "Hoàn thành" && getLocalDateStr(o.created_at) === dateStr);
+      const dayRev = dayOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+      
+      totalChartRev += dayRev;
+      totalChartOrd += dayOrders.length;
+
       chartData.push({
-        name: `${d.getDate()}/${d.getMonth() + 1}`,
+        name: d.getDate() + '/' + (d.getMonth() + 1),
         revenue: dayRev,
         orders: dayOrders.length
       });
     }
+    const avgChartRev = daysToShow > 0 ? Math.round(totalChartRev / daysToShow) : 0;
+    
 
     // 5. Top ngành sinh viên
     const majorMap = {};
@@ -219,10 +246,31 @@ export default function OwnerDashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 24, alignItems: "start" }}>
         
         <div style={cardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "#172033" }}>Doanh thu 7 ngày gần nhất</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "#172033" }}>Doanh thu & đơn hàng</div>
             <div style={{ background: "#f1f5f9", padding: 4, borderRadius: 8, display: "flex", gap: 4 }}>
-              <button style={{ padding: "4px 12px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, fontWeight: 600, fontSize: 12 }}>7 ngày</button>
+              {[
+                { id: "today", label: "Hôm nay" },
+                { id: "7d", label: "7 ngày" },
+                { id: "30d", label: "30 ngày" }
+              ].map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => setChartRange(r.id)}
+                  style={{
+                    padding: "4px 12px",
+                    background: chartRange === r.id ? "#fff" : "transparent",
+                    border: chartRange === r.id ? "1px solid #e2e8f0" : "1px solid transparent",
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    color: chartRange === r.id ? "#172033" : "#64748b"
+                  }}
+                >
+                  {r.label}
+                </button>
+              ))}
             </div>
           </div>
           <div style={{ height: 300, width: "100%" }}>
@@ -230,7 +278,7 @@ export default function OwnerDashboard() {
               <ComposedChart data={stats.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(val) => val === 0 ? "0đ" : `${val / 1000}k`} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(val) => val === 0 ? "0đ" : (val >= 1000000 ? `${(val/1000000).toFixed(1)}M` : `${val/1000}k`)} />
                 <RechartsTooltip formatter={(value, name) => [name === "Doanh thu" ? money(value) : value, name]} />
                 <Area type="monotone" dataKey="revenue" name="Doanh thu" stroke="#3b82f6" fillOpacity={0.1} fill="#3b82f6" strokeWidth={2} />
                 <Line type="monotone" dataKey="orders" name="Số đơn" stroke="#10b981" strokeWidth={0} dot={{ r: 4 }} activeDot={{ r: 6 }} />

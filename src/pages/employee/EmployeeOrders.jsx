@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // EMPLOYEEORDERS.JSX — KDS Kanban (V17 - REAL-TIME SSE)
 // ============================================================
 // V17 (2026-10):
@@ -149,6 +149,24 @@ function playDing() {
 // MAIN COMPONENT
 // ============================================================
 export default function EmployeeOrders({ isAdmin = false }) {
+
+  const generateTimeSlots = () => {
+    const slots = [];
+    for (let h = 7; h <= 19; h++) {
+      for (let m of ["00", "30"]) {
+        if (h === 19 && m === "30") break; // Dừng ở 19:00
+        const start = `${String(h).padStart(2, '0')}:${m}`;
+        const endH = m === "30" ? h + 1 : h;
+        const endM = m === "30" ? "00" : "30";
+        const end = `${String(endH).padStart(2, '0')}:${endM}`;
+        slots.push(`${start} - ${end}`);
+      }
+    }
+    return slots;
+  };
+  const allTimeSlots = generateTimeSlots();
+
+
   const { t } = useI18n();
   const { user } = useAuth();
 
@@ -167,6 +185,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const [stationFilter, setStationFilter] = useState(() => normalizeStation(stationParam));
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [timeframeFilter, setTimeframeFilter] = useState("all");
+  const [pickupTimeFilter, setPickupTimeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [advancingId, setAdvancingId] = useState(null);
@@ -358,32 +377,69 @@ export default function EmployeeOrders({ isAdmin = false }) {
     return { ...byStatus, completedTotal };
   }, [orders]);
 
-  const applyFilter = useCallback((list) => {
-    let result = list;
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      result = result.filter((o) => {
-        const code = (o.code || "").toLowerCase();
-        const name = (o.customer_name || "").toLowerCase();
-        const mssv = (o.customer_mssv || "").toLowerCase();
-        const email = (o.customer_email || "").toLowerCase();
-        return code.includes(q) || name.includes(q) || mssv.includes(q) || email.includes(q);
-      });
-    }
-    if (paymentFilter !== "all") result = result.filter((o) => normalizePayment(o.payment) === paymentFilter);
-    if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
-    if (timeframeFilter !== "all") {
-      const range = TIMEFRAMES[timeframeFilter];
-      if (range) {
-        result = result.filter((o) => {
-          const mins = getOrderPickupMinutes(o);
-          if (mins === null) return true;
-          return mins >= range[0] && mins < range[1];
+  const applyFilter = useCallback(
+    (list) => {
+      let res = [...list];
+
+      // 1. Tìm kiếm (Mã đơn, Tên KH, SĐT, MSSV)
+      const q = search.trim().toLowerCase();
+      if (q) {
+        res = res.filter((o) => {
+          const code = (o.code || "").toLowerCase();
+          const name = (o.customer_name || "").toLowerCase();
+          const phone = (o.customer_phone || "").toString();
+          const mssv = (o.student_code || "").toString();
+          return code.includes(q) || name.includes(q) || phone.includes(q) || mssv.includes(q);
         });
       }
-    }
-    return result;
-  }, [search, paymentFilter, statusFilter, timeframeFilter]);
+
+      // 2. Lọc theo khung giờ nhận
+      if (pickupTimeFilter) {
+        res = res.filter((o) => {
+          const pt = (o.pickupTime || o.pickup_time || o.note || "").toLowerCase();
+          return pt.includes(pickupTimeFilter.toLowerCase());
+        });
+      }
+
+      // 3. Lọc theo thời gian (Real-time, fix lỗi múi giờ)
+      if (timeframeFilter !== "all") {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        
+        res = res.filter((o) => {
+          const timeStr = o.created_at || o.updated_at;
+          if (!timeStr) return false;
+          const orderTime = new Date(timeStr).getTime();
+          
+          if (timeframeFilter === "today") return orderTime >= todayStart;
+          if (timeframeFilter === "7days") return orderTime >= todayStart - (6 * 24 * 60 * 60 * 1000);
+          if (timeframeFilter === "30days") return orderTime >= todayStart - (29 * 24 * 60 * 60 * 1000);
+          return true;
+        });
+      }
+
+      // 4. Lọc theo thanh toán
+      if (paymentFilter && paymentFilter !== "all") {
+        const pf = paymentFilter.toLowerCase();
+        res = res.filter((o) => {
+          const op = (o.payment || "").toLowerCase();
+          if (pf.includes("vietqr") || pf.includes("qr")) return op.includes("vietqr") || op.includes("qr") || op.includes("bank");
+          if (pf.includes("ví") || pf.includes("vi ")) return op.includes("ví") || op.includes("wallet");
+          if (pf.includes("tiền mặt") || pf.includes("cash")) return op.includes("tiền mặt") || op.includes("cash");
+          if (pf.includes("thẻ") || pf.includes("card")) return op.includes("thẻ") || op.includes("card");
+          return op === pf; // Fallback nếu không khớp các từ khóa trên
+        });
+      }
+
+      // 5. Lọc theo trạng thái
+      if (statusFilter && statusFilter !== "all") {
+        res = res.filter((o) => o.status === statusFilter);
+      }
+
+      return res;
+    },
+    [search, pickupTimeFilter, timeframeFilter, paymentFilter, statusFilter]
+  );
 
   const filteredRows = useMemo(() => ({
     pending: applyFilter(rows.pending),
@@ -668,11 +724,18 @@ export default function EmployeeOrders({ isAdmin = false }) {
               <input type="text" className="kds-filter__search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Tìm theo Mã Đơn (#ORD-), Tên SV hoặc MSSV...")} />
             </div>
             <div className="kds-filter__select-wrap">
-              <select className="kds-filter__select" value={timeframeFilter} onChange={(e) => setTimeframeFilter(e.target.value)}>
-                <option value="all">{t("Mọi khung giờ nhận")}</option>
-                <option value="1130">{t("11:30 - 12:00 (Cao điểm)")}</option>
-                <option value="1200">{t("12:00 - 12:30")}</option>
-                <option value="1230">{t("12:30 - 13:00")}</option>
+              <select
+                value={pickupTimeFilter || ""}
+                onChange={(e) => setPickupTimeFilter(e.target.value)}
+                className="kds-filter__select"
+                style={{ minWidth: 180 }}
+              >
+                <option value="">Mọi khung giờ nhận</option>
+                {allTimeSlots.map((slot) => (
+                  <option key={slot} value={slot}>
+                    {slot} {slot === "11:30 - 12:00" ? "(Cao điểm)" : ""}
+                  </option>
+                ))}
               </select>
               <ChevronDown size={16} />
             </div>
@@ -995,3 +1058,4 @@ function CompletedStripItem({ order, t }) {
     </div>
   );
 }
+

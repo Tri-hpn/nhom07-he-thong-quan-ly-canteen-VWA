@@ -48,17 +48,19 @@ const PAGE_SIZE = 6;
 
 // Time slot sessions
 const SESSIONS = [
-  { id: "morning",   label: "Buổi sáng",  icon: Sunrise, color: "#f59e0b", from: "07:00", to: "11:00" },
+  { id: "morning",   label: "Buổi sáng",  icon: Sunrise, color: "#f59e0b", from: "00:00", to: "11:00" },
   { id: "noon",      label: "Buổi trưa",  icon: Sun,     color: "#2634d5", from: "11:00", to: "14:00" },
-  { id: "afternoon", label: "Buổi chiều", icon: Sunset,  color: "#8b5cf6", from: "14:00", to: "18:30" },
+  { id: "afternoon", label: "Buổi chiều", icon: Sunset,  color: "#8b5cf6", from: "14:00", to: "18:00" },
+  { id: "evening",   label: "Buổi tối",   icon: Sunset,  color: "#ec4899", from: "18:00", to: "24:00" },
 ];
 
 function getSessionId(startTime) {
   const [h] = String(startTime || "").split(":").map(Number);
-  if (h >= 7 && h < 11) return "morning";
+  if (h >= 0 && h < 11) return "morning";
   if (h >= 11 && h < 14) return "noon";
-  if (h >= 14 && h < 19) return "afternoon";
-  return "other";
+  if (h >= 14 && h < 18) return "afternoon";
+  if (h >= 18 && h < 24) return "evening"; // Thêm nhóm buổi tối
+  return "morning";
 }
 
 const DEBUG = import.meta.env.DEV;
@@ -100,6 +102,8 @@ export default function OwnerMenu() {
   const [openSlots, setOpenSlots] = useState(false);
   const [expandedSession, setExpandedSession] = useState(null);
   const [slotModal, setSlotModal] = useState(null);
+  const [slotToEdit, setSlotToEdit] = useState(null);
+  const [slotToDelete, setSlotToDelete] = useState(null);
   const [togglingSlotId, setTogglingSlotId] = useState(null);
   const [confirmSlotReset, setConfirmSlotReset] = useState(false);
   const [resettingSlots, setResettingSlots] = useState(false);
@@ -2115,21 +2119,61 @@ export default function OwnerMenu() {
                     <div key={slot.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--card-bg)", border: "1px solid var(--border-color)", padding: "6px 10px", borderRadius: 8 }}>
                       <span style={{ fontSize: 13, fontFamily: "monospace" }}>{slot.id}</span>
                       <div style={{ display: "flex", gap: 4 }}>
-                        <button type="button" onClick={() => {
-                          const ns = window.prompt("Nhập giờ bắt đầu mới (HH:MM):", slot.start);
-                          const ne = window.prompt("Nhập giờ kết thúc mới (HH:MM):", slot.end);
-                          if (ns && ne) {
-                            if (ns >= ne) return toast("Giờ kết thúc phải lớn hơn giờ bắt đầu", "error");
-                            api.timeSlots.update(slot.id, { start: ns, end: ne }).then(() => { toast("Đã sửa khung giờ", "success"); loadSlots(); }).catch(err => toast(err.message, "error"));
-                          }
-                        }} style={{ background: "transparent", border: 0, color: "#f59e0b", cursor: "pointer", padding: 2 }} title="Sửa"><Edit size={14} /></button>
-                        <button type="button" onClick={() => { if(window.confirm("Xóa khung giờ này?")) api.timeSlots.remove(slot.id).then(() => { toast("Đã xóa", "success"); loadSlots(); }).catch(err => toast(err.message, "error")) }} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 2 }} title="Xóa"><Trash2 size={14} /></button>
+                        <button type="button" onClick={() => setSlotToEdit(slot)} style={{ background: "transparent", border: 0, color: "#f59e0b", cursor: "pointer", padding: 2 }} title="Sửa"><Edit size={14} /></button>
+                        <button type="button" onClick={() => setSlotToDelete(slot)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 2 }} title="Xóa"><Trash2 size={14} /></button>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             ))}
+          </div>
+        </Modal>
+      )}
+
+    
+      {/* POPUP XÓA KHUNG GIỜ */}
+      {slotToDelete && (
+        <ConfirmDialog
+          open={true}
+          title="Xóa khung giờ"
+          message={`Bạn có chắc chắn muốn xóa khung giờ "${slotToDelete.id}" không? Hành động này không thể hoàn tác.`}
+          confirmText="Xóa ngay"
+          cancelText="Hủy"
+          danger={true}
+          onConfirm={async () => {
+            try {
+              await api.timeSlots.remove(slotToDelete.id);
+              toast("Đã xóa khung giờ", "success");
+              setSlotToDelete(null);
+              loadSlots();
+            } catch (err) { toast(err.message || "Lỗi khi xóa", "error"); }
+          }}
+          onClose={() => setSlotToDelete(null)}
+        />
+      )}
+
+      {/* POPUP SỬA KHUNG GIỜ */}
+      {slotToEdit && (
+        <Modal onClose={() => setSlotToEdit(null)} maxWidth={400}>
+          <h3 style={{ margin: "0 0 16px", fontSize: 18 }}>Sửa khung giờ</h3>
+          <label style={labelStyle}>Giờ bắt đầu</label>
+          <input type="time" id="edit-start" defaultValue={slotToEdit.start} style={inputStyle} />
+          <label style={labelStyle}>Giờ kết thúc</label>
+          <input type="time" id="edit-end" defaultValue={slotToEdit.end} style={inputStyle} />
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button onClick={() => setSlotToEdit(null)} style={{ ...btnCancelStyle, flex: 1 }}>Hủy</button>
+            <button onClick={async () => {
+              const ns = document.getElementById("edit-start").value;
+              const ne = document.getElementById("edit-end").value;
+              if (!ns || !ne || ns >= ne) return toast("Giờ không hợp lệ (Kết thúc phải lớn hơn Bắt đầu)", "error");
+              try {
+                await api.timeSlots.update(slotToEdit.id, { start: ns, end: ne });
+                toast("Đã cập nhật khung giờ", "success");
+                setSlotToEdit(null);
+                loadSlots();
+              } catch (e) { toast(e.message, "error"); }
+            }} style={{ ...btnPrimaryStyle, flex: 1, width: "auto" }}>Lưu thay đổi</button>
           </div>
         </Modal>
       )}
