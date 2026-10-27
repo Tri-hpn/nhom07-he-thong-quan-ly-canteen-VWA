@@ -1,5 +1,5 @@
 // ============================================================
-// SERVER-JSON.JS — Backend Express (V28 - COOKIE + REFRESH ROTATION)
+// SERVER-JSON.JS — Backend Express (V29 - FIX AUTH MIDDLEWARE)
 // ============================================================
 
 import express from "express";
@@ -67,7 +67,7 @@ import {
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUILD_VERSION = "v28-cookie-refresh-" + new Date().toISOString().slice(0, 19);
+const BUILD_VERSION = "v29-fix-auth-" + new Date().toISOString().slice(0, 19);
 
 // ============================================================
 // HELPERS
@@ -1067,7 +1067,6 @@ function auth(roles = []) {
 
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
     if (!v.ok) {
-      // 🔧 FIX: map TokenExpiredError/expired → TOKEN_EXPIRED để client biết cần refresh
       const mappedCode =
         v.error === "TokenExpiredError" || v.error === "expired"
           ? "TOKEN_EXPIRED"
@@ -1080,7 +1079,19 @@ function auth(roles = []) {
 
     const payload = v.payload;
 
-    if (payload.sid) {
+    // 🔧 ĐÃ BỎ: verifySession(payload.sid) — nguyên nhân gây 401 hàng loạt trên Vercel.
+    // Lý do:
+    //   1. Access token TTL 2h — đủ ngắn để coi như revocation tự động.
+    //   2. verifySession = 1 DB query/request → chậm + dễ fail khi Mongo/Vercel
+    //      connection chập chờn (chính là nguyên nhân 401 hàng loạt).
+    //   3. Session vẫn bị revoke khi logout → refresh sẽ fail sau 2h → không
+    //      gia hạn được. Bảo mật vẫn đảm bảo, chỉ trễ tối đa 2h.
+    //   4. Refresh token rotation vẫn kiểm tra session (rotateRefreshToken).
+    //
+    // Nếu cần revoke tức thì access token (use case hiếm), có thể bật lại
+    // bằng env `STRICT_SESSION_CHECK=1` + code bên dưới.
+
+    if (process.env.STRICT_SESSION_CHECK === "1" && payload.sid) {
       const sv = await verifySession(payload.sid);
       if (!sv.ok) {
         clearAuthCookies(res, req);
@@ -1093,14 +1104,33 @@ function auth(roles = []) {
 
     const db = loadDB();
     const userId = Number(payload.id);
-    const currentUser = findByIdOrMongo(db.users, userId);
+    let currentUser = findByIdOrMongo(db.users, userId);
 
-    if (!currentUser)
+    // 🔧 Fallback: cold start → cache trống → query Mongo trực tiếp
+    if (!currentUser && mongoReady && mongoose.connection.db) {
+      try {
+        const doc = await mongoose.connection.db
+          .collection("users")
+          .findOne({ id: userId });
+        if (doc) {
+          const { _id, ...rest } = doc;
+          currentUser = rest;
+          if (Array.isArray(db.users)) db.users.push(rest);
+        }
+      } catch (e) {
+        console.warn("[auth] fallback user query fail:", e.message);
+      }
+    }
+
+    if (!currentUser) {
       return res.status(401).json({ message: "Tài khoản không còn tồn tại" });
-    if (currentUser.status === "Bị khóa")
+    }
+    if (currentUser.status === "Bị khóa") {
       return res.status(403).json({ message: "Tài khoản đã bị khóa" });
-    if (roles.length && !roles.includes(currentUser.role))
+    }
+    if (roles.length && !roles.includes(currentUser.role)) {
       return res.status(403).json({ message: "Không có quyền" });
+    }
 
     req.user = {
       id: currentUser.id,
@@ -1219,7 +1249,6 @@ app.post("/api/auth/register", registerLimiter, async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// 🔧 FIX: REFRESH THẬT — rotate token + set cookie mới
 app.post("/api/auth/refresh", refreshLimiter, async (req, res) => {
   try {
     const refreshToken = req.cookies?.[COOKIE_NAMES.REFRESH];
@@ -1259,7 +1288,6 @@ app.post("/api/auth/refresh", refreshLimiter, async (req, res) => {
   }
 });
 
-// 🔧 FIX: LOGOUT — revoke cả session qua jti và refresh cookie
 app.post("/api/auth/logout", async (req, res) => {
   try {
     const v = verifyAnyToken(req, EFFECTIVE_JWT_SECRET, "access");
@@ -5247,7 +5275,7 @@ app.use((req, res) => {
 const healthHandler = (_, res) =>
   res.json({
     ok: true,
-    name: "Canteen VWA API (V28)",
+    name: "Canteen VWA API (V29)",
     version: BUILD_VERSION,
     timezone: VN_TIMEZONE,
     autoTranslate: { mode: "sync-on-write", langs: ASYNC_LANGS },
@@ -5275,8 +5303,8 @@ export default app;
 const IS_VERCEL = !!process.env.VERCEL;
 if (!IS_VERCEL) {
   app.listen(PORT, () => {
-    console.log("🚀 API (V28): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
-    console.log("   🍪 Auth: HttpOnly cookie + Bearer fallback");
+    console.log("🚀 API (V29): http://localhost:" + PORT + " | TZ: " + VN_TIMEZONE);
+    console.log("   🍪 Auth: HttpOnly cookie (sameSite=lax) + Bearer fallback");
     console.log("   🔄 Refresh: rotating 30d (sessions.refresh_hash)");
     console.log("   💬 Chat TTL: 24h");
     console.log("   🖼️  Cloudinary:", process.env.CLOUDINARY_URL ? "ON" : "OFF (fallback menu_images)");
@@ -5287,6 +5315,6 @@ if (!IS_VERCEL) {
   });
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
-  console.log("🚀 API V28 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
+  console.log("🚀 API V29 chạy trên Vercel Serverless | TZ: " + VN_TIMEZONE);
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 }

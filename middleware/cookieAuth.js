@@ -41,7 +41,7 @@ function baseCookieOptions() {
   return {
     httpOnly: true,
     secure: prod,
-    sameSite: prod ? "none" : "lax",
+    sameSite:"lax",
     path: "/",
   };
 }
