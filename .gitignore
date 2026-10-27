@@ -50,3 +50,5 @@ scripts/nuke-and-reset.mjs
 scripts/seed-vercel.mjs
 scripts/split.mjs
 scripts/verify-db.mjs
+.backup/
+tree-clean.txt
