@@ -35,3 +35,18 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# --- Cac file rac duoc don dep ---
+backups/
+dev-dist/
+*.bak
+*.bak-*
+autoTranslate.js
+public/shrink-menu-images.*
+scripts/cleanup-db.mjs
+scripts/dedupe-orders.mjS
+scripts/fix-503-final.mjs
+scripts/nuke-and-reset.mjs
+scripts/seed-vercel.mjs
+scripts/split.mjs
+scripts/verify-db.mjs
