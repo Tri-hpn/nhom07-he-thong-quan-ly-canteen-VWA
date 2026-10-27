@@ -108,6 +108,7 @@ export default function CustomerOrderDetail({
   const [reviewed, setReviewed] = useState(false);
   const [reviewedCount, setReviewedCount] = useState(0);
   const [myReviews, setMyReviews] = useState([]);
+  const [allReviews, setAllReviews] = useState([]);
 
   const [checking, setChecking] = useState(true);
   const [checkError, setCheckError] = useState("");
@@ -126,50 +127,54 @@ export default function CustomerOrderDetail({
 
   useEffect(() => {
     const code = initialOrder?.code;
-    if (!code) return;
-    if (lastCodeRef.current === code) return;
+    const orderId = getOrderId(initialOrder);
+    if (!code || !orderId) {
+      setChecking(false);
+      return;
+    }
 
-    lastCodeRef.current = code;
+    let cancelled = false;
     setChecking(true);
     setCheckError("");
 
-    const localReviewed = (() => {
-      try {
-        return localStorage.getItem(getReviewedKey(code));
-      } catch {
-        return null;
-      }
-    })();
+    const itemIds = [...new Set(
+      (initialOrder.items || [])
+        .map((it) => it.menu_item_id)
+        .filter((id) => id != null)
+        .map(String)
+    )];
 
-    const itemIds = (initialOrder.items || [])
-      .map((it) => it.menu_item_id)
-      .filter(Boolean);
-
-    api.reviews
-      .me()
+    api.reviews.me()
       .then((list) => {
+        if (cancelled) return;
+
         const mine = (list || []).filter((r) =>
-          itemIds.includes(r.menu_item_id)
+          String(r.order_id) === String(orderId) &&
+          itemIds.includes(String(r.menu_item_id))
         );
+
         setMyReviews(mine);
-
-        const apiReviewed =
-          itemIds.length > 0 && mine.length >= itemIds.length;
-
-        if (localReviewed || apiReviewed) {
-          setReviewed(true);
-          setReviewedCount(mine.length || itemIds.length);
-        } else {
-          setReviewed(false);
-          setReviewedCount(0);
-        }
+        setReviewedCount(mine.length);
+        setReviewed(itemIds.length > 0 &&
+          itemIds.every((id) =>
+            mine.some((r) => String(r.menu_item_id) === id)
+          )
+        );
       })
       .catch((e) => {
+        if (cancelled) return;
         setMyReviews([]);
-        setCheckError(e.message || "");
-        if (localReviewed) setReviewed(true);
+        setReviewed(false);
+        setReviewedCount(0);
+        setCheckError(e.message || "Không thể kiểm tra đánh giá");
       })
-      .finally(() => setChecking(false));
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [initialOrder]);
 
   useEffect(() => {
@@ -250,59 +255,94 @@ export default function CustomerOrderDetail({
     setShowMyReviews(false);
   };
 
-  const openMyReviews = () => {
+  const openMyReviews = async () => {
     setShowMyReviews(true);
     setShowReview(false);
+
+    const itemIds = [...new Set(
+      items
+        .map((it) => it.menu_item_id)
+        .filter((id) => id != null)
+        .map(String)
+    )];
+
+    try {
+      const results = await Promise.all(
+        itemIds.map((id) => api.reviews.list(id))
+      );
+      setAllReviews(
+        results.flatMap((list) => Array.isArray(list) ? list : [])
+      );
+    } catch {
+      setAllReviews([]);
+      toast(t("Không thể tải đánh giá. Vui lòng thử lại."), "error");
+    }
   };
 
   const submitReview = async () => {
-    if (submittingRef.current) return;
-    if (!itemsCount) return;
+    if (submittingRef.current || !itemsCount) return;
+    if (!isCompleted || !orderId) {
+      toast(t("Chỉ có thể đánh giá đơn hàng đã hoàn thành"), "error");
+      return;
+    }
 
     submittingRef.current = true;
     setSubmitting(true);
 
     let success = 0;
+    let firstError = null;
+    let firstNonDuplicateError = null;
     const trimmedComment = comment.trim().slice(0, MAX_COMMENT_LENGTH);
+    const uniqueItems = [...new Map(
+      items
+        .filter((it) => it.menu_item_id != null)
+        .map((it) => [String(it.menu_item_id), it])
+    ).values()];
 
-    for (const it of items) {
-      if (!it.menu_item_id) continue;
+    for (const it of uniqueItems) {
       try {
         await api.reviews.create({
           menuItemId: it.menu_item_id,
+          orderId,
+          orderCode: order.code,
           rating,
           comment: trimmedComment,
         });
         success++;
-      } catch {
-        // Skip
+      } catch (err) {
+        if (!firstError) {
+          firstError = err;
+        }
+        if (err?.status !== 409 && !firstNonDuplicateError) {
+          firstNonDuplicateError = err;
+        }
       }
     }
 
-    setSubmitting(false);
     submittingRef.current = false;
+    setSubmitting(false);
+
+    try {
+      const list = await api.reviews.me();
+      const itemIds = uniqueItems.map((it) => String(it.menu_item_id));
+      const mine = (list || []).filter((r) =>
+        String(r.order_id) === String(orderId) &&
+        itemIds.includes(String(r.menu_item_id))
+      );
+
+      setMyReviews(mine);
+      setReviewedCount(mine.length);
+      setReviewed(itemIds.length > 0 &&
+        itemIds.every((id) =>
+          mine.some((r) => String(r.menu_item_id) === id)
+        )
+      );
+    } catch {
+      // Không để lỗi tải lại danh sách làm mất kết quả đánh giá vừa gửi.
+    }
 
     if (success > 0) {
-      setReviewedCount(success);
-      setReviewed(true);
       setShowReview(false);
-
-      try {
-        localStorage.setItem(
-          getReviewedKey(order.code),
-          Date.now().toString()
-        );
-      } catch {}
-
-      api.reviews
-        .me()
-        .then((list) => {
-          const itemIds = items.map((it) => it.menu_item_id).filter(Boolean);
-          setMyReviews(
-            (list || []).filter((r) => itemIds.includes(r.menu_item_id))
-          );
-        })
-        .catch(() => {});
 
       try {
         window.dispatchEvent(new CustomEvent("refresh-user"));
@@ -317,7 +357,12 @@ export default function CustomerOrderDetail({
         "success"
       );
     } else {
-      toast(t("Bạn đã đánh giá các món trong đơn này rồi."), "error");
+      const errorMessage =
+        firstNonDuplicateError?.message ||
+        firstError?.message ||
+        "Không thể gửi đánh giá. Vui lòng thử lại.";
+
+      toast(errorMessage, "error");
     }
   };
 
@@ -363,6 +408,8 @@ export default function CustomerOrderDetail({
             <MyReviewsView
               order={order}
               myReviews={myReviews}
+              allReviews={allReviews}
+              user={user}
               pointsPerReview={pointsPerReview}
               onClose={() => setShowMyReviews(false)}
               t={t}
@@ -1049,9 +1096,95 @@ function InfoRow({ label, value, last = false }) {
   );
 }
 
-function MyReviewsView({ order, myReviews, pointsPerReview, onClose, t, tData }) {
+function MyReviewsView({
+  order,
+  myReviews,
+  allReviews,
+  user,
+  pointsPerReview,
+  onClose,
+  t,
+  tData,
+}) {
   const items = order.items || [];
-  const totalPoints = myReviews.length * pointsPerReview;
+  const totalPoints = myReviews.reduce(
+    (sum, r) => sum + (Number(r.points_earned) || pointsPerReview),
+    0
+  );
+
+  const otherReviews = (allReviews || []).filter(
+    (r) => String(r.user_id) !== String(user?.id)
+  );
+
+  const renderReview = (r, i, showAuthor) => {
+    const item = items.find(
+      (it) => String(it.menu_item_id) === String(r.menu_item_id)
+    );
+
+    return (
+      <div
+        key={r.id || i}
+        style={{
+          padding: 14,
+          background: "var(--bg-tertiary, #f8fafc)",
+          borderRadius: 10,
+          marginBottom: 12,
+          border: "1px solid var(--border-color, #e5e9ef)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <b style={{ color: "var(--text-primary, #172033)", fontSize: 13 }}>
+            {tData(item, "name") || t("Món ăn")}
+          </b>
+          <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                size={14}
+                fill={s <= Number(r.rating) ? "#f59e0b" : "none"}
+                color={s <= Number(r.rating) ? "#f59e0b" : "#cbd5e1"}
+              />
+            ))}
+          </div>
+        </div>
+
+        {showAuthor && (
+          <div style={{ fontSize: 12, marginTop: 6, color: "#2634d5" }}>
+            {r.user_name || t("Khách hàng")}
+          </div>
+        )}
+
+        <p
+          style={{
+            margin: "6px 0 0",
+            fontSize: 13,
+            color: "var(--text-muted, #64748b)",
+            fontStyle: r.comment ? "italic" : "normal",
+          }}
+        >
+          {r.comment || t("Không có nhận xét")}
+        </p>
+
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--text-light, #94a3b8)",
+            marginTop: 8,
+          }}
+        >
+          {fmtDateTime(r.created_at)}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -1106,8 +1239,7 @@ function MyReviewsView({ order, myReviews, pointsPerReview, onClose, t, tData })
       <div
         style={{
           padding: 14,
-          background:
-            "linear-gradient(135deg, rgba(24, 169, 103, 0.1), rgba(38, 52, 213, 0.1))",
+          background: "linear-gradient(135deg, rgba(24,169,103,.1), rgba(38,52,213,.1))",
           borderRadius: 10,
           marginBottom: 18,
           fontSize: 13,
@@ -1116,103 +1248,32 @@ function MyReviewsView({ order, myReviews, pointsPerReview, onClose, t, tData })
           textAlign: "center",
         }}
       >
-        ✨ {t("Bạn đã nhận được {points} điểm thưởng").replace(
+        {t("Bạn đã nhận được {points} điểm thưởng").replace(
           "{points}",
           totalPoints
         )}
       </div>
 
+      <h4 style={{ margin: "0 0 10px", color: "var(--text-primary, #172033)" }}>
+        {t("Đánh giá của tôi")}
+      </h4>
       {myReviews.length === 0 ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: 40,
-            color: "var(--text-light, #8993a3)",
-            fontSize: 13,
-          }}
-        >
-          {t("Chưa có đánh giá nào")}
-        </div>
+        <p style={{ fontSize: 13, color: "var(--text-muted, #64748b)" }}>
+          {t("Chưa có đánh giá nào cho đơn hàng này")}
+        </p>
       ) : (
-        myReviews.map((r, i) => {
-          const item = items.find((it) => it.menu_item_id === r.menu_item_id);
-          return (
-            <div
-              key={r.id || i}
-              style={{
-                padding: 14,
-                background: "var(--bg-tertiary, #f8fafc)",
-                borderRadius: 10,
-                marginBottom: 12,
-                border: "1px solid var(--border-color, #e5e9ef)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 8,
-                  gap: 10,
-                }}
-              >
-                <b
-                  style={{
-                    color: "var(--text-primary, #172033)",
-                    fontSize: 13,
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {tData(item, "name") || t("Món ăn")}
-                </b>
-                <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star
-                      key={s}
-                      size={14}
-                      fill={s <= r.rating ? "#f59e0b" : "none"}
-                      color={s <= r.rating ? "#f59e0b" : "#cbd5e1"}
-                    />
-                  ))}
-                </div>
-              </div>
-              {r.comment ? (
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    fontSize: 13,
-                    color: "var(--text-muted, #64748b)",
-                    fontStyle: "italic",
-                  }}
-                >
-                  "{r.comment}"
-                </p>
-              ) : (
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    fontSize: 12,
-                    color: "var(--text-light, #94a3b8)",
-                  }}
-                >
-                  ({t("Không có nhận xét")})
-                </p>
-              )}
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-light, #94a3b8)",
-                  marginTop: 8,
-                }}
-              >
-                {fmtDateTime(r.created_at)}
-              </div>
-            </div>
-          );
-        })
+        myReviews.map((r, i) => renderReview(r, i, false))
+      )}
+
+      <h4 style={{ margin: "22px 0 10px", color: "var(--text-primary, #172033)" }}>
+        {t("Đánh giá từ khách hàng khác")}
+      </h4>
+      {otherReviews.length === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--text-muted, #64748b)" }}>
+          {t("Chưa có đánh giá từ khách hàng khác cho các món này")}
+        </p>
+      ) : (
+        otherReviews.map((r, i) => renderReview(r, i, true))
       )}
 
       <button
@@ -1236,7 +1297,6 @@ function MyReviewsView({ order, myReviews, pointsPerReview, onClose, t, tData })
     </div>
   );
 }
-
 const labelStyle = {
   display: "block",
   fontSize: 12,

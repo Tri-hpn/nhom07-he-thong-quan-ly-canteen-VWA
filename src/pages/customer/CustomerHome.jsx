@@ -285,6 +285,23 @@ const [items, setItems] = useState([]);
   const [newItems, setNewItems] = useState([]);
   const [signatureItems, setSignatureItems] = useState([]);
   const [promotions, setPromotions] = useState([]);
+  const [flashHeroIndex, setFlashHeroIndex] = useState(0);
+  const flashHeroItem = promotions.length
+    ? promotions[flashHeroIndex % promotions.length]
+    : null;
+
+  useEffect(() => {
+    if (promotions.length < 2) {
+      setFlashHeroIndex(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setFlashHeroIndex((current) => (current + 1) % promotions.length);
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [promotions.length]);
   const [allMenu, setAllMenu] = useState([]);
 
   const [loading, setLoading] = useState(true);
@@ -766,12 +783,13 @@ const [items, setItems] = useState([]);
                 {t("Flash Sale Ca Trưa Sinh Viên")}
               </div>
               <h2 className="home-flash-title">
-                {tData(promotions[0], "name")}
+                {tData(flashHeroItem, "name")}
               </h2>
               <p className="home-flash-desc">
-                {t(
-                  "Sườn cốt lết tẩm ướp mật ong nướng than hồng, kèm chả trứng hấp, bì tươi, canh rau dền thanh mát. Chỉ áp dụng cho đơn đặt trước 11:30!"
-                )}
+                {tData(flashHeroItem, "description") ||
+                  flashHeroItem?.description ||
+                  flashHeroItem?.desc ||
+                  t("Ưu đãi Flash Sale có thời hạn. Đặt món ngay để nhận giá ưu đãi!")}
               </p>
 
               <div className="home-flash-bottom">
@@ -796,11 +814,11 @@ const [items, setItems] = useState([]);
                 <button
                   type="button"
                   className="home-flash-cta"
-                  onClick={() => { setMode("buy"); setSelected(promotions[0]); }}
+                  onClick={() => { setMode("buy"); setSelected(flashHeroItem); }}
                 >
                   <ShoppingCart size={18} />
                   {t("Đặt món ngay")} ⤢{" "}
-                  {money(promotions[0]?.price || 28000)}
+                  {money(flashHeroItem?.price || 28000)}
                 </button>
               </div>
             </div>
@@ -808,17 +826,17 @@ const [items, setItems] = useState([]);
             <div className="home-flash-right">
               <div className="home-flash-image-wrap">
                 <img
-                  src={promotions[0]?.image || FALLBACK_IMG}
-                  alt={promotions[0]?.name || "Flash"}
+                  src={flashHeroItem?.image || FALLBACK_IMG}
+                  alt={flashHeroItem?.name || "Flash"}
                   className="home-flash-image"
                   onError={(e) => {
                     e.target.onerror = null;
                     e.target.src = FALLBACK_IMG;
                   }}
                 />
-                <span className="home-flash-discount-badge">-{promotions[0]?.discount_percent || 0}% OFF</span>
+                <span className="home-flash-discount-badge">-{flashHeroItem?.discount_percent || 0}% OFF</span>
                 <span className="home-flash-stock-badge">
-                  {t("\u0043\u00f2\u006e")} {Math.max(0, Number(promotions[0]?.stock ?? 0))} {t("\u0073\u0075\u1ea5\u0074")}
+                  {t("\u0043\u00f2\u006e")} {Math.max(0, Number(flashHeroItem?.stock ?? 0))} {t("\u0073\u0075\u1ea5\u0074")}
                 </span>
               </div>
             </div>

@@ -15,6 +15,8 @@ import {
   UserRound, HelpCircle,
 } from "lucide-react";
 import { useI18n } from "../../hooks/useI18n";
+import { useState } from "react";
+import HelpPolicyModal from "./HelpPolicyModal";
 
 export default function SettingsList({
   role,
@@ -23,6 +25,7 @@ export default function SettingsList({
   onLogout,
 }) {
   const { t } = useI18n();
+  const [showHelpPolicy, setShowHelpPolicy] = useState(false);
 
   const isCustomer = role === "CUSTOMER";
 
@@ -121,6 +124,7 @@ export default function SettingsList({
       <button
         type="button"
         className="settings-list__item"
+        onClick={() => setShowHelpPolicy(true)}
       >
         <div className="settings-list__icon">
           <HelpCircle size={20} />
@@ -159,6 +163,9 @@ export default function SettingsList({
         </div>
       </button>
 </>
+      {isCustomer && showHelpPolicy && (
+        <HelpPolicyModal onClose={() => setShowHelpPolicy(false)} />
+      )}
     </div>
   );
 }

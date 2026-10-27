@@ -451,6 +451,7 @@ function buildSeedData() {
     notifications: [], vouchers: [], reviews: [], messages: [], attendances: [], imports: [],
     price_history: [], shifts: [], wallets: [], wallet_transactions: [], tasks: [], points_history: [],
     chat_transfer_requests: [], eco_rewards: [], orderReminders: [],
+    student_cards: [],
     points_config: { ...JSON.parse(JSON.stringify(DEFAULT_POINTS_CONFIG)), updated_at: new Date().toISOString() },
     chat_conversations: {},
     settings: { bank: "VCB", account: "", accountName: "", hotline: "", email: "", address: "", qrCustomImage: "", chat_enabled_global: true },
@@ -645,6 +646,7 @@ function buildEmptyShape() {
     notifications: [], vouchers: [], reviews: [], messages: [], attendances: [], imports: [],
     price_history: [], shifts: [], wallets: [], wallet_transactions: [], tasks: [], points_history: [],
     chat_transfer_requests: [], eco_rewards: [], orderReminders: [],
+    student_cards: [],
     points_config: { ...JSON.parse(JSON.stringify(DEFAULT_POINTS_CONFIG)) },
     chat_conversations: {},
     settings: { chat_enabled_global: true },
@@ -655,7 +657,7 @@ function buildEmptyShape() {
 // SAVE DB
 // ============================================================
 let saveQueue = Promise.resolve();
-const UNIQUE_KEY_BY_COLL = { wallets: "user_id", inventory: "code" };
+const UNIQUE_KEY_BY_COLL = { wallets: "user_id", inventory: "code", student_cards: "user_id" };
 const lastSavedJson = new Map();
 
 async function _writeCollection(db, key, value) {
@@ -2014,7 +2016,18 @@ app.post("/api/orders", auth(), async (req, res) => {
       }
 
       const total = Math.max(0, subtotal - computedDiscount - xuDiscount);
-      const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
+      if (payment === "CARD") {
+  const studentCard = (db.student_cards || []).find(
+    (item) => Number(item.user_id) === Number(req.user.id)
+  );
+
+  if (studentCard?.locked) {
+    return res.status(400).json({
+      message: "Thẻ sinh viên đang bị khóa. Vui lòng mở khóa thẻ trước khi thanh toán."
+    });
+  }
+}
+const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
 
       if (isWalletPay) {
         const w = getOrCreateWallet(db, req.user.id);
@@ -2657,55 +2670,161 @@ app.post("/api/orders/:id/green/reject", auth(["ADMIN", "EMPLOYEE"]), async (req
 app.get("/api/reviews/can-review/:menuItemId", auth(), (req, res) => {
   const db = loadDB();
   const menuItemId = req.params.menuItemId;
-  const hasReviewed = (db.reviews || []).some((r) => r.user_id === req.user.id && r.menu_item_id == menuItemId);
-  const hasPurchased = (db.orders || []).some((o) => o.customer_id === req.user.id && o.status === "Hoàn thành" && (o.items || []).some((it) => it.menu_item_id == menuItemId));
-  res.json({ canReview: !hasReviewed && hasPurchased, hasPurchased, hasReviewed });
+  const orderId = req.query.orderId;
+  const userId = String(req.user.id);
+
+  const order = orderId
+    ? (db.orders || []).find((o) =>
+        String(o.id || o._id) === String(orderId) &&
+        String(o.customer_id) === userId
+      )
+    : null;
+
+  const hasPurchased = orderId
+    ? !!order &&
+      order.status === "Hoàn thành" &&
+      (order.items || []).some((it) => String(it.menu_item_id) === String(menuItemId))
+    : (db.orders || []).some((o) =>
+        String(o.customer_id) === userId &&
+        o.status === "Hoàn thành" &&
+        (o.items || []).some((it) => String(it.menu_item_id) === String(menuItemId))
+      );
+
+  const hasReviewed = orderId
+    ? (db.reviews || []).some((r) =>
+        String(r.user_id) === userId &&
+        String(r.order_id) === String(orderId) &&
+        String(r.menu_item_id) === String(menuItemId)
+      )
+    : (db.reviews || []).some((r) =>
+        String(r.user_id) === userId &&
+        String(r.menu_item_id) === String(menuItemId)
+      );
+
+  res.json({ canReview: hasPurchased && !hasReviewed, hasPurchased, hasReviewed });
 });
-app.get("/api/reviews/me", auth(), (req, res) => { res.json((loadDB().reviews || []).filter((r) => r.user_id === req.user.id)); });
-app.get("/api/reviews/:menuItemId", (req, res) => { res.json((loadDB().reviews || []).filter((r) => r.menu_item_id == req.params.menuItemId)); });
+
+app.get("/api/reviews/me", auth(), (req, res) => {
+  res.json(
+    (loadDB().reviews || []).filter(
+      (r) => String(r.user_id) === String(req.user.id)
+    )
+  );
+});
+
+app.get("/api/reviews/:menuItemId", (req, res) => {
+  res.json(
+    (loadDB().reviews || []).filter(
+      (r) => String(r.menu_item_id) === String(req.params.menuItemId)
+    )
+  );
+});
 
 app.post("/api/reviews", auth(), async (req, res) => {
   try {
     const db = loadDB();
-    const { menuItemId, rating, comment } = req.body;
-    if (!menuItemId || !rating) return res.status(400).json({ message: "Thiếu thông tin" });
-    if (rating < 1 || rating > 5) return res.status(400).json({ message: "Đánh giá phải 1-5 sao" });
-    if (!db.reviews) db.reviews = [];
-    if (db.reviews.find((r) => r.user_id === req.user.id && r.menu_item_id == menuItemId)) return res.status(400).json({ message: "Bạn đã đánh giá món này rồi" });
-    const hasPurchased = (db.orders || []).some((o) => o.customer_id === req.user.id && o.status === "Hoàn thành" && (o.items || []).some((it) => it.menu_item_id == menuItemId));
-    if (!hasPurchased) return res.status(403).json({ message: "Bạn cần mua món này để có thể đánh giá" });
-    const id = nextId(db.reviews);
-    const review = { id, menu_item_id: menuItemId, user_id: req.user.id, user_name: req.user.name, rating: +rating, comment: comment || "", created_at: new Date().toISOString() };
-    db.reviews.push(review);
-    const itemReviews = db.reviews.filter((r) => r.menu_item_id == menuItemId);
-    const avgRating = itemReviews.reduce((s, r) => s + r.rating, 0) / itemReviews.length;
-    const mi = (db.menu_items || []).find((m) => m.id == menuItemId);
-    if (mi) { mi.rating = Math.round(avgRating * 10) / 10; mi.review_count = itemReviews.length; }
-    const __cfg = getPointsConfig(db);
-    const __reviewBonus = Number(__cfg.earn?.review_points) || 500;
-    review.points_earned = __reviewBonus;
-    const authorUser = db.users.find((u) => u.id === req.user.id);
-    if (authorUser) {
-      const __reviewOldPoints = Number(authorUser.points) || 0;
-      authorUser.points = __reviewOldPoints + __reviewBonus;
-      recordPointsTransaction(
-        db,
-        authorUser,
-        __reviewBonus,
-        "Thưởng đánh giá món ăn",
-        {
-          source: "review_bonus",
-          old_points: __reviewOldPoints,
-          new_points: authorUser.points,
-        }
-      );
+    const { menuItemId, rating, comment, orderId, orderCode } = req.body;
+
+    if (!menuItemId || !orderId || rating == null || rating === "") {
+      return res.status(400).json({ message: "Thiếu thông tin đánh giá hoặc đơn hàng" });
     }
+
+    const numericRating = Number(rating);
+    if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+      return res.status(400).json({ message: "Đánh giá phải từ 1 đến 5 sao" });
+    }
+
+    const userId = String(req.user.id);
+    const order = (db.orders || []).find((o) =>
+      String(o.id || o._id) === String(orderId) &&
+      String(o.customer_id) === userId
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: "Không tìm thấy đơn hàng của bạn" });
+    }
+
+    if (order.status !== "Hoàn thành") {
+      return res.status(403).json({ message: "Chỉ có thể đánh giá đơn hàng đã hoàn thành" });
+    }
+
+    const purchasedItem = (order.items || []).some(
+      (it) => String(it.menu_item_id) === String(menuItemId)
+    );
+
+    if (!purchasedItem) {
+      return res.status(403).json({ message: "Món ăn không thuộc đơn hàng này" });
+    }
+
+    if (!db.reviews) db.reviews = [];
+
+    const duplicate = db.reviews.some((r) =>
+      String(r.user_id) === userId &&
+      String(r.order_id) === String(order.id || order._id) &&
+      String(r.menu_item_id) === String(menuItemId)
+    );
+
+    if (duplicate) {
+      return res.status(409).json({ message: "Bạn đã đánh giá món này trong đơn hàng này rồi" });
+    }
+
+    const id = nextId(db.reviews);
+    const review = {
+      id,
+      order_id: String(order.id || order._id),
+      order_code: order.code || orderCode || "",
+      menu_item_id: menuItemId,
+      user_id: req.user.id,
+      user_name: req.user.name,
+      rating: numericRating,
+      comment: String(comment || "").slice(0, 1000),
+      created_at: new Date().toISOString(),
+    };
+
+    db.reviews.push(review);
+
+    const itemReviews = db.reviews.filter(
+      (r) => String(r.menu_item_id) === String(menuItemId)
+    );
+    const avgRating =
+      itemReviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
+      itemReviews.length;
+
+    const menuItem = (db.menu_items || []).find(
+      (m) => String(m.id) === String(menuItemId)
+    );
+
+    if (menuItem) {
+      menuItem.rating = Math.round(avgRating * 10) / 10;
+      menuItem.review_count = itemReviews.length;
+    }
+
+    const config = getPointsConfig(db);
+    const reviewBonus = Number(config.earn?.review_points) || 500;
+    review.points_earned = reviewBonus;
+
+    const authorUser = (db.users || []).find(
+      (u) => String(u.id) === userId
+    );
+
+    if (authorUser) {
+      const oldPoints = Number(authorUser.points) || 0;
+      authorUser.points = oldPoints + reviewBonus;
+      recordPointsTransaction(db, authorUser, reviewBonus, "Thưởng đánh giá món ăn", {
+        source: "review_bonus",
+        old_points: oldPoints,
+        new_points: authorUser.points,
+      });
+    }
+
     await saveDBOrThrow(db);
     invalidateMenuCache();
-    res.status(201).json({ ...review, pointsEarned: __reviewBonus });
-  } catch (e) { res.status(500).json({ message: e.message }); }
-});
 
+    return res.status(201).json({ ...review, pointsEarned: reviewBonus });
+  } catch (e) {
+    return res.status(500).json({ message: e.message });
+  }
+});
 // ============================================================
 // POINTS CONFIG & POINTS
 // ============================================================
@@ -3179,6 +3298,51 @@ function getOrCreateWallet(db, userId) {
   return w;
 }
 
+app.get("/api/student-card/me", auth(), (req, res) => {
+  try {
+    const db = loadDB();
+    const card = (db.student_cards || []).find(
+      (item) => Number(item.user_id) === Number(req.user.id)
+    );
+    res.json({ locked: !!card?.locked });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.post("/api/student-card/lock", auth(), async (req, res) => {
+  try {
+    const { pin, locked } = req.body || {};
+
+    if (String(pin || "") !== "123456") {
+      return res.status(400).json({ message: "PIN không chính xác." });
+    }
+
+    if (typeof locked !== "boolean") {
+      return res.status(400).json({ message: "Trạng thái thẻ không hợp lệ." });
+    }
+
+    const db = loadDB();
+    if (!Array.isArray(db.student_cards)) db.student_cards = [];
+
+    let card = db.student_cards.find(
+      (item) => Number(item.user_id) === Number(req.user.id)
+    );
+
+    if (!card) {
+      card = { user_id: Number(req.user.id), locked: false };
+      db.student_cards.push(card);
+    }
+
+    card.locked = locked;
+    card.updated_at = new Date().toISOString();
+
+    await saveDBOrThrow(db);
+    res.json({ locked: card.locked });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 app.get("/api/wallet/me", auth(), async (req, res) => {
   try {
     const db = loadDB();
