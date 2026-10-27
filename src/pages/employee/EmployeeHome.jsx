@@ -1,29 +1,24 @@
 // ============================================================
-// EMPLOYEEHOME.JSX — Trang Tổng quan ca làm việc (V9 - FIX)
+// EMPLOYEEHOME.JSX — Trang Tổng quan ca làm việc (V8 - FIX)
 // ============================================================
-// V9 (2025-11):
-//   🔧 FIX #1: shiftInfo đọc đúng field `s.shift` ("Ca sáng"/"Ca chiều")
-//              + map giờ chuẩn qua SHIFT_TIME_MAP.
-//   🔧 FIX #2: shiftLeaderCode fallback `teacher_code` (AuthContext trả về).
-//   🔧 FIX #3: crewSize dùng /api/shifts/current-staff (đếm đúng kíp trực
-//              đang check-in), fallback approvedShifts.length khi rỗng.
-//   🔧 FIX #4: shiftCode deps = [todayStr] để qua ngày cập nhật đúng.
-//   🔧 CLEANUP: Bỏ unused imports (Wallet, money, emitOrderUpdated,
-//              TICKER_TIME_FORMATTER). Bỏ try/catch vô nghĩa.
+// V8:
+//   - 🔧 Tăng REFRESH_MS từ 5s lên 15s để giảm tải cho Serverless.
+//   - 🔧 Thêm guard getToken() chặn gọi API khi mất phiên.
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ShoppingBag, Timer, School, Package, HandCoins,
+  ShoppingBag, Timer, Wallet, School, Package, HandCoins,
   Bell, BellOff, Printer, AlertTriangle, BadgeCheck, Users,
   ClipboardList, CheckSquare, Clock,
   Check, Loader2, TrendingUp, CheckCircle2, X,
 } from "lucide-react";
 
-import { api, getToken } from "../../api";
+import { api, getToken } from "../../api"; // 🔧 Thêm getToken
+import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
-import { onOrderUpdated } from "../../lib/orderEvents";
+import { emitOrderUpdated, onOrderUpdated } from "../../lib/orderEvents";
 import { useI18n } from "../../hooks/useI18n";
 import { useAuth } from "../../contexts/AuthContext";
 import StaffKPICard from "../../components/StaffKPICard";
@@ -37,12 +32,9 @@ const DANGER_STOCK_THRESHOLD = 5;
 const SOUND_REPEAT_MS = 30000;
 const SOUND_STORAGE_KEY = "canteen.sound_enabled";
 
-// 🔧 FIX #1: Map giờ ca theo field `shift` mà backend trả về
-const SHIFT_TIME_MAP = {
-  "Ca sáng": "06:30 - 12:30",
-  "Ca chiều": "12:30 - 18:30",
-  "Ca tối": "18:00 - 22:00",
-};
+const TICKER_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+});
 
 const PRINT_DATETIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
   timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
@@ -126,7 +118,6 @@ export default function EmployeeHome() {
   const [orders, setOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [approvedShifts, setApprovedShifts] = useState([]);
-  const [currentStaff, setCurrentStaff] = useState([]); // 🔧 FIX #3
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -162,8 +153,8 @@ export default function EmployeeHome() {
 
   const load = useCallback(async (silent = false) => {
     // 🔧 FIX: Chặn gọi API khi chưa đăng nhập
-    if (!getToken()) return;
-
+    if (!getToken()) return; 
+    
     if (inFlightRef.current) return;
     inFlightRef.current = true;
 
@@ -172,13 +163,12 @@ export default function EmployeeHome() {
     setError("");
 
     try {
-      const [ordersRes, menuRes, shiftsRes, attRes, tasksRes, staffRes] = await Promise.all([
+      const [ordersRes, menuRes, shiftsRes, attRes, tasksRes] = await Promise.all([
         api.orders.all("Tất cả").catch(() => []),
         api.menu.listActive("", "Tất cả", "popular").catch(() => []),
         api.shifts.approvedToday().catch(() => []),
         api.attendance.today().catch(() => null),
         api.tasks.me().catch(() => []),
-        api.shifts.currentStaff().catch(() => []), // 🔧 FIX #3
       ]);
 
       if (myReqId !== reqIdRef.current) return;
@@ -188,7 +178,6 @@ export default function EmployeeHome() {
       setApprovedShifts(Array.isArray(shiftsRes) ? shiftsRes : []);
       setTodayAttendance(attRes || null);
       setTasks(Array.isArray(tasksRes) ? tasksRes : []);
-      setCurrentStaff(Array.isArray(staffRes) ? staffRes : []);
     } catch (e) {
       if (myReqId === reqIdRef.current && !silent) setError(e.message || t("Không tải được dữ liệu"));
     } finally {
@@ -250,12 +239,11 @@ export default function EmployeeHome() {
     return { minutes: best.ms / 60000, station: best.order.station || "Quầy 01" };
   }, [todayOrders]);
 
-  // 🔧 FIX #1: Đọc đúng field `s.shift` ("Ca sáng"/"Ca chiều") + map giờ chuẩn
   const shiftInfo = useMemo(() => {
     if (approvedShifts.length > 0) {
-      const s = approvedShifts[0];
-      const title = s.shift || s.name || s.shift_name || s.title || "Ca làm việc";
-      const time = SHIFT_TIME_MAP[s.shift] || s.time || "";
+      const current = approvedShifts[0];
+      const title = current.name || current.shift_name || current.title || "Ca làm việc";
+      const time = current.time || (current.start_time && current.end_time ? `${current.start_time} - ${current.end_time}` : "");
       return { title, time };
     }
     return getCurrentShiftInfo(now);
@@ -270,19 +258,16 @@ export default function EmployeeHome() {
   }, [now]);
 
   const shiftLeaderName = user?.name || "—";
-  // 🔧 FIX #2: AuthContext trả về `teacher_code`, không phải `employeeCode`
-  const shiftLeaderCode = user?.teacher_code || user?.employeeCode || user?.code || "";
+  const shiftLeaderCode = user?.employeeCode || user?.code || "";
 
-  // 🔧 FIX #3: Đếm kíp trực bằng current-staff (chính xác) — fallback approvedShifts
   const crewSize = useMemo(() => {
-    if (currentStaff.length > 0) return currentStaff.length;
     const uniqueNames = new Set();
     approvedShifts.forEach((s) => {
-      const n = s.employee_name || s.name || s.staff_name;
+      const n = s.name || s.staff_name || s.employee_name;
       if (n) uniqueNames.add(n);
     });
     return uniqueNames.size || approvedShifts.length || 1;
-  }, [currentStaff, approvedShifts]);
+  }, [approvedShifts]);
 
   const stationName = useMemo(() => {
     const s = approvedShifts[0];
@@ -328,17 +313,14 @@ export default function EmployeeHome() {
     return () => { if (dingIntervalRef.current) clearInterval(dingIntervalRef.current); };
   }, [unconfirmedOrders.length, soundEnabled]);
 
-  // ⚠️ Demo-only: chưa có endpoint gửi thông báo từ Employee → Admin.
-  // Khi backend bổ sung POST /api/notifications/send (role EMPLOYEE) thì thay toast bằng API call.
-  const handlePushAlert = useCallback((item) => {
+  const handlePushAlert = useCallback(async (item) => {
     const id = item._id || item.id;
     if (pushingAlertId) return;
     setPushingAlertId(id);
-    toast(
-      `${t("Đã gửi thông báo cho Admin:")} "${item.name}" ${t("chỉ còn")} ${item.stock} ${t("suất")}`,
-      "success"
-    );
-    setTimeout(() => setPushingAlertId(null), 600);
+    try {
+      toast(`${t("Đã gửi thông báo cho Admin:")} "${item.name}" ${t("chỉ còn")} ${item.stock} ${t("suất")}`, "success");
+    } catch (e) { toast(e.message || t("Không gửi được thông báo"), "error"); }
+    finally { setPushingAlertId(null); }
   }, [pushingAlertId, t]);
 
   const handleToggleTask = useCallback(async (task) => {
@@ -368,8 +350,7 @@ export default function EmployeeHome() {
   const handleCloseHandover = useCallback(() => setShowHandover(false), []);
   const handlePrintHandover = useCallback(() => setTimeout(() => window.print(), 100), []);
 
-  // 🔧 FIX #4: deps = [todayStr] để mã phiếu cập nhật khi qua ngày mới
-  const shiftCode = useMemo(() => genShiftCode(new Date(), "A"), [todayStr]);
+  const shiftCode = useMemo(() => genShiftCode(now, "A"), []);
   const completedOrders = useMemo(() => todayOrders.filter((o) => o.status === "Hoàn thành"), [todayOrders]);
   const printTimestamp = PRINT_DATETIME_FORMATTER.format(now);
   const printDate = PRINT_DATE_FORMATTER.format(now);

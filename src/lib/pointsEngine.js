@@ -1,5 +1,5 @@
 // ============================================================
-// POINTS ENGINE — Pure functions cho tích/đổi xu VWA
+// POINTS ENGINE — Pure functions cho tích/đổi điểm VWA
 // ============================================================
 
 export const DEFAULT_POINTS_CONFIG = {
@@ -41,12 +41,19 @@ export function mergeConfig(cfg) {
   };
 }
 
-export function calcEarnPoints(total, config) {
-  return 100; // Luôn trả về đúng 100 Xu
+export function calcEarnPoints(totalAmount, config) {
+  const cfg = mergeConfig(config);
+  const amount = Number(totalAmount) || 0;
+  const rateAmount = Number(cfg.earn.rate_amount) || 10000;
+  const ratePoints = Number(cfg.earn.rate_points) || 1;
+  if (amount <= 0 || rateAmount <= 0) return 0;
+  return Math.floor(amount / rateAmount) * ratePoints;
 }
 
 export function calcGreenBonus(config) {
-  return 200; // Luôn trả về đúng 200 Xu
+  const cfg = mergeConfig(config);
+  if (!cfg.earn.green_enabled) return 0;
+  return Number(cfg.earn.green_points) || 0;
 }
 
 export function calcReviewBonus(config) {
@@ -71,8 +78,8 @@ export function canRedeem(userPoints, points, activeVoucherCount, config) {
   const max = Number(cfg.redeem.max_unused_vouchers) || 50;
   const p = Number(points) || 0;
 
-  if (p < min) return { ok: false, reason: "Cần ít nhất " + min + " xu" };
-  if (p > (Number(userPoints) || 0)) return { ok: false, reason: "Không đủ xu" };
+  if (p < min) return { ok: false, reason: "Cần ít nhất " + min + " điểm" };
+  if (p > (Number(userPoints) || 0)) return { ok: false, reason: "Không đủ điểm" };
   if (Number(activeVoucherCount) >= max)
     return { ok: false, reason: "Đã có " + activeVoucherCount + "/" + max + " voucher chưa dùng" };
 

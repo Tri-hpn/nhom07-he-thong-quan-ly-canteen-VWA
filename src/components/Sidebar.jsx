@@ -1,26 +1,21 @@
 // ============================================================
-// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V14 - FINAL)
+// SIDEBAR.JSX — Sidebar cho ADMIN & EMPLOYEE (V12 - FINAL)
 // ============================================================
-// V14 (2026-11):
-//   🗑️  XÓA footer (user info + nút Đăng xuất) theo yêu cầu.
-//       Logout đã có sẵn trong SettingsModal (⚙️ topbar).
-// V13 (2026-11):
-//   🔧 getToken() guard cho fetchCounts
 // V12 (2026-10):
-//   - Cập nhật menu EMPLOYEE
+//   - ✅ Cập nhật lại menu EMPLOYEE: Đơn hàng, Thực đơn và kho, Ca làm việc, Chat và hỗ trợ.
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Utensils, ShoppingBag, Users, UserCog, Warehouse,
-  BarChart3, ClipboardList, Bell, UserRound, CreditCard,
+  BarChart3, LogOut, ClipboardList, Bell, UserRound, CreditCard,
   MessageCircle, CalendarCheck, Database, TrendingUp, Shield, Wallet,
   Ticket, Sun, ChefHat, Megaphone, Package, Receipt, CheckSquare,
   ShieldCheck, Kanban, History, BellRing, ReceiptText, UtensilsCrossed,
   LayoutGrid, BadgeCheck, Activity, Settings,
 } from "lucide-react";
-import { api, getToken } from "../api";
+import { api } from "../api";
 import { useI18n } from "../hooks/useI18n";
 import { LogoVWACompact } from "./LogoVWA";
 
@@ -166,9 +161,7 @@ function readLastSeen(key) {
   }
 }
 
-// 🗑️ ĐÃ XÓA getInitials (không còn dùng sau khi bỏ footer)
-
-export default function Sidebar({ role /*, onLogout, user — không còn dùng */ }) {
+export default function Sidebar({ role, onLogout, user }) {
   const { t } = useI18n();
 
   const [open, setOpen] = useState(false);
@@ -243,9 +236,6 @@ export default function Sidebar({ role /*, onLogout, user — không còn dùng 
   }, [role, readCart]);
 
   const fetchCounts = useCallback(async () => {
-    // 🔧 FIX V13: Guard getToken() — tránh spam 401 mỗi 30s khi hết phiên
-    if (!getToken()) return;
-
     const myReqId = ++fetchReqIdRef.current;
     try {
       if (role === "CUSTOMER") {
@@ -380,6 +370,7 @@ export default function Sidebar({ role /*, onLogout, user — không còn dùng 
           </div>
         </div>
 
+        {/* Role chip đồng bộ cho cả 3 role */}
         <div className="role-chip">
           {role === "ADMIN" ? t("Quản trị viên") : role === "EMPLOYEE" ? t("Nhân viên") : t("Quản lý khách hàng")}
         </div>
@@ -426,10 +417,6 @@ export default function Sidebar({ role /*, onLogout, user — không còn dùng 
             </div>
           ))}
         </nav>
-
-        {/* 🗑️ V14: ĐÃ XÓA FOOTER (user info + nút Đăng xuất).
-            Logout: vào SettingsModal qua icon ⚙️ trên topbar (Employee/Admin),
-            hoặc avatar button trên Customer topbar. */}
       </aside>
     </>
   );

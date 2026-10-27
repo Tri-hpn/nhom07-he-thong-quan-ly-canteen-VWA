@@ -665,6 +665,7 @@ async function _writeCollection(db, key, value) {
 
   if (Array.isArray(value)) {
     const uniqueField = UNIQUE_KEY_BY_COLL[key] || "id";
+    const keys = [];
     const ops = [];
 
     for (const raw of value) {
@@ -672,7 +673,10 @@ async function _writeCollection(db, key, value) {
       const { _id, ...rest } = raw;
       const k = rest[uniqueField];
       if (k !== undefined && k !== null) {
-        ops.push({ updateOne: { filter: { [uniqueField]: k }, update: { $set: rest }, upsert: true } });
+        ops.push({
+          updateOne: { filter: { [uniqueField]: k }, update: { $set: rest }, upsert: true },
+        });
+        keys.push(k);
       } else {
         ops.push({ insertOne: { document: rest } });
       }
@@ -688,15 +692,8 @@ async function _writeCollection(db, key, value) {
       }
     }
 
-    // ✅ FIX: REBUILD keys SAU await — tránh xoá document vừa được thêm bởi request khác
-    const finalKeys = [];
-    for (const raw of value) {
-      if (!raw || typeof raw !== "object") continue;
-      const k = raw[uniqueField];
-      if (k !== undefined && k !== null) finalKeys.push(k);
-    }
-    if (finalKeys.length > 0) {
-      await coll.deleteMany({ [uniqueField]: { $nin: finalKeys } });
+    if (keys.length > 0) {
+      await coll.deleteMany({ [uniqueField]: { $nin: keys } });
     } else {
       await coll.deleteMany({});
     }
@@ -1453,45 +1450,33 @@ async function microsoftCallbackHandler(req, res) {
         const local = emailNorm.split("@")[0];
         if (/^\d{6}-\d{7}$/.test(local)) user.teacher_code = local;
       }
-      autoFilled = autoFillFromCode(db, user);
-      await saveDB(db);
+     autoFilled = autoFillFromCode(db, user);
+      await saveDB(db); // ✅ FIX
     } else {
       const id = nextId(db.users);
-      // ✅ FIX: KHỞI TẠO USER ĐẦY ĐỦ
-      user = {
-        id,
-        email: emailNorm,
-        password: "",
-        name: profile.displayName || emailNorm.split("@")[0] || "Microsoft User",
-        phone: "",
-        role: classify.role || "CUSTOMER",
-        status: "Hoạt động",
-        points: 0,
-        provider: "microsoft",
-        avatar: "",
-        student_code: emailNorm.endsWith("@hpn.edu.vn") && classify.code ? classify.code : "",
-        teacher_code: emailNorm.endsWith("@vwa.edu.vn") && classify.code ? classify.code : "",
-        created_at: new Date().toISOString(),
-      };
-      db.users.push(user);
-      if (!Array.isArray(db.wallets)) db.wallets = [];
-      db.wallets.push({
-        user_id: id, balance: 0, bank_name: "", bank_account: "", bank_account_name: "",
-        linked_at: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      });
+      // ... (code khởi tạo user)
+      db.wallets.push({ user_id: id, balance: 0, bank_name: "", bank_account: "", bank_account_name: "", linked_at: "", created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
       autoFilled = autoFillFromCode(db, user);
-      await saveDB(db);
+      await saveDB(db); // ✅ FIX
       isNewUser = true;
     }
     const { accessToken } = await issueTokens(res, user, EFFECTIVE_JWT_SECRET, { req });
     res.json({
       token: accessToken,
       user: {
-        id: user.id, email: user.email, name: user.name, role: user.role,
-        avatar: user.avatar || "", must_change_password: !!user.must_change_password,
-        student_code: user.student_code || "", teacher_code: user.teacher_code || "",
-        major_name: user.major_name || "", faculty: user.faculty || "",
-        year_in: user.year_in || null, is_new_user: isNewUser, auto_filled: autoFilled,
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatar: user.avatar || "",
+        must_change_password: !!user.must_change_password,
+        student_code: user.student_code || "",
+        teacher_code: user.teacher_code || "",
+        major_name: user.major_name || "",
+        faculty: user.faculty || "",
+        year_in: user.year_in || null,
+        is_new_user: isNewUser,
+        auto_filled: autoFilled,
       },
     });
   } catch (e) {
@@ -1991,11 +1976,9 @@ app.post("/api/orders", auth(), async (req, res) => {
         return match ? match[1].replace(/\s/g, "") : "";
       })();
 
-           // ✅ FIX: strict — nếu client có gửi pickupTime mà sai format/không tồn tại → từ chối
-      if (pickupTime && String(pickupTime).trim()) {
+      if (pickupSlotId) {
         const slots = getTimeSlots(db);
         const slot = slots.find((s) => s.id === pickupSlotId);
-        if (!pickupSlotId) return res.status(400).json({ message: "Khung giờ nhận không hợp lệ." });
         if (!slot) return res.status(400).json({ message: `Khung giờ ${pickupSlotId} không tồn tại.` });
         if (!slot.enabled) return res.status(400).json({ message: `Khung giờ ${pickupSlotId} đã kín hoặc tạm ngưng.` });
       }
@@ -2022,7 +2005,7 @@ app.post("/api/orders", auth(), async (req, res) => {
       if (!customer) return res.status(400).json({ message: "Không tìm thấy tài khoản" });
 
       let xuDiscount = 0;
-      const useXu = useXuRaw === true || useXuRaw === "true" || useXuRaw === 1 || useXuRaw === "1";
+      const useXu = useXuRaw === true;
       if (useXu) {
         const pointsConfig = getPointsConfig(db);
         const maxRedeemPercent = Math.max(0, Math.min(100, Number(pointsConfig.redeem?.max_redeem_percent ?? 30)));
@@ -2240,8 +2223,10 @@ const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
         console.warn("[KDS] broadcast order.new fail:", e.message);
       }
 
-            // ✅ FIX: Đã commit qua transaction + mirror dbCache — KHÔNG gọi saveDBOrThrow nữa
-      // (tránh ghi đè transaction của request khác và tránh ghi lại toàn bộ collection)
+      try { await saveDBOrThrow(db); }
+      catch (e) { console.warn("[POST /api/orders] save after commit failed:", e.message); }
+
+      // 🔧 THÀNH CÔNG: Trả kết quả và THOÁT VÒNG LẶP
       return res.status(201).json({ ...orderCreated, _id: orderCreated.id });
 
     } catch (e) {
@@ -3155,34 +3140,9 @@ app.post("/api/vouchers/claim/:id", auth(), async (req, res) => {
     const db = loadDB();
     const template = findByIdOrMongo((db.vouchers || []).filter((v) => !v.user_id), req.params.id);
     if (!template) return res.status(404).json({ message: "Voucher không tồn tại hoặc đã hết" });
-
-    // ✅ FIX: Kiểm tra hạn sử dụng
-    if (template.expires_at) {
-      const exp = new Date(template.expires_at).getTime();
-      if (Number.isFinite(exp) && Date.now() > exp) {
-        return res.status(410).json({ message: "Voucher đã hết hạn" });
-      }
-    }
-
-    // ✅ FIX: Kiểm tra số lượng claim tối đa
-    const claimedCount = (db.vouchers || []).filter((v) => v.claimed_from === template.id).length;
-    const maxClaims = Number(template.max_claims) || 0;
-    if (maxClaims > 0 && claimedCount >= maxClaims) {
-      return res.status(409).json({ message: "Voucher đã hết lượt nhận" });
-    }
-
-    if ((db.vouchers || []).find((v) => v.user_id === req.user.id && v.claimed_from === template.id)) {
-      return res.status(400).json({ message: "Bạn đã nhận voucher này rồi" });
-    }
-
+    if ((db.vouchers || []).find((v) => v.user_id === req.user.id && v.claimed_from === template.id)) return res.status(400).json({ message: "Bạn đã nhận voucher này rồi" });
     const claimCode = `${template.code}-U${req.user.id}-${Date.now().toString(36).toUpperCase()}`;
-    const newVoucher = {
-      id: nextId(db.vouchers), code: claimCode, value: template.value,
-      user_id: req.user.id, points_used: 0, used: false,
-      claimed_from: template.id,
-      expires_at: template.expires_at || null,
-      created_at: new Date().toISOString(),
-    };
+    const newVoucher = { id: nextId(db.vouchers), code: claimCode, value: template.value, user_id: req.user.id, points_used: 0, used: false, claimed_from: template.id, created_at: new Date().toISOString() };
     db.vouchers.push(newVoucher);
     await saveDBOrThrow(db);
     res.status(201).json({ ok: true, voucher: newVoucher });
@@ -4474,23 +4434,7 @@ const healthHandler = (_, res) =>
 app.get("/", healthHandler);
 app.get("/api", healthHandler);
 app.get("/api/", healthHandler);
-// ============================================================
-// TELEMETRY (nhận lỗi từ client ErrorBoundary)
-// ============================================================
-app.post("/api/telemetry/error", (req, res) => {
-  try {
-    const { message, stack, component, url, ua, ts } = req.body || {};
-    console.warn("📡 [Telemetry]", {
-      message: String(message || "").slice(0, 500),
-      url: String(url || "").slice(0, 500),
-      ua: String(ua || "").slice(0, 200),
-      ts,
-    });
-    res.json({ ok: true });
-  } catch {
-    res.json({ ok: true });
-  }
-});
+
 const PORT = process.env.PORT || 3000;
 export default app;
 

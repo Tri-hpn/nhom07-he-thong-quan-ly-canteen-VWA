@@ -1126,3 +1126,101 @@ html.dark-mode .input-icon input:focus {
   border: 0 !important;
   box-shadow: none !important;
 }
+
+/* ============================================================
+   FIX-C. RESPONSIVE — HeaderNav / BottomNav
+   ------------------------------------------------------------
+   Desktop (>= 901px): hiện HeaderNav, ẩn BottomNav
+   Tablet/Mobile (<= 900px): ẩn HeaderNav, hiện BottomNav
+   ============================================================ */
+
+/* Desktop: hiện HeaderNav, ẩn BottomNav */
+.header-nav {
+  display: block !important;
+}
+
+.bottom-nav {
+  display: none !important;
+}
+
+/* Tablet + Mobile: ẩn HeaderNav, hiện BottomNav */
+@media (max-width: 900px) {
+  .header-nav {
+    display: none !important;
+  }
+
+  .bottom-nav {
+    display: flex !important;
+  }
+
+  /* Space cho BottomNav */
+  body.has-bottom-nav .page-content {
+    padding-bottom: 90px !important;
+  }
+}
+
+/* Mobile nhỏ: đảm bảo chắc chắn */
+@media (max-width: 480px) {
+  .header-nav {
+    display: none !important;
+  }
+
+  .bottom-nav {
+    display: flex !important;
+  }
+}
+
+/* Đảm bảo header-nav-inner không bị xuống dòng */
+.header-nav-inner {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 4px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.header-nav-inner::-webkit-scrollbar {
+  display: none !important;
+}
+
+.header-nav-item {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Giảm padding khi cửa sổ hẹp để đủ 6 tab */
+@media (max-width: 1400px) {
+  .header-nav-item {
+    padding: 14px 12px !important;
+    font-size: 13px !important;
+  }
+}
+
+@media (max-width: 1200px) {
+  .header-nav-item {
+    padding: 14px 10px !important;
+    font-size: 12.5px !important;
+    gap: 6px !important;
+  }
+
+  .header-nav-item svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .header-nav-item {
+    padding: 14px 8px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* ============================================================
+   KẾT THÚC FILE
+   ============================================================ */

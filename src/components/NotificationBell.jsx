@@ -1,11 +1,9 @@
 // ============================================================
-// NOTIFICATIONBELL.JSX — Chuông thông báo trên topbar (V4)
+// NOTIFICATIONBELL.JSX — Chuông thông báo trên topbar (V3)
 // ============================================================
-// V4 (2026-11):
-//   🔧 FIX CRITICAL: load() gọi setLoading(false) khi !getToken()
-//                    trước đây return sớm → spinner kẹt vĩnh viễn
 // V3 (2026-11):
-//   🔧 FIX: Guard getToken() — tránh spam 401/403
+//   - 🔧 FIX: Chặn gọi API khi chưa đăng nhập (getToken).
+//             Tránh spam lỗi 401/403 trên Vercel khi ở trang Login.
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -13,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Bell, Check, ShoppingBag, Package, Gift, Wallet, MessageCircle, Info, Loader2,
 } from "lucide-react";
-import { api, getToken } from "../api";
+import { api, getToken } from "../api"; // 🔧 Import thêm getToken
 import { useI18n } from "../hooks/useI18n";
 
 const MODAL_Z = 2147483600;
@@ -78,7 +76,7 @@ export default function NotificationBell() {
   const boxRef = useRef(null);
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
-  const mountedRef = useRef(true);
+  const mountedRef = useRef(true); 
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -90,12 +88,9 @@ export default function NotificationBell() {
 
   const load = useCallback(
     async (silent = false) => {
-      // 🔧 FIX V4: Nếu không có token → phải tắt loading, nếu không spinner kẹt vĩnh viễn
-      if (!getToken()) {
-        if (mountedRef.current) setLoading(false);
-        return;
-      }
-
+      // 🔧 FIX: Chặn gọi API khi chưa đăng nhập (tránh 401/403)
+      if (!getToken()) return;
+      
       if (inFlightRef.current) return;
       inFlightRef.current = true;
 

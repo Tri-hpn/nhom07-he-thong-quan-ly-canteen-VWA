@@ -6,18 +6,18 @@ export const DEFAULT_BANNER_OVERLAY =
   "linear-gradient(120deg, rgba(10,15,30,0.15) 0%, rgba(10,15,30,0.08) 55%, rgba(10,15,30,0) 100%)";
 
 export const bannerSlides = [
-  // SLIDE 1 — Đổi xu nhận voucher
+  // SLIDE 1 — Đổi điểm nhận voucher
   {
     id: "voucher",
     titleKey: "banner.1.title",
-    title: "Đổi xu – Nhận Voucher",
+    title: "Đổi điểm – Nhận Voucher",
     descKey: "banner.1.desc",
-    description: "Tích xu mỗi lần mua hàng và đổi lấy ưu đãi hấp dẫn.",
+    description: "Tích điểm mỗi lần mua hàng và đổi lấy ưu đãi hấp dẫn.",
     badgeKey: "banner.1.badge",
-    badge: "🏆 Tích xu mỗi đơn",
+    badge: "🏆 Tích điểm mỗi đơn",
     chips: [
-      { icon: "gift", textKey: "banner.1.chip1", text: "1 xu = 100đ" },
-      { icon: "sparkles", textKey: "banner.1.chip2", text: "Đổi từ 100 xu" },
+      { icon: "gift", textKey: "banner.1.chip1", text: "1 điểm = 100đ" },
+      { icon: "sparkles", textKey: "banner.1.chip2", text: "Đổi từ 100 điểm" },
     ],
     buttonTextKey: "banner.1.btn",
     buttonText: "Đổi voucher ngay",

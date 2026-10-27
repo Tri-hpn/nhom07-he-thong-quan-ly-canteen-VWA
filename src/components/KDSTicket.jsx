@@ -1,16 +1,18 @@
 // ============================================================
-// KDSTICKET.JSX — Ticket đơn trong KDS board (V7)
+// KDSTICKET.JSX — Ticket đơn trong KDS board (V6 - LIVE TIMER)
 // ============================================================
-// V7 (2026-11):
-//   🔧 Thêm nút "Thông báo" & "Sửa món" (hiển thị ở Đã Xác Nhận).
 // V6 (2026-10):
-//   - Live timer, fix hiển thị Xu.
+//   - ⏱ Tự động tick timer mỗi 1s (không phụ thuộc cha re-render).
+//   - 🔧 Fix hiển thị điểm Sống Xanh (điểm/Xu, không phải đ).
+//   - 🎯 Ngưỡng urgency dùng prep_time nếu có.
+//   - ♿ Thêm aria-label cho các nút action.
+//   - ⚡ useMemo cho items/total/paymentLabel.
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
 import {
   Check, Volume2, CheckCircle2, Soup, AlertTriangle,
-  XCircle, PackageCheck, Loader2, Timer, Leaf, Bell, Edit
+  XCircle, PackageCheck, Loader2, Timer, Leaf,
 } from "lucide-react";
 import { useI18n } from "../hooks/useI18n";
 import { money } from "./UI";
@@ -128,8 +130,6 @@ export default function KDSTicket({
   onAdvance,
   onReject,
   onRecall,
-  onNotify,
-  onEdit,
   onApproveGreen,
   onRejectGreen,
   greenBusy = false,
@@ -225,7 +225,7 @@ export default function KDSTicket({
   const showReject = isPending && typeof onReject === "function";
   const isTall = layout === "tall";
 
-  // Xu Sống Xanh Học Đường — có thể là pending, approved hoặc legacy (chỉ có points)
+  // Điểm Sống Xanh — có thể là pending, approved hoặc legacy (chỉ có points)
   const hasGreen =
     order?.green_status === "pending" ||
     order?.green_status === "approved" ||
@@ -402,18 +402,21 @@ export default function KDSTicket({
               }}
             >
               <Leaf size={14} />
-              <span style={{ whiteSpace: "nowrap", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", padding: "2px 6px", borderRadius: 4 }}>
-  {t("Sống Xanh Học Đường")} (+{order.green_points || 10} {t("Xu")})
-</span>
+              <span>
+                {order.green_status === "pending"
+                  ? t("Chờ duyệt Sống Xanh")
+                  : t("Đã duyệt Sống Xanh")}{" "}
+                +{greenPoints} {t("điểm")}
+              </span>
             </div>
             {order.green_status === "pending" && (onApproveGreen || onRejectGreen) && (
-              <div style={{ display: "none" }}>
+              <div style={{ display: "flex", gap: 6 }}>
                 {onApproveGreen && (
                   <button
                     type="button"
                     onClick={() => onApproveGreen(order)}
                     disabled={greenBusy || processing}
-                    aria-label={t("Duyệt Xu Sống Xanh Học Đường")}
+                    aria-label={t("Duyệt điểm Sống Xanh")}
                     style={{
                       flex: 1,
                       padding: "6px 10px",
@@ -444,7 +447,7 @@ export default function KDSTicket({
                     type="button"
                     onClick={() => onRejectGreen(order)}
                     disabled={greenBusy || processing}
-                    aria-label={t("Từ chối Xu Sống Xanh Học Đường")}
+                    aria-label={t("Từ chối điểm Sống Xanh")}
                     style={{
                       flex: 1,
                       padding: "6px 10px",
@@ -485,46 +488,15 @@ export default function KDSTicket({
             }}
           >
             <Leaf size={12} />
-            <span style={{ whiteSpace: "nowrap", fontWeight: 700, fontSize: 12, display: "inline-flex", alignItems: "center", padding: "2px 6px", borderRadius: 4 }}>
-  {t("Sống Xanh Học Đường")} (+{order.green_points || 10} {t("Xu")})
-</span>
+            {/* FIX: dùng "điểm" thay vì "đ" (tiền) */}
+            <span>
+              {t("Khách mang đồ đựng")} (+{greenPoints || 10} {t("điểm")})
+            </span>
           </div>
         ))}
 
       {/* ACTIONS */}
       <div className={`kds-card__actions ${showReject ? "kds-card__actions--stack" : ""}`}>
-        {/* NÚT THÔNG BÁO & SỬA MÓN (chỉ hiện khi Đã xác nhận) */}
-        {(onNotify || onEdit) && (
-          <div style={{ display: "flex", gap: 6, width: "100%", marginBottom: 6 }}>
-            {onNotify && (
-              <button
-                type="button"
-                className="kds-card__btn kds-card__btn--ghost"
-                style={{ flex: 1, fontSize: 12, padding: "6px 0" }}
-                onClick={() => onNotify(order)}
-                disabled={processing}
-                aria-label={t("Gửi thông báo")}
-              >
-                <Bell size={16} />
-                <span>{t("Thông báo")}</span>
-              </button>
-            )}
-            {onEdit && (
-              <button
-                type="button"
-                className="kds-card__btn kds-card__btn--ghost"
-                style={{ flex: 1, fontSize: 12, padding: "6px 0" }}
-                onClick={() => onEdit(order)}
-                disabled={processing}
-                aria-label={t("Sửa món")}
-              >
-                <Edit size={16} />
-                <span>{t("Sửa món")}</span>
-              </button>
-            )}
-          </div>
-        )}
-
         {showReject && (
           <button
             type="button"
