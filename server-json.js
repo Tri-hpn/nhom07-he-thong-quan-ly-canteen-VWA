@@ -1043,6 +1043,8 @@ function auth(roles = []) {
 // AUTH ENDPOINTS
 // ============================================================
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5 });
+// 🔧 V24 FIX: chống spam tạo account ảo (3 req/phút/IP)
+const registerLimiter = rateLimit({ windowMs: 60_000, max: 3 });
 
 app.post("/api/auth/login", loginLimiter, async (req, res) => {
   try {
@@ -1081,7 +1083,8 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
   }
 });
 
-app.post("/api/auth/register", async (req, res) => {
+// 🔧 V24 FIX: thêm registerLimiter middleware
+app.post("/api/auth/register", registerLimiter, async (req, res) => {
   try {
     const { email, password, name, phone, student_code } = req.body || {};
     const emailNorm = normalizeEmail(email);
@@ -1883,17 +1886,16 @@ app.post("/api/orders", auth(), async (req, res) => {
     })();
       const total = Math.max(0, subtotal - computedDiscount - xuDiscount);
       if (payment === "CARD") {
-  const studentCard = (db.student_cards || []).find(
-    (item) => Number(item.user_id) === Number(req.user.id)
-  );
-
-  if (studentCard?.locked) {
-    return res.status(400).json({
-      message: "Thẻ sinh viên đang bị khóa. Vui lòng mở khóa thẻ trước khi thanh toán."
-    });
-  }
-}
-const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
+        const studentCard = (db.student_cards || []).find(
+          (item) => Number(item.user_id) === Number(req.user.id)
+        );
+        if (studentCard?.locked) {
+          return res.status(400).json({
+            message: "Thẻ sinh viên đang bị khóa. Vui lòng mở khóa thẻ trước khi thanh toán."
+          });
+        }
+      }
+      const isWalletPay = payment === "Ví Canteen" || payment === "WALLET";
 
     if (pickupSlotId) {
       const slots = getTimeSlots(db);
@@ -2689,6 +2691,7 @@ app.post("/api/reviews", auth(), async (req, res) => {
     return res.status(500).json({ message: e.message });
   }
 });
+
 // ============================================================
 // POINTS CONFIG & POINTS
 // ============================================================
@@ -2701,7 +2704,8 @@ app.get("/api/points/config-history", auth(["ADMIN"]), (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
+// 🔧 V24 FIX: async + saveDBOrThrow để tránh mất history
+app.put("/api/points/config", auth(["ADMIN"]), async (req, res) => {
   try {
     const db = loadDB();
     const nextConfig = req.body;
@@ -2724,7 +2728,8 @@ app.put("/api/points/config", auth(["ADMIN"]), (req, res) => {
       });
     }
     db.points_config = nextConfig;
-    saveDB(db);
+    // 🔧 V24 FIX: saveDBOrThrow thay vì saveDB
+    await saveDBOrThrow(db);
     res.json({ ok: true, config: nextConfig });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
@@ -4225,6 +4230,7 @@ if (!IS_VERCEL) {
     console.log("   💬 Chat TTL: 24h | Auth: HttpOnly Cookie");
     console.log("   🖼️  Cloudinary:", process.env.CLOUDINARY_URL ? "ON" : "OFF (fallback menu_images)");
     console.log("   ⚡ KDS: SSE + Polling");
+    console.log("   🛡️  Register limit: 3 req/phút/IP");
   });
   getInitPromise().catch((e) => console.error("Init failed:", e.message));
 } else {
