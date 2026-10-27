@@ -4,23 +4,13 @@
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
 // ✅ V4: Nhận URL params từ trang Chat để tạo voucher cho khách
 // ✅ V5: Fix lỗi dropdown không tự chọn khách hàng (Controlled Component)
-// 🔧 Batch 11 FIX:
-//   1. DEFAULT_FILTERS thêm flash: "all"
-//   2. readStoredFilters cập nhật đúng status list + flash
-//   3. filters khởi tạo lazy từ readStoredFilters
-//   4. Persist filters vào localStorage (useEffect)
-//   5. filtered useMemo thêm `now` vào deps
-//   6. saveVoucher thêm publish_date vào payload
-//   7. Xóa 6 dead state (isFlashSale, duration, durationUnit, configModal)
-//   8. ConfigHistoryTable: safe array extract (settings.get trả object)
-//   9. PointsConfigTab: fallback initial?.earn || {}
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import {Plus, Search, Trash2, Pencil, Ticket, Gift, Save, Check, Download, Power, Globe, User as UserIcon, Eye, X, Users, Copy, Loader2, AlertCircle, Edit, Settings, History, Zap, Info} from "lucide-react";
-import { api, getToken } from "../../api";
+import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
@@ -43,12 +33,11 @@ const FILTER_STORAGE_KEY = "vouchers_filter";
 
 const QUICK_VALUES = [10000, 20000, 50000, 100000];
 
-// 🔧 Batch 11 FIX: DEFAULT_FILTERS thêm flash
+// Default filter state
 const DEFAULT_FILTERS = {
   q: "",
   source: "all",
   status: "all",
-  flash: "all",
   sortBy: "newest",
 };
 
@@ -56,6 +45,9 @@ const DEFAULT_FILTERS = {
 // HELPERS
 // ============================================================
 
+/**
+ * Escape 1 cell cho CSV.
+ */
 function csvCell(v) {
   const s = String(v ?? "");
   if (s.includes(",") || s.includes('"') || s.includes("\n")) {
@@ -64,7 +56,9 @@ function csvCell(v) {
   return s;
 }
 
-// 🔧 Batch 11 FIX: đọc filter đã lưu từ localStorage (bao gồm flash)
+/**
+ * ✅ V3: Đọc filter đã lưu từ localStorage (an toàn).
+ */
 function readStoredFilters() {
   if (typeof window === "undefined") return DEFAULT_FILTERS;
   try {
@@ -78,14 +72,9 @@ function readStoredFilters() {
       source: ["all", "public", "personal"].includes(parsed.source)
         ? parsed.source
         : DEFAULT_FILTERS.source,
-      // 🔧 Batch 11 FIX: đúng status list thực tế
-      status: ["all", "active", "expired", "out_of_stock", "paused"].includes(parsed.status)
+      status: ["all", "unused", "used"].includes(parsed.status)
         ? parsed.status
         : DEFAULT_FILTERS.status,
-      // 🔧 Batch 11 FIX: flash
-      flash: ["all", "flash", "normal"].includes(parsed.flash)
-        ? parsed.flash
-        : DEFAULT_FILTERS.flash,
       sortBy: ["newest", "oldest", "value-desc", "value-asc"].includes(parsed.sortBy)
         ? parsed.sortBy
         : DEFAULT_FILTERS.sortBy,
@@ -99,6 +88,8 @@ function readStoredFilters() {
 // MAIN COMPONENT
 // ============================================================
 
+
+
 function Countdown({ targetDate }) {
   const [timeLeft, setTimeLeft] = useState("");
   const [isExpired, setIsExpired] = useState(false);
@@ -106,7 +97,7 @@ function Countdown({ targetDate }) {
     if (!targetDate) return;
     try {
       const targetTime = new Date(targetDate).getTime();
-      if (isNaN(targetTime)) return;
+      if (isNaN(targetTime)) return; // Bỏ qua nếu ngày lỗi
       const updateTimer = () => {
         const now = new Date().getTime();
         const distance = targetTime - now;
@@ -137,6 +128,8 @@ function Countdown({ targetDate }) {
   );
 }
 
+
+
 const formatDateSafe = (dateStr, type = "date") => {
   if (!dateStr) return "—";
   try {
@@ -155,6 +148,7 @@ export default function OwnerVouchers() {
   const { t } = useI18n();
   const [searchParams] = useSearchParams();
 
+  // Filter options — useMemo vì phụ thuộc t
   const SOURCE_FILTERS = useMemo(
     () => [
       { id: "all",      label: t("Tất cả") },
@@ -198,26 +192,22 @@ export default function OwnerVouchers() {
   const [formIsFlashSale, setFormIsFlashSale] = useState(false);
   const [publishDate, setPublishDate] = useState(new Date().toISOString().slice(0, 10));
   const [expiryDate, setExpiryDate] = useState("");
+  const [isFlashSale, setIsFlashSale] = useState(false);
+  const [duration, setDuration] = useState(30);
+  const [durationUnit, setDurationUnit] = useState("minutes");
   const [maxClaims, setMaxClaims] = useState(0);
   const [selectedUserId, setSelectedUserId] = useState("");
-  const [targetAudience, setTargetAudience] = useState("all");
+  const [targetAudience, setTargetAudience] = useState("all"); // ✅ V5: Controlled select
 
+  // ✅ V3: Khởi tạo filter từ localStorage
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 10000);
     return () => clearInterval(timer);
   }, []);
 
-  // 🔧 Batch 11 FIX: lazy init filters từ localStorage + có flash
-  const [filters, setFilters] = useState(readStoredFilters);
+  const [filters, setFilters] = useState({ q: "", source: "all", status: "all", flash: "all", sortBy: "newest" });
   const { q, source: filterSource, status: filterStatus, flash: filterFlash, sortBy } = filters;
-
-  // 🔧 Batch 11 FIX: persist filters
-  useEffect(() => {
-    try {
-      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
-    } catch {}
-  }, [filters]);
 
   const [selected, setSelected] = useState([]);
   const [copiedId, setCopiedId] = useState(null);
@@ -230,17 +220,22 @@ export default function OwnerVouchers() {
 
   // ---------- Points config ----------
   const [pointsConfig, setPointsConfig] = useState(null);
-  const [activeTab, setActiveTab] = useState("vouchers");
+  const [configModal, setConfigModal] = useState(false);
+  const [activeTab, setActiveTab] = useState("vouchers"); // "vouchers" | "rules"
   const [savingConfig, setSavingConfig] = useState(false);
   // ---------- Confirm dialog ----------
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
+  // Race-safe
   const reqIdRef = useRef(0);
 
+  // ---------- ✅ V3: Persist filters vào localStorage ----------
+  
+
   // ---------- Load ----------
+
   const load = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 11 FIX
     const myReqId = ++reqIdRef.current;
     setLoading(true);
     setError("");
@@ -275,27 +270,28 @@ export default function OwnerVouchers() {
     if (searchParams.get("action") === "create") {
       const uId = searchParams.get("userId");
       const uName = searchParams.get("userName");
-      setModal({
-        code: generateCode(),
-        user_id: uId ? Number(uId) : "",
-        user_name: uName || ""
+      setModal({ 
+        code: generateCode(), 
+        user_id: uId ? Number(uId) : "", 
+        user_name: uName || "" 
       });
     }
   }, [searchParams]);
 
-  // Sync form states khi mở/đổi modal
+  // Sync formValue và selectedUserId khi mở/đổi modal
   useEffect(() => {
     if (modal) {
       setFormValue(modal.value != null ? Number(modal.value) : "");
-      setFormIsFlashSale(!!(modal.is_flash_sale || modal.isFlashSale));
+      setFormIsFlashSale(!!modal.isFlashSale);
+      setFormIsFlashSale(modal.is_flash_sale || false);
       setPublishDate(modal.publish_date ? modal.publish_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
       setExpiryDate(modal.expires_at ? modal.expires_at.slice(0, 16) : "");
       setSelectedUserId(modal.user_id ? String(modal.user_id) : "");
-      setTargetAudience(modal.user_id ? "specific" : "all");
+      setTargetAudience(modal.user_id ? "specific" : "all"); // ✅ V5
     }
   }, [modal]);
 
-  // Cleanup timeout copy feedback
+  // Cleanup timeout copy feedback khi unmount
   useEffect(() => {
     if (!copiedId) return;
     const timer = setTimeout(() => setCopiedId(null), COPY_FEEDBACK_MS);
@@ -315,6 +311,7 @@ export default function OwnerVouchers() {
 
   // ---------- Computed ----------
 
+  // Map customer_id → customer để tra cứu O(1)
   const customerMap = useMemo(() => {
     const map = new Map();
     for (const c of customers) map.set(String(c.id), c);
@@ -334,25 +331,27 @@ export default function OwnerVouchers() {
   const filtered = useMemo(() => {
     let result = [...list];
 
-    // Loại voucher đã claim khỏi danh sách chính
+    // FIX: Loai voucher da claim khoi danh sach chinh (chi hien trong popup Xem luot nhan)
     result = result.filter((v) => !v.claimed_from);
 
+    // Search Nâng cao: Bắt mọi trường (Mã, Tên, Tiền, Nguồn, Trạng thái, Ngày)
     if (q.trim()) {
       const s = q.toLowerCase().trim();
-      const sNoDot = s.replace(/\./g, "");
+      const sNoDot = s.replace(/\./g, ""); // Bỏ dấu chấm để tìm "50.000" hoặc "50000"
 
       result = result.filter((v) => {
         const cust = (customers || []).find(c => String(c.id) === String(v.user_id));
         const cName = cust ? (cust.name || "").toLowerCase() : "";
-
+        
         const codeStr = (v.code || "").toLowerCase();
         const valueStr = String(v.value || "");
-        const valueFormatted = Number(v.value || 0).toLocaleString("vi-VN").toLowerCase();
-
+        const valueFormatted = Number(v.value || 0).toLocaleString("vi-VN").toLowerCase(); // VD: 50.000
+        
         const statusStr = v.used ? "đã dùng used" : "chưa dùng unused";
         const sourceStr = !v.user_id ? "hệ thống toàn hệ thống public" : "cá nhân personal";
         const dateStr = v.created_at ? formatDateSafe(v.created_at, "date") : "";
 
+        // Kiểm tra tất cả các trường
         return codeStr.includes(s) ||
                cName.includes(s) ||
                valueStr.includes(s) || valueStr.includes(sNoDot) ||
@@ -363,6 +362,7 @@ export default function OwnerVouchers() {
       });
     }
 
+    
     // Flash Sale filter
     if (filterFlash === "flash") {
       result = result.filter((v) => v.is_flash_sale || v.isFlashSale);
@@ -390,6 +390,7 @@ export default function OwnerVouchers() {
     } else if (filterSource === "personal") {
       result = result.filter((v) => v.user_id);
     }
+    // Nếu filterSource === "all" thì không lọc gì cả, giữ nguyên tất cả
 
     // Sort
     switch (sortBy) {
@@ -408,8 +409,7 @@ export default function OwnerVouchers() {
     }
 
     return result;
-  // 🔧 Batch 11 FIX: thêm `now` vào deps
-  }, [list, q, filterStatus, filterSource, filterFlash, sortBy, customers, now, claimsCountMap]);
+  }, [list, q, filterStatus, filterSource, filterFlash, sortBy, customers]);
 
   const suggestions = useMemo(() => {
     if (!q.trim() || !showSuggestions) return [];
@@ -436,6 +436,8 @@ export default function OwnerVouchers() {
     );
     const personal = list.filter((v) => v.user_id);
     const totalClaims = personal.filter((v) => v.claimed_from).length;
+
+    // ✅ V2: "Khả dụng cá nhân" = chỉ tính personal chưa dùng
     const personalAvailable = personal.filter((v) => !v.used).length;
 
     return {
@@ -448,6 +450,9 @@ export default function OwnerVouchers() {
     };
   }, [list]);
 
+  // Đếm claims theo template_id — map 1 lần
+  
+
   const allSelected =
     filtered.length > 0 && selected.length === filtered.length;
 
@@ -455,7 +460,6 @@ export default function OwnerVouchers() {
     q.trim() !== "" ||
     filterSource !== "all" ||
     filterStatus !== "all" ||
-    filterFlash !== "all" ||
     sortBy !== "newest";
 
   // ---------- Filter handlers ----------
@@ -464,6 +468,7 @@ export default function OwnerVouchers() {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
+  /** ✅ V3: Reset về default + xoá localStorage */
   const clearFilters = () => {
     setFilters({ ...DEFAULT_FILTERS });
     try {
@@ -519,7 +524,7 @@ export default function OwnerVouchers() {
 
   // ---------- CRUD ----------
 
-  const saveVoucher = async (e) => {
+ const saveVoucher = async (e) => {
     e.preventDefault();
     if (saving) return;
 
@@ -543,16 +548,15 @@ export default function OwnerVouchers() {
     setSaving(true);
     try {
       const data = {
-        code,
-        value,
-        user_id: userId,
+        code, 
+        value, 
+        user_id: userId, 
         points_used: Number(f.get("points_used")) || 0,
         is_flash_sale: !!formIsFlashSale,
         max_claims: Number(maxClaims) || 0,
-        expires_at: expiryDate ? expiryDate : null,
-        publish_date: publishDate || null, // 🔧 Batch 11 FIX
+        expires_at: expiryDate ? expiryDate : null
       };
-
+      
       if (modal?.id) {
         await api.vouchers.update(modal.id, data);
         toast(t("Đã cập nhật voucher"), "success");
@@ -621,7 +625,7 @@ export default function OwnerVouchers() {
   const toggleUsed = (v) => {
     const newUsed = !v.used;
     const action = newUsed ? "Tắt" : "Mở lại";
-
+    
     setConfirm({
       title: `${action} voucher "${v.code}"?`,
       message: newUsed
@@ -633,7 +637,8 @@ export default function OwnerVouchers() {
       onConfirm: async () => {
         try {
           const payload = { used: newUsed };
-
+          
+          // Ngầm sửa lỗi ngày tháng nếu có (Tránh lỗi Invalid time value)
           if (v.expires_at && isNaN(new Date(v.expires_at).getTime())) {
             payload.expires_at = null;
           }
@@ -741,7 +746,9 @@ export default function OwnerVouchers() {
 
       {activeTab === "vouchers" && (
       <>
-      {/* TOOLBAR + FILTERS */}
+      {/* ============================================================
+            TOOLBAR + FILTERS
+          ============================================================ */}
       <div style={cardStyle}>
         <div
           style={{
@@ -874,6 +881,19 @@ export default function OwnerVouchers() {
             <option value="normal">Thường</option>
           </select>
 
+          {/* Sort */}
+          
+
+          {/* Clear filters */}
+
+
+          {/* Points config */}
+          
+
+          {/* Export */}
+          
+
+          {/* Create */}
           <button
             onClick={() => setModal({ code: generateCode() })}
             style={btnPrimaryStyle}
@@ -923,6 +943,7 @@ export default function OwnerVouchers() {
           </div>
         )}
 
+        {/* Counter */}
         <div
           style={{
             marginTop: 12,
@@ -934,7 +955,9 @@ export default function OwnerVouchers() {
         </div>
       </div>
 
-      {/* TABLE */}
+      {/* ============================================================
+          TABLE
+          ============================================================ */}
       <div style={{ ...cardStyle, marginTop: 16 }}>
         {loading && (
           <SkeletonTable
@@ -992,13 +1015,13 @@ export default function OwnerVouchers() {
                   const src = getSource(v);
                   const isTemplate = !v.user_id && !v.claimed_from;
                   const claimCount = isTemplate ? (claimsCountMap.get(v.id) || 0) : 0;
-
+                  
                   const isFlash = v.is_flash_sale || v.isFlashSale;
                   const isExpired = v.expires_at && new Date(v.expires_at).getTime() < now.getTime();
                   const isMaxed = Number(v.max_claims) > 0 && Number(claimsCountMap.get(v.id) || 0) >= Number(v.max_claims);
                   const isSelected = selected.includes(v.id);
                   const isCopied = copiedId === v.id;
-
+                  
                   return (
                     <tr
                       key={v.id}
@@ -1113,7 +1136,9 @@ export default function OwnerVouchers() {
         )}
       </div>
 
-      {/* CREATE/EDIT MODAL */}
+      {/* ============================================================
+          CREATE/EDIT MODAL
+          ============================================================ */}
       {modal && (
         <Modal
           onClose={() => !saving && setModal(null)}
@@ -1255,11 +1280,13 @@ export default function OwnerVouchers() {
 
             {formIsFlashSale && (
               <div style={{ marginBottom: 20, padding: 16, background: "rgba(245, 158, 11, 0.05)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 10 }}>
+
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, width: "100%", flexWrap: "nowrap" }}>
                   <div style={{ margin: 0, fontWeight: 600, color: "var(--text-muted, #475569)", whiteSpace: "nowrap", flexShrink: 0, width: 70 }}>Giới hạn:</div>
                   <input type="number" min="0" value={maxClaims} onChange={(e) => setMaxClaims(e.target.value)} placeholder="0 = Không giới hạn" style={{ ...inputStyle, marginBottom: 0, flex: 1, minWidth: 0, fontWeight: 700 }} disabled={saving} />
                   <div style={{ fontSize: 13, color: "var(--text-muted)", flex: 1 }}>lượt sử dụng</div>
                 </div>
+
               </div>
             )}
 
@@ -1352,7 +1379,9 @@ export default function OwnerVouchers() {
         </Modal>
       )}
 
-      {/* CLAIMS MODAL */}
+      {/* ============================================================
+          CLAIMS MODAL
+          ============================================================ */}
       {claimsModal && (
         <Modal onClose={() => setClaimsModal(null)} maxWidth={560} zIndex={MODAL_Z + 10}>
           <div style={modalHeaderStyle}>
@@ -1416,6 +1445,9 @@ export default function OwnerVouchers() {
 
       )}
 
+      {/* ============================================================
+          POINTS CONFIG MODAL
+          ============================================================ */}
       </>
       )}
 
@@ -1423,13 +1455,17 @@ export default function OwnerVouchers() {
         <PointsConfigTab
           initial={pointsConfig}
           saving={savingConfig}
+          
           onSave={async (next) => {
             setSavingConfig(true);
             try {
+              console.log("Đang gửi API:", next.earn);
               const res = await api.points.updateConfig(next);
+              console.log("API phản hồi:", res);
               setPointsConfig(res.config || next);
               toast("Đã lưu Quy tắc Xu thành công!", "success");
             } catch (e) {
+              console.error("Lỗi lưu API:", e);
               toast(e.message || "Lỗi khi lưu, vui lòng thử lại", "error");
             } finally {
               setSavingConfig(false);
@@ -1439,6 +1475,7 @@ export default function OwnerVouchers() {
         />
       )}
 
+      {/* Confirm dialog */}
       {confirm && (
         <ConfirmDialog
           open
@@ -1515,12 +1552,12 @@ function Stat({ label, value, color, icon }) {
 }
 
 function IconButton({
-  children,
-  onClick,
-  title,
-  color = "var(--text-primary, #172033)",
-  disabled = false,
-}) {
+      children,
+      onClick,
+      title,
+      color = "var(--text-primary, #172033)",
+      disabled = false,
+    }) {
   return (
     <button onClick={onClick} disabled={disabled} title={title}
       aria-label={title}
@@ -1530,10 +1567,10 @@ function IconButton({
         borderRadius: 6,
         background: "var(--card-bg, #fff)",
         cursor: disabled ? "not-allowed" : "pointer",
-        display: "grid",
-        placeItems: "center",
-        color: disabled ? "var(--text-light, #94a3b8)" : color,
-        opacity: disabled ? 0.5 : 1,
+            display: "grid",
+            placeItems: "center",
+            color: disabled ? "var(--text-light, #94a3b8)" : color,
+            opacity: disabled ? 0.5 : 1,
         width: 28,
         height: 28,
         flexShrink: 0,
@@ -1626,33 +1663,31 @@ function ErrorBox({ message, onRetry, t }) {
 }
 
 // ============================================================
-// POINTS CONFIG TAB — Sửa quy tắc tích/đổi điểm
+// POINTS CONFIG MODAL — Sửa quy tắc tích/đổi xu
 // ============================================================
 function PointsConfigTab({ initial, saving, onSave, t }) {
-  // 🔧 Batch 11 FIX: fallback an toàn nếu initial null/thiếu earn
-  const earnCfg = initial?.earn || {};
-  const redeemCfg = initial?.redeem || {};
-
-  const [subsidyPoints, setSubsidyPoints] = useState(earnCfg.subsidy_points || 10000);
+  const [subsidyPoints, setSubsidyPoints] = useState(initial?.earn?.subsidy_points || 10000);
   const [showRulesModal, setShowRulesModal] = useState(false);
-  const [rateEnabled, setRateEnabled] = useState(earnCfg.rate_enabled ?? true);
-  const [subsidyEnabled, setSubsidyEnabled] = useState(earnCfg.subsidy_enabled ?? true);
+  const [rateEnabled, setRateEnabled] = useState(initial?.earn?.rate_enabled ?? true);
+  const [subsidyEnabled, setSubsidyEnabled] = useState(initial?.earn?.subsidy_enabled ?? true);
   const [isEditing, setIsEditing] = useState(false);
-  const [rateDesc, setRateDesc] = useState(earnCfg.rate_desc || "Điều kiện nhận thưởng: Đơn hàng được hoàn thành thành công.\nCách cộng Xu: Hệ thống tự động cộng Xu vào tài khoản sau khi đơn hàng hoàn thành.\nTrường hợp không được thưởng: Đơn hàng chưa hoàn thành hoặc đã bị hủy sẽ không được nhận Xu thưởng.\nKiểm tra Xu: Xem số Xu được cộng trong mục Lịch sử Xu.");
-  const [greenDesc, setGreenDesc] = useState(earnCfg.green_desc || "Điều kiện tham gia: Mang hộp đựng cá nhân khi mua đồ ăn mang về.\nCách nhận thưởng: Thông báo với nhân viên tại quầy để được kiểm tra và xác nhận hợp lệ. Sau khi được duyệt, bạn nhận Xu.\nGiới hạn thưởng: Mỗi đơn hàng chỉ được nhận thưởng Sống Xanh một lần.\nLưu ý: Mang hộp cá nhân nhưng chưa được nhân viên xác nhận thì chưa đủ điều kiện nhận Xu.");
-  const [reviewDesc, setReviewDesc] = useState(earnCfg.review_desc || "Điều kiện nhận thưởng: Đơn hàng đã hoàn thành và món ăn được đánh giá là món bạn đã mua.\nCách nhận thưởng: Chọn số sao và gửi nhận xét về món ăn thông qua chức năng đánh giá.\nMức thưởng: Nhận Xu cho mỗi lượt đánh giá hợp lệ.\nGiới hạn thưởng: Mỗi tài khoản chỉ được nhận thưởng một lần cho mỗi món ăn; đánh giá trùng lặp không được cộng thêm Xu.");
-  const [subsidyDesc, setSubsidyDesc] = useState(earnCfg.subsidy_desc || "Chương trình hỗ trợ một phần chi phí bữa ăn cho sinh viên đủ điều kiện. Khoản trợ giá được tính bằng VNĐ và được trừ trực tiếp vào tiền suất ăn, không cộng vào số dư Xu.\nMức trợ giá: Hỗ trợ tối đa 10.000đ cho mỗi suất ăn đủ điều kiện.\nĐiều kiện áp dụng: Suất ăn có giá từ 25.000đ trở lên và thanh toán theo hình thức được chương trình quy định tại quầy.\nCách nhận trợ giá: Chọn suất ăn đủ điều kiện và thực hiện thanh toán tại quầy theo hướng dẫn của căng tin. Khoản trợ giá được áp dụng khi giao dịch đáp ứng điều kiện chương trình.\nHạn mức hỗ trợ: Số tiền trợ giá phụ thuộc vào ngân sách quỹ và số suất ăn còn được hỗ trợ trong kỳ.\nTheo dõi quyền lợi: Bạn có thể xem hạn mức trợ giá còn lại, số suất đã sử dụng trong tháng và tiến độ sử dụng trên giao diện chương trình.\nLưu ý: Trợ giá là khoản giảm trực tiếp bằng VNĐ, không phải Xu. Mức hỗ trợ thực tế không vượt quá 10.000đ cho mỗi suất ăn và phụ thuộc vào điều kiện, hạn mức còn lại của chương trình.");
+    const [rateDesc, setRateDesc] = useState(initial?.earn?.rate_desc || "Điều kiện nhận thưởng: Đơn hàng được hoàn thành thành công.\nCách cộng Xu: Hệ thống tự động cộng Xu vào tài khoản sau khi đơn hàng hoàn thành.\nTrường hợp không được thưởng: Đơn hàng chưa hoàn thành hoặc đã bị hủy sẽ không được nhận Xu thưởng.\nKiểm tra Xu: Xem số Xu được cộng trong mục Lịch sử Xu.");
+  const [greenDesc, setGreenDesc] = useState(initial?.earn?.green_desc || "Điều kiện tham gia: Mang hộp đựng cá nhân khi mua đồ ăn mang về.\nCách nhận thưởng: Thông báo với nhân viên tại quầy để được kiểm tra và xác nhận hợp lệ. Sau khi được duyệt, bạn nhận Xu.\nGiới hạn thưởng: Mỗi đơn hàng chỉ được nhận thưởng Sống Xanh Học Đường một lần.\nLưu ý: Sống Xanh Học Đường nhưng chưa được nhân viên xác nhận thì chưa đủ điều kiện nhận Xu.");
+  const [reviewDesc, setReviewDesc] = useState(initial?.earn?.review_desc || "Điều kiện nhận thưởng: Đơn hàng đã hoàn thành và món ăn được đánh giá là món bạn đã mua.\nCách nhận thưởng: Chọn số sao và gửi nhận xét về món ăn thông qua chức năng đánh giá.\nMức thưởng: Nhận Xu cho mỗi lượt đánh giá hợp lệ.\nGiới hạn thưởng: Mỗi tài khoản chỉ được nhận thưởng một lần cho mỗi món ăn; đánh giá trùng lặp không được cộng thêm Xu.");
+  const [subsidyDesc, setSubsidyDesc] = useState(initial?.earn?.subsidy_desc || "Chương trình hỗ trợ một phần chi phí bữa ăn cho sinh viên đủ điều kiện. Khoản trợ giá được tính bằng VNĐ và được trừ trực tiếp vào tiền suất ăn, không cộng vào số dư Xu.\nMức trợ giá: Hỗ trợ tối đa 10.000đ cho mỗi suất ăn đủ điều kiện.\nĐiều kiện áp dụng: Suất ăn có giá từ 25.000đ trở lên và thanh toán theo hình thức được chương trình quy định tại quầy.\nCách nhận trợ giá: Chọn suất ăn đủ điều kiện và thực hiện thanh toán tại quầy theo hướng dẫn của căng tin. Khoản trợ giá được áp dụng khi giao dịch đáp ứng điều kiện chương trình.\nHạn mức hỗ trợ: Số tiền trợ giá phụ thuộc vào ngân sách quỹ và số suất ăn còn được hỗ trợ trong kỳ.\nTheo dõi quyền lợi: Bạn có thể xem hạn mức trợ giá còn lại, số suất đã sử dụng trong tháng và tiến độ sử dụng trên giao diện chương trình.\nLưu ý: Trợ giá là khoản giảm trực tiếp bằng VNĐ, không phải Xu. Mức hỗ trợ thực tế không vượt quá 10.000đ cho mỗi suất ăn và phụ thuộc vào điều kiện, hạn mức còn lại của chương trình.");
   const [historyModal, setHistoryModal] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
-
-  const [ratePoints, setRatePoints] = useState(earnCfg.rate_points || 200);
-  const [greenEnabled, setGreenEnabled] = useState(earnCfg.green_enabled !== false);
-  const [greenPoints, setGreenPoints] = useState(earnCfg.green_points || 300);
-  const [greenApproval, setGreenApproval] = useState(earnCfg.green_require_approval !== false);
-  const [reviewEnabled, setReviewEnabled] = useState(earnCfg.review_enabled !== false);
-  const [reviewPoints, setReviewPoints] = useState(earnCfg.review_points || 500);
-
-  const [customPrograms, setCustomPrograms] = useState(earnCfg.custom_programs || []);
+  
+  // Lấy dữ liệu ban đầu từ config
+  const [ratePoints, setRatePoints] = useState(initial.earn.rate_points || 200);
+  const [greenEnabled, setGreenEnabled] = useState(initial.earn.green_enabled !== false);
+  const [greenPoints, setGreenPoints] = useState(initial.earn.green_points || 300);
+  const [greenApproval, setGreenApproval] = useState(initial.earn.green_require_approval !== false);
+  const [reviewEnabled, setReviewEnabled] = useState(initial.earn.review_enabled !== false);
+  const [reviewPoints, setReviewPoints] = useState(initial.earn.review_points || 500);
+  
+  // Mảng các chương trình tùy chỉnh thêm mới
+  const [customPrograms, setCustomPrograms] = useState(initial.earn.custom_programs || []);
 
   const submit = (e) => {
     if (e) e.preventDefault();
@@ -1660,7 +1695,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
 
     const payload = {
       earn: {
-        ...earnCfg, // 🔧 Batch 11 FIX: safe fallback
+        ...initial.earn,
         rate_enabled: rateEnabled,
         rate_points: Number(ratePoints),
         green_enabled: greenEnabled,
@@ -1676,7 +1711,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         subsidy_desc: subsidyDesc,
         custom_programs: customPrograms
       },
-      redeem: redeemCfg // 🔧 Batch 11 FIX: safe fallback
+      redeem: initial.redeem
     };
     onSave(payload);
     setIsEditing(false);
@@ -1699,18 +1734,19 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
 
   return (
     <div style={{ background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e7ebf0)", borderRadius: 12, padding: 24 }}>
-
+      
       {/* HEADER + CÁC NÚT THAO TÁC */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary, #172033)", display: "flex", alignItems: "center", gap: 10 }}>
-          <Settings size={24} /> Quy tắc cộng Xu VWA
+          <Settings size={24} /> Quy tắc cộng Xu & Trợ giá VNĐ
         </div>
-
+        
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" onClick={() => setShowRulesModal(true)} style={{ padding: "8px 16px", background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
             <Info size={16} /> Quy tắc Xu
           </button>
-
+          
+          
           {!isEditing ? (
             <button type="button" onClick={() => setIsEditing(true)} style={{ padding: "8px 16px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <Edit size={16} /> Chỉnh sửa
@@ -1731,7 +1767,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🍽️ Hoàn thành đơn hàng</div>
-            {isEditing ? (
+{isEditing ? (
               <textarea value={rateDesc} onChange={(e) => setRateDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
             ) : (
               <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{rateDesc}</div>
@@ -1744,10 +1780,10 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
               <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{ratePoints} Xu</b>
             )}
             {isEditing ? (
-              <button type="button" onClick={() => setRateEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
-            ) : (
-              <input type="checkbox" checked={rateEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
-            )}
+                <button type="button" onClick={() => setRateEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
+              ) : (
+                <input type="checkbox" checked={rateEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
+              )}
           </div>
         </div>
 
@@ -1756,7 +1792,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px" }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🌱 Sống Xanh Học Đường</div>
-              {isEditing ? (
+{isEditing ? (
                 <textarea value={greenDesc} onChange={(e) => setGreenDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
               ) : (
                 <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{greenDesc}</div>
@@ -1789,7 +1825,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>⭐ Đánh giá món ăn</div>
-            {isEditing ? (
+{isEditing ? (
               <textarea value={reviewDesc} onChange={(e) => setReviewDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
             ) : (
               <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{reviewDesc}</div>
@@ -1802,10 +1838,10 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
               <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{reviewPoints} Xu</b>
             )}
             {isEditing ? (
-              <button type="button" onClick={() => setReviewEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
-            ) : (
-              <input type="checkbox" checked={reviewEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
-            )}
+                <button type="button" onClick={() => setReviewEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
+              ) : (
+                <input type="checkbox" checked={reviewEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
+              )}
           </div>
         </div>
 
@@ -1813,7 +1849,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, border: "1px solid var(--border-color, #e2e8f0)" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary, #172033)" }}>🎓 Trợ giá sinh viên</div>
-            {isEditing ? (
+{isEditing ? (
               <textarea value={subsidyDesc} onChange={(e) => setSubsidyDesc(e.target.value)} style={{ width: "100%", minHeight: 160, padding: 8, marginTop: 8, resize: "vertical", borderRadius: 6, border: "1px solid #cbd5e1", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }} />
             ) : (
               <div style={{ fontSize: 13, color: "var(--text-muted, #64748b)", marginTop: 4, whiteSpace: "pre-line" }}>{subsidyDesc}</div>
@@ -1823,17 +1859,17 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
             {isEditing ? (
               <input type="number" value={subsidyPoints || 10000} onChange={(e) => setSubsidyPoints(e.target.value)} style={{ width: 80, padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", outline: "none", textAlign: "right" }} />
             ) : (
-              <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{Number(subsidyPoints || 10000).toLocaleString("vi-VN")} Xu</b>
+              <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{Number(subsidyPoints || 10000).toLocaleString("vi-VN")}đ</b>
             )}
             {isEditing ? (
-              <button type="button" onClick={() => setRateEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
-            ) : (
-              <input type="checkbox" checked={rateEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
-            )}
+                <button type="button" onClick={() => setRateEnabled(false)} style={{ background: "transparent", border: 0, color: "#ef4444", cursor: "pointer", padding: 4 }} title="Xóa quy tắc"><Trash2 size={20} /></button>
+              ) : (
+                <input type="checkbox" checked={rateEnabled} disabled style={{ width: 20, height: 20, accentColor: "#18a967" }} />
+              )}
           </div>
         </div>
 
-        {/* CÁC CHƯƠNG TRÌNH TÙY CHỈNH */}
+        {/* CÁC CHƯƠNG TRÌNH TÙY CHỈNH THÊM MỚI */}
         {customPrograms.map((prog) => (
           <div key={prog.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", background: "rgba(14, 165, 233, 0.05)", borderRadius: 10, border: "1px dashed rgba(14, 165, 233, 0.4)" }}>
             <div style={{ flex: 1, marginRight: 16 }}>
@@ -1855,7 +1891,7 @@ function PointsConfigTab({ initial, saving, onSave, t }) {
               ) : (
                 <b style={{ fontSize: 16, color: "#18a967", whiteSpace: "nowrap" }}>+{prog.points} Xu</b>
               )}
-
+              
               {isEditing && (
                 <button type="button" onClick={() => handleRemoveProgram(prog.id)} style={{ background: "#fee2e2", color: "#ef4444", border: 0, width: 32, height: 32, borderRadius: 6, display: "grid", placeItems: "center", cursor: "pointer" }} title="Xóa chương trình này">
                   <Trash2 size={16} />
@@ -1913,21 +1949,8 @@ function ConfigHistoryTable({ t }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!getToken()) { setLoading(false); return; } // 🔧 Batch 11 FIX
-    api.settings.get()
-      .then((data) => {
-        // 🔧 Batch 11 FIX: settings.get() trả object, không phải array
-        // → history.map cũ sẽ crash nếu set object. Extract array an toàn.
-        const arr = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.config_history)
-            ? data.config_history
-            : Array.isArray(data?.history)
-              ? data.history
-              : [];
-        setHistory(arr);
-      })
-      .catch(() => setHistory([]))
+    api.settings.get().then(data => setHistory(data || []))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
@@ -1952,7 +1975,7 @@ function ConfigHistoryTable({ t }) {
               </td>
               <td style={{ padding: 10, fontWeight: 600 }}>{h.updated_by}</td>
               <td style={{ padding: 10 }}>
-                {Array.isArray(h.changes) ? (
+                {h.changes ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {h.changes.map((chg, i) => (
                       <div key={i}>
@@ -1972,7 +1995,6 @@ function ConfigHistoryTable({ t }) {
     </div>
   );
 }
-
 const cardStyle = {
   background: "var(--card-bg, #fff)",
   border: "1px solid var(--border-color, #e7ebf0)",

@@ -1,37 +1,20 @@
-// src/api.js
+﻿// src/api.js
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 60000;
-const MAX_RETRY_503 = 3;      
-const MAX_RETRY_NETWORK = 3;  
-
-function isAuthFlowPath(path) {
-  if (
-    path === "/auth/login" ||
-    path === "/auth/register" ||
-    path === "/auth/logout" ||
-    path === "/auth/me" ||
-    path === "/auth/password"
-  ) return true;
-  if (/^\/auth\/[^/]+\/callback$/.test(path)) return true;
-  return false;
-}
+const MAX_RETRY_503 = 5;
 
 let memoryToken = null;
 let isAuthExpiredDispatched = false;
 
 let storageAvailable = (() => {
-  try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; }
-  catch { return false; }
+  try { const k = "__test__"; sessionStorage.setItem(k, "1"); sessionStorage.removeItem(k); return true; } catch { return false; }
 })();
 
 export function getToken() {
   if (memoryToken) return memoryToken;
   if (storageAvailable) {
-    try {
-      const t = sessionStorage.getItem("token");
-      if (t) { memoryToken = t; return t; }
-    } catch { storageAvailable = false; }
+    try { const t = sessionStorage.getItem("token"); if (t) { memoryToken = t; return t; } } catch { storageAvailable = false; }
   }
   return null;
 }
@@ -40,10 +23,7 @@ export function setToken(t) {
   memoryToken = t || null;
   if (t) isAuthExpiredDispatched = false;
   if (storageAvailable) {
-    try {
-      if (t) sessionStorage.setItem("token", t);
-      else sessionStorage.removeItem("token");
-    } catch {}
+    try { if (t) sessionStorage.setItem("token", t); else sessionStorage.removeItem("token"); } catch {}
   }
   try { window.dispatchEvent(new CustomEvent("token-changed", { detail: { hasToken: !!t } })); } catch {}
 }
@@ -55,14 +35,6 @@ function dispatchAuthExpired() {
   if (isAuthExpiredDispatched) return;
   isAuthExpiredDispatched = true;
   try { window.dispatchEvent(new CustomEvent("auth-expired")); } catch {}
-}
-
-function isNetworkError(e) {
-  if (!e) return false;
-  if (e.name === "TypeError") return true;
-  if (typeof e.message === "string" &&
-      /Failed to fetch|NetworkError|Load failed|Network request failed/i.test(e.message)) return true;
-  return false;
 }
 
 async function req(path, options = {}, _retryCount = 0) {
@@ -82,59 +54,43 @@ async function req(path, options = {}, _retryCount = 0) {
       ...options,
       headers,
       cache: "no-store",
-      credentials: "omit",
+      credentials: "omit", // đŸ”´ KHĂ”NG gá»­i cookie ná»¯a
       signal: controller.signal,
     });
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === "AbortError") {
-      const err = new Error("Yêu cầu quá thời gian. Vui lòng kiểm tra mạng và thử lại.");
-      err.status = 0; throw err;
-    }
-    if (_retryCount < MAX_RETRY_NETWORK && isNetworkError(e)) {
+    if (e.name === "AbortError") { const err = new Error("YĂªu cáº§u quĂ¡ thá»i gian."); err.status = 0; throw err; }
+    if (_retryCount < 3 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
       await new Promise((r) => setTimeout(r, 1500 * (_retryCount + 1)));
       return req(path, options, _retryCount + 1);
     }
-    const err = new Error("Không kết nối được máy chủ: " + (e.message || "unknown"));
-    err.status = 0;
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    const err = new Error("KhĂ´ng káº¿t ná»‘i Ä‘Æ°á»£c mĂ¡y chá»§: " + (e.message || "unknown")); err.status = 0; throw err;
+  } finally { clearTimeout(timeoutId); }
 
-  // Tự động thử lại khi Vercel báo 503 (Server đang khởi động hoặc quá tải)
   if (res.status === 503 && _retryCount < MAX_RETRY_503) {
-    console.warn(`[API 503] Retrying ${path} (${_retryCount + 1}/${MAX_RETRY_503})...`);
     await new Promise((r) => setTimeout(r, 2000 + _retryCount * 1000));
     return req(path, options, _retryCount + 1);
   }
 
-  if (res.status === 401 && token && !isAuthFlowPath(path)) {
-    clearToken();
-    dispatchAuthExpired();
+  // đŸ”´ KHĂ”NG tá»± Ä‘á»™ng refresh ná»¯a â€” 401 lĂ  háº¿t phiĂªn
+  if (res.status === 401 && token) {
+    const isAuthEndpoint = path.includes("/auth/login") || path.includes("/auth/register") || path.includes("/auth/refresh") || path.includes("/auth/logout") || path.includes("/auth/me") || path.includes("/auth/");
+    if (!isAuthEndpoint) {
+      clearToken();
+      dispatchAuthExpired();
+    }
   }
 
   const contentType = res.headers.get("content-type") || "";
   let data;
   try {
     if (contentType.includes("application/json")) data = await res.json();
-    else {
-      const text = await res.text();
-      data = text ? { message: text.slice(0, 300) } : {};
-    }
+    else { const text = await res.text(); data = text ? { message: text.slice(0, 300) } : {}; }
   } catch { data = {}; }
 
   if (!res.ok) {
-    let message = data.message || data.error || `HTTP ${res.status}`;
-    if (res.status === 503) {
-      message = "Hệ thống đang khởi động hoặc quá tải. Vui lòng đợi vài giây và thử lại.";
-    } else if (res.status === 504) {
-      message = "Máy chủ xử lý quá lâu (Timeout). Vui lòng thử lại.";
-    }
-    const err = new Error(message);
-    err.status = res.status;
-    err.body = data;
-    throw err;
+    const message = data.message || data.error || `HTTP ${res.status}`;
+    const err = new Error(message); err.status = res.status; err.body = data; throw err;
   }
   return data;
 }
@@ -142,45 +98,29 @@ async function req(path, options = {}, _retryCount = 0) {
 export const api = {
   _base: BASE,
   health: () => req(""),
-
-  // ── Auth ───────────────────────────────────────────────────
-  login: (email, password) =>
-    req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) })
-      .then((r) => { if (r.token) setToken(r.token); return r; }),
-  register: (data) =>
-    req("/auth/register", { method: "POST", body: JSON.stringify(data) })
-      .then((r) => { if (r.token) setToken(r.token); return r; }),
+  login: (email, password) => req("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }).then((r) => {
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
+  }),
+  register: (data) => req("/auth/register", { method: "POST", body: JSON.stringify(data) }).then((r) => {
+    if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
+  }),
   logout: () => req("/auth/logout", { method: "POST" }).catch(() => {}).finally(() => clearToken()),
   me: () => req("/auth/me"),
   updateProfile: (data) => req("/auth/profile", { method: "PUT", body: JSON.stringify(data) }),
   changePassword: (data) => req("/auth/password", { method: "PUT", body: JSON.stringify(data) }),
   oauth: {
-    callback: (provider, code, redirectUri) =>
-      req(`/auth/${provider}/callback`, {
-        method: "POST",
-        body: JSON.stringify({ code, redirectUri }),
-      }).then((r) => { if (r.token) setToken(r.token); return r; }),
+    callback: (provider, code, redirectUri) => req(`/auth/${provider}/callback`, { method: "POST", body: JSON.stringify({ code, redirectUri }) }).then((r) => {
+      if (r.token) setToken(r.token); resetAuthExpiredFlag(); return r;
+    }),
   },
-
-  // ── Stats ──────────────────────────────────────────────────
   stats: () => req("/stats"),
-
-  // ── Menu ───────────────────────────────────────────────────
   menu: {
-    list: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams();
-      if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
-      if (sort) p.set("sort", sort);
-      const qs = p.toString();
-      return req("/menu" + (qs ? "?" + qs : ""));
+    list: (q = "", category = "Táº¥t cáº£", sort = "popular") => {
+      const p = new URLSearchParams(); if (q) p.set("q", q); if (category && category !== "Táº¥t cáº£") p.set("category", category); if (sort) p.set("sort", sort);
+      const qs = p.toString(); return req("/menu" + (qs ? "?" + qs : ""));
     },
-    listActive: (q = "", category = "Tất cả", sort = "popular") => {
-      const p = new URLSearchParams();
-      p.set("active_only", "1");
-      if (q) p.set("q", q);
-      if (category && category !== "Tất cả") p.set("category", category);
-      if (sort) p.set("sort", sort);
+    listActive: (q = "", category = "Táº¥t cáº£", sort = "popular") => {
+      const p = new URLSearchParams(); p.set("active_only", "1"); if (q) p.set("q", q); if (category && category !== "Táº¥t cáº£") p.set("category", category); if (sort) p.set("sort", sort);
       return req("/menu?" + p.toString());
     },
     get: (id) => req(`/menu/${id}`),
@@ -189,15 +129,10 @@ export const api = {
     remove: (id) => req(`/menu/${id}`, { method: "DELETE" }),
   },
   priceHistory: { list: (menuItemId) => req("/price-history" + (menuItemId ? "?menu_item_id=" + menuItemId : "")) },
-
-  // ── Orders ─────────────────────────────────────────────────
   orders: {
     create: (data) => req("/orders", { method: "POST", body: JSON.stringify(data) }),
     myOrders: () => req("/orders/me"),
-    all: (status = "Tất cả") => {
-      const qs = status && status !== "Tất cả" ? `?status=${encodeURIComponent(status)}` : "";
-      return req("/orders" + qs);
-    },
+    all: (status = "Táº¥t cáº£") => { const qs = status && status !== "Táº¥t cáº£" ? `?status=${encodeURIComponent(status)}` : ""; return req("/orders" + qs); },
     setStatus: (id, status) => req(`/orders/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     received: (id) => req(`/orders/${id}/received`, { method: "POST" }),
     lookupQr: (orderCode) => req("/orders/scan-pickup/lookup", { method: "POST", body: JSON.stringify({ orderCode }) }),
@@ -209,8 +144,6 @@ export const api = {
     approveGreen: (id) => req(`/orders/${id}/green/approve`, { method: "POST" }),
     rejectGreen: (id, reason) => req(`/orders/${id}/green/reject`, { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   },
-
-  // ── Users ──────────────────────────────────────────────────
   users: {
     list: (role) => req(`/users${role ? `?role=${role}` : ""}`),
     listByRole: (role) => req(`/users?role=${encodeURIComponent(role)}`),
@@ -222,8 +155,6 @@ export const api = {
     schoolInfo: (id, data) => req(`/users/${id}/school-info`, { method: "PUT", body: JSON.stringify(data) }),
     unlinkMssv: (id) => req(`/users/${id}/unlink-mssv`, { method: "DELETE" }),
   },
-
-  // ── School ─────────────────────────────────────────────────
   school: {
     parseStudent: (code) => req(`/school/parse-student/${encodeURIComponent(code)}`),
     parseTeacher: (code) => req(`/school/parse-teacher/${encodeURIComponent(code)}`),
@@ -231,8 +162,6 @@ export const api = {
     updateMajorsMap: (map) => req("/school/majors-map", { method: "PUT", body: JSON.stringify({ map }) }),
     resetMajorsMap: () => req("/school/majors-map/reset", { method: "POST" }),
   },
-
-  // ── Inventory ──────────────────────────────────────────────
   inventory: {
     list: () => req("/inventory"),
     create: (data) => req("/inventory", { method: "POST", body: JSON.stringify(data) }),
@@ -241,30 +170,20 @@ export const api = {
     import: (code, data) => req(`/inventory/${code}/import`, { method: "POST", body: JSON.stringify(data) }),
     imports: () => req("/inventory/imports"),
   },
-
-  // ── Attendance ─────────────────────────────────────────────
   attendance: {
     today: () => req("/attendance/today"),
     me: () => req("/attendance/me"),
     checkIn: (data) => req("/attendance/checkin", { method: "POST", body: JSON.stringify(data || {}) }),
     checkOut: (data) => req("/attendance/checkout", { method: "POST", body: JSON.stringify(data || {}) }),
-    all: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return req("/attendance" + (q ? `?${q}` : ""));
-    },
+    all: (params = {}) => { const q = new URLSearchParams(params).toString(); return req("/attendance" + (q ? `?${q}` : "")); },
     employees: () => req("/attendance/employees"),
   },
-
-  // ── Shifts ─────────────────────────────────────────────────
   shifts: {
     approvedToday: () => req("/shifts/approved-today"),
     currentStaff: () => req("/shifts/current-staff"),
     mine: () => req("/shifts/me"),
     pending: () => req("/shifts/pending"),
-    all: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return req("/shifts" + (q ? `?${q}` : ""));
-    },
+    all: (params = {}) => { const q = new URLSearchParams(params).toString(); return req("/shifts" + (q ? `?${q}` : "")); },
     register: (data) => req("/shifts/register", { method: "POST", body: JSON.stringify(data) }),
     bulk: (data) => req("/shifts/bulk", { method: "POST", body: JSON.stringify(data) }),
     create: (data) => req("/shifts", { method: "POST", body: JSON.stringify(data) }),
@@ -273,19 +192,15 @@ export const api = {
     approve: (id) => req(`/shifts/${id}/approve`, { method: "PATCH" }),
     reject: (id) => req(`/shifts/${id}/reject`, { method: "DELETE" }),
   },
-
-  // ── Tasks ──────────────────────────────────────────────────
   tasks: {
     me: () => req("/tasks/me"),
-    all: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return req("/tasks" + (q ? `?${q}` : ""));
-    },
+    all: (params = {}) => { const q = new URLSearchParams(params).toString(); return req("/tasks" + (q ? `?${q}` : "")); },
     create: (data) => req("/tasks", { method: "POST", body: JSON.stringify(data) }),
     update: (id, data) => req(`/tasks/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id) => req(`/tasks/${id}`, { method: "DELETE" }),
     complete: (id) => req(`/tasks/${id}/complete`, { method: "PATCH" }),
   },
+  wallet: {
 
   // ── Wallet ─────────────────────────────────────────────────
   studentCard: {
@@ -307,24 +222,18 @@ export const api = {
     approve: (id, note) => req(`/wallet/requests/${id}/approve`, { method: "PATCH", body: JSON.stringify({ admin_note: note || "" }) }),
     reject: (id, note) => req(`/wallet/requests/${id}/reject`, { method: "PATCH", body: JSON.stringify({ admin_note: note || "" }) }),
   },
-
-  // ── Eco Rewards ────────────────────────────────────────────
   ecoRewards: {
     me: () => req("/eco-rewards/me"),
     create: (data) => req("/eco-rewards", { method: "POST", body: JSON.stringify(data) }),
     pending: () => req("/eco-rewards/pending"),
     decide: (id, status) => req(`/eco-rewards/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   },
-
-  // ── Reviews ────────────────────────────────────────────────
   reviews: {
     me: () => req("/reviews/me"),
     list: (menuItemId) => req(`/reviews/${menuItemId}`),
     create: (data) => req("/reviews", { method: "POST", body: JSON.stringify(data) }),
     canReview: (menuItemId) => req(`/reviews/can-review/${menuItemId}`),
   },
-
-  // ── Points ─────────────────────────────────────────────────
   points: {
     history: () => req("/points/history"),
     me: () => req("/points/me"),
@@ -333,8 +242,6 @@ export const api = {
     updateConfig: (data) => req("/points/config", { method: "PUT", body: JSON.stringify(data) }),
     preview: (data) => req("/points/preview", { method: "POST", body: JSON.stringify(data) }),
   },
-
-  // ── Vouchers ───────────────────────────────────────────────
   vouchers: {
     me: () => req("/vouchers/me"),
     public: () => req("/vouchers/public"),
@@ -349,15 +256,11 @@ export const api = {
     ofUser: (userId) => req(`/vouchers/user/${userId}`),
     revoke: (id) => req(`/vouchers/revoke/${id}`, { method: "DELETE" }),
   },
-
-  // ── Notifications ──────────────────────────────────────────
   notifications: {
     list: () => req("/notifications"),
     read: (id) => req(`/notifications/${id}/read`, { method: "POST" }),
     readAll: () => req("/notifications/read-all", { method: "POST" }),
   },
-
-  // ── Chat ───────────────────────────────────────────────────
   chat: {
     myMessages: () => req("/chat/me"),
     conversations: () => req("/chat/conversations"),
@@ -365,10 +268,7 @@ export const api = {
     send: (data) => req("/chat/send", { method: "POST", body: JSON.stringify(data) }),
     getContext: (userId) => req(`/chat/context/${userId}`),
     admin: {
-      conversations: (params = {}) => {
-        const q = new URLSearchParams(params).toString();
-        return req("/chat/admin/conversations" + (q ? `?${q}` : ""));
-      },
+      conversations: (params = {}) => { const q = new URLSearchParams(params).toString(); return req("/chat/admin/conversations" + (q ? `?${q}` : "")); },
       messagesWith: (userId) => req(`/chat/admin/messages/${userId}`),
       staffStatus: () => req("/chat/admin/staff-status"),
       toggleStaff: (id, enabled) => req(`/chat/admin/staff/${id}/chat`, { method: "PATCH", body: JSON.stringify({ enabled: !!enabled }) }),
@@ -381,12 +281,7 @@ export const api = {
       myChatStatus: () => req("/chat/my-status"),
     },
   },
-
-  // ── Taxonomy ───────────────────────────────────────────────
-  toppings: { 
-    list: (category) => req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`),
-    create: (data) => req("/toppings", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
-  },
+  toppings: { list: (category) => req(`/toppings${category ? `?category=${encodeURIComponent(category)}` : ""}`) },
   sizes: { list: () => req("/sizes") },
   categories: {
     list: () => req("/categories"),
@@ -395,16 +290,12 @@ export const api = {
     remove: (id) => req(`/categories/${id}`, { method: "DELETE" }),
   },
   promotions: { list: () => req("/promotions") },
-
-  // ── Permissions ────────────────────────────────────────────
   permissions: {
     all: () => req("/permissions"),
     me: () => req("/permissions/me"),
     ofUser: (userId) => req(`/permissions/${userId}`),
     update: (userId, custom) => req(`/permissions/${userId}`, { method: "PUT", body: JSON.stringify({ custom }) }),
   },
-
-  // ── Admin / System ─────────────────────────────────────────
   backup: {
     export: () => req("/backup/export"),
     import: (data) => req("/backup/import", { method: "POST", body: JSON.stringify(data), timeoutMs: UPLOAD_TIMEOUT_MS }),
@@ -417,10 +308,10 @@ export const api = {
     update: (data) => req("/settings", { method: "PUT", body: JSON.stringify(data) }),
   },
   timeSlots: {
+    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }),
     list: () => req("/time-slots"),
-    create: (data) => req("/time-slots", { method: "POST", body: JSON.stringify(data) }), // 🔧 BỔ SUNG
+    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }),
     update: (id, data) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
-    remove: (id) => req(`/time-slots/${encodeURIComponent(id)}`, { method: "DELETE" }), // 🔧 BỔ SUNG
     reset: () => req("/time-slots/reset", { method: "POST" }),
   },
   admin: { backfill: () => req("/admin/backfill-translations", { method: "POST" }) },

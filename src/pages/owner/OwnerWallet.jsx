@@ -161,7 +161,7 @@ export default function OwnerWallet() {
   const [error, setError] = useState("");
 
   // ---------- Filters ----------
-  const [tab, setTab] = useState("pending");
+  const [tab, setTab] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [rangeFilter, setRangeFilter] = useState("all");
   const [q, setQ] = useState("");
@@ -292,9 +292,14 @@ export default function OwnerWallet() {
       );
     }
 
-    result.sort(
-      (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
-    );
+    result.sort((a, b) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      if (tab === "pending") {
+        return timeA - timeB; // Chờ duyệt: Cũ nhất lên đầu
+      }
+      return timeB - timeA; // Các tab khác: Mới nhất lên đầu
+    });
     return result;
   }, [allTx, tab, typeFilter, rangeFilter, q, TIME_RANGES]);
 

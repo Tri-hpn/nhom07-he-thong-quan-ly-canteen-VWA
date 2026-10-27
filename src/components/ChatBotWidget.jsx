@@ -846,7 +846,7 @@ function LeftSidebar({ user, t, onPromptClick }) {
           </div>
           <div className="chatbot-profile__stat">
             <span className="chatbot-profile__stat-label">
-              {t("Điểm thưởng")}
+              {t("Xu thưởng")}
             </span>
             <span className="chatbot-profile__stat-value chatbot-profile__stat-value--blue">
               {user?.points || 0} pts

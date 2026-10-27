@@ -1,9 +1,10 @@
+﻿// ============================================================
+// EMPLOYEEORDERS.JSX — KDS Kanban (V17 - REAL-TIME SSE)
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban (V20 - STRICTLY POLLING)
-// ============================================================
-// V20:
-//   - 🔥 XÓA HOÀN TOÀN SSE. Chỉ dùng Polling (10s) để tránh
-//     mọi lỗi 501 trên Vercel Serverless.
+// V17 (2026-10):
+//   - ⚡ Tích hợp Server-Sent Events (SSE) thay thế Polling 5s.
+//   - 🔄 Auto fallback về Polling nếu SSE đứt kết nối.
+//   - 🟢 Hiển thị trạng thái kết nối (LIVE / POLLING).
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -27,11 +28,13 @@ import {
   fmtTime, fmtTimeWithLabel, getDateLabelVariant, getCurrentShiftLabel,
 } from "../../lib/datetime";
 
+// ============================================================
+// CONSTANTS
+// ============================================================
 const COMPLETED_LIMIT = 8;
 const ROW_LIMIT = 10;
 const SOUND_REPEAT_MS = 4000;
 const SOUND_STORAGE_KEY = "canteen.kds_sound_enabled";
-const POLL_MS = 10000; // 🔧 Polling 10s
 
 const NEXT_STATUS = {
   "Chờ xác nhận": "Đã xác nhận",
@@ -48,7 +51,9 @@ const STATION_TABS = [
 ];
 
 const STATION_IDS = STATION_TABS.map((s) => s.id);
-function normalizeStation(value) { return STATION_IDS.includes(value) ? value : "all"; }
+function normalizeStation(value) {
+  return STATION_IDS.includes(value) ? value : "all";
+}
 
 const CATEGORY_TO_STATION = {
   "Cơm": "kitchen", "Bún - Phở - Cháo": "kitchen", "Món mặn": "kitchen",
@@ -69,25 +74,29 @@ function getOrderStation(order) {
   return "all";
 }
 
-const PAYMENT_ALIASES = { 
-  "Tiền mặt": "cash", cash: "cash", CASH: "cash", 
-  QR: "qr", VietQR: "qr", 
-  "Ví Canteen": "wallet", WALLET: "wallet", 
-  "Thẻ": "card", "Thẻ SV": "card" 
+const PAYMENT_ALIASES = {
+  "Tiền mặt": "cash", cash: "cash", CASH: "cash",
+  QR: "qr", VietQR: "qr",
+  "Ví Canteen": "wallet", WALLET: "wallet",
+  "Thẻ": "card", "Thẻ SV": "card",
 };
+
 function normalizePayment(p) { return PAYMENT_ALIASES[p] || "cash"; }
 
-const TIMEFRAMES = { 
-  all: null, 
-  "1130": [11 * 60 + 30, 12 * 60], 
-  "1200": [12 * 60, 12 * 60 + 30], 
-  "1230": [12 * 60 + 30, 13 * 60] 
+const TIMEFRAMES = {
+  all: null,
+  "1130": [11 * 60 + 30, 12 * 60],
+  "1200": [12 * 60, 12 * 60 + 30],
+  "1230": [12 * 60 + 30, 13 * 60],
 };
 
+// ============================================================
+// HELPERS
+// ============================================================
 function getLocalDateStr(d = new Date()) {
-  const y = d.getFullYear(); 
-  const m = String(d.getMonth() + 1).padStart(2, "0"); 
-  const dt = String(d.getDate()).padStart(2, "0"); 
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dt = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dt}`;
 }
 
@@ -102,12 +111,15 @@ function getOrderPickupMinutes(order) {
   const src = `${order?.pickupTime || order?.pickup || ""} ${order?.note || ""}`;
   const m = src.match(/(\d{1,2}):(\d{2})/);
   if (!m) return null;
-  const h = parseInt(m[1], 10); 
+  const h = parseInt(m[1], 10);
   const mi = parseInt(m[2], 10);
   if (isNaN(h) || isNaN(mi)) return null;
   return h * 60 + mi;
 }
 
+// ============================================================
+// WEB AUDIO
+// ============================================================
 function playDing() {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -115,25 +127,46 @@ function playDing() {
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
     const makeTone = (freq, startAt, duration) => {
-      const osc = ctx.createOscillator(); 
+      const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sine"; 
+      osc.type = "sine";
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(0.0001, startAt);
       gain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
-      osc.connect(gain); 
+      osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(startAt); 
+      osc.start(startAt);
       osc.stop(startAt + duration + 0.05);
     };
-    makeTone(880, now, 0.18); 
+    makeTone(880, now, 0.18);
     makeTone(1320, now + 0.16, 0.22);
     setTimeout(() => { try { ctx.close(); } catch (_) {} }, 700);
   } catch (e) {}
 }
 
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 export default function EmployeeOrders({ isAdmin = false }) {
+
+  const generateTimeSlots = () => {
+    const slots = [];
+    for (let h = 7; h <= 19; h++) {
+      for (let m of ["00", "30"]) {
+        if (h === 19 && m === "30") break; // Dừng ở 19:00
+        const start = `${String(h).padStart(2, '0')}:${m}`;
+        const endH = m === "30" ? h + 1 : h;
+        const endM = m === "30" ? "00" : "30";
+        const end = `${String(endH).padStart(2, '0')}:${endM}`;
+        slots.push(`${start} - ${end}`);
+      }
+    }
+    return slots;
+  };
+  const allTimeSlots = generateTimeSlots();
+
+
   const { t } = useI18n();
   const { user } = useAuth();
 
@@ -141,6 +174,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [sseConnected, setSseConnected] = useState(false); // Trạng thái SSE
+
   const [approvedShifts, setApprovedShifts] = useState([]);
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -150,18 +185,26 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const [stationFilter, setStationFilter] = useState(() => normalizeStation(stationParam));
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [timeframeFilter, setTimeframeFilter] = useState("all");
+  const [pickupTimeFilter, setPickupTimeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [advancingId, setAdvancingId] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [greenBusyId, setGreenBusyId] = useState(null);
   const [confirmReject, setConfirmReject] = useState(null);
   const [showStationMenu, setShowStationMenu] = useState(false);
 
   const [soundEnabled, setSoundEnabled] = useState(() => {
-    try { const v = localStorage.getItem(SOUND_STORAGE_KEY); return v === null ? false : v === "1"; } catch { return false; }
+    try {
+      const v = localStorage.getItem(SOUND_STORAGE_KEY);
+      return v === null ? false : v === "1";
+    } catch { return false; }
   });
 
-  const [expandedRows, setExpandedRows] = useState({ pending: false, confirmed: false, prep: false, ready: false });
+  const [expandedRows, setExpandedRows] = useState({
+    pending: false, confirmed: false, prep: false, ready: false,
+  });
 
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(0);
@@ -169,13 +212,23 @@ export default function EmployeeOrders({ isAdmin = false }) {
   const dingIntervalRef = useRef(null);
   const soundEnabledRef = useRef(soundEnabled);
   const stationMenuRef = useRef(null);
+  
+  // Refs cho SSE
+  const esRef = useRef(null);
+  const pollTimerRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
 
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
-  useEffect(() => { try { localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "1" : "0"); } catch (_) {} }, [soundEnabled]);
+  useEffect(() => {
+    try { localStorage.setItem(SOUND_STORAGE_KEY, soundEnabled ? "1" : "0"); } catch (_) {}
+  }, [soundEnabled]);
 
   useEffect(() => {
     const unlockAudio = () => {
-      try { const AudioCtx = window.AudioContext || window.webkitAudioContext; if (AudioCtx) { const ctx = new AudioCtx(); if (ctx.state === "suspended") ctx.resume(); } } catch (e) {}
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) { const ctx = new AudioCtx(); if (ctx.state === "suspended") ctx.resume(); }
+      } catch (e) {}
       document.removeEventListener("click", unlockAudio);
     };
     document.addEventListener("click", unlockAudio);
@@ -184,13 +237,14 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
   useEffect(() => {
     if (!showStationMenu) return;
-    const handler = (e) => { if (stationMenuRef.current && !stationMenuRef.current.contains(e.target)) setShowStationMenu(false); };
+    const handler = (e) => {
+      if (stationMenuRef.current && !stationMenuRef.current.contains(e.target)) setShowStationMenu(false);
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showStationMenu]);
 
   useEffect(() => {
-    if (!getToken()) return;
     let cancelled = false;
     api.shifts.approvedToday().then((list) => { if (!cancelled) setApprovedShifts(Array.isArray(list) ? list : []); }).catch(() => {});
     return () => { cancelled = true; };
@@ -205,12 +259,12 @@ export default function EmployeeOrders({ isAdmin = false }) {
     setStationFilter(id);
     setShowStationMenu(false);
     const next = new URLSearchParams(searchParams);
-    if (id === "all") next.delete("station"); else next.set("station", id);
+    if (id === "all") next.delete("station");
+    else next.set("station", id);
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
   const load = useCallback(async (silent = false) => {
-    if (!getToken()) return;
     if (inFlightRef.current) return;
     inFlightRef.current = 1;
 
@@ -227,24 +281,80 @@ export default function EmployeeOrders({ isAdmin = false }) {
     } catch (e) {
       if (myReqId === reqIdRef.current && !silent) setError(e.message || t("Không tải được đơn hàng"));
     } finally {
-      if (myReqId === reqIdRef.current) { setLoading(false); if (!silent) setRefreshing(false); }
+      if (myReqId === reqIdRef.current) {
+        setLoading(false);
+        if (!silent) setRefreshing(false);
+      }
       inFlightRef.current = 0;
     }
   }, [t]);
 
-  // 🔧 CHỈ DÙNG POLLING, KHÔNG DÙNG SSE
+  // ============================================================
+  // SSE & POLLING FALLBACK LOGIC
+  // ============================================================
   useEffect(() => {
-    load(false); // Load lần đầu
-    
-    // Tự động load lại mỗi 10s
-    const timer = setInterval(() => {
-      load(true); 
-    }, POLL_MS);
+    let isSubscribed = true;
 
-    return () => clearInterval(timer);
+    const startPolling = () => {
+      if (pollTimerRef.current) return;
+      pollTimerRef.current = setInterval(async () => {
+        try {
+          await load(true); // Silent reload
+        } catch {}
+      }, 15000); // Polling 15s fallback
+    };
+
+    const stopPolling = () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+
+    const connectSSE = () => {
+      if (!isSubscribed) return;
+      stopPolling();
+
+      const token = getToken();
+      const url = `/api/kds/stream${token ? `?token=${token}` : ""}`;
+      const es = new EventSource(url);
+      esRef.current = es;
+
+      es.onopen = () => {
+        if (!isSubscribed) return;
+        setSseConnected(true);
+        load(true); // Đồng bộ ngay khi kết nối
+      };
+
+      // Lắng nghe sự kiện có đơn mới hoặc đổi trạng thái
+      es.addEventListener("order.new", () => { if (isSubscribed) load(true); });
+      es.addEventListener("order.updated", () => { if (isSubscribed) load(true); });
+
+      es.onerror = () => {
+        if (!isSubscribed) return;
+        setSseConnected(false);
+        es.close();
+        esRef.current = null;
+        startPolling();
+        reconnectTimerRef.current = setTimeout(connectSSE, 5000); // Thử lại sau 5s
+      };
+    };
+
+    connectSSE();
+
+    return () => {
+      isSubscribed = false;
+      if (esRef.current) esRef.current.close();
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      stopPolling();
+    };
   }, [load]);
 
-  useEffect(() => { const off = onOrderUpdated(() => { load(true); }); return off; }, [load]);
+  // Các event từ tab khác (local storage)
+  useEffect(() => {
+    const off = onOrderUpdated(() => { load(true); });
+    return off;
+  }, [load]);
 
   const rows = useMemo(() => {
     const byStatus = { pending: [], confirmed: [], prep: [], ready: [], completed: [] };
@@ -257,47 +367,110 @@ export default function EmployeeOrders({ isAdmin = false }) {
     }
 
     const sortOldestFirst = (arr) => arr.sort((a, b) => new Date(a.created_at || a.updated_at || 0).getTime() - new Date(b.created_at || b.updated_at || 0).getTime());
-    sortOldestFirst(byStatus.pending); sortOldestFirst(byStatus.confirmed); sortOldestFirst(byStatus.prep); sortOldestFirst(byStatus.ready);
+    sortOldestFirst(byStatus.pending);
+    sortOldestFirst(byStatus.confirmed);
+    sortOldestFirst(byStatus.prep);
+    sortOldestFirst(byStatus.ready);
 
     byStatus.completed.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
-    const completedTotal = byStatus.completed.length;
-    byStatus.completed = byStatus.completed.slice(0, COMPLETED_LIMIT);
-
+    const completedTotal = byStatus.completed.length;// [FIX v13] Đã bỏ slice ở data gốc — slice được xử lý trong filteredRows.completed
     return { ...byStatus, completedTotal };
   }, [orders]);
 
-  const applyFilter = useCallback((list) => {
-    let result = list;
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      result = result.filter((o) => {
-        const code = (o.code || "").toLowerCase(); const name = (o.customer_name || "").toLowerCase();
-        const mssv = (o.customer_mssv || "").toLowerCase(); const email = (o.customer_email || "").toLowerCase();
-        return code.includes(q) || name.includes(q) || mssv.includes(q) || email.includes(q);
-      });
-    }
-    if (paymentFilter !== "all") result = result.filter((o) => normalizePayment(o.payment) === paymentFilter);
-    if (statusFilter !== "all") result = result.filter((o) => o.status === statusFilter);
-    if (timeframeFilter !== "all") {
-      const range = TIMEFRAMES[timeframeFilter];
-      if (range) result = result.filter((o) => { const mins = getOrderPickupMinutes(o); if (mins === null) return true; return mins >= range[0] && mins < range[1]; });
-    }
-    return result;
-  }, [search, paymentFilter, statusFilter, timeframeFilter]);
+  const applyFilter = useCallback(
+    (list) => {
+      let res = [...list];
+
+      // 1. Tìm kiếm (Mã đơn, Tên KH, SĐT, MSSV)
+      const q = search.trim().toLowerCase();
+      if (q) {
+        res = res.filter((o) => {
+          const code = (o.code || "").toLowerCase();
+          const name = (o.customer_name || "").toLowerCase();
+          const phone = (o.customer_phone || "").toString();
+          const mssv = (o.student_code || "").toString();
+          return code.includes(q) || name.includes(q) || phone.includes(q) || mssv.includes(q);
+        });
+      }
+
+      // 2. Lọc theo khung giờ nhận
+      if (pickupTimeFilter) {
+        res = res.filter((o) => {
+          const pt = (o.pickupTime || o.pickup_time || o.note || "").toLowerCase();
+          return pt.includes(pickupTimeFilter.toLowerCase());
+        });
+      }
+
+      // 3. Lọc theo thời gian (Real-time, fix lỗi múi giờ)
+      if (timeframeFilter !== "all") {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        
+        res = res.filter((o) => {
+          const timeStr = o.created_at || o.updated_at;
+          if (!timeStr) return false;
+          const orderTime = new Date(timeStr).getTime();
+          
+          if (timeframeFilter === "today") return orderTime >= todayStart;
+          if (timeframeFilter === "7days") return orderTime >= todayStart - (6 * 24 * 60 * 60 * 1000);
+          if (timeframeFilter === "30days") return orderTime >= todayStart - (29 * 24 * 60 * 60 * 1000);
+          return true;
+        });
+      }
+
+      // 4. Lọc theo thanh toán
+      if (paymentFilter && paymentFilter !== "all") {
+        const pf = paymentFilter.toLowerCase();
+        res = res.filter((o) => {
+          const op = (o.payment || "").toLowerCase();
+          if (pf.includes("vietqr") || pf.includes("qr")) return op.includes("vietqr") || op.includes("qr") || op.includes("bank");
+          if (pf.includes("ví") || pf.includes("vi ")) return op.includes("ví") || op.includes("wallet");
+          if (pf.includes("tiền mặt") || pf.includes("cash")) return op.includes("tiền mặt") || op.includes("cash");
+          if (pf.includes("thẻ") || pf.includes("card")) return op.includes("thẻ") || op.includes("card");
+          return op === pf; // Fallback nếu không khớp các từ khóa trên
+        });
+      }
+
+      // 5. Lọc theo trạng thái
+      if (statusFilter && statusFilter !== "all") {
+        res = res.filter((o) => o.status === statusFilter);
+      }
+
+      return res;
+    },
+    [search, pickupTimeFilter, timeframeFilter, paymentFilter, statusFilter]
+  );
 
   const filteredRows = useMemo(() => ({
-    pending: applyFilter(rows.pending), confirmed: applyFilter(rows.confirmed), prep: applyFilter(rows.prep), ready: applyFilter(rows.ready), completed: applyFilter(rows.completed), completedTotal: rows.completedTotal,
-  }), [rows, applyFilter]);
+    pending: applyFilter(rows.pending),
+    confirmed: applyFilter(rows.confirmed),
+    prep: applyFilter(rows.prep),
+    ready: applyFilter(rows.ready),
+    completed: showAllCompleted ? applyFilter(rows.completed) : applyFilter(rows.completed).slice(0, COMPLETED_LIMIT),
+    completedTotal: rows.completedTotal,
+  }), [rows, applyFilter, showAllCompleted]);
 
   const kpi = useMemo(() => {
     const today = getLocalDateStr(new Date());
     const todayOrders = orders.filter((o) => getLocalDateStr(new Date(o.created_at || 0)) === today);
-    const completedToday = orders.filter((o) => { if (o.status !== "Hoàn thành") return false; const refDate = o.updated_at || o.received_at || o.created_at; return getLocalDateStr(new Date(refDate || 0)) === today; });
+    const completedToday = orders.filter((o) => {
+      if (o.status !== "Hoàn thành") return false;
+      const refDate = o.updated_at || o.received_at || o.created_at;
+      return getLocalDateStr(new Date(refDate || 0)) === today;
+    });
     const revenue = completedToday.reduce((s, o) => s + (Number(o.total) || 0), 0);
     const onTimePct = todayOrders.length > 0 ? ((completedToday.length / todayOrders.length) * 100).toFixed(1) : "0";
-    return { pending: rows.pending.length, prep: rows.prep.length, ready: rows.ready.length, completedToday: completedToday.length, revenue, onTimePct };
+    return {
+      pending: rows.pending.length,
+      prep: rows.prep.length,
+      ready: rows.ready.length,
+      completedToday: completedToday.length,
+      revenue,
+      onTimePct,
+    };
   }, [orders, rows]);
 
+  // Âm báo
   useEffect(() => {
     const current = rows.pending.length;
     const prev = prevPendingCountRef.current;
@@ -308,11 +481,21 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
   useEffect(() => {
     if (dingIntervalRef.current) { clearInterval(dingIntervalRef.current); dingIntervalRef.current = null; }
-    if (rows.pending.length > 0 && soundEnabled) { dingIntervalRef.current = setInterval(() => { if (soundEnabledRef.current) playDing(); }, SOUND_REPEAT_MS); }
+    if (rows.pending.length > 0 && soundEnabled) {
+      dingIntervalRef.current = setInterval(() => { if (soundEnabledRef.current) playDing(); }, SOUND_REPEAT_MS);
+    }
     return () => { if (dingIntervalRef.current) { clearInterval(dingIntervalRef.current); dingIntervalRef.current = null; } };
   }, [rows.pending.length, soundEnabled]);
 
-  const toggleSound = useCallback(() => { setSoundEnabled((v) => { const next = !v; toast(next ? t("Đã bật âm báo đơn") : t("Đã tắt âm báo đơn"), next ? "success" : "info"); if (next) setTimeout(() => playDing(), 100); return next; }); }, [t]);
+  const toggleSound = useCallback(() => {
+    setSoundEnabled((v) => {
+      const next = !v;
+      toast(next ? t("Đã bật âm báo đơn") : t("Đã tắt âm báo đơn"), next ? "success" : "info");
+      if (next) setTimeout(() => playDing(), 100);
+      return next;
+    });
+  }, [t]);
+
   const toggleExpand = useCallback((key) => { setExpandedRows((s) => ({ ...s, [key]: !s[key] })); }, []);
 
   const takeVisible = useCallback((list, key) => {
@@ -328,8 +511,11 @@ export default function EmployeeOrders({ isAdmin = false }) {
     const id = order._id || order.id;
     if (greenBusyId !== null) return;
     setGreenBusyId(id);
-    try { const res = await api.orders.approveGreen(id); toast(`${t("Đã duyệt Sống Xanh")} + ${res.bonus} ${t("Xu")}`, "success"); emitOrderUpdated(); await load(true); }
-    catch (e) { toast(e.message || t("Không duyệt được"), "error"); }
+    try {
+      const res = await api.orders.approveGreen(id);
+      toast(`${t("Đã duyệt Sống Xanh")} + ${res.bonus} ${t("Xu")}`, "success");
+      emitOrderUpdated(); await load(true);
+    } catch (e) { toast(e.message || t("Không duyệt được"), "error"); }
     finally { setGreenBusyId(null); }
   }, [load, t, greenBusyId]);
 
@@ -337,8 +523,11 @@ export default function EmployeeOrders({ isAdmin = false }) {
     const id = order._id || order.id;
     if (greenBusyId !== null) return;
     setGreenBusyId(id);
-    try { await api.orders.rejectGreen(id); toast(t("Đã từ chối Sống Xanh"), "warning"); emitOrderUpdated(); await load(true); }
-    catch (e) { toast(e.message || t("Không từ chối được"), "error"); }
+    try {
+      await api.orders.rejectGreen(id);
+      toast(t("Đã từ chối Sống Xanh"), "warning");
+      emitOrderUpdated(); await load(true);
+    } catch (e) { toast(e.message || t("Không từ chối được"), "error"); }
     finally { setGreenBusyId(null); }
   }, [load, t, greenBusyId]);
 
@@ -348,19 +537,32 @@ export default function EmployeeOrders({ isAdmin = false }) {
     const next = NEXT_STATUS[order.status];
     if (!next) return;
     setAdvancingId(id);
-    try { await api.orders.setStatus(id, next); toast(`"${order.code}" → "${next}"`, "success"); await load(true); emitOrderUpdated({ ...order, status: next }); }
-    catch (e) { toast(e.message || t("Không chuyển được trạng thái"), "error"); }
+    try {
+      await api.orders.setStatus(id, next);
+      toast(`"${order.code}" → "${next}"`, "success");
+      await load(true);
+      emitOrderUpdated({ ...order, status: next });
+    } catch (e) { toast(e.message || t("Không chuyển được trạng thái"), "error"); }
     finally { setAdvancingId(null); }
   }, [advancingId, load, t]);
 
-  const rejectOrder = useCallback((order) => { if (advancingId !== null) return; setConfirmReject(order); }, [advancingId]);
+  const rejectOrder = useCallback((order) => {
+    if (advancingId !== null) return;
+    setConfirmReject(order);
+  }, [advancingId]);
 
   const executeReject = useCallback(async () => {
     if (!confirmReject) return;
-    const order = confirmReject; const id = order._id || order.id;
+    const order = confirmReject;
+    const id = order._id || order.id;
     setAdvancingId(id);
-    try { await api.orders.setStatus(id, "Đã hủy"); toast(`${t("Đã hủy")} ${order.code} ${t("và hoàn tiền khách")}`, "warning"); setConfirmReject(null); emitOrderUpdated({ ...order, status: "Đã hủy" }); await load(true); }
-    catch (e) { toast(e.message || t("Không hủy được"), "error"); }
+    try {
+      await api.orders.setStatus(id, "Đã hủy");
+      toast(`${t("Đã hủy")} ${order.code} ${t("và hoàn tiền khách")}`, "warning");
+      setConfirmReject(null);
+      emitOrderUpdated({ ...order, status: "Đã hủy" });
+      await load(true);
+    } catch (e) { toast(e.message || t("Không hủy được"), "error"); }
     finally { setAdvancingId(null); }
   }, [confirmReject, load, t]);
 
@@ -374,58 +576,209 @@ export default function EmployeeOrders({ isAdmin = false }) {
   return (
     <>
       <div className="kds-workbench">
-        {error && <div className="kds-error"><AlertCircle size={18} /><span style={{ flex: 1 }}>{error}</span><button type="button" onClick={() => load(false)}>{t("Thử lại")}</button></div>}
+        {error && (
+          <div className="kds-error">
+            <AlertCircle size={18} />
+            <span style={{ flex: 1 }}>{error}</span>
+            <button type="button" onClick={() => load(false)}>{t("Thử lại")}</button>
+          </div>
+        )}
 
+        {/* ============ TOP CONSOLE ============ */}
         <div className="kds-console">
           <div className="kds-console__left">
             <div className="kds-console__card">
-              <span className="kds-console__card-dot" style={{ background: "#10b981" }} />
-              <div className="kds-console__card-info"><span className="kds-console__card-label">{t("Kết nối")}</span><span className="kds-console__card-value" style={{ fontSize: 13 }}>{t("LIVE (Polling)")}</span></div>
+              <span className="kds-console__card-dot" style={{ background: sseConnected ? "#10b981" : "#f59e0b" }} />
+              <div className="kds-console__card-info">
+                <span className="kds-console__card-label">{t("Kết nối")}</span>
+                <span className="kds-console__card-value" style={{ fontSize: 13 }}>
+                  {sseConnected ? t("LIVE (SSE)") : t("Fallback Polling")}
+                </span>
+              </div>
             </div>
-            <div className="kds-console__card"><User size={22} className="kds-console__card-icon" /><div className="kds-console__card-info"><span className="kds-console__card-label">{t("Nhân sự trực")}</span><span className="kds-console__card-value">{staffName}{staffCode && <span className="kds-console__card-sub"> (ID: {staffCode})</span>}</span></div></div>
+
+            <div className="kds-console__card">
+              <User size={22} className="kds-console__card-icon" />
+              <div className="kds-console__card-info">
+                <span className="kds-console__card-label">{t("Nhân sự trực")}</span>
+                <span className="kds-console__card-value">
+                  {staffName}
+                  {staffCode && <span className="kds-console__card-sub"> (ID: {staffCode})</span>}
+                </span>
+              </div>
+            </div>
+
             <button type="button" className="kds-console__sound-btn" onClick={toggleSound} aria-pressed={soundEnabled}>
               {soundEnabled ? <Volume2 size={22} style={{ color: "var(--st-success)" }} /> : <VolumeX size={22} style={{ color: "var(--st-text-muted)" }} />}
-              <div className="kds-console__sound-text"><span className="kds-console__sound-label">{t("Âm báo đơn")}</span><span className="kds-console__sound-status" style={{ color: soundEnabled ? "var(--st-success)" : "var(--st-text-muted)" }}>{soundEnabled ? (kpi.pending > 0 ? `${t("Đang báo")} (${kpi.pending})` : t("Đang bật")) : t("Đã tắt")}</span></div>
+              <div className="kds-console__sound-text">
+                <span className="kds-console__sound-label">{t("Âm báo đơn")}</span>
+                <span className="kds-console__sound-status" style={{ color: soundEnabled ? "var(--st-success)" : "var(--st-text-muted)" }}>
+                  {soundEnabled ? (kpi.pending > 0 ? `${t("Đang báo")} (${kpi.pending})` : t("Đang bật")) : t("Đã tắt")}
+                </span>
+              </div>
               <span className="kds-console__sound-dot" style={{ background: soundEnabled ? "var(--st-success)" : "var(--st-outline)", boxShadow: soundEnabled ? "0 0 0 3px rgba(24, 169, 103, 0.2)" : "none" }} />
             </button>
           </div>
 
           <div ref={stationMenuRef} className="kds-station-menu-wrap">
-            <button type="button" className="kds-station-btn" onClick={() => setShowStationMenu((s) => !s)}><currentStationObj.icon size={16} /><span>{stationFilter === "all" ? t("Tải ca trạm") : t(currentStationObj.label)}</span><ChevronDown size={14} /></button>
+            <button type="button" className="kds-station-btn" onClick={() => setShowStationMenu((s) => !s)}>
+              <currentStationObj.icon size={16} />
+              <span>{stationFilter === "all" ? t("Tải ca trạm") : t(currentStationObj.label)}</span>
+              <ChevronDown size={14} />
+            </button>
             {showStationMenu && (
               <div className="kds-station-menu" role="menu">
-                {STATION_TABS.map((s) => { const Icon = s.icon; const active = stationFilter === s.id; return (<button key={s.id} type="button" className={`kds-station-menu__item ${active ? "active" : ""}`} onClick={() => changeStation(s.id)}><Icon size={16} /><span>{t(s.label)}</span>{active && <Check size={14} />}</button>); })}
+                {STATION_TABS.map((s) => {
+                  const Icon = s.icon;
+                  const active = stationFilter === s.id;
+                  return (
+                    <button key={s.id} type="button" className={`kds-station-menu__item ${active ? "active" : ""}`} onClick={() => changeStation(s.id)}>
+                      <Icon size={16} /><span>{t(s.label)}</span>{active && <Check size={14} />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          <div className="kds-station-tabs">{STATION_TABS.map((s) => (<button key={s.id} type="button" className={`kds-station-tab ${stationFilter === s.id ? "active" : ""}`} onClick={() => changeStation(s.id)}>{t(s.label)}</button>))}</div>
+          <div className="kds-station-tabs">
+            {STATION_TABS.map((s) => (
+              <button key={s.id} type="button" className={`kds-station-tab ${stationFilter === s.id ? "active" : ""}`} onClick={() => changeStation(s.id)}>{t(s.label)}</button>
+            ))}
+          </div>
         </div>
 
+        {/* ============ KPI ROW ============ */}
         <div className="kds-kpi-grid">
-          <div className="kds-kpi kds-kpi--danger"><div className="kds-kpi__head"><span className="kds-kpi__label">{t("Đơn Mới Cần Duyệt")}</span>{kpi.pending > 0 && <span className="kds-kpi__pulse" />}</div><div className="kds-kpi__value-row"><span className="kds-kpi__value">{String(kpi.pending).padStart(2, "0")}</span>{kpi.pending > 0 && <span className="kds-kpi__badge">{t("GẤP")}</span>}</div><div className="kds-kpi__bar"><div className="kds-kpi__bar-fill kds-kpi__bar-fill--danger" style={{ width: `${Math.min(100, kpi.pending * 20)}%` }} /></div></div>
-          <div className="kds-kpi"><div className="kds-kpi__head"><span className="kds-kpi__label">{t("Đang Chuẩn Bị (Prep)")}</span><ChefHat size={20} style={{ color: "var(--st-secondary)" }} /></div><div className="kds-kpi__value-row"><span className="kds-kpi__value">{String(kpi.prep).padStart(2, "0")}</span><span className="kds-kpi__unit">{t("Bếp đang xào")}</span></div><div className="kds-kpi__bar"><div className="kds-kpi__bar-fill kds-kpi__bar-fill--primary" style={{ width: `${Math.min(100, kpi.prep * 20)}%` }} /></div></div>
-          <div className="kds-kpi"><div className="kds-kpi__head"><span className="kds-kpi__label">{t("Chờ Khách Lấy (Ready)")}</span><PackageCheck size={20} style={{ color: "var(--st-primary)" }} /></div><div className="kds-kpi__value-row"><span className="kds-kpi__value">{String(kpi.ready).padStart(2, "0")}</span><span className="kds-kpi__unit">{t("Tủ giữ nóng OK")}</span></div><div className="kds-kpi__bar"><div className="kds-kpi__bar-fill kds-kpi__bar-fill--tertiary" style={{ width: `${Math.min(100, kpi.ready * 20)}%` }} /></div></div>
-          <div className="kds-kpi"><div className="kds-kpi__head"><span className="kds-kpi__label">{t("Hoàn Thành Trong Ca")}</span><CheckCircle2 size={20} style={{ color: "var(--st-text-muted)" }} /></div><div className="kds-kpi__value-row"><span className="kds-kpi__value">{kpi.completedToday}</span><span className="kds-kpi__unit">{kpi.onTimePct}% {t("đúng giờ")}</span></div><div className="kds-kpi__bar"><div className="kds-kpi__bar-fill kds-kpi__bar-fill--success" style={{ width: `${Math.min(100, kpi.onTimePct)}%` }} /></div></div>
-          <div className="kds-kpi kds-kpi--primary"><div className="kds-kpi__head"><span className="kds-kpi__label">{t("Doanh Thu Tạm Tính")}</span><Wallet size={20} style={{ color: "var(--st-primary)" }} /></div><div className="kds-kpi__value-row"><span className="kds-kpi__value" style={{ fontSize: 22 }}>{money(kpi.revenue).replace("đ", "")}đ</span></div><div className="kds-kpi__note"><TrendingUp size={14} /><span>+14.2% {t("so với hôm qua")}</span></div></div>
+          <div className="kds-kpi kds-kpi--danger">
+            <div className="kds-kpi__head">
+              <span className="kds-kpi__label">{t("Đơn Mới Cần Duyệt")}</span>
+              {kpi.pending > 0 && <span className="kds-kpi__pulse" />}
+            </div>
+            <div className="kds-kpi__value-row">
+              <span className="kds-kpi__value">{String(kpi.pending).padStart(2, "0")}</span>
+              {kpi.pending > 0 && <span className="kds-kpi__badge">{t("GẤP")}</span>}
+            </div>
+            <div className="kds-kpi__bar">
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--danger" style={{ width: `${Math.min(100, kpi.pending * 20)}%` }} />
+            </div>
+          </div>
+          <div className="kds-kpi">
+            <div className="kds-kpi__head">
+              <span className="kds-kpi__label">{t("Đang Chuẩn Bị (Prep)")}</span>
+              <ChefHat size={20} style={{ color: "var(--st-secondary)" }} />
+            </div>
+            <div className="kds-kpi__value-row">
+              <span className="kds-kpi__value">{String(kpi.prep).padStart(2, "0")}</span>
+              <span className="kds-kpi__unit">{t("Bếp đang xào")}</span>
+            </div>
+            <div className="kds-kpi__bar">
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--primary" style={{ width: `${Math.min(100, kpi.prep * 20)}%` }} />
+            </div>
+          </div>
+          <div className="kds-kpi">
+            <div className="kds-kpi__head">
+              <span className="kds-kpi__label">{t("Chờ Khách Lấy (Ready)")}</span>
+              <PackageCheck size={20} style={{ color: "var(--st-primary)" }} />
+            </div>
+            <div className="kds-kpi__value-row">
+              <span className="kds-kpi__value">{String(kpi.ready).padStart(2, "0")}</span>
+              <span className="kds-kpi__unit">{t("Tủ giữ nóng OK")}</span>
+            </div>
+            <div className="kds-kpi__bar">
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--tertiary" style={{ width: `${Math.min(100, kpi.ready * 20)}%` }} />
+            </div>
+          </div>
+          <div className="kds-kpi">
+            <div className="kds-kpi__head">
+              <span className="kds-kpi__label">{t("Hoàn Thành Trong Ca")}</span>
+              <CheckCircle2 size={20} style={{ color: "var(--st-text-muted)" }} />
+            </div>
+            <div className="kds-kpi__value-row">
+              <span className="kds-kpi__value">{kpi.completedToday}</span>
+              <span className="kds-kpi__unit">{kpi.onTimePct}% {t("đúng giờ")}</span>
+            </div>
+            <div className="kds-kpi__bar">
+              <div className="kds-kpi__bar-fill kds-kpi__bar-fill--success" style={{ width: `${Math.min(100, kpi.onTimePct)}%` }} />
+            </div>
+          </div>
+          <div className="kds-kpi kds-kpi--primary">
+            <div className="kds-kpi__head">
+              <span className="kds-kpi__label">{t("Doanh Thu Tạm Tính")}</span>
+              <Wallet size={20} style={{ color: "var(--st-primary)" }} />
+            </div>
+            <div className="kds-kpi__value-row">
+              <span className="kds-kpi__value" style={{ fontSize: 22 }}>{money(kpi.revenue).replace("đ", "")}đ</span>
+            </div>
+            <div className="kds-kpi__note">
+              <TrendingUp size={14} /><span>+14.2% {t("so với hôm qua")}</span>
+            </div>
+          </div>
         </div>
 
+        {/* ============ FILTER BAR ============ */}
         <div className="kds-filter">
           <div className="kds-filter__left">
-            <div className="kds-filter__search"><Search size={18} className="kds-filter__search-icon" /><input type="text" className="kds-filter__search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Tìm theo Mã Đơn (#ORD-), Tên SV hoặc MSSV...")} /></div>
-            <div className="kds-filter__select-wrap"><select className="kds-filter__select" value={timeframeFilter} onChange={(e) => setTimeframeFilter(e.target.value)}><option value="all">{t("Mọi khung giờ nhận")}</option><option value="1130">{t("11:30 - 12:00 (Cao điểm)")}</option><option value="1200">{t("12:00 - 12:30")}</option><option value="1230">{t("12:30 - 13:00")}</option></select><ChevronDown size={16} /></div>
-            <div className="kds-filter__select-wrap"><select className="kds-filter__select" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}><option value="all">{t("Mọi thanh toán")}</option><option value="qr">{t("VietQR (Đã TT)")}</option><option value="wallet">{t("Ví Nội Bộ VWA")}</option><option value="cash">{t("Tiền mặt tại quầy")}</option><option value="card">{t("Thẻ SV")}</option></select><ChevronDown size={16} /></div>
-            <div className="kds-filter__select-wrap"><select className="kds-filter__select kds-filter__select--status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option value="all">{t("Trạng thái đơn hàng")}</option><option value="Chờ xác nhận">{t("Đơn mới")}</option><option value="Đã xác nhận">{t("Đã xác nhận")}</option><option value="Đang chuẩn bị">{t("Đang nấu")}</option><option value="Sẵn sàng nhận">{t("Sẵn sàng nhận")}</option><option value="Hoàn thành">{t("Gần nhất")}</option><option value="Đã hủy">{t("Đã hủy")}</option></select><ChevronDown size={16} /></div>
+            <div className="kds-filter__search">
+              <Search size={18} className="kds-filter__search-icon" />
+              <input type="text" className="kds-filter__search-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Tìm theo Mã Đơn (#ORD-), Tên SV hoặc MSSV...")} />
+            </div>
+            <div className="kds-filter__select-wrap">
+              <select
+                value={pickupTimeFilter || ""}
+                onChange={(e) => setPickupTimeFilter(e.target.value)}
+                className="kds-filter__select"
+                style={{ minWidth: 180 }}
+              >
+                <option value="">Mọi khung giờ nhận</option>
+                {allTimeSlots.map((slot) => (
+                  <option key={slot} value={slot}>
+                    {slot} {slot === "11:30 - 12:00" ? "(Cao điểm)" : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={16} />
+            </div>
+            <div className="kds-filter__select-wrap">
+              <select className="kds-filter__select" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
+                <option value="all">{t("Mọi thanh toán")}</option>
+                <option value="qr">{t("VietQR (Đã TT)")}</option>
+                <option value="wallet">{t("Ví Nội Bộ VWA")}</option>
+                <option value="cash">{t("Tiền mặt tại quầy")}</option>
+                <option value="card">{t("Thẻ SV")}</option>
+              </select>
+              <ChevronDown size={16} />
+            </div>
+            <div className="kds-filter__select-wrap">
+              <select className="kds-filter__select kds-filter__select--status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="all">{t("Trạng thái đơn hàng")}</option>
+                <option value="Chờ xác nhận">{t("Đơn mới")}</option>
+                <option value="Đã xác nhận">{t("Đã xác nhận")}</option>
+                <option value="Đang chuẩn bị">{t("Đang nấu")}</option>
+                <option value="Sẵn sàng nhận">{t("Sẵn sàng nhận")}</option>
+                <option value="Hoàn thành">{t("Gần nhất")}</option>
+                <option value="Đã hủy">{t("Đã hủy")}</option>
+              </select>
+              <ChevronDown size={16} />
+            </div>
           </div>
-          <div className="kds-filter__right"><button type="button" className="kds-filter__btn" onClick={() => load(false)} disabled={refreshing}><RefreshCw size={16} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} /><span>{t("Đồng bộ KDS")}</span></button></div>
+          <div className="kds-filter__right">
+            <button type="button" className="kds-filter__btn" onClick={() => load(false)} disabled={refreshing}>
+              <RefreshCw size={16} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
+              <span>{t("Đồng bộ KDS")}</span>
+            </button>
+          </div>
         </div>
 
+        {/* ============ KDS BOARD ============ */}
         <div className="kds-board kds-board--rows">
           {showRow1 && (() => {
             const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.pending, "pending");
             return (
               <KDSRow title={t("Đơn Mới")} subtitle={t("Chờ xác nhận")} variant="pending" empty={t("Không có đơn mới")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("pending")} t={t}>
-                {visible.map((o, idx) => (<KDSTicket key={o._id || o.id} order={o} variant="pending" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onReject={() => rejectOrder(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />))}
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="pending" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onReject={() => rejectOrder(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
               </KDSRow>
             );
           })()}
@@ -433,7 +786,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
             const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.confirmed, "confirmed");
             return (
               <KDSRow title={t("Đã Xác Nhận")} subtitle={t("Chờ Bếp")} variant="confirmed" empty={t("Không có đơn đã xác nhận")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("confirmed")} t={t}>
-                {visible.map((o, idx) => (<KDSTicket key={o._id || o.id} order={o} variant="confirmed" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />))}
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="confirmed" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
               </KDSRow>
             );
           })()}
@@ -441,7 +796,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
             const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.prep, "prep");
             return (
               <KDSRow title={t("Đang Nấu")} subtitle={t("Đang chế biến")} variant="prep" empty={t("Không có đơn đang nấu")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("prep")} t={t}>
-                {visible.map((o, idx) => (<KDSTicket key={o._id || o.id} order={o} variant="prep" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />))}
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="prep" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} elapsed={calcElapsedSec(o.created_at)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
               </KDSRow>
             );
           })()}
@@ -449,152 +806,256 @@ export default function EmployeeOrders({ isAdmin = false }) {
             const { visible, hiddenCount, isExpanded } = takeVisible(filteredRows.ready, "ready");
             return (
               <KDSRow title={t("Sẵn Sàng Nhận")} subtitle={t("Tủ giữ nóng")} variant="ready" empty={t("Không có đơn sẵn sàng")} moreCount={hiddenCount} isExpanded={isExpanded} onMore={() => toggleExpand("ready")} t={t}>
-                {visible.map((o, idx) => (<KDSTicket key={o._id || o.id} order={o} variant="ready" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />))}
+                {visible.map((o, idx) => (
+                  <KDSTicket key={o._id || o.id} order={o} variant="ready" layout="tall" isPriority={idx === 0 && !isExpanded} isProcessing={advancingId === (o._id || o.id)} onAdvance={() => advance(o)} onApproveGreen={approveGreen} onRejectGreen={rejectGreen} greenBusy={greenBusyId === (o._id || o.id)} t={t} />
+                ))}
               </KDSRow>
             );
           })()}
           {showRow5 && (
-            <KDSRow title={t("Gần Nhất")} subtitle={t("Hoàn thành")} variant="completed" empty={t("Chưa có đơn hoàn thành")} isStrip t={t}>
-              {filteredRows.completed.map((o) => (<CompletedStripItem key={o._id || o.id} order={o} t={t} />))}
-              {filteredRows.completedTotal > COMPLETED_LIMIT && <button type="button" className="kds-completed__more">{t("Xem tất cả")} {filteredRows.completedTotal} {t("đơn →")}</button>}
-            </KDSRow>
-          )}
+          <div className="kds-row kds-row--completed" style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 16 }}>
+            {/* Header */}
+            <div className="kds-row__head" style={{ padding: "12px 16px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="kds-row__title-wrap" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 0 3px #d1fae5" }} />
+                <span style={{ fontWeight: 700, fontSize: 14, color: "#172033" }}>{t("Gần Nhất")}</span>
+                <span style={{ fontSize: 12, color: "#64748b", background: "#f1f5f9", padding: "2px 8px", borderRadius: 10 }}>{t("Hoàn thành")}</span>
+              </div>
+            </div>
+
+            {/* Danh sách đơn hàng */}
+            <div className="kds-row__body kds-row__body--strip" style={{ maxHeight: showAllCompleted ? "none" : 400, overflowY: "auto", padding: "0" }}>
+              {filteredRows.completed.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 13 }}>{t("Chưa có đơn hoàn thành")}</div>
+              ) : (
+                filteredRows.completed.map((o) => {
+                  const d = new Date(o.created_at || Date.now());
+                  const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                  const itemsStr = o.items?.map(i => `${i.qty}x ${i.name} (${i.size?.name || 'L'})`).join(", ") || "Không có món";
+                  
+                  return (
+                    <div key={o._id || o.id} onClick={() => setSelectedOrder(o)} style={{ display: "flex", alignItems: "center", padding: "16px", background: "#fff", borderBottom: "1px solid #e2e8f0", gap: "12px", width: "100%", boxSizing: "border-box", cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}>
+                      
+                      {/* 1. Mã đơn hàng */}
+                      <div style={{ flex: "0 0 160px", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", color: "#3b82f6", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Mã đơn hàng</div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#2634d5", marginBottom: 4 }}>{o.code}</div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            {timeStr} • {dateStr}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. Khách hàng */}
+                      <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Khách hàng</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#172033", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.customer_name}</div>
+                        </div>
+                      </div>
+
+                      {/* 3. Món ăn */}
+                      <div style={{ flex: "2", display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path></svg>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Món ăn</div>
+                          <div style={{ fontSize: 12, color: "#172033", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.items?.length || 0} món: {itemsStr}</div>
+                        </div>
+                      </div>
+
+                      {/* 4. Thanh toán */}
+                      <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Phương thức thanh toán</div>
+                          <div style={{ display: "inline-block", background: "#f0fdf4", color: "#10b981", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>{o.payment}</div>
+                        </div>
+                      </div>
+
+                      {/* 5. Điểm thưởng */}
+                      <div style={{ flex: "1", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f8fafc", color: "#64748b", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Điểm thưởng</div>
+                          <div style={{ display: "inline-block", background: "#f0fdf4", color: "#10b981", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                            +{o.green_points > 0 ? 300 : 100} Xu
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 6. Tổng tiền & Trạng thái */}
+                      <div style={{ flex: "1.2", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", color: "#3b82f6", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Tổng tiền</div>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: "#10b981", marginBottom: 4 }}>{Number(o.total).toLocaleString("vi-VN")}đ</div>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#f0fdf4", color: "#10b981", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Hoàn thành
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 7. Mũi tên xem chi tiết */}
+                      <div style={{ flex: "0 0 auto", color: "#94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                      </div>
+
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer: Nút Xem tất cả / Thu gọn */}
+            <div style={{ padding: "12px", textAlign: "center", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+              <button 
+                type="button" 
+                onClick={() => setShowAllCompleted(!showAllCompleted)} 
+                style={{ width: "100%", padding: "10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontWeight: 700, color: "#2634d5", cursor: "pointer", transition: "all 0.2s" }} 
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f1f5f9"} 
+                onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}
+              >
+                {showAllCompleted ? "Thu gọn" : `Xem tất cả ${filteredRows.completedTotal ?? filteredRows.completed.length} đơn →`}
+              </button>
+            </div>
+          </div>
+        )}
         </div>
       </div>
 
-      <ConfirmDialog open={!!confirmReject} title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""} message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""} confirmText={t("Từ chối & Hoàn tiền")} cancelText={t("Giữ đơn")} danger loading={!!advancingId} onConfirm={executeReject} onClose={() => !advancingId && setConfirmReject(null)} />
+      
+      {/* POPUP CHI TIẾT ĐƠN HÀNG */}
+      {selectedOrder && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#172033" }}>Chi tiết đơn hàng</div>
+              <button onClick={() => setSelectedOrder(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#64748b" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Mã đơn hàng</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#2634d5" }}>{selectedOrder.code}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Thời gian</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#172033" }}>
+                    {new Date(selectedOrder.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} • {new Date(selectedOrder.created_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </div>
+                </div>
+              </div>
+              <div style={{ height: 1, background: "#e2e8f0" }}></div>
+              <div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Khách hàng</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#172033" }}>{selectedOrder.customer_name}</div>
+              </div>
+              <div style={{ background: "#f8fafc", padding: 12, borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, fontWeight: 700 }}>Danh sách món ({selectedOrder.items?.length || 0})</div>
+                {selectedOrder.items?.map((item, idx) => (
+                  <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "#172033" }}>
+                    <span><b>{item.qty}x</b> {item.name} {item.size?.name ? `(${item.size.name})` : ''}</span>
+                    <span style={{ fontWeight: 600 }}>{Number(item.price * item.qty).toLocaleString("vi-VN")}đ</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b" }}>
+                  <span>Phương thức thanh toán</span>
+                  <span style={{ fontWeight: 700, color: "#172033" }}>{selectedOrder.payment}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#64748b" }}>
+                  <span>Điểm thưởng</span>
+                  <span style={{ fontWeight: 700, color: "#10b981" }}>+{selectedOrder.points_earned || 0} Xu</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#172033" }}>Tổng tiền</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: "#10b981" }}>{Number(selectedOrder.total).toLocaleString("vi-VN")}đ</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes kdsPulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        .kds-workbench { padding: 24px; background: var(--st-surface-lowest, #f8fafc); min-height: calc(100vh - 64px); display: flex; flex-direction: column; gap: 16px; }
-        .kds-error { background: #fee2e2; color: #b91c1c; padding: 12px 16px; border-radius: 8px; display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; border: 1px solid #fecaca; }
-        .kds-error button { background: #b91c1c; color: #fff; border: 0; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        .kds-console { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; background: var(--st-surface, #fff); padding: 12px 16px; border-radius: 12px; border: 1px solid var(--st-outline-light, #e2e8f0); }
-        .kds-console__left { display: flex; align-items: center; gap: 12px; }
-        .kds-console__card { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--st-surface-low, #f1f5f9); border-radius: 8px; border: 1px solid var(--st-outline-light, #e2e8f0); }
-        .kds-console__card-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-        .kds-console__card-info { display: flex; flex-direction: column; gap: 2px; }
-        .kds-console__card-label { font-size: 11px; color: var(--st-text-muted, #64748b); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
-        .kds-console__card-value { font-size: 14px; font-weight: 700; color: var(--st-text, #0f172a); }
-        .kds-console__card-icon { color: var(--st-primary, #2563eb); }
-        .kds-console__sound-btn { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--st-surface-low, #f1f5f9); border-radius: 8px; border: 1px solid var(--st-outline-light, #e2e8f0); cursor: pointer; transition: 0.2s; }
-        .kds-console__sound-btn:hover { background: var(--st-surface-high, #e2e8f0); }
-        .kds-console__sound-text { display: flex; flex-direction: column; align-items: flex-start; }
-        .kds-console__sound-label { font-size: 11px; color: var(--st-text-muted, #64748b); font-weight: 700; text-transform: uppercase; }
-        .kds-console__sound-status { font-size: 13px; font-weight: 700; }
-        .kds-console__sound-dot { width: 8px; height: 8px; border-radius: 50%; margin-left: 4px; }
-        .kds-station-menu-wrap { position: relative; display: none; }
-        .kds-station-btn { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--st-outline, #cbd5e1); padding: 8px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
-        .kds-station-menu { position: absolute; top: calc(100% + 8px); right: 0; background: #fff; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; z-index: 100; min-width: 200px; display: flex; flex-direction: column; padding: 6px; }
-        .kds-station-menu__item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; border: 0; background: transparent; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; color: #334155; }
-        .kds-station-menu__item:hover { background: #f1f5f9; }
-        .kds-station-menu__item.active { background: #eff6ff; color: #2563eb; }
-        .kds-station-tabs { display: flex; align-items: center; gap: 4px; background: var(--st-surface-low, #f1f5f9); padding: 4px; border-radius: 8px; }
-        .kds-station-tab { padding: 6px 16px; border: 0; background: transparent; border-radius: 6px; font-size: 13px; font-weight: 600; color: var(--st-text-muted, #64748b); cursor: pointer; transition: 0.15s; }
-        .kds-station-tab:hover { color: var(--st-text, #0f172a); }
-        .kds-station-tab.active { background: #fff; color: var(--st-primary, #2563eb); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .kds-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-        .kds-kpi { background: #fff; padding: 16px; border-radius: 12px; border: 1px solid var(--st-outline-light, #e2e8f0); display: flex; flex-direction: column; gap: 8px; }
-        .kds-kpi--danger { border-color: #fecaca; background: #fef2f2; }
-        .kds-kpi--primary { background: #eff6ff; border-color: #bfdbfe; }
-        .kds-kpi__head { display: flex; align-items: center; justify-content: space-between; }
-        .kds-kpi__label { font-size: 12px; font-weight: 700; color: var(--st-text-muted, #64748b); text-transform: uppercase; letter-spacing: 0.5px; }
-        .kds-kpi__pulse { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: kdsPulse 1.5s infinite; }
-        .kds-kpi__value-row { display: flex; align-items: baseline; gap: 8px; }
-        .kds-kpi__value { font-size: 32px; font-weight: 800; color: var(--st-text, #0f172a); line-height: 1; }
-        .kds-kpi--danger .kds-kpi__value { color: #dc2626; }
-        .kds-kpi--primary .kds-kpi__value { color: #2563eb; }
-        .kds-kpi__badge { background: #dc2626; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; }
-        .kds-kpi__unit { font-size: 13px; font-weight: 600; color: var(--st-text-muted, #64748b); }
-        .kds-kpi__bar { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-top: 4px; }
-        .kds-kpi__bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
-        .kds-kpi__bar-fill--danger { background: #dc2626; }
-        .kds-kpi__bar-fill--primary { background: #2563eb; }
-        .kds-kpi__bar-fill--tertiary { background: #8b5cf6; }
-        .kds-kpi__bar-fill--success { background: #10b981; }
-        .kds-kpi__note { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #10b981; font-weight: 600; }
-        .kds-filter { display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--st-outline-light, #e2e8f0); gap: 16px; flex-wrap: wrap; }
-        .kds-filter__left { display: flex; align-items: center; gap: 12px; flex: 1; flex-wrap: wrap; }
-        .kds-filter__search { position: relative; flex: 1; min-width: 200px; max-width: 350px; }
-        .kds-filter__search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
-        .kds-filter__search-input { width: 100%; padding: 10px 12px 10px 38px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none; }
-        .kds-filter__search-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
-        .kds-filter__select-wrap { position: relative; display: flex; align-items: center; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
-        .kds-filter__select { appearance: none; padding: 10px 32px 10px 12px; border: 0; background: transparent; font-size: 14px; font-weight: 500; color: #334155; outline: none; cursor: pointer; }
-        .kds-filter__select-wrap svg { position: absolute; right: 10px; pointer-events: none; color: #64748b; }
-        .kds-filter__select--status { font-weight: 700; color: #2563eb; }
-        .kds-filter__btn { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 600; cursor: pointer; color: #334155; transition: 0.15s; }
-        .kds-filter__btn:hover { background: #f8fafc; border-color: #94a3b8; }
-        .kds-filter__btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .kds-board { display: flex; flex-direction: column; gap: 16px; }
-        .kds-row { background: #fff; border-radius: 12px; border: 1px solid var(--st-outline-light, #e2e8f0); overflow: hidden; }
-        .kds-row__head { padding: 12px 16px; border-bottom: 1px solid var(--st-outline-light, #e2e8f0); display: flex; align-items: center; justify-content: space-between; }
-        .kds-row__title-wrap { display: flex; align-items: center; gap: 8px; }
-        .kds-row__dot { width: 10px; height: 10px; border-radius: 50%; }
-        .kds-row__dot--pending { background: #f59e0b; }
-        .kds-row__dot--confirmed { background: #2563eb; }
-        .kds-row__dot--prep { background: #8b5cf6; }
-        .kds-row__dot--ready { background: #10b981; }
-        .kds-row__dot--completed { background: #94a3b8; }
-        .kds-row__title { font-size: 15px; font-weight: 800; color: #0f172a; text-transform: uppercase; }
-        .kds-row__subtitle { font-size: 13px; color: #64748b; font-weight: 500; }
-        .kds-row__body { padding: 16px; display: flex; gap: 16px; overflow-x: auto; align-items: flex-start; min-height: 120px; }
-        .kds-row__body--strip { flex-direction: column; gap: 0; padding: 8px 0; }
-        .kds-row__empty { width: 100%; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 14px; font-style: italic; min-height: 80px; }
-        .kds-row__more { flex-shrink: 0; width: 120px; height: 160px; border: 2px dashed #cbd5e1; border-radius: 12px; background: #f8fafc; color: #64748b; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; font-weight: 600; font-size: 13px; transition: 0.15s; }
-        .kds-row__more:hover { background: #f1f5f9; border-color: #94a3b8; color: #334155; }
-        .kds-completed-strip-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #f1f5f9; }
-        .kds-completed-strip-item:last-child { border-bottom: 0; }
-        .kds-completed-strip-item__left { display: flex; align-items: center; gap: 12px; }
-        .kds-completed-strip-item__icon { color: #10b981; }
-        .kds-completed-strip-item__code { font-weight: 700; font-size: 14px; color: #0f172a; }
-        .kds-completed-strip-item__customer { font-size: 13px; color: #64748b; }
-        .kds-completed-strip-item__right { display: flex; align-items: center; gap: 16px; }
-        .kds-completed-strip-item__time { font-size: 13px; color: #94a3b8; }
-        .kds-completed-strip-item__total { font-weight: 700; color: #10b981; }
-        .kds-completed__more { width: 100%; padding: 10px; text-align: center; background: #f8fafc; border: 0; border-top: 1px solid #f1f5f9; font-size: 13px; font-weight: 600; color: #2563eb; cursor: pointer; }
-        .kds-completed__more:hover { background: #eff6ff; }
-        @media (max-width: 1200px) { .kds-kpi-grid { grid-template-columns: repeat(3, 1fr); } }
-        @media (max-width: 768px) {
-          .kds-kpi-grid { grid-template-columns: repeat(2, 1fr); }
-          .kds-console { flex-direction: column; align-items: flex-start; }
-          .kds-station-tabs { display: none; }
-          .kds-station-menu-wrap { display: block; width: 100%; }
-          .kds-station-btn { width: 100%; justify-content: space-between; }
-          .kds-filter__left { flex-direction: column; width: 100%; }
-          .kds-filter__search { max-width: none; width: 100%; }
-          .kds-filter__select-wrap { width: 100%; }
-          .kds-filter__select { width: 100%; }
-        }
-      `}</style>
+      <ConfirmDialog open={!!confirmReject} title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""} message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""} confirmText={t("Từ chối & Hoàn tiền")} cancelText={t("Giữ đơn")} danger loading={!!advancingId} onConfirm={executeReject} onClose={() => !advancingId && setConfirmReject(null)} />
     </>
   );
 }
 
+// ============================================================
+// SUB: KDSRow
+// ============================================================
 function KDSRow({ title, subtitle, variant, empty, moreCount = 0, onMore, isExpanded = false, isStrip = false, children, t }) {
   const hasChildren = Array.isArray(children) ? children.length > 0 : !!children;
   return (
     <section className={`kds-row kds-row--${variant}`}>
-      <div className="kds-row__head"><div className="kds-row__title-wrap"><span className={`kds-row__dot kds-row__dot--${variant}`} /><span className="kds-row__title">{title}</span>{subtitle && <span className="kds-row__subtitle">{subtitle}</span>}</div></div>
+      <div className="kds-row__head">
+        <div className="kds-row__title-wrap">
+          <span className={`kds-row__dot kds-row__dot--${variant}`} />
+          <span className="kds-row__title">{title}</span>
+          {subtitle && <span className="kds-row__subtitle">{subtitle}</span>}
+        </div>
+      </div>
       <div className={`kds-row__body ${isStrip ? "kds-row__body--strip" : ""}`}>
         {hasChildren ? (
           <>
             {children}
-            {isExpanded ? (<button type="button" className="kds-row__more" onClick={onMore} style={{ borderStyle: "solid", background: "var(--st-surface-container)" }}><ChevronLeft size={18} style={{ marginBottom: 4 }} /><span>{t("Ẩn bớt")}</span></button>)
-             : moreCount > 0 ? (<button type="button" className="kds-row__more" onClick={onMore}><span>{t("Xem thêm")}</span><span style={{ fontSize: 11, color: "var(--st-text-muted)", marginTop: 4 }}>+{moreCount} {t("đơn")}</span><ArrowRight size={16} style={{ marginTop: 4 }} /></button>) : null}
+            {isExpanded ? (
+              <button type="button" className="kds-row__more" onClick={onMore} style={{ borderStyle: "solid", background: "var(--st-surface-container)" }}>
+                <ChevronLeft size={18} style={{ marginBottom: 4 }} /><span>{t("Ẩn bớt")}</span>
+              </button>
+            ) : moreCount > 0 ? (
+              <button type="button" className="kds-row__more" onClick={onMore}>
+                <span>{t("Xem thêm")}</span>
+                <span style={{ fontSize: 11, color: "var(--st-text-muted)", marginTop: 4 }}>+{moreCount} {t("đơn")}</span>
+                <ArrowRight size={16} style={{ marginTop: 4 }} />
+              </button>
+            ) : null}
           </>
-        ) : (<div className="kds-row__empty">{empty}</div>)}
+        ) : (
+          <div className="kds-row__empty">{empty}</div>
+        )}
       </div>
     </section>
   );
 }
 
+// ============================================================
+// SUB: CompletedStripItem
+// ============================================================
 function CompletedStripItem({ order, t }) {
   return (
     <div className="kds-completed-strip-item">
-      <div className="kds-completed-strip-item__left"><div className="kds-completed-strip-item__icon"><CheckCircle2 size={16} /></div><span className="kds-completed-strip-item__code">{order.code}</span><span className="kds-completed-strip-item__customer">{order.customer_name || t("Khách")}</span></div>
-      <div className="kds-completed-strip-item__right"><span className="kds-completed-strip-item__time">{fmtTimeWithLabel(order.updated_at || order.created_at)}</span><span className="kds-completed-strip-item__total">{money(Number(order.total) || 0)}</span></div>
+      <div className="kds-completed-strip-item__left">
+        <div className="kds-completed-strip-item__icon"><CheckCircle2 size={16} /></div>
+        <span className="kds-completed-strip-item__code">{order.code}</span>
+        <span className="kds-completed-strip-item__customer">{order.customer_name || t("Khách")}</span>
+      </div>
+      <div className="kds-completed-strip-item__right">
+        <span className="kds-completed-strip-item__time">{fmtTimeWithLabel(order.updated_at || order.created_at)}</span>
+        <span className="kds-completed-strip-item__total">{money(Number(order.total) || 0)}</span>
+      </div>
     </div>
   );
 }
+

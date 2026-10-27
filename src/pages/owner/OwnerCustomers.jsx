@@ -1,8 +1,9 @@
 // ============================================================
-// OWNERCUSTOMERS.JSX — Quản lý khách hàng + Mã ngành (V5)
+// OWNERCUSTOMERS.JSX — Quản lý khách hàng + Mã ngành (V4)
 // ============================================================
-// V5:
-//   - 🔧 Thêm getToken() guard chặn spam 401/403.
+// V4 (2026-10):
+//   - ✅ Dùng api.school.* + api.users.* (thay vì fetch trực tiếp)
+//   - Giữ V3: Tab Mã ngành, cột MSSV, Set xu, Gỡ MSSV, filter ngành
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
@@ -13,7 +14,7 @@ import {
   AlertCircle, Edit, Award, GraduationCap, Unlink, Plus, RefreshCw,
   Save, UserRound, ChevronDown, RotateCcw, Shield,
 } from "lucide-react";
-import { api, getToken } from "../../api"; // 🔧 Thêm getToken
+import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -37,6 +38,7 @@ function validatePhone(phone, t) {
   return null;
 }
 
+// ✅ XẾP HẠNG THÀNH VIÊN THEO CHI TIÊU (VND)
 function getMemberTier(totalSpent) {
   const t = Number(totalSpent) || 0;
   if (t >= 10000000) return "Hạng Kim cương";
@@ -59,7 +61,7 @@ const TIER_THRESHOLDS = [
   { id: "Hạng Vàng",       label: "Hạng Vàng" },
   { id: "Hạng Kim cương",  label: "Hạng Kim cương" },
 ];
-
+// ✅ PHÂN LOẠI KHÁCH HÀNG THEO EMAIL
 function getCustomerType(email) {
   const e = String(email || "").toLowerCase().trim();
   if (e.endsWith("@vwa.edu.vn")) return "Giảng viên";
@@ -73,15 +75,22 @@ const TYPE_BADGE = {
   "Khách":      { color: "#f59e0b", bg: "#fef3c7", icon: "👤" },
 };
 
+// ============================================================
+// CONSTANTS
+// ============================================================
 const CUSTOMER_GRADIENT = "linear-gradient(135deg, #f59e0b, #ef4444)";
 const VOUCHER_GRADIENT = "linear-gradient(135deg, #8b5cf6, #ec4899)";
 const USED_GRADIENT = "linear-gradient(135deg, #94a3b8, #64748b)";
 const MODAL_Z = 2147483600;
 
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 export default function OwnerCustomers() {
   const { t } = useI18n();
 
-  const [activeTab, setActiveTab] = useState("customers");
+  // ---------- TAB STATE ----------
+  const [activeTab, setActiveTab] = useState("customers"); // "customers" | "majors"
 
   const STATUS_FILTERS = useMemo(
     () => [
@@ -102,6 +111,7 @@ export default function OwnerCustomers() {
     [t]
   );
 
+  // ---------- Customer list state ----------
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -115,11 +125,15 @@ export default function OwnerCustomers() {
   const [openType, setOpenType] = useState(false);
   const [openTier, setOpenTier] = useState(false);
 
+  // ---------- Detail modal ----------
   const [detail, setDetail] = useState(null);
+
+  // ---------- Edit modal ----------
   const [editModal, setEditModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
 
+  // ---------- Voucher modal ----------
   const [voucherModal, setVoucherModal] = useState(null);
   const [vouchers, setVouchers] = useState([]);
   const [voucherStats, setVoucherStats] = useState({
@@ -129,11 +143,13 @@ export default function OwnerCustomers() {
   const [voucherTab, setVoucherTab] = useState("active");
   const [copiedId, setCopiedId] = useState(null);
 
+  // ---------- Points modal ----------
   const [pointsModal, setPointsModal] = useState(null);
   const [pointsForm, setPointsForm] = useState({ points: "", reason: "" });
   const [pointsSaving, setPointsSaving] = useState(false);
   const [pointsError, setPointsError] = useState("");
 
+  // ---------- Majors tab state ----------
   const [majorsMap, setMajorsMap] = useState({});
   const [majorsLoading, setMajorsLoading] = useState(false);
   const [majorsQ, setMajorsQ] = useState("");
@@ -142,12 +158,14 @@ export default function OwnerCustomers() {
   const [majorSaving, setMajorSaving] = useState(false);
   const [majorError, setMajorError] = useState("");
 
+  // ---------- Confirm dialog ----------
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
+  // ============================================================
+  // LOAD CUSTOMERS
+  // ============================================================
   const load = useCallback(async () => {
-    // 🔧 FIX: Guard
-    if (!getToken()) return;
     setLoading(true);
     setError("");
     try {
@@ -162,7 +180,6 @@ export default function OwnerCustomers() {
   }, [t]);
 
   const loadOrders = useCallback(async () => {
-    if (!getToken()) return; // 🔧 FIX
     try {
       const data = await api.orders.all("Tất cả");
       setOrders(Array.isArray(data) ? data : []);
@@ -171,8 +188,10 @@ export default function OwnerCustomers() {
     }
   }, []);
 
+  // ============================================================
+  // LOAD MAJORS MAP
+  // ============================================================
   const loadMajors = useCallback(async () => {
-    if (!getToken()) return; // 🔧 FIX
     setMajorsLoading(true);
     try {
       const res = await api.school.majorsMap();
@@ -196,6 +215,7 @@ export default function OwnerCustomers() {
     }
   }, [activeTab, majorsMap, loadMajors]);
 
+  // ESC
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
@@ -209,12 +229,14 @@ export default function OwnerCustomers() {
     return () => window.removeEventListener("keydown", handler);
   }, [editModal, voucherModal, detail, pointsModal, majorEditModal, saving, pointsSaving, majorSaving]);
 
+  // ---------- Stats ----------
   const statusCounts = useMemo(() => {
     const active = list.filter((c) => (c.status || "Hoạt động") === "Hoạt động").length;
     const locked = list.length - active;
     return { all: list.length, active, locked };
   }, [list]);
 
+  // ✅ Đếm số lượng theo phân loại
   const typeCounts = useMemo(() => {
     const counts = { all: list.length };
     for (const c of list) {
@@ -224,6 +246,7 @@ export default function OwnerCustomers() {
     return counts;
   }, [list]);
 
+  // ✅ Map user_id → tổng chi tiêu (đơn Hoàn thành)
   const tierSpentMap = useMemo(() => {
     const map = {};
     for (const o of orders) {
@@ -235,6 +258,7 @@ export default function OwnerCustomers() {
     return map;
   }, [orders]);
 
+  // ✅ Đếm số lượng theo hạng
   const tierCounts = useMemo(() => {
     const counts = { all: list.length };
     for (const c of list) {
@@ -255,6 +279,7 @@ export default function OwnerCustomers() {
     return Array.from(set).map((s) => JSON.parse(s));
   }, [list]);
 
+  // ---------- Filter + Search ----------
   const filtered = useMemo(() => {
     let result = list;
 
@@ -304,6 +329,7 @@ export default function OwnerCustomers() {
     setFilterTier("all");
   };
 
+  // ---------- Majors filter ----------
   const filteredMajors = useMemo(() => {
     const entries = Object.entries(majorsMap);
     if (!majorsQ.trim()) return entries;
@@ -315,6 +341,7 @@ export default function OwnerCustomers() {
     );
   }, [majorsMap, majorsQ]);
 
+  // ---------- Confirm helpers ----------
   const closeConfirm = useCallback(() => {
     if (confirmBusy) return;
     setConfirm(null);
@@ -330,6 +357,9 @@ export default function OwnerCustomers() {
     }
   }, [confirm, confirmBusy]);
 
+  // ============================================================
+  // CUSTOMER HANDLERS
+  // ============================================================
   const toggleLock = (c) => {
     const newStatus = c.status === "Hoạt động" ? "Bị khóa" : "Hoạt động";
     const isLocking = newStatus === "Bị khóa";
@@ -416,7 +446,7 @@ export default function OwnerCustomers() {
 
     const p = Number(pointsForm.points);
     if (!Number.isFinite(p) || p < 0) {
-      setPointsError(t("Điểm phải là số >= 0"));
+      setPointsError(t("Xu phải là số >= 0"));
       return;
     }
 
@@ -427,11 +457,11 @@ export default function OwnerCustomers() {
         reason: pointsForm.reason.trim(),
       });
 
-      toast(t("Đã set điểm thành công: {n} điểm").replace("{n}", String(p)), "success");
+      toast(t("Đã set xu thành công: {n} xu").replace("{n}", String(p)), "success");
       setPointsModal(null);
       load();
     } catch (e) {
-      setPointsError(e.message || t("Không set được điểm"));
+      setPointsError(e.message || t("Không set được xu"));
     } finally {
       setPointsSaving(false);
     }
@@ -456,6 +486,9 @@ export default function OwnerCustomers() {
     });
   };
 
+  // ============================================================
+  // VOUCHER HANDLERS
+  // ============================================================
   const loadVouchers = async (customer) => {
     setVoucherModal(customer);
     setVoucherTab("active");
@@ -499,6 +532,9 @@ export default function OwnerCustomers() {
     setTimeout(() => setCopiedId(null), 1500);
   };
 
+  // ============================================================
+  // MAJORS HANDLERS
+  // ============================================================
   const openAddMajor = () => {
     setMajorError("");
     setMajorForm({ code: "", name: "", faculty: "", code_full: "" });
@@ -599,6 +635,9 @@ export default function OwnerCustomers() {
     });
   };
 
+  // ============================================================
+  // UTILS
+  // ============================================================
   const getInitials = (name) => (name || "?").slice(0, 2).toUpperCase();
   const fmtNumber = (n) => typeof n === "number" ? n.toLocaleString("vi-VN") : n ?? "—";
   const fmtMoney = (n) => fmtNumber(n) + "đ";
@@ -607,7 +646,7 @@ export default function OwnerCustomers() {
     if (v.claimed_from)
       return { label: t("Nhận từ ƯĐ"), color: "#8b5cf6", bg: "#ede9fe", icon: Globe };
     if (v.points_used > 0)
-      return { label: t("Đổi điểm"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
+      return { label: t("Đổi xu"), color: "#f59e0b", bg: "#fef3c7", icon: Gift };
     return { label: t("Admin tặng"), color: "#2634d5", bg: "#eef2ff", icon: UserIcon };
   };
 
@@ -616,9 +655,15 @@ export default function OwnerCustomers() {
     [vouchers, voucherTab]
   );
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <>
       <div>
+        {/* ============================================================
+            TAB SWITCH
+            ============================================================ */}
         <div
           style={{
             display: "flex",
@@ -707,8 +752,14 @@ export default function OwnerCustomers() {
           </button>
         </div>
 
+        {/* ============================================================
+            TAB 1: CUSTOMERS
+            ============================================================ */}
         {activeTab === "customers" && (
           <>
+            {/* ============================================================
+                HỘP 1: Search + Counter + Clear
+                ============================================================ */}
             <div
               style={{
                 background: "var(--card-bg, #fff)",
@@ -814,6 +865,9 @@ export default function OwnerCustomers() {
               )}
             </div>
 
+            {/* ============================================================
+                HỘP 2: 3 cụm filter (Trạng thái | Phân loại | Hạng)
+                ============================================================ */}
             <div
               style={{
                 background: "var(--card-bg, #fff)",
@@ -827,6 +881,7 @@ export default function OwnerCustomers() {
                 alignItems: "start",
               }}
             >
+              {/* Cụm 1: Trạng thái */}
               <div>
                 <button
                   onClick={() => setOpenStatus((v) => !v)}
@@ -862,6 +917,7 @@ export default function OwnerCustomers() {
                 )}
               </div>
 
+              {/* Cụm 2: Phân loại */}
               <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
                 <button
                   onClick={() => setOpenType((v) => !v)}
@@ -897,6 +953,7 @@ export default function OwnerCustomers() {
                 )}
               </div>
 
+              {/* Cụm 3: Hạng */}
               <div style={{ paddingLeft: 20, borderLeft: "1px solid var(--border-color, #eef2f7)" }}>
                 <button
                   onClick={() => setOpenTier((v) => !v)}
@@ -945,7 +1002,7 @@ export default function OwnerCustomers() {
                 <SkeletonTable
                   columns={9}
                   rows={5}
-                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Điểm"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
+                  headers={[t("ID"), t("Khách hàng"), t("Liên hệ"), t("MSSV · Ngành"), t("Xu"), t("Hạng"), t("Loại"), t("Trạng thái"), t("Thao tác")]}
                 />
               )}
 
@@ -990,7 +1047,7 @@ export default function OwnerCustomers() {
                         <th style={thStyle}>{t("Khách hàng")}</th>
                         <th style={thStyle}>{t("Liên hệ")}</th>
                         <th style={thStyle}>{t("MSSV · Ngành")}</th>
-                        <th style={thStyle}>{t("Điểm")}</th>
+                        <th style={thStyle}>{t("Xu")}</th>
                         <th style={thStyle}>{t("Hạng")}</th>
                         <th style={thStyle}>{t("Loại")}</th>
                         <th style={thStyle}>{t("Trạng thái")}</th>
@@ -1061,7 +1118,7 @@ export default function OwnerCustomers() {
 
                             <td style={tdStyle}>
                               <b style={{ color: "#f59e0b" }}>
-                                {fmtNumber(c.points || 0)} {t("điểm")}
+                                {fmtNumber(c.points || 0)} {t("xu")}
                               </b>
                             </td>
 
@@ -1088,7 +1145,7 @@ export default function OwnerCustomers() {
                                 <IconButton onClick={() => openEdit(c)} title={t("Sửa")}>
                                   <Edit size={15} />
                                 </IconButton>
-                                <IconButton onClick={() => openPointsModal(c)} title={t("Set điểm")} color="#f59e0b" bg="#fff4d8">
+                                <IconButton onClick={() => openPointsModal(c)} title={t("Set xu")} color="#f59e0b" bg="#fff4d8">
                                   <Award size={15} />
                                 </IconButton>
                                 {hasMssv && (
@@ -1132,6 +1189,9 @@ export default function OwnerCustomers() {
           </>
         )}
 
+        {/* ============================================================
+            TAB 2: MAJORS MAP
+            ============================================================ */}
         {activeTab === "majors" && (
           <>
             <div
@@ -1311,6 +1371,9 @@ export default function OwnerCustomers() {
           </>
         )}
 
+        {/* ============================================================
+            MODAL: CHI TIẾT KHÁCH HÀNG
+            ============================================================ */}
         {detail && (
           <Modal onClose={() => setDetail(null)} maxWidth={520}>
             <div style={{ textAlign: "center" }}>
@@ -1330,7 +1393,7 @@ export default function OwnerCustomers() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 20, textAlign: "left" }}>
                 <InfoBlock label={t("Mã KH")} value={`KH${detail.id}`} />
                 <InfoBlock label={t("SĐT")} value={detail.phone || "—"} />
-                <InfoBlock label={t("Điểm tích lũy")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
+                <InfoBlock label={t("Xu tích lũy")} value={fmtNumber(detail.points || 0)} highlight="#f59e0b" />
                 <InfoBlock label={t("Trạng thái")} value={detail.status || t("Hoạt động")} />
 
                 {detail.student_code ? (
@@ -1354,6 +1417,9 @@ export default function OwnerCustomers() {
           </Modal>
         )}
 
+        {/* ============================================================
+            MODAL: SỬA KHÁCH HÀNG
+            ============================================================ */}
         {editModal && (
           <Modal onClose={() => !saving && setEditModal(null)} maxWidth={480}>
             <h3 style={{ marginTop: 0, marginBottom: 20, color: "var(--text-primary, #172033)" }}>
@@ -1405,6 +1471,9 @@ export default function OwnerCustomers() {
           </Modal>
         )}
 
+        {/* ============================================================
+            MODAL: SET ĐIỂM
+            ============================================================ */}
         {pointsModal && (
           <Modal onClose={() => !pointsSaving && setPointsModal(null)} maxWidth={460}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
@@ -1413,7 +1482,7 @@ export default function OwnerCustomers() {
               </div>
               <div>
                 <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 16 }}>
-                  {t("Set điểm cho khách hàng")}
+                  {t("Set xu cho khách hàng")}
                 </h3>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted, #64748b)" }}>
                   {pointsModal.name} · {pointsModal.email}
@@ -1422,13 +1491,13 @@ export default function OwnerCustomers() {
             </div>
 
             <div style={{ background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}>{t("Điểm hiện tại")}:</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}>{t("Xu hiện tại")}:</span>
               <b style={{ color: "#f59e0b", fontSize: 16 }}>
-                {fmtNumber(pointsModal.points || 0)} {t("điểm")}
+                {fmtNumber(pointsModal.points || 0)} {t("xu")}
               </b>
             </div>
 
-            <label style={modalLabelStyle}>{t("Điểm mới")} *</label>
+            <label style={modalLabelStyle}>{t("Xu mới")} *</label>
             <input
               type="number"
               min={0}
@@ -1442,7 +1511,7 @@ export default function OwnerCustomers() {
             {Number(pointsForm.points) !== Number(pointsModal.points || 0) && (
               <div style={{ fontSize: 12, fontWeight: 700, marginTop: -10, marginBottom: 12, color: Number(pointsForm.points) > Number(pointsModal.points || 0) ? "#18a967" : "#ef4444" }}>
                 ({Number(pointsForm.points) > Number(pointsModal.points || 0) ? "+" : ""}
-                {Number(pointsForm.points) - Number(pointsModal.points || 0)} {t("điểm")})
+                {Number(pointsForm.points) - Number(pointsModal.points || 0)} {t("xu")})
               </div>
             )}
 
@@ -1471,13 +1540,16 @@ export default function OwnerCustomers() {
                 {pointsSaving ? (
                   <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang lưu...")}</>
                 ) : (
-                  <><Award size={14} /> {t("Lưu điểm")}</>
+                  <><Award size={14} /> {t("Lưu xu")}</>
                 )}
               </button>
             </div>
           </Modal>
         )}
 
+        {/* ============================================================
+            MODAL: SỬA / THÊM MÃ NGÀNH
+            ============================================================ */}
         {majorEditModal && (
           <Modal onClose={() => !majorSaving && setMajorEditModal(null)} maxWidth={520}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
@@ -1571,6 +1643,9 @@ export default function OwnerCustomers() {
           </Modal>
         )}
 
+        {/* ============================================================
+            MODAL: VÍ VOUCHER
+            ============================================================ */}
         {voucherModal && (
           <Modal onClose={() => setVoucherModal(null)} maxWidth={620}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -1720,6 +1795,9 @@ export default function OwnerCustomers() {
   );
 }
 
+// ============================================================
+// SUB-COMPONENTS
+// ============================================================
 function StatusBadge({ status, t }) {
   const active = status === "Hoạt động";
   return (
@@ -1786,6 +1864,9 @@ function Modal({ children, onClose, maxWidth = 480 }) {
   );
 }
 
+// ============================================================
+// STYLE CONSTANTS
+// ============================================================
 const thStyle = { padding: 11, textAlign: "left", fontSize: 12, color: "var(--text-muted, #64748b)", fontWeight: 600 , whiteSpace: "nowrap", minWidth: "100px" };
 const tdStyle = { padding: 11, color: "var(--text-primary, #172033)", fontSize: 13 , whiteSpace: "nowrap" };
 const modalCloseStyle = { background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 4, display: "grid", placeItems: "center" };

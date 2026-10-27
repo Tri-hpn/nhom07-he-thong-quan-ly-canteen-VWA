@@ -1,12 +1,11 @@
+﻿// ============================================================
+// CUSTOMERCHECKOUT.JSX — Thanh toán (V5 - FINAL + i18n)
 // ============================================================
-// CUSTOMERCHECKOUT.JSX — Thanh toán (V6 - FINAL + i18n)
-// ============================================================
-// V6 (2026-11):
-//   - 🔧 FIX: copyToClipboard await writeText() + fallback execCommand
-//             (trước đây báo "Đã sao chép" ngay cả khi copy thất bại)
-//   - 🔧 DEAD CODE: xoá openPayment / paymentOrder / PaymentModal
-//     (không được gọi từ JSX → Modal chưa bao giờ mở)
-//   - Giữ nguyên toàn bộ logic đặt hàng khác
+// V5 (2026-10):
+//   - 🔧 FIX #28: EMPTY_ARRAY module-scoped constant, không re-create
+//                 mỗi render → useCrossTabSync không bị re-init
+//   - 🔧 FIX FONT: Sửa toàn bộ ký tự mojibake → UTF-8 đúng
+//   - Giữ nguyên toàn bộ logic khác
 // ============================================================
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -24,6 +23,7 @@ import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import { usePointsConfig } from "../../hooks/usePointsConfig";
 import { useCrossTabSync } from "../../hooks/useCrossTabSync";
+import PaymentModal from "../../components/PaymentModal";
 
 // ============================================================
 // CONSTANTS
@@ -38,8 +38,11 @@ const FALLBACK_TIME_SLOTS = [
   "17:00 - 17:30", "17:30 - 18:00", "18:00 - 18:30",
 ];
 
+// 🔧 FIX #28: Module-scoped frozen constant
 const EMPTY_ARRAY = Object.freeze([]);
+
 const COUNTDOWN_START = 585;
+
 const SELECTED_CART_KEY = "canteen_cart_selected";
 const CART_KEY = "canteen_cart";
 
@@ -66,6 +69,16 @@ function removeOrderedItems(cart, selectedKeys) {
     localStorage.removeItem(SELECTED_CART_KEY);
   } catch {}
   return remain;
+}
+
+function readSelectedKeys() {
+  try {
+    const raw = localStorage.getItem(SELECTED_CART_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
 }
 
 function isSlotInPast(slot) {
@@ -132,6 +145,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [initLoading, setInitLoading] = useState(true);
 
   const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [paymentOrder, setPaymentOrder] = useState(null);
 
   const [paymentMethod, setPaymentMethod] = useState("qr");
   const [usePoints, setUsePoints] = useState(false);
@@ -141,6 +155,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const submittingRef = useRef(false);
   const prevSubtotalRef = useRef(null);
 
+  // 🔧 FIX #28: EMPTY_ARRAY là module-scoped frozen constant,
+  // không phải re-create mỗi render
   const [selectedKeys] = useCrossTabSync(SELECTED_CART_KEY, EMPTY_ARRAY);
 
   const lines = useMemo(() => {
@@ -188,10 +204,16 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       )
     : 0;
 
+    const [useSubsidy, setUseSubsidy] = useState(false);
+  const maxSubsidy = Math.min(10000, user?.subsidy_remaining ?? 500000);
+  const subsidyDiscount = useSubsidy && subtotal >= 25000 ? maxSubsidy : 0;
+
   const total = useMemo(
     () => Math.max(0, subtotal - discount - pointsDiscount),
     [subtotal, discount, pointsDiscount]
   );
+  const finalTotal = Math.max(0, total - subsidyDiscount);
+
 
   useEffect(() => {
     if (prevSubtotalRef.current === null) {
@@ -227,37 +249,36 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }, [countdown]);
 
-  // 🔧 TỐI ƯU: Dùng Promise.allSettled để không block UI nếu 1 API bị chậm/lỗi
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const results = await Promise.allSettled([
-          api.vouchers.me(),
-          api.points.me(),
-          api.wallet.me(),
-          api.settings.get(),
-          api.timeSlots.list(),
+        const [
+          vouchersRes,
+          pointsRes,
+          walletRes,
+          settingsRes,
+          timeSlotsRes,
+        ] = await Promise.all([
+          api.vouchers.me().catch(() => []),
+          api.points.me().catch(() => ({ points: 0 })),
+          api.wallet.me().catch(() => ({ balance: 0 })),
+          api.settings.get().catch(() => null),
+          api.timeSlots.list().catch(() => []),
         ]);
 
         if (cancelled) return;
 
-        const [vouchersRes, pointsRes, walletRes, settingsRes, timeSlotsRes] = results.map(
-          (r) => (r.status === "fulfilled" ? r.value : null)
+        setMyVouchers(
+          (Array.isArray(vouchersRes) ? vouchersRes : []).filter(
+            (v) => !v.used
+          )
         );
 
-        if (vouchersRes) {
-          setMyVouchers(
-            (Array.isArray(vouchersRes) ? vouchersRes : []).filter(
-              (v) => !v.used
-            )
-          );
-        }
-
-        if (pointsRes) setPoints(pointsRes.points || 0);
-        if (walletRes) setWalletBalance(walletRes.balance || 0);
-        if (settingsRes) setSettings(settingsRes);
+        setPoints(pointsRes?.points || 0);
+        setWalletBalance(walletRes?.balance || 0);
+        setSettings(settingsRes);
 
         const slots = Array.isArray(timeSlotsRes) ? timeSlotsRes : [];
         if (slots.length > 0) {
@@ -272,8 +293,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         } else {
           setTimeSlots(FALLBACK_TIME_SLOTS);
         }
-      } catch (err) {
-        console.warn("Init checkout error:", err);
       } finally {
         if (!cancelled) setInitLoading(false);
       }
@@ -284,6 +303,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     };
   }, []);
 
+  // Sync customer VietQR from latest Admin bank settings
   useEffect(() => {
     let cancelled = false;
     let requesting = false;
@@ -327,8 +347,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       }
     };
 
-    // 🔧 TỐI ƯU: Tăng thời gian polling lên 30s để giảm tải cho Vercel
-    const timerId = window.setInterval(refreshBankSettings, 30000);
+    const timerId = window.setInterval(refreshBankSettings, 10000);
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
@@ -339,11 +358,23 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);
-
   useEffect(() => {
     if (user?.name) setName((cur) => (cur ? cur : user.name));
     if (user?.phone) setPhone((cur) => (cur ? cur : user.phone));
   }, [user]);
+
+  const reloadVouchersAndPoints = useCallback(async () => {
+    try {
+      const [list, pointsData] = await Promise.all([
+        api.vouchers.me().catch(() => []),
+        api.points.me().catch(() => ({ points: 0 })),
+      ]);
+      setMyVouchers(
+        (Array.isArray(list) ? list : []).filter((v) => !v.used)
+      );
+      setPoints(pointsData?.points || 0);
+    } catch {}
+  }, []);
 
   const applyVoucher = useCallback(
     async (code) => {
@@ -409,7 +440,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
   const buildItemsPayload = useCallback(() => {
     return lines.map((m) => ({
-      menuItem: m._originalId || m.id || m._id,
+      menuItem: m._originalId || m._id || m.id,
       qty: m.qty,
       toppings: Array.isArray(m._toppings) ? m._toppings : [],
       size: m._size || "S",
@@ -424,6 +455,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   }, [note, pickupTime, t]);
 
   const buildOrderDiscountPayload = useCallback(async () => {
+    // Cho phép dùng voucher và Xu VWA cùng một đơn.
+    // Voucher giảm giá được xác thực ở backend; Xu được trừ riêng.
     return {
       discount: Number(discount) || 0,
       voucherCode: appliedVoucher?.code || "",
@@ -447,13 +480,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
       try {
         const orderDiscountPayload = await buildOrderDiscountPayload();
+        if (!orderDiscountPayload) return;
 
-        const order = await api.orders.create({
+        const order = await api.orders.create({ useSubsidy,
           items: buildItemsPayload(),
           payment: method,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-          ...orderDiscountPayload,
+                    ...orderDiscountPayload,
           isGreen,
           useXu: usePoints,
         });
@@ -470,43 +504,85 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
         navigate("/customer/success", { state: { order } });
       } catch (e) {
-        // 🔧 FIX: Bắt lỗi 503 và hướng dẫn user
-        if (e.status === 503 || e.message.includes("503") || e.message.includes("khởi động")) {
-          toast("Hệ thống đang khởi động. Vui lòng đợi 3-5s và bấm đặt hàng lại!", "warning", { duration: 6000 });
-        } else {
-          toast(e.message || t("Không đặt được hàng"), "error");
-        }
+        toast(e.message || t("Không đặt được hàng"), "error");
       } finally {
         submittingRef.current = false;
         setSubmittingOrder(false);
       }
     },
     [
-      lines, isBuyNow, cart, setCart, navigate, buildItemsPayload, 
-      buildNotePayload, pickupTime, discount, pointsDiscount, 
-      usePoints, appliedVoucher, buildOrderDiscountPayload, isGreen, t,
+      lines,
+      isBuyNow,
+      cart,
+      setCart,
+      navigate,
+      buildItemsPayload,
+      buildNotePayload,
+      pickupTime,
+      discount,
+      pointsDiscount,
+      usePoints,
+      appliedVoucher,
+      buildOrderDiscountPayload,
+      t,
+    ]
+  );
+
+  const openPayment = useCallback(
+    (method) => {
+      if (submittingRef.current) return;
+      if (!lines.length) {
+        toast(t("Giỏ hàng trống"), "error");
+        return;
+      }
+      if (!validate()) {
+        toast(t("Kiểm tra lại thông tin"), "error");
+        return;
+      }
+
+      setPaymentOrder({
+        code: genPreviewOrderCode(),
+        total,
+        name,
+        phone,
+        pickupTime,
+        note,
+        discount: discount,
+        voucherCode: appliedVoucher?.code || "",
+          isGreen,
+        method,
+      });
+    },
+    [
+      lines,
+      total,
+      name,
+      phone,
+      pickupTime,
+      note,
+      discount,
+      pointsDiscount,
+      appliedVoucher,
+      t,
     ]
   );
 
   const confirmPayment = useCallback(
     async (paymentMethodArg) => {
       if (submittingRef.current) return;
-      if (!validate()) {
-        toast(t("Kiểm tra lại thông tin"), "error");
-        return;
-      }
       submittingRef.current = true;
       setSubmittingOrder(true);
 
       try {
         const orderDiscountPayload = await buildOrderDiscountPayload();
+        if (!orderDiscountPayload) return;
 
-        const order = await api.orders.create({
+        const order = await api.orders.create({ useSubsidy,
           items: buildItemsPayload(),
           payment: paymentMethodArg,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-          ...orderDiscountPayload,
+                    ...orderDiscountPayload,
           isGreen,
           useXu: usePoints,
         });
@@ -520,50 +596,42 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           `${t("Đặt hàng thành công!")} ${t("Mã đơn")}: ${order.code}`,
           "success"
         );
+        setPaymentOrder(null);
 
         navigate("/customer/success", { state: { order } });
       } catch (e) {
-        // 🔧 FIX: Bắt lỗi 503 và hướng dẫn user
-        if (e.status === 503 || e.message.includes("503") || e.message.includes("khởi động")) {
-          toast("Hệ thống đang khởi động. Vui lòng đợi 3-5s và bấm đặt hàng lại!", "warning", { duration: 6000 });
-        } else {
-          toast(e.message || t("Không đặt được hàng"), "error");
-        }
+        toast(e.message || t("Không đặt được hàng"), "error");
       } finally {
         submittingRef.current = false;
         setSubmittingOrder(false);
       }
     },
     [
-      lines, isBuyNow, cart, setCart, navigate, buildItemsPayload, 
-      buildNotePayload, pickupTime, discount, pointsDiscount, 
-      usePoints, appliedVoucher, buildOrderDiscountPayload, isGreen, t,
+      lines,
+      isBuyNow,
+      cart,
+      setCart,
+      navigate,
+      buildItemsPayload,
+      buildNotePayload,
+      pickupTime,
+      discount,
+      pointsDiscount,
+      usePoints,
+      appliedVoucher,
+      buildOrderDiscountPayload,
+      t,
     ]
   );
 
-  const copyToClipboard = useCallback(async (text) => {
-    const s = String(text ?? "");
+  const copyToClipboard = (text) => {
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(s);
-        toast(t("Đã sao chép"), "success");
-        return;
-      }
-      const ta = document.createElement("textarea");
-      ta.value = s;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      ta.remove();
-      if (!ok) throw new Error("execCommand failed");
+      navigator.clipboard.writeText(text);
       toast(t("Đã sao chép"), "success");
-    } catch (err) {
-      console.error("[copyToClipboard] failed:", err);
+    } catch {
       toast(t("Không sao chép được"), "error");
     }
-  }, [t]);
+  };
 
   if (!lines.length) {
     return (
@@ -581,7 +649,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const bankCode = settings?.bank || "VCB";
   const bankAccount = settings?.account || "";
   const bankAccountName = settings?.accountName || "CANTEEN VWA";
-  const transferContent = `CANTEEN ${genPreviewOrderCode()}`;
+  const transferContent = paymentOrder?.code
+    ? `CANTEEN ${paymentOrder.code}`
+    : "CANTEEN";
 
   const normalizedBankCode = String(bankCode || "").trim();
   const normalizedBankAccount = String(bankAccount || "").replace(/\s+/g, "");
@@ -596,7 +666,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     normalizedBankCode && normalizedBankAccount
       ? `https://img.vietqr.io/image/${encodeURIComponent(normalizedBankCode)}-${encodeURIComponent(normalizedBankAccount)}-compact2.svg?${vietQrParams.toString()}`
       : "";
-  
   const downloadVietQrImage = async () => {
     if (!vietQrImageUrl) {
       toast(t("Chưa có mã QR để tải xuống"), "error");
@@ -645,7 +714,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       );
     }
   };
-
   return (
     <div className="checkout-v2">
       <section className="checkout-header">
@@ -795,6 +863,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 </Link>
               </div>
 
+
               <button
                 type="button"
                 className="checkout-panel__cta"
@@ -802,7 +871,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 disabled={submittingOrder || total > walletBalance}
               >
                 <Check size={20} />
-                {t("Xác nhận trừ ví & Hoàn tất đơn")} ({money(total)})
+                {t("Xác nhận trừ ví & Hoàn tất đơn")} ({money(finalTotal)})
               </button>
             </div>
           )}
@@ -918,7 +987,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <div className="checkout-qr-info__row checkout-qr-info__row--amount">
                     <div>
                       <span>{t("SỐ TIỀN CHÍNH XÁC")}</span>
-                      <b className="mono blue large">{money(total)}</b>
+                      <b className="mono blue large">{money(finalTotal)}</b>
                     </div>
                     <button
                       type="button"
@@ -1038,10 +1107,22 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 </div>
                 <p>
                   {t("Vui lòng chuẩn bị sẵn đúng hoặc gần đủ số tiền")}{" "}
-                  <b>{money(total)}</b>{" "}
-                  {t("để giúp quầy phục vụ trưa nhanh chóng, tránh ùn tắc hàng chờ trong giờ cao điểm của học viện.")}
+                  <b>{money(finalTotal)}</b>{" "}
+                  {t("để giúp quầy phục vụ trưa nhanh chóng, tránh ùn tắc hàng chờ trong giờ cao xu của học viện.")}
                 </p>
 
+                <div className="checkout-cash-info__denoms">
+                  <span>{t("Mệnh giá tiền dự kiến đưa:")}</span>
+                  <div className="checkout-cash-info__denoms-row">
+                    <button type="button">
+                      {t("Đúng")} {money(finalTotal)}
+                    </button>
+                    <button type="button">
+                      {t("Đưa 50.000 đ (Thối 15k)")}
+                    </button>
+                    <button type="button">{t("Đưa 100.000 đ")}</button>
+                  </div>
+                </div>
               </div>
 
               <button
@@ -1096,10 +1177,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <div className="checkout-student__info">
                 <div className="checkout-student__name-row">
                   <b>{user?.name || t("Sinh viên")}</b>
-                  {user?.major_name && <span>{user.major_name}</span>}
+                  <span>K21 CNTT</span>
                 </div>
                 <div className="checkout-student__meta">
-                  {t("MSSV:")} {user?.student_code || "—"}
+                  {t("MSSV:")} 2151010088 • {t("Trợ giá SV 2025")}
                 </div>
               </div>
             </div>
@@ -1225,6 +1306,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   placeholder={t("VD: ít cay, không hành, gọi trước khi tới quầy...")}
                 />
               </label>
+
+
             </div>
 
             <p className="checkout-verify__hint">
@@ -1241,6 +1324,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   {t("Tóm tắt đơn hàng")} ({lines.length} {t("món")})
                 </b>
               </div>
+
             </div>
 
             <div className="checkout-pickup-badge">
@@ -1283,6 +1367,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               ))}
             </div>
 
+            
             <div
               className="checkout-voucher-panel"
               style={{
@@ -1408,67 +1493,88 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               )}
             </div>
 
-            <label className="checkout-points-option">
-              <input
-                type="checkbox"
-                checked={usePoints}
-                onChange={(e) => {
-                  setUsePoints(e.target.checked);
-                }}
-              />
-              <div className="checkout-points-option__body">
-                <span className="checkout-points-option__coin" aria-hidden="true">V</span>
-                <span className="checkout-points-option__label">Dùng {Number(points || 0).toLocaleString("vi-VN")} VWA Xu</span>
-              </div>
-            </label>
+              <label className="checkout-points-option">
+                <input
+                  type="checkbox"
+                  checked={usePoints}
+                  onChange={(e) => {
+                    setUsePoints(e.target.checked);
+                  }}
+                />
+                <div className="checkout-points-option__body">
+                  <span className="checkout-points-option__coin" aria-hidden="true">V</span>
+                  <span className="checkout-points-option__label">Dùng {Number(points || 0).toLocaleString("vi-VN")} VWA Xu</span>
+                </div>
+              </label>
 
-            {/* SỐNG XANH HỌC ĐƯỜNG */}
-            <label
-              className="checkout-field checkout-field--full"
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "12px 16px",
-                margin: 0,
-                background: "#fff",
-                border: "1px solid #e2e8f0",
-                borderRadius: 10,
-                cursor: "pointer",
-              }}
-            >
-              <span
+              {/* SỐNG XANH HỌC ĐƯỜNG */}
+              <label
+                className="checkout-field checkout-field--full"
                 style={{
                   display: "flex",
+                  flexDirection: "row",
                   alignItems: "center",
-                  gap: 8,
-                  minWidth: 0,
-                  color: "#26334a",
-                  fontSize: 13,
-                  fontWeight: 600,
+                  justifyContent: "space-between",
+                  gap: 12,
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "12px 16px",
+                  margin: 0,
+                  background: "#fff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 10,
+                  cursor: "pointer",
                 }}
               >
-                <Leaf size={17} color="#218653" style={{ flexShrink: 0 }} />
-                <span>Mang hộp cơm/ bình nước</span>
-              </span>
-              <input
-                type="checkbox"
-                id="isGreen-tick"
-                checked={isGreen}
-                onChange={(e) => setIsGreen(e.target.checked)}
-                style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#18a967" }}
-              />
-            </label>
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    minWidth: 0,
+                    color: "#26334a",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  <Leaf size={17} color="#218653" style={{ flexShrink: 0 }} />
+                  <span>Mang hộp cơm/ bình nước</span>
+                </span>
+                <input
+                  type="checkbox"
+                  id="isGreen-tick"
+                  checked={isGreen}
+                  onChange={(e) => setIsGreen(e.target.checked)}
+                  style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#18a967" }}
+                />
+              </label>
 
             <div className="checkout-summary__costs">
               <div className="checkout-cost-row">
                 <span>{t("Tạm tính:")}</span>
                 <b>{money(subtotal)}</b>
               </div>
+
+            {/* Trợ giá sinh viên (Toggle Switch) */}
+            {subtotal >= 25000 && (
+              <label className="checkout-points-option" style={{ marginTop: "10px", borderTop: "none" }}>
+                <div className="checkout-points-option__body">
+                  <span className="checkout-points-option__coin" style={{ borderColor: "#3b82f6", color: "#3b82f6" }}>★</span>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                    <span className="checkout-points-option__label">
+                      Sử dụng Trợ giá SV (Tối đa {new Intl.NumberFormat('vi-VN').format(subsidyDiscount || 10000)}đ)
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>
+                      Hạn mức còn: <b>{new Intl.NumberFormat('vi-VN').format(Math.max(0, (user?.subsidy_remaining ?? 500000) - (useSubsidy ? subsidyDiscount : 0)))}đ</b>
+                      
+                    </span>
+                  </div>
+                </div>
+                <input type="checkbox" className="checkout-toggle-green" checked={useSubsidy} onChange={(e) => setUseSubsidy(e.target.checked)} />
+              </label>
+            )}
+
+
 
               {discount > 0 && (
                 <div className="checkout-cost-row checkout-cost-row--discount">
@@ -1499,7 +1605,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   </small>
                 </div>
                 <div className="checkout-summary__total-value">
-                  {money(total)}
+                  {money(finalTotal)}
                 </div>
               </div>
             </div>
@@ -1534,6 +1640,15 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           </div>
         </div>
       </div>
+
+      {paymentOrder && (
+        <PaymentModal
+          order={paymentOrder}
+          onClose={() => !submittingOrder && setPaymentOrder(null)}
+          onConfirm={confirmPayment}
+          walletBalance={walletBalance}
+        />
+      )}
 
       <style>{`
         @keyframes checkout-spin-anim {

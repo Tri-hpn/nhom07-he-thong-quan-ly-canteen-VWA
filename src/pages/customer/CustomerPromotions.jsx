@@ -1,10 +1,11 @@
 // ============================================================
+// CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi xu (V4 - FINAL + i18n)
 // CUSTOMERPROMOTIONS.JSX — Khuyến mãi & Đổi điểm (V4 - FINAL + i18n)
 // ============================================================
 // 🔧 FIX:
 //   - FIX CRASH: Đổi emoji string trong EARN_METHODS thành Lucide Icon
 //   - F1: Filter fallback dựa vào value
-//   - F3: affordableOnly ưu tiên user chưa có điểm
+//   - F3: affordableOnly ưu tiên user chưa có xu
 //   - F4: Không refetch khi đổi ngôn ngữ
 //   - F5: Tab Voucher logic chính xác hơn
 //   - F7: type="button" đầy đủ
@@ -21,6 +22,7 @@ import {
   AlertCircle, RefreshCw, X, Award, Info,
 } from "lucide-react";
 import { api } from "../../api";
+import { useAuth } from "../../contexts/AuthContext";
 import RulesModal from "../../components/RulesModal";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
@@ -43,8 +45,8 @@ const EARN_METHODS = [
     color: "#F59E0B", // 🔧 Đã sửa: Thêm màu
     title: "Trợ giá sinh viên",
     badge: "Học kỳ II",
-    desc: "Ưu đãi giảm giá đặc biệt dành riêng cho sinh viên VWA.",
-    cta: "Xem hạn mức trợ giá",
+    desc: "Trợ giá tối đa 500.000đ/tháng, giảm 10.000đ/suất ăn từ 25.000đ khi thanh toán tại quầy. Hạn mức tự làm mới ngày mùng 1, không cộng dồn.",
+    cta: `Hạn mức còn: ${new Intl.NumberFormat('vi-VN').format(500000)}đ`,
   },
   {
     key: "eco",
@@ -180,6 +182,8 @@ function daysRemaining(iso) {
 // ============================================================
 
 export default function CustomerPromotions() {
+  const { user } = useAuth();
+
   const navigate = useNavigate();
   const { t } = useI18n();
 
@@ -390,7 +394,7 @@ export default function CustomerPromotions() {
 
     if (!Number.isSafeInteger(amount) || amount < minRequired) {
       toast(
-        t("Cần ít nhất {value} điểm để đổi").replace(
+        t("Cần ít nhất {value} xu để đổi").replace(
           "{value}",
           minRequired
         ),
@@ -400,7 +404,7 @@ export default function CustomerPromotions() {
     }
 
     if (amount > Number(points || 0)) {
-      toast(t("Không đủ điểm"), "error");
+      toast(t("Không đủ xu"), "error");
       return;
     }
 
@@ -519,7 +523,7 @@ export default function CustomerPromotions() {
               <div className="promo-hero__points-number">{points}</div>
               <div className="promo-hero__points-info">
                 <span className="promo-hero__points-label">
-                  {t("🪙 KHẢ DỤNG")}
+                  {t("VWA Points khả dụng")}
                 </span>
                 <span className="promo-hero__points-value">
                   ≈ {money(points * POINT_TO_VND)} {t("giá trị quy đổi")}
@@ -550,7 +554,7 @@ export default function CustomerPromotions() {
                 />
               </div>
               <p className="promo-hero__tier-note">
-                {t("Đạt Hạng Vàng: Nhận đặc quyền x1.5 điểm tích lũy & miễn phí 01 Cà phê mừng sinh nhật.")}
+                {t("Đạt Hạng Vàng: Nhận đặc quyền x1.5 xu tích lũy & miễn phí 01 Cà phê mừng sinh nhật.")}
               </p>
             </div>
 
@@ -559,7 +563,7 @@ export default function CustomerPromotions() {
                 type="button"
                 className="promo-hero__action promo-hero__action--solid" onClick={() => { setShowPointHistory(true); loadAll(); }}>
                 <History size={16} />
-                {t("Lịch sử sử dụng 🪙")}
+                {t("Lịch sử tích/đổi xu")}
               </button>
               <button
   type="button"
@@ -570,6 +574,7 @@ export default function CustomerPromotions() {
   Quy tắc Xu
 </button>
               <span className="promo-hero__expiry">
+                {t("Hạn xu:")} <b>30/06/2025</b>
               </span>
             </div>
           </div>
@@ -581,7 +586,7 @@ export default function CustomerPromotions() {
               </div>
               <div className="promo-achievement__body">
                 <b>{orderStatsLoaded ? promoStats.mealCount : "—"}</b> {t("bữa")}
-                <span>{t("Ăn uống tích điểm căng tin")}</span>
+                <span>{t("Ăn uống tích xu căng tin")}</span>
               </div>
             </div>
             <div className="promo-achievement">
@@ -740,7 +745,7 @@ export default function CustomerPromotions() {
   <div className="promo-section__head">
     <div>
       <h2 className="promo-section__title">
-        {t("Kho Quà & Voucher Đổi Điểm")}
+        {t("Kho Quà & Voucher Đổi Xu")}
       </h2>
     </div>
   </div>
@@ -861,7 +866,7 @@ export default function CustomerPromotions() {
                 <p>
                   {rewardTab !== "all"
                     ? t("Thử chọn tab khác hoặc bấm Tất cả ưu đãi.")
-                    : t("Đổi điểm hoặc nhận voucher từ mục Ưu đãi toàn hệ thống."
+                    : t("Đổi xu hoặc nhận voucher từ mục Ưu đãi toàn hệ thống."
                       )}
                 </p>
               </div>
@@ -949,7 +954,7 @@ export default function CustomerPromotions() {
             <div className="promo-wallet-note">
               <HelpCircle size={18} />
               <p>
-                {t("Voucher đổi điểm không có giá trị quy đổi thành tiền mặt và áp dụng tối đa 01 voucher/đơn hàng tại quầy.")}
+                {t("Voucher đổi xu không có giá trị quy đổi thành tiền mặt và áp dụng tối đa 01 voucher/đơn hàng tại quầy.")}
               </p>
             </div>
           </div>
@@ -971,8 +976,8 @@ export default function CustomerPromotions() {
           >
             <div className="promo-modal__head">
               <div>
-                <h3>{t("Lịch sử sử dụng 🪙")}</h3>
-                <p>{t("Theo dõi thời gian, nội dung và số xu biến động trong các giao dịch")}</p>
+                <h3>{t("Biến Động Xu Thưởng")}</h3>
+                <p>{t("Theo dõi thời gian, nội dung và xu số của các giao dịch")}</p>
               </div>
               <button
                 type="button"
@@ -987,12 +992,12 @@ export default function CustomerPromotions() {
               {pointHistory.length === 0 ? (
                 <div className="promo-point-history-empty">
                   <History size={32} />
-                  <p>{t("Chưa có lịch sử sử dụng xu")}</p>
+                  <p>{t("Chưa có lịch sử tích/đổi xu")}</p>
                 </div>
               ) : (
                 pointHistory.map((item, index) => {
                   const isRedeem =
-                    Number(item.points) < 0;
+                    item.type === "redeem" || Number(item.points) < 0;
                   const date = item.date
                     ? new Date(item.date).toLocaleDateString("vi-VN")
                     : "-";
@@ -1017,13 +1022,19 @@ export default function CustomerPromotions() {
                         {isRedeem ? <Gift size={18} /> : <Receipt size={18} />}
                       </div>
                       <div className="promo-point-history-info">
-                        <b>{item.title || item.detail || (isRedeem ? "Sử dụng xu đổi voucher" : "Cộng xu từ giao dịch")}</b>
-                        <span>{item.code ? `#${item.code}` : ""}</span>
+                        <b>
+                          {isRedeem
+                            ? t("Đổi voucher")
+                            : t("Tích xu đơn hàng")}
+                        </b>
+                        <span>
+                          {item.code ? `#${item.code}` : t("Không có mã")}
+                        </span>
                         <small>{date} {time}</small>
                       </div>
                       <strong className={isRedeem ? "down" : "up"}>
-                        {isRedeem ? "−" : "+"}
-                        {Math.abs(Number(item.points) || 0)} xu
+                        {Number(item.points) > 0 ? "+" : ""}
+                        {Number(item.points) || 0} pts
                       </strong>
                     </div>
                   );
@@ -1087,7 +1098,7 @@ export default function CustomerPromotions() {
   <h2 style={{ margin: 0, fontSize: 24, lineHeight: 1.3 }}>
     Trợ Giá Sinh Viên Kỳ II
   </h2>
-  <span style={{ position: "absolute", right: 22, top: 68, color: "#64748b", fontSize: 12, whiteSpace: "nowrap" }}>Năm học 2024 - 2025</span>
+  <span style={{ position: "absolute", right: 22, top: 68, color: "#64748b", fontSize: 12, whiteSpace: "nowrap" }}>Năm học {new Date().getMonth() + 1 >= 8 ? new Date().getFullYear() : new Date().getFullYear() - 1} - {new Date().getMonth() + 1 >= 8 ? new Date().getFullYear() + 1 : new Date().getFullYear()}</span>
 </div>
             </div>
             <button
@@ -1121,14 +1132,14 @@ export default function CustomerPromotions() {
       Hạn mức trợ giá còn lại:
     </span>
     <strong style={{ fontSize: 20, color: "#16a36a" }}>
-      220.000đ
+      {new Intl.NumberFormat('vi-VN').format(user?.subsidy_remaining ?? 500000)}đ
     </strong>
   </div>
   <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
-    Tương đương <strong style={{ color: "#16a36a" }}>22 suất ăn</strong>
+    Tương đương <strong style={{ color: "#16a36a" }}>{Math.floor((user?.subsidy_remaining ?? 500000) / 10000)} suất ăn</strong>
     {" "}(10.000đ/suất học viên hỗ trợ)
   </div><p style={{ margin: "10px 0 6px", fontSize: 14, color: "#64748b" }}>
-              Đã sử dụng trong tháng: 18/40 suất
+              Đã sử dụng trong tháng: {Math.floor((user?.subsidy_used ?? 0) / 10000)}/50 suất
             </p>
             <div
               role="progressbar"
@@ -1144,14 +1155,14 @@ export default function CustomerPromotions() {
               }}
             >
               <div style={{
-                width: "45%",
+                width: "{Math.round(((user?.subsidy_used ?? 0) / 500000) * 100)}%",
                 height: "100%",
                 borderRadius: 10,
                 background: "linear-gradient(90deg, #16a34a, #20c779)",
               }} />
             </div>
             <div style={{ textAlign: "right", marginTop: 0, fontSize: 12, color: "#64748b" }}>
-              45%
+              {Math.round(((user?.subsidy_used ?? 0) / 500000) * 100)}%
             </div>
           </div>
 
@@ -1170,7 +1181,7 @@ export default function CustomerPromotions() {
           }}>
             <span aria-hidden="true">✦</span>
             <span>
-              Trợ giá tối đa 10.000đ cho mỗi phần cơm/trợ bữa phí 25.000đ trở lên khi quẹt mã tại quầy.
+              Trợ giá tối đa {new Intl.NumberFormat('vi-VN').format(10000)}đ cho mỗi phần cơm/trợ bữa phí 25.000đ trở lên khi quẹt mã tại quầy.
             </span>
           </div>
 
@@ -1185,7 +1196,7 @@ export default function CustomerPromotions() {
             borderTop: "1px solid #e2e8f0",
           }}>
             <div style={{ fontSize: 12, color: "#64748b" }}>
-              Chu kỳ làm mới: 01/04/2025
+              Chu kỳ làm mới: {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             </div>
             <label style={{
               display: "flex",
@@ -1282,6 +1293,8 @@ export default function CustomerPromotions() {
               <span style={{ fontSize: 23, color: "#16a34a" }}>✧</span>
             </div>
 
+            <p style={{ margin: "4px 0 14px", color: "#64748b", fontSize: 11 }}>
+              Tích xu khi mang bình nước / dùng khay tái chế
             <p style={{ margin: "6px 0 8px", color: "#64748b", fontSize: 15 }}>
               Tích điểm khi mang bình nước / dùng khay tái chế
             </p>
@@ -1302,6 +1315,8 @@ export default function CustomerPromotions() {
                   minWidth: 0,
                 }}
               >
+                <div style={{ color: "#64748b", fontSize: 10 }}>
+                  Xu tích lũy
                 <div style={{ color: "#64748b", fontSize: 13 }}>
                   Điểm tích lũy
                 </div>
@@ -1335,6 +1350,8 @@ export default function CustomerPromotions() {
                 >
                   {money(Number(points || 0) * POINT_TO_VND)}
                 </div>
+                <div style={{ color: "#64748b", fontSize: 9, marginTop: 3 }}>
+                  Theo tỷ lệ quy đổi xu
                 <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
                   Theo tỷ lệ quy đổi điểm
                 </div>
@@ -1409,6 +1426,7 @@ export default function CustomerPromotions() {
               }}
             >
               <span>＋</span>
+              Đổi xu nhận quà &amp; voucher ưu đãi
               Xem chi tiết
             </button>
           </div>
@@ -1531,7 +1549,7 @@ export default function CustomerPromotions() {
                     });
 
                     toast(
-                      `${t("Gửi đánh giá thành công")} • +${Number(result?.pointsEarned) || 5} ${t("điểm")}`,
+                      `${t("Gửi đánh giá thành công")} • +${Number(result?.pointsEarned) || 5} ${t("xu")}`,
                       "success"
                     );
 
@@ -1560,7 +1578,7 @@ export default function CustomerPromotions() {
               >
                 {reviewSubmitting
                   ? t("Đang gửi...")
-                  : t("Gửi đánh giá và nhận 5 điểm")}
+                  : t("Gửi đánh giá và nhận 5 xu")}
               </button>
             </div>
           </div>

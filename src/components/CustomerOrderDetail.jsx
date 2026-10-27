@@ -351,7 +351,7 @@ export default function CustomerOrderDetail({
 
       onUpdate?.();
       toast(
-        t("Cảm ơn bạn đã đánh giá {n} món! Nhận {points} điểm thưởng.")
+        t("Cảm ơn bạn đã đánh giá {n} món! Nhận {points} xu thưởng.")
           .replace("{n}", success)
           .replace("{points}", success * pointsPerReview),
         "success"
@@ -869,7 +869,7 @@ export default function CustomerOrderDetail({
                     ) : (
                       <>
                         <Send size={14} />{" "}
-                        {t("Gửi đánh giá & nhận {n} điểm").replace(
+                        {t("Gửi đánh giá & nhận {n} xu").replace(
                           "{n}",
                           earnPoints
                         )}
@@ -971,7 +971,7 @@ export default function CustomerOrderDetail({
                       }}
                     >
                       <Star size={16} fill="#fff" />{" "}
-                      {t("Đánh giá đơn hàng (+{n} điểm)").replace(
+                      {t("Đánh giá đơn hàng (+{n} Xu)").replace(
                         "{n}",
                         earnPoints
                       )}
@@ -1248,6 +1248,7 @@ function MyReviewsView({
           textAlign: "center",
         }}
       >
+        ✨ {t("Bạn đã nhận được {points} xu thưởng").replace(
         {t("Bạn đã nhận được {points} điểm thưởng").replace(
           "{points}",
           totalPoints

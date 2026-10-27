@@ -5633,12 +5633,10 @@ html.dark-mode .profile-noti-time__select {
 }
 .profile-form-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
-.profile-form-field { display: flex; flex-direction: column; gap: 6px; grid-column: span 3; }
-.profile-form-field--trio { grid-column: span 2; }
-.profile-form-field--full { grid-column: 1 / -1; }
+.profile-form-field { display: flex; flex-direction: column; gap: 6px; }
 .profile-form-label {
   display: flex;
   align-items: center;
@@ -6249,7 +6247,6 @@ html.dark-mode .profile-noti-time__select {
 @media (max-width: 640px) {
   .profile-title { font-size: 21px; }
   .profile-form-grid { grid-template-columns: 1fr; }
-  .profile-form-field, .profile-form-field--trio, .profile-form-field--full { grid-column: 1 / -1; }
   .profile-region-grid { grid-template-columns: 1fr; }
   .profile-lang-grid { grid-template-columns: repeat(2, 1fr); }
   .profile-theme-grid { grid-template-columns: 1fr; }
@@ -17055,168 +17052,12 @@ body.menu-v3-active .page-content {
 .checkout-summary__costs .checkout-cost-row:first-child {
   margin-top: 0 !important;
 }
-@media (min-width: 1025px) { .customer-menu-v3 > .menu-v3-layout > .menu-v3-main { margin-top: -14px !important; } }
-
-@media (min-width: 1025px) { .customer-menu-v3 .menu-v3-filter-bar__right { transform: translateY(8px) !important; } }
-
-@media (min-width: 1025px) { .customer-menu-v3 .menu-v3-filter-bar__right { transform: translateY(12px) !important; } }
-
-.orders-live-card__items .orders-live-card__items-title { transform: translateY(-6px) !important; }
-
-.orders-live-card__items-title { text-transform: none !important; }
-
-.vwa-card-final { border: none !important; outline: none !important; }
-
-.vwa-card-final { box-shadow: none !important; filter: none !important; }
-
-/* CUSTOMER PROFILE - horizontal student layout */
-.profile-main-card {
-  position: relative;
-  box-sizing: border-box;
+/* FIX: Nút gạt xanh cho Trợ giá sinh viên */
+.checkout-toggle-green:checked {
+  background: #18a967 !important;
 }
-
-.profile-main-card__top {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 22px;
-  padding-right: 0;
-}
-
-.profile-main-card__avatar-wrap {
-  flex: 0 0 112px;
-  width: 112px;
-}
-
-.profile-main-card__avatar {
-  width: 112px;
-  height: 136px;
-  box-sizing: border-box;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.profile-main-card__avatar img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.profile-main-card__info {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding-right: 175px;
-}
-
-.profile-main-card__name {
-  overflow-wrap: anywhere;
-}
-
-.profile-main-card__actions {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 0;
-  max-width: 175px;
-}
-
-@media (max-width: 640px) {
-  .profile-main-card {
-    padding: 18px;
-  }
-
-  .profile-main-card__top {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding-right: 0;
-  }
-
-  .profile-main-card__avatar-wrap {
-    flex-basis: auto;
-  }
-
-  .profile-main-card__info {
-    width: 100%;
-    padding-right: 0;
-  }
-
-  .profile-main-card__name {
-    justify-content: center;
-  }
-
-  .profile-main-card__tags {
-    justify-content: center;
-  }
-
-  .profile-main-card__actions {
-    position: static;
-    max-width: none;
-    width: 100%;
-    margin-top: 18px;
-    flex-direction: column-reverse;
-  }
-
-  .profile-main-card__actions .profile-btn {
-    width: 100%;
-  }
-}
-
-/* CENTER PROFILE IMAGE + INFORMATION */
-.profile-personal-card__layout {
-  display: grid !important;
-  grid-template-columns: 240px minmax(0, 1fr) !important;
-  gap: 32px !important;
-  width: 100% !important;
-  max-width: 1250px !important;
-  margin: 28px auto 0 !important;
-  align-items: start !important;
-  box-sizing: border-box !important;
-}
-
-.profile-personal-card__layout > .profile-main-card__avatar-wrap {
-  width: 100% !important;
-  justify-self: center !important;
-}
-
-.profile-personal-card__details {
-  width: 100% !important;
-  min-width: 0 !important;
-  justify-self: stretch !important;
-}
-
-.profile-personal-card__details .profile-info-row {
-  width: 100% !important;
-  box-sizing: border-box !important;
-}
-
-.profile-personal-card__details .profile-info-row__body {
-  width: 100% !important;
-  box-sizing: border-box !important;
-}
-
-@media (max-width: 640px) {
-  .profile-personal-card__layout {
-    grid-template-columns: minmax(0, 1fr) !important;
-    max-width: 100% !important;
-    gap: 20px !important;
-  }
-}
-
-/* Increase profile avatar size */
-.profile-personal-card .profile-main-card__avatar-wrap {
-  width: 160px !important;
-  flex-basis: 160px !important;
-}
-
-.profile-personal-card .profile-main-card__avatar {
-  width: 160px !important;
-  height: 190px !important;
+.checkout-toggle-green:checked::after {
+  transform: translateX(14px) !important;
 }
 /* Checkout: tÃ¡ch vÃ¹ng cuá»™n Ä‘á»™c láº­p cho hai cá»™t */
 @media (min-width: 1025px) {
