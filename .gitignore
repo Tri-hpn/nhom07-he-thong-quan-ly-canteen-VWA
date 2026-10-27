@@ -1,120 +1,37 @@
-﻿# ==========================================
-# DEPENDENCIES
-# ==========================================
+﻿# Dependencies
 node_modules/
-.pnp/
-.pnp.js
+package-lock.json
 
-# ==========================================
-# BUILD OUTPUT & CACHE
-# ==========================================
-dist/
-dist-ssr/
-build/
-.vite/
-.cache/
-dev-dist/
-coverage/
-.nyc_output/
-
-# ==========================================
-# ENVIRONMENT / SECRETS — KHÔNG BAO GIỜ COMMIT
-# ==========================================
+# Môi trường
 .env
 .env.local
 .env.*.local
-.env.development
-.env.production
-.env.staging
-.env.test
-# Cho phép commit file mẫu (nếu có)
-!.env.example
 
-# ==========================================
-# VERCEL
-# ==========================================
-.vercel
+# Build & Dist
+dist/
+dist-ssr/
+dev-dist/
+build/
 
-# ==========================================
-# DATABASE & BACKUPS
-# ==========================================
-canteen-db.json
-canteen-db.local.json
-canteen-db-auto-backup-*.json
-canteen-db.backup-*.json
-data/
-backups/
-backup_mongo/
-*.bak
-*.bak2
-*.bak-*
-*.backup-*.json
-*.old
-*.orig
-*.rej
-*.tmp
-*.pre_*
-*-failed.json
-backfill-failed-*.json
-translate-cache.json
-translate-cache.backup*
-.backup/
-.backup-quickfix/
-.backup-locales/
+# File rác (Audit, Backup, Tạm)
+.audit/
+*.bak*
+*.loi_*
+*.tmp-check
+fix-*.cjs
+fix-*.mjs
+check-*.mjs
+safe-*.mjs
+restore-*.mjs
 
-# ==========================================
-# LOGS
-# ==========================================
+# Hệ điều hành & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# ==========================================
-# ARCHIVES
-# ==========================================
-*.zip
-*.rar
-*.7z
-
-# ==========================================
-# OS / EDITOR / IDE
-# ==========================================
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-desktop.ini
-.vscode/
-!.vscode/extensions.json
-.idea/
-*.swp
-*.swo
-*~
-
-# ==========================================
-# PERSONAL SCRIPTS (không commit)
-# ==========================================
-merge-main.ps1
-check-conflict.ps1
-auto-merge-all.ps1
-fix-*.ps1
-migrate-*.ps1
-auto-*.ps1
-check-all.ps1
-scan.mjs
-verify.mjs
-fix-*.mjs
-tree-clean.txt
-check-report.txt
-# Dọn dẹp file rác (Thêm tự động)
-.audit/
-dev-dist/
-*.bak*
-*.loi_*
-*.tmp-check
