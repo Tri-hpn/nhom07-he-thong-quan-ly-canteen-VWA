@@ -1,11 +1,8 @@
-﻿{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
-  "framework": "vite",
+{
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install --include=dev",
-  "regions": ["sin1"],
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/((?!api/).*)",
@@ -17,12 +14,6 @@
       "source": "/api/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
-      ]
-    },
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     }
   ]
