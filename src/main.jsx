@@ -20,7 +20,8 @@ async function cleanupOldServiceWorkers() {
   if (!("serviceWorker" in navigator)) return;
   try {
     const regs = await navigator.serviceWorker.getRegistrations();
-    const flagKey = "vwa_sw_cleaned_v4";
+    // 🔧 ĐÃ TĂNG LÊN V5: Ép trình duyệt xoá cache JS cũ (fix bug 401)
+    const flagKey = "vwa_sw_cleaned_v5";
     if (sessionStorage.getItem(flagKey) === "1") return;
 
     for (const reg of regs) {
