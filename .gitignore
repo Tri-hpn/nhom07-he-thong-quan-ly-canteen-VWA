@@ -112,3 +112,9 @@ verify.mjs
 fix-*.mjs
 tree-clean.txt
 check-report.txt
+# Dọn dẹp file rác (Thêm tự động)
+.audit/
+dev-dist/
+*.bak*
+*.loi_*
+*.tmp-check
