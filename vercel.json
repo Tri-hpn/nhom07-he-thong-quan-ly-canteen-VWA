@@ -10,12 +10,7 @@
     "api/index.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": [
-        "autoTranslate.js",
-        "menuImageStore.js",
-        "middleware/**",
-        "src/lib/**"
-      ]
+      "includeFiles": "{autoTranslate.js,menuImageStore.js,middleware/**,src/lib/**}"
     }
   },
   "rewrites": [
