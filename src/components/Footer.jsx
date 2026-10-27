@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // FOOTER.JSX — Footer toàn cục
 // ============================================================
 
@@ -27,6 +27,16 @@ const EMPTY_CONTACT = {
 
 export default function Footer() {
   const { t } = useI18n();
+
+  const openHelpPolicy = () =>
+    window.dispatchEvent(new Event("canteen:open-help-policy"));
+
+  const handlePolicyKeyDown = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openHelpPolicy();
+    }
+  };
   const [contact, setContact] = useState(EMPTY_CONTACT);
 
   useEffect(() => {
@@ -184,10 +194,10 @@ export default function Footer() {
   <div className="footer-col">
     <h4 className="footer-heading">{t("Chính sách")}</h4>
     <div className="footer-menu-links">
-      <span>{t("Chính sách giao hàng")}</span>
-      <span>{t("Chính sách đổi trả")}</span>
-      <span>{t("Quy định chung")}</span>
-      <span>{t("Bảo mật thông tin")}</span>
+      <span role="button" tabIndex={0} onClick={openHelpPolicy} onKeyDown={handlePolicyKeyDown} style={{ cursor: "pointer" }}>{t("Quy định nhận món")}</span>
+      <span role="button" tabIndex={0} onClick={openHelpPolicy} onKeyDown={handlePolicyKeyDown} style={{ cursor: "pointer" }}>{t("Hủy đơn & hoàn tiền")}</span>
+      <span role="button" tabIndex={0} onClick={openHelpPolicy} onKeyDown={handlePolicyKeyDown} style={{ cursor: "pointer" }}>{t("Quy chế sử dụng dịch vụ")}</span>
+      <span role="button" tabIndex={0} onClick={openHelpPolicy} onKeyDown={handlePolicyKeyDown} style={{ cursor: "pointer" }}>{t("Bảo mật tài khoản & thông tin")}</span>
     </div>
   </div>
 

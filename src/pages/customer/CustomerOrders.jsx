@@ -1443,7 +1443,7 @@ function OrderHistoryCard({ order, onView, onReorder, t }) {
             >
               {isCancelled ? t("Lịch sử hoàn tiền") : t("Xem chi tiết")}
             </button>
-            {!isCancelled && (
+            {(isCancelled || isCompleted) && (
               <button
                 type="button"
                 className="order-card-action order-card-action--primary"

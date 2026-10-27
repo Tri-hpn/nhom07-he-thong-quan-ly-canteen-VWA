@@ -885,10 +885,6 @@ export default function CustomerWallet({ user }) {
           </div>
         </div>
         <div className="wallet-security__actions">
-          <button className="wallet-security__btn wallet-security__btn--ghost">
-            <Lock size={16} />
-            {t("Khóa thẻ khẩn cấp")}
-          </button>
           <button
             type="button"
             className="wallet-security__btn wallet-security__btn--primary"
