@@ -8,9 +8,9 @@
 
     <!-- Favicon: SVG cho browser hiện đại -->
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <!-- ✅ FIX: apple-touch-icon cần PNG (iOS không hỗ trợ SVG).
-         Nếu chưa có PNG, iOS sẽ tự chụp screenshot trang làm icon. -->
+    <!-- ✅ apple-touch-icon cần PNG (iOS không hỗ trợ SVG) -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- ✅ manifest.json là file TĨNH trong public/ — PWA plugin KHÔNG generate manifest (vite.config: manifest: false) -->
     <link rel="manifest" href="/manifest.json" />
 
     <!-- PWA meta -->
@@ -20,8 +20,6 @@
     <meta name="apple-mobile-web-app-title" content="Canteen VWA" />
 
     <!-- Open Graph (Facebook/Zalo share) -->
-    <!-- ✅ FIX: OG image phải là PNG/JPG, không dùng SVG.
-         Kích thước khuyến nghị 1200×630. -->
     <meta property="og:title" content="Canteen VWA" />
     <meta property="og:description" content="Đặt món nhanh — Quản lý gọn" />
     <meta property="og:type" content="website" />
@@ -59,6 +57,7 @@
   <body>
     <div id="root"></div>
     <noscript>Vui lòng bật JavaScript để sử dụng Canteen VWA.</noscript>
+    <!-- Vite sẽ thay entry này bằng asset có hash khi build production -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

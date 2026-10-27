@@ -1,10 +1,9 @@
 // ============================================================
-// NOTIFICATIONBELL.JSX — Chuông thông báo trên topbar (V2)
+// NOTIFICATIONBELL.JSX — Chuông thông báo trên topbar (V3)
 // ============================================================
-// V2 (2026-10):
-//   - 🔧 FIX #35: MutationObserver observe document.body → leak
-//                 Thay bằng timeout-based check cho từng toast
-//   - Giữ nguyên logic mark read, poll, dropdown
+// V3 (2026-11):
+//   - 🔧 FIX: Chặn gọi API khi chưa đăng nhập (getToken).
+//             Tránh spam lỗi 401/403 trên Vercel khi ở trang Login.
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -12,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Bell, Check, ShoppingBag, Package, Gift, Wallet, MessageCircle, Info, Loader2,
 } from "lucide-react";
-import { api } from "../api";
+import { api, getToken } from "../api"; // 🔧 Import thêm getToken
 import { useI18n } from "../hooks/useI18n";
 
 const MODAL_Z = 2147483600;
@@ -77,10 +76,9 @@ export default function NotificationBell() {
   const boxRef = useRef(null);
   const reqIdRef = useRef(0);
   const inFlightRef = useRef(false);
-  const mountedRef = useRef(true); // 🔧 FIX #35
+  const mountedRef = useRef(true); 
   const navigate = useNavigate();
 
-  // 🔧 FIX #35: track mount
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -90,6 +88,9 @@ export default function NotificationBell() {
 
   const load = useCallback(
     async (silent = false) => {
+      // 🔧 FIX: Chặn gọi API khi chưa đăng nhập (tránh 401/403)
+      if (!getToken()) return;
+      
       if (inFlightRef.current) return;
       inFlightRef.current = true;
 

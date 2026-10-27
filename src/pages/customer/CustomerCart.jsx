@@ -1,10 +1,13 @@
 // ============================================================
-// CUSTOMERCART.JSX — Giỏ hàng (V5 - FINAL + i18n)
+// CUSTOMERCART.JSX — Giỏ hàng (V6 - FINAL + i18n)
 // ============================================================
-// V5 (2026-10):
-//   - 🔧 FIX #27: setSyncedKeys debounce timer cleanup đúng cách
-//                 khi unmount (tránh setState sau unmount)
-//   - Giữ nguyên toàn bộ logic còn lại
+// V6 (2026-11):
+//   - 🔧 FIX: Bỏ dòng "Trợ giá SV -10.000đ" fake trong summary.
+//     Trước đây cart hiển thị tổng = total - 10k, nhưng backend
+//     không áp dụng subsidy → checkout hiện giá cao hơn → user
+//     tưởng web tính sai. Giờ hiển thị đúng money(total).
+//   - 🔧 FIX: setSyncedKeys không còn gọi bên trong setState updater
+//     (StrictMode có thể gọi updater 2 lần → dispatch trùng).
 // ============================================================
 
 import {
@@ -223,14 +226,12 @@ export default function CustomerCart({ cart, setCart }) {
 
   const prevKeysRef = useRef(cartKeys);
   const crossTabTimerRef = useRef(null);
-  const mountedRef = useRef(true); // 🔧 FIX #27
+  const mountedRef = useRef(true);
 
-  // 🔧 FIX #27: track mount state
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      // Cleanup timer khi unmount
       if (crossTabTimerRef.current) {
         clearTimeout(crossTabTimerRef.current);
         crossTabTimerRef.current = null;
@@ -238,7 +239,6 @@ export default function CustomerCart({ cart, setCart }) {
     };
   }, []);
 
-  // 🔧 FIX #27: setSyncedKeys có debounce + guard mounted
   const setSyncedKeys = useCallback(
     (value) => {
       if (crossTabTimerRef.current) {
@@ -253,7 +253,6 @@ export default function CustomerCart({ cart, setCart }) {
     [setSyncedKeysRaw]
   );
 
-  // Persist selectedKeys → localStorage
   useEffect(() => {
     try {
       if (selectedKeys.length === 0) {
@@ -264,7 +263,6 @@ export default function CustomerCart({ cart, setCart }) {
     } catch {}
   }, [selectedKeys]);
 
-  // Sync từ crossTab
   useEffect(() => {
     if (syncedKeys === null) return;
     if (!Array.isArray(syncedKeys)) return;
@@ -277,7 +275,6 @@ export default function CustomerCart({ cart, setCart }) {
     });
   }, [syncedKeys]);
 
-  // Sync selectedKeys khi cart đổi
   useEffect(() => {
     const prevKeys = prevKeysRef.current;
     const newKeys = cartKeys.filter((k) => !prevKeys.includes(k));
@@ -328,27 +325,25 @@ export default function CustomerCart({ cart, setCart }) {
     [selectedLines]
   );
 
+  // 🔧 FIX: compute next + gọi setSyncedKeys BÊN NGOÀI setState updater
   const toggleItem = useCallback(
     (key) => {
-      setSelectedKeys((prev) => {
-        const next = prev.includes(key)
-          ? prev.filter((k) => k !== key)
-          : [...prev, key];
-        setSyncedKeys(next);
-        return next;
-      });
+      const prev = selectedKeys;
+      const next = prev.includes(key)
+        ? prev.filter((k) => k !== key)
+        : [...prev, key];
+      setSelectedKeys(next);
+      setSyncedKeys(next);
     },
-    [setSyncedKeys]
+    [selectedKeys, setSyncedKeys]
   );
 
   const toggleAll = useCallback(() => {
-    setSelectedKeys((prev) => {
-      const next =
-        prev.length === lines.length ? [] : lines.map((m) => m._key);
-      setSyncedKeys(next);
-      return next;
-    });
-  }, [lines, setSyncedKeys]);
+    const next =
+      selectedKeys.length === lines.length ? [] : lines.map((m) => m._key);
+    setSelectedKeys(next);
+    setSyncedKeys(next);
+  }, [lines, selectedKeys, setSyncedKeys]);
 
   const updateQty = useCallback(
     (key, delta) => {
@@ -383,6 +378,7 @@ export default function CustomerCart({ cart, setCart }) {
     [safeCart]
   );
 
+  // 🔧 FIX: tương tự toggleItem — compute next trước, setSyncedKeys ngoài
   const executeRemove = useCallback(() => {
     if (!confirmRemove) return;
     const { key } = confirmRemove;
@@ -393,14 +389,13 @@ export default function CustomerCart({ cart, setCart }) {
       return n;
     });
 
-    setSelectedKeys((prev) => {
-      const next = prev.filter((k) => k !== key);
-      setSyncedKeys(next);
-      return next;
-    });
+    const prev = selectedKeys;
+    const next = prev.filter((k) => k !== key);
+    setSelectedKeys(next);
+    setSyncedKeys(next);
 
     setConfirmRemove(null);
-  }, [confirmRemove, setCart, setSyncedKeys]);
+  }, [confirmRemove, setCart, selectedKeys, setSyncedKeys]);
 
   const openClearAllConfirm = useCallback(() => {
     if (lines.length === 0) return;
@@ -677,22 +672,19 @@ export default function CustomerCart({ cart, setCart }) {
                 <span>{t("Phí dịch vụ")}</span>
                 <b>{money(0)}</b>
               </div>
-              <div className="cart-summary__row cart-summary__row--green">
-                <span>
-                  <Sparkles size={12} />
-                  {t("Trợ giá SV (dự kiến)")}
-                </span>
-                <b>-10.000 đ</b>
-              </div>
+              {/* 🔧 FIX: đã xoá dòng "Trợ giá SV -10.000đ" fake.
+                  Nếu muốn hiển thị "trợ giá", cần implement subsidy ở backend
+                  để giá cart và checkout luôn khớp nhau. */}
             </div>
 
             <div className="cart-summary__total">
               <div>
                 <span>{t("TỔNG CỘNG")}</span>
-                <small>{t("Đã bao gồm VAT & trợ giá")}</small>
+                <small>{t("Đã bao gồm VAT")}</small>
               </div>
               <div className="cart-summary__total-value">
-                {money(Math.max(0, total - 10000))}
+                {/* 🔧 FIX: show đúng money(total), không trừ 10k ảo */}
+                {money(total)}
               </div>
             </div>
 
@@ -751,13 +743,13 @@ export default function CustomerCart({ cart, setCart }) {
               n[newKey] = newItem;
               return n;
             });
-            setSelectedKeys((prev) => {
-              const next = prev.includes(oldKey)
-                ? [...prev.filter((k) => k !== oldKey), newKey]
-                : prev;
-              setSyncedKeys(next);
-              return next;
-            });
+            // 🔧 FIX: compute next trước, gọi setSyncedKeys ngoài updater
+            const prev = selectedKeys;
+            const next = prev.includes(oldKey)
+              ? [...prev.filter((k) => k !== oldKey), newKey]
+              : prev;
+            setSelectedKeys(next);
+            setSyncedKeys(next);
           }}
           onClose={() => setEditingItem(null)}
         />

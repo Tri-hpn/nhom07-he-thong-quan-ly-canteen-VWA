@@ -1,20 +1,18 @@
 // ============================================================
 // OWNERATTENDANCE.JSX — Bảng chấm công nhân viên (Admin)
 // ============================================================
-// Tính năng:
-//   - Filter theo tháng / nhân viên / trạng thái / tên
-//   - Stats: tổng ngày công, đúng giờ, đi muộn, tổng giờ
-//   - Bảng chi tiết có avatar + badge trạng thái
-//
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
 // 🔧 FIX #85: fmtTime/fmtDate dùng Intl.DateTimeFormat cố định (VN, 24h)
+// 🔧 Batch 11 FIX:
+//   - Import getToken
+//   - Guard loadAttendance() + api.attendance.employees() chống spam 401
 // ============================================================
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Calendar, Clock, TrendingUp, AlertTriangle, Search, X, Loader2, CalendarX,
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { SkeletonTable, SkeletonStats } from "../../components/Skeleton";
 import { useI18n } from "../../hooks/useI18n";
 
@@ -22,7 +20,6 @@ import { useI18n } from "../../hooks/useI18n";
 // CONSTANTS
 // ============================================================
 
-// 🔧 FIX #85: formatter cố định VN timezone
 const TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
   hour: "2-digit",
@@ -37,7 +34,6 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   month: "2-digit",
 });
 
-// Mapping trạng thái → key CSS class (dùng cho badge)
 const STATUS_KEY = {
   "Đúng giờ": "ontime",
   "Đi muộn": "late",
@@ -45,7 +41,6 @@ const STATUS_KEY = {
   "Vắng mặt": "absent",
 };
 
-// Style dùng chung cho input/select trong thanh filter
 const filterInputStyle = {
   padding: "8px 12px",
   border: "1px solid var(--border-color, #e5e9ef)",
@@ -82,7 +77,6 @@ const tdStyle = {
 export default function OwnerAttendance() {
   const { t } = useI18n();
 
-  // ---------- State ----------
   const [list, setList] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -95,9 +89,8 @@ export default function OwnerAttendance() {
   });
   const [search, setSearch] = useState("");
 
-  // ---------- Load data ----------
-
   const loadAttendance = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     setLoading(true);
     setError("");
     try {
@@ -113,19 +106,15 @@ export default function OwnerAttendance() {
     }
   }, [filter.month, filter.employee_id, t]);
 
-  // Load danh sách nhân viên 1 lần duy nhất
   useEffect(() => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     api.attendance.employees().then(setEmployees).catch(() => {});
   }, []);
 
-  // Load attendance khi filter tháng / nhân viên đổi
   useEffect(() => {
     loadAttendance();
   }, [loadAttendance]);
 
-  // ---------- Computed ----------
-
-  // Filter client-side (status + search)
   const filtered = useMemo(() => {
     return list.filter((a) => {
       if (filter.status && a.status !== filter.status) return false;
@@ -138,7 +127,6 @@ export default function OwnerAttendance() {
     });
   }, [list, filter.status, search]);
 
-  // Stats memo — tránh tính lại mỗi render
   const stats = useMemo(
     () => ({
       total: filtered.length,
@@ -149,19 +137,13 @@ export default function OwnerAttendance() {
     [filtered]
   );
 
-  // Có filter đang bật không (để hiện nút clear)
   const hasFilter =
     filter.employee_id || filter.status || search.trim();
-
-  // ---------- Handlers ----------
 
   const clearFilters = () => {
     setFilter((f) => ({ ...f, employee_id: "", status: "" }));
     setSearch("");
   };
-
-  // ---------- Formatters ----------
-  // 🔧 FIX #85: dùng Intl.DateTimeFormat cố định VN, 24h
 
   const fmtTime = (d) => {
     if (!d) return "—";
@@ -170,7 +152,6 @@ export default function OwnerAttendance() {
     return TIME_FORMATTER.format(date);
   };
 
-  // Timezone-safe: thêm "T00:00:00" để parse theo local time
   const fmtDate = (dateStr) => {
     if (!dateStr) return "—";
     const d = new Date(dateStr + "T00:00:00");
@@ -178,15 +159,8 @@ export default function OwnerAttendance() {
     return DATE_FORMATTER.format(d);
   };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
     <div>
-      {/* ============================================================
-          STATS CARDS
-          ============================================================ */}
       {loading ? (
         <div style={{ marginBottom: 20 }}>
           <SkeletonStats count={4} columns="repeat(4, 1fr)" />
@@ -227,9 +201,6 @@ export default function OwnerAttendance() {
         </div>
       )}
 
-      {/* ============================================================
-          FILTER BAR
-          ============================================================ */}
       <div
         style={{
           background: "var(--card-bg, #fff)",
@@ -243,7 +214,6 @@ export default function OwnerAttendance() {
           alignItems: "center",
         }}
       >
-        {/* Month picker */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Calendar size={16} style={{ color: "var(--text-light, #8993a3)" }} />
           <input
@@ -254,7 +224,6 @@ export default function OwnerAttendance() {
           />
         </div>
 
-        {/* Employee filter */}
         <select
           value={filter.employee_id}
           onChange={(e) =>
@@ -270,7 +239,6 @@ export default function OwnerAttendance() {
           ))}
         </select>
 
-        {/* Status filter */}
         <select
           value={filter.status}
           onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))}
@@ -282,7 +250,6 @@ export default function OwnerAttendance() {
           <option>{t("Về sớm")}</option>
         </select>
 
-        {/* Search box */}
         <div
           style={{
             display: "flex",
@@ -312,7 +279,6 @@ export default function OwnerAttendance() {
           />
         </div>
 
-        {/* Clear filters button */}
         {hasFilter && (
           <button
             onClick={clearFilters}
@@ -344,9 +310,6 @@ export default function OwnerAttendance() {
         )}
       </div>
 
-      {/* ============================================================
-          TABLE
-          ============================================================ */}
       <div
         style={{
           background: "var(--card-bg, #fff)",
@@ -355,7 +318,6 @@ export default function OwnerAttendance() {
           padding: 20,
         }}
       >
-        {/* --- Loading state --- */}
         {loading && (
           <div
             style={{
@@ -375,7 +337,6 @@ export default function OwnerAttendance() {
           </div>
         )}
 
-        {/* --- Error state --- */}
         {!loading && error && (
           <div
             style={{
@@ -410,7 +371,6 @@ export default function OwnerAttendance() {
           </div>
         )}
 
-        {/* --- Data table --- */}
         {!loading && !error && (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -437,12 +397,10 @@ export default function OwnerAttendance() {
                       borderBottom: "1px solid var(--border-color, #eef2f7)",
                     }}
                   >
-                    {/* Ngày */}
                     <td style={tdStyle}>
                       <b>{fmtDate(a.date)}</b>
                     </td>
 
-                    {/* Nhân viên + avatar */}
                     <td style={tdStyle}>
                       <div
                         style={{
@@ -472,7 +430,6 @@ export default function OwnerAttendance() {
                       </div>
                     </td>
 
-                    {/* Check-in / Check-out */}
                     <td style={tdStyle}>{fmtTime(a.checkIn)}</td>
                     <td
                       style={{
@@ -483,12 +440,10 @@ export default function OwnerAttendance() {
                       {fmtTime(a.checkOut)}
                     </td>
 
-                    {/* Số giờ làm */}
                     <td style={{ ...tdStyle, textAlign: "right" }}>
                       <b>{a.hours ? a.hours + "h" : "—"}</b>
                     </td>
 
-                    {/* Status badge */}
                     <td style={tdStyle}>
                       <span className={`att-badge att-badge--${statusKey}`}>
                         {t(a.status)}
@@ -498,7 +453,6 @@ export default function OwnerAttendance() {
                 );
               })}
 
-              {/* Empty state */}
               {!filtered.length && (
                 <tr>
                   <td
@@ -526,7 +480,6 @@ export default function OwnerAttendance() {
         )}
       </div>
 
-      {/* Spinner animation */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -536,10 +489,6 @@ export default function OwnerAttendance() {
     </div>
   );
 }
-
-// ============================================================
-// SUB-COMPONENT: StatCard
-// ============================================================
 
 function StatCard({ icon, label, value, color }) {
   return (

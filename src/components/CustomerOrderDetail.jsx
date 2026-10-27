@@ -1,11 +1,12 @@
 // ============================================================
 // CUSTOMERORDERDETAIL.JSX — Modal chi tiết đơn hàng (Customer)
 // ============================================================
-// V2 (2026-10):
-//   - ✅ FIX #2: Bọc t() cho label ở STATUS_FLOW và ALL_STEPS
-//   - Giữ nguyên: full datetime, modal review, modal huỷ/nhận
-//
-// 🌐 i18n: source-text tiếng Việt, tự dịch
+// V3 (2026-11):
+//   - 🔧 FIX: pointsPerReview đọc từ usePointsConfig() thay vì
+//     hardcode 10 — trước đây lệch với config backend (5 hoặc 500)
+//     khiến toast "Nhận X điểm" sai.
+//   - Giữ nguyên vị trí: src/components/CustomerOrderDetail.jsx
+//   - Giữ nguyên import path (../api, ./UI, ...)
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -18,9 +19,9 @@ import { money } from "./UI";
 import { toast } from "./Effects";
 import ConfirmDialog from "./ConfirmDialog";
 import { useI18n } from "../hooks/useI18n";
+import { usePointsConfig } from "../hooks/usePointsConfig";
 
 const MODAL_Z = 2147483600;
-const POINTS_PER_REVIEW = 10;
 const MAX_COMMENT_LENGTH = 500;
 
 const STATUS_FLOW = {
@@ -89,6 +90,15 @@ export default function CustomerOrderDetail({
   onUpdate,
 }) {
   const { t, tData } = useI18n();
+  const ptsCfg = usePointsConfig();
+
+  // 🔧 FIX: đọc từ config admin thay vì hardcode (trước đây = 10,
+  // backend có thể = 5 hoặc 500 → toast hiển thị sai số điểm).
+  const pointsPerReview = Math.max(
+    1,
+    Number(ptsCfg?.earn?.review_points) || 10
+  );
+
   const [order, setOrder] = useState(initialOrder);
   const [showReview, setShowReview] = useState(false);
   const [showMyReviews, setShowMyReviews] = useState(false);
@@ -181,7 +191,7 @@ export default function CustomerOrderDetail({
   const orderId = getOrderId(order);
   const items = order.items || [];
   const itemsCount = items.length;
-  const earnPoints = itemsCount * POINTS_PER_REVIEW;
+  const earnPoints = itemsCount * pointsPerReview;
 
   const handleReceived = () => {
     if (receiving) return;
@@ -303,7 +313,7 @@ export default function CustomerOrderDetail({
       toast(
         t("Cảm ơn bạn đã đánh giá {n} món! Nhận {points} xu thưởng.")
           .replace("{n}", success)
-          .replace("{points}", success * POINTS_PER_REVIEW),
+          .replace("{points}", success * pointsPerReview),
         "success"
       );
     } else {
@@ -353,6 +363,7 @@ export default function CustomerOrderDetail({
             <MyReviewsView
               order={order}
               myReviews={myReviews}
+              pointsPerReview={pointsPerReview}
               onClose={() => setShowMyReviews(false)}
               t={t}
               tData={tData}
@@ -1038,9 +1049,9 @@ function InfoRow({ label, value, last = false }) {
   );
 }
 
-function MyReviewsView({ order, myReviews, onClose, t, tData }) {
+function MyReviewsView({ order, myReviews, pointsPerReview, onClose, t, tData }) {
   const items = order.items || [];
-  const totalPoints = myReviews.length * POINTS_PER_REVIEW;
+  const totalPoints = myReviews.length * pointsPerReview;
 
   return (
     <div>

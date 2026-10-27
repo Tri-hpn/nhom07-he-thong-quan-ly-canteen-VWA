@@ -1,133 +1,114 @@
-﻿node_modules/
+﻿# ==========================================
+# DEPENDENCIES
+# ==========================================
+node_modules/
+.pnp/
+.pnp.js
+
+# ==========================================
+# BUILD OUTPUT & CACHE
+# ==========================================
+dist/
+dist-ssr/
+build/
+.vite/
+.cache/
+dev-dist/
+coverage/
+.nyc_output/
+
+# ==========================================
+# ENVIRONMENT / SECRETS — KHÔNG BAO GIỜ COMMIT
+# ==========================================
 .env
 .env.local
 .env.*.local
-dist/
-build/
-.vite/
-.vscode/
-.idea/
+.env.development
+.env.production
+.env.staging
+.env.test
+# Cho phép commit file mẫu (nếu có)
+!.env.example
+
+# ==========================================
+# VERCEL
+# ==========================================
+.vercel
+
+# ==========================================
+# DATABASE & BACKUPS
+# ==========================================
 canteen-db.json
 canteen-db.local.json
 canteen-db-auto-backup-*.json
+canteen-db.backup-*.json
 data/
+backups/
+backup_mongo/
+*.bak
+*.bak2
+*.bak-*
+*.backup-*.json
+*.old
+*.orig
+*.rej
+*.tmp
+*.pre_*
+*-failed.json
+backfill-failed-*.json
+translate-cache.json
+translate-cache.backup*
+.backup/
+.backup-quickfix/
+.backup-locales/
+
+# ==========================================
+# LOGS
+# ==========================================
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# ARCHIVES
+# ==========================================
+*.zip
+*.rar
+*.7z
+
+# ==========================================
+# OS / EDITOR / IDE
+# ==========================================
 .DS_Store
-# Personal scripts
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ==========================================
+# PERSONAL SCRIPTS (không commit)
+# ==========================================
 merge-main.ps1
 check-conflict.ps1
 auto-merge-all.ps1
 fix-*.ps1
 migrate-*.ps1
 auto-*.ps1
-*.bakcanteen-db.backup-*.json
-
-translate-cache.json
-*.backup-*.json
-.backup-quickfix/
-*.bak
-
-# Dependencies
-node_modules/
-
-# Build / Vite cache
-dist/
-.vite/
-
-# Local environment / secrets
-.env
-.env.*
-!.env.example
-
-# Local database backups
-canteen-db-auto-backup-*.json
-*.bak
-*.bak2
-*.old
-*.tmp
-
-# Logs
-*.log
-npm-debug.log*
-
-# OS / editor
-.DS_Store
-Thumbs.db
-.vscode/*.log
-.vercel
-.env*
-
-# ==== Canteen VWA — bổ sung ====
-backfill-failed-*.json
-*.dupfix.bak
-*.bak
-*.old
-*.orig
-*.rej
-*.tmp
-*.log
-dist/
-build/
-.vite/
-.cache/
-coverage/
-.nyc_output/
-.DS_Store
-Thumbs.db
-desktop.ini
-.vscode/
-.idea/
-*.swp
-*~
-# ==== END ====
-
-# Backup files
-.backup/
-.backup-quickfix/
-.backup-locales/
-*.bak
-*.backup-*.json
-*-failed.json
-backfill-failed-*.json
-canteen-db.backup-*.json
-translate-cache.backup*
-
-src/lib/i18n/locales/_source.json
-
-src/lib/i18n/locales/en.js
-
-.audit/
-*.bak-*
-fix-*.mjs
-verify.mjs
-scan.mjs
-backup_mongo/
-check-report.txt
 check-all.ps1
-canteen-db-splitter.mjs
-check-db.mjs
-
-backups/
+scan.mjs
+verify.mjs
+fix-*.mjs
 tree-clean.txt
-# ==========================================
-# JUNK FILES & BACKUPS
-# ==========================================
-*.pre_*
-*.bak
-*.zip
-*.rar
-*.7z
-*.log
-
-# Node modules & Build
-node_modules/
-dist/
-build/
-
-# Env & IDE
-.env
-.env.local
-.DS_Store
-Thumbs.db
-.vscode/
-canteen-db.json
+check-report.txt

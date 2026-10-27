@@ -27,7 +27,13 @@ export function AuthProvider({ children }) {
       return me;
     } catch (e) {
       if (!mountedRef.current || myReqId !== meReqIdRef.current) return null;
-      if (e.status === 401) { setUserState(null); clearToken(); }
+      
+      // 🔧 FIX: CHỈ xóa token khi lỗi 401 (Hết phiên thật sự).
+      // Nếu lỗi 403 (sai quyền) hay 500 (server lỗi) thì giữ nguyên token, không đá văng user.
+      if (e.status === 401) { 
+        setUserState(null); 
+        clearToken(); 
+      }
       return null;
     }
   }, []);
@@ -41,12 +47,13 @@ export function AuthProvider({ children }) {
     return res.user;
   }, []);
 
-  const logout = useCallback(async () => {
+    const logout = useCallback(async () => {
     meReqIdRef.current++;
     try { await api.logout(); } catch {}
     clearToken();
     setUserState(null);
     try {
+      localStorage.removeItem("canteen_cart"); // 🔧 FIX: Xóa giỏ hàng tránh lộ dữ liệu
       localStorage.removeItem("canteen_cart_selected");
       sessionStorage.removeItem("canteen_cart_selected");
       localStorage.removeItem("orders_last_seen");
@@ -65,7 +72,6 @@ export function AuthProvider({ children }) {
   }, [restoreSession]);
 
   useEffect(() => {
-    // Khi tab khác logout hoặc token hết hạn -> reset state
     const onAuthExpired = () => {
       meReqIdRef.current++;
       setUserState(null);

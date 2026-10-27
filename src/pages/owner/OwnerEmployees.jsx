@@ -1,5 +1,5 @@
 // ============================================================
-// OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin) V2
+// OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin) V3
 // ============================================================
 // Layout: Card grid (đồng bộ với OwnerMenu)
 //   - Toolbar: search + filter trạng thái + nút "Thêm nhân viên"
@@ -7,19 +7,13 @@
 //   - Pagination 12 NV/trang
 //   - Modal: Xem/Sửa/Thêm + Giao việc + Danh sách task
 //
-// ✅ TÍNH NĂNG MỚI:
-//   - Card grid thay bảng
-//   - Filter trạng thái (Hoạt động / Bị khóa)
-//   - Pagination
-//   - Hiển thị ca làm hôm nay + chấm công
-//   - Nút "Giao việc" trên mỗi card
-//   - Modal xem danh sách task đã giao
-//
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-// 🔧 FIX #89: t() truyền vars thay vì .replace("{password}", ...)
-// 🔧 FIX: Xóa hoàn toàn import + tab OwnerShifts (file đã bị xóa
-//         trong commit cfd02140, route /owner/shifts đã redirect
-//         sang /owner/attendance)
+// 🔧 Batch 10 FIX:
+//   - Import getToken + guard 5 hàm load (chống spam 401)
+//   - Guard load() bên trong OwnerShiftsInner
+//   - Xóa import OwnerAttendance (dead)
+//   - Xóa state assignShiftModal / pendingModalOpen / pendingShifts (dead)
+//   - Xóa loadPendingShifts() (dead)
+//   - Xóa activeTab state trùng trong OwnerShiftsInner
 // ============================================================
 
 import { SkeletonList, Skeleton, SkeletonStats } from "../../components/Skeleton";
@@ -28,16 +22,15 @@ import {
   Plus, Search, Pencil, Trash2, KeyRound, Eye, EyeOff, X, Save,
   User as UserIcon, Mail, Phone, Lock, Shield, Loader2, AlertCircle,
   Users, Filter, ChevronLeft, ChevronRight, ClipboardList, Calendar,
-  Sun, Sunrise, Sunset, CheckCircle2, Clock, AlertTriangle, Flag,
-  Briefcase, CheckSquare, Check, CalendarDays, Bell, Edit, UserX,
-CheckCircle } from "lucide-react";
-import { api } from "../../api";
+  Sun, Sunrise, CheckCircle2, Clock, AlertTriangle, CalendarDays, Bell,
+  Edit, UserX, Check,
+} from "lucide-react";
+import { api, getToken } from "../../api";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useI18n } from "../../hooks/useI18n";
-import OwnerAttendance from "./OwnerAttendance";
 import EmployeePermissionsModal from '../../components/EmployeePermissionsModal';
-// ❌ ĐÃ XÓA: 
+
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -154,15 +147,12 @@ function OwnerEmployeesInner() {
 
   // ---------- Assign task modal ----------
   const [assignModal, setAssignModal] = useState(null);
-  const [assignShiftModal, setAssignShiftModal] = useState(null);
-  const [pendingModalOpen, setPendingModalOpen] = useState(false);
-  const [pendingShifts, setPendingShifts] = useState([]);
   const [viewShiftsModal, setViewShiftsModal] = useState(null);
-  const [chartWeekOffset, setChartWeekOffset] = useState(0); // { employee }
+  const [chartWeekOffset, setChartWeekOffset] = useState(0);
   const [assigning, setAssigning] = useState(false);
 
   // ---------- Task list modal ----------
-  const [taskListModal, setTaskListModal] = useState(null); // { employee, tasks: [] }
+  const [taskListModal, setTaskListModal] = useState(null);
   const [taskListLoading, setTaskListLoading] = useState(false);
 
   // ---------- Confirm dialog ----------
@@ -177,6 +167,7 @@ function OwnerEmployeesInner() {
   // ============================================================
 
   const load = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     setLoading(true);
     setError("");
     try {
@@ -191,6 +182,7 @@ function OwnerEmployeesInner() {
   }, [t]);
 
   const loadAllUsers = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     try {
       const data = await api.users.list();
       setAllUsers(Array.isArray(data) ? data : []);
@@ -199,21 +191,13 @@ function OwnerEmployeesInner() {
     }
   }, []);
 
-  // Load ca làm hôm nay (map theo employee_id)
-  const loadPendingShifts = async () => {
-    try {
-      const data = await api.shifts.all({ include_pending: 1 });
-      setPendingShifts(data.filter(s => s.status === "pending"));
-    } catch (e) { toast("Lỗi tải danh sách ca", "error"); }
-  };
-
   const loadTodayShifts = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     try {
       const data = await api.shifts.all();
       const today = new Date().toISOString().split("T")[0];
       const map = {};
       for (const s of data) {
-        // Lấy ca từ hôm nay trở đi và đã được duyệt
         if (s.date >= today && (!s.status || s.status === "approved")) {
           if (!map[s.employee_id]) map[s.employee_id] = [];
           map[s.employee_id].push(s);
@@ -225,8 +209,8 @@ function OwnerEmployeesInner() {
     }
   }, []);
 
-  // Load chấm công hôm nay (map theo employee_id)
   const loadTodayAttendance = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     try {
       const todayStr = new Date().toISOString().slice(0, 10);
       const data = await api.attendance.all({ from: todayStr, to: todayStr });
@@ -240,8 +224,8 @@ function OwnerEmployeesInner() {
     }
   }, []);
 
-  // Load task count (map theo employee_id — số task pending)
   const loadTaskCounts = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     try {
       const data = await api.tasks.all({ status: "pending" });
       const map = {};
@@ -298,18 +282,15 @@ function OwnerEmployeesInner() {
     return set;
   }, [allUsers]);
 
-  // Filter + search
   const filtered = useMemo(() => {
     let result = list;
 
-    // Filter trạng thái
     if (statusFilter === "active") {
       result = result.filter((e) => (e.status || "Hoạt động") === "Hoạt động");
     } else if (statusFilter === "locked") {
       result = result.filter((e) => e.status === "Bị khóa");
     }
 
-    // Search
     if (q.trim()) {
       const s = normalize(q);
       result = result.filter(
@@ -323,12 +304,10 @@ function OwnerEmployeesInner() {
     return result;
   }, [list, q, statusFilter]);
 
-  // Reset page khi filter/search đổi
   useEffect(() => {
     setPage(1);
   }, [q, statusFilter]);
 
-  // Pagination
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paginatedItems = useMemo(() => {
@@ -603,7 +582,6 @@ function OwnerEmployeesInner() {
           await api.tasks.remove(task.id);
           toast(t("Đã xoá công việc"), "success");
           setConfirm(null);
-          // Refresh list
           if (taskListModal) {
             openTaskList(taskListModal.employee);
           }
@@ -614,6 +592,7 @@ function OwnerEmployeesInner() {
       },
     });
   };
+
   // ============================================================
   // RENDER
   // ============================================================
@@ -642,7 +621,6 @@ function OwnerEmployeesInner() {
             alignItems: "center",
           }}
         >
-          {/* Search */}
           <div
             style={{
               display: "flex",
@@ -688,7 +666,6 @@ function OwnerEmployeesInner() {
             )}
           </div>
 
-          {/* Filter trạng thái */}
           <div
             style={{
               display: "flex",
@@ -733,32 +710,29 @@ function OwnerEmployeesInner() {
             })}
           </div>
 
-          {/* Add button */}
           <div style={{ display: "flex", gap: 10 }}>
-        
-        <button
-            onClick={() => setAddModal(true)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              background: "#2634d5",
-              color: "#fff",
-              padding: "10px 16px",
-              border: 0,
-              borderRadius: 10,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontSize: 13,
-              marginLeft: "auto",
-            }}
-          >
-            <Plus size={16} /> {t("Thêm nhân viên")}
-          </button>
-      </div>
+            <button
+              onClick={() => setAddModal(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                background: "#2634d5",
+                color: "#fff",
+                padding: "10px 16px",
+                border: 0,
+                borderRadius: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontSize: 13,
+                marginLeft: "auto",
+              }}
+            >
+              <Plus size={16} /> {t("Thêm nhân viên")}
+            </button>
+          </div>
         </div>
 
-        {/* ============ RESULT INFO ============ */}
         {!loading && !error && filtered.length > 0 && (
           <div
             style={{
@@ -782,7 +756,6 @@ function OwnerEmployeesInner() {
           </div>
         )}
 
-        {/* ============ LOADING ============ */}
         {loading && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <SkeletonList />
@@ -791,7 +764,6 @@ function OwnerEmployeesInner() {
           </div>
         )}
 
-        {/* ============ ERROR ============ */}
         {!loading && error && (
           <div
             style={{
@@ -828,7 +800,6 @@ function OwnerEmployeesInner() {
           </div>
         )}
 
-        {/* ============ EMPTY ============ */}
         {!loading && !error && filtered.length === 0 && (
           <div
             style={{
@@ -848,7 +819,6 @@ function OwnerEmployeesInner() {
           </div>
         )}
 
-        {/* ============ CARD GRID ============ */}
         {!loading && !error && filtered.length > 0 && (
           <>
             <div className="admin-employees-grid">
@@ -865,24 +835,22 @@ function OwnerEmployeesInner() {
                   onDelete={() => remove(emp)}
                   onPermissions={() => setPermModal(emp)}
                   onAssign={() => openAssign(emp)}
-                  
                   onViewShifts={async () => {
-                  setChartWeekOffset(0);
-                  try {
-                    const data = await api.shifts.all();
-                    const empShifts = data.filter(s => String(s.employee_id) === String(emp.id) && s.status !== 'rejected');
-                    setViewShiftsModal({ employee: emp, shifts: empShifts });
-                  } catch(e) {
-                    toast("Lỗi tải danh sách ca làm", "error");
-                  }
-                }}
+                    setChartWeekOffset(0);
+                    try {
+                      const data = await api.shifts.all();
+                      const empShifts = data.filter(s => String(s.employee_id) === String(emp.id) && s.status !== 'rejected');
+                      setViewShiftsModal({ employee: emp, shifts: empShifts });
+                    } catch(e) {
+                      toast("Lỗi tải danh sách ca làm", "error");
+                    }
+                  }}
                   onViewTasks={() => openTaskList(emp)}
                   t={t}
                 />
               ))}
             </div>
 
-            {/* ============ PAGINATION ============ */}
             {totalPages > 1 && (
               <div className="admin-employees-pagination">
                 <button
@@ -1025,18 +993,16 @@ function OwnerEmployeesInner() {
                   value={detailModal.employee.phone || "—"}
                 />
 
-                {/* Ca hôm nay */}
                 <InfoRow
                   icon={<Calendar size={16} />}
                   label={t("Ca làm hôm nay")}
                   value={
                     (todayShiftsMap[detailModal.employee.id] || []).length > 0
-                      ? (todayShiftsMap[detailModal.employee.id] || []).join(", ")
+                      ? (todayShiftsMap[detailModal.employee.id] || []).map(s => s.shift || s).join(", ")
                       : t("Chưa phân ca")
                   }
                 />
 
-                {/* Chấm công hôm nay */}
                 <InfoRow
                   icon={<Clock size={16} />}
                   label={t("Chấm công hôm nay")}
@@ -1052,7 +1018,6 @@ function OwnerEmployeesInner() {
                   })()}
                 />
 
-                {/* Số task */}
                 <InfoRow
                   icon={<ClipboardList size={16} />}
                   label={t("Công việc đang giao")}
@@ -1147,7 +1112,6 @@ function OwnerEmployeesInner() {
                 />
               </div>
 
-              {/* Actions */}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <button
                   onClick={() => {
@@ -1747,10 +1711,7 @@ function OwnerEmployeesInner() {
                   </div>
                 );
               })}
-            
-      
-    
-</div>
+            </div>
           )}
 
           <button onClick={closeTaskList} style={{ ...btnPrimaryStyle, width: "100%" }}>
@@ -1786,35 +1747,9 @@ function OwnerEmployeesInner() {
           onClose={closeConfirm}
         />
       )}
-    
-      {/* PHÂN CA MODAL */}
-      {assignShiftModal && (
-        <ShiftAssignModal
-          modal={assignShiftModal}
-          employees={list || []}
-          weekDays={[]}
-          shifts={[]}
-          onSave={async (formData) => {
-            try {
-              const { employeeId, dateShifts, note } = formData;
-              for (const [date, shiftList] of Object.entries(dateShifts)) {
-                if (!shiftList?.length) continue;
-                await api.shifts.bulk({ employee_id: employeeId, dates: [date], shifts: shiftList, note });
-              }
-              toast(t("Đã phân ca thành công"), "success");
-              setAssignShiftModal(null);
-              loadTodayShifts();
-            } catch(e) { toast(e.message || "Lỗi phân ca", "error"); }
-          }}
-          onClose={() => setAssignShiftModal(null)}
-          t={t}
-        />
-      )}
-
 
       {/* SHIFT DETAIL MODAL */}
       {viewShiftsModal && (() => {
-        // Hàm lấy giờ từ SHIFT_DEFS
         const getShiftTime = (shiftId) => {
           const def = typeof SHIFT_DEFS !== 'undefined' ? SHIFT_DEFS.find(d => d.id === shiftId || d.name === shiftId) : null;
           if (def) {
@@ -1822,7 +1757,6 @@ function OwnerEmployeesInner() {
             if (def.start && def.end) return `${def.start} - ${def.end}`;
             if (def.startTime && def.endTime) return `${def.startTime} - ${def.endTime}`;
           }
-          // Fallback nếu không tìm thấy
           if (shiftId === "Ca sáng") return "06:30 - 12:30";
           if (shiftId === "Ca chiều") return "12:30 - 18:30";
           if (shiftId === "Ca tối") return "18:30 - 22:30";
@@ -1834,7 +1768,7 @@ function OwnerEmployeesInner() {
         const diff = today.getDate() - day + (day === 0 ? -6 : 1);
         const monday = new Date(today.setDate(diff));
         monday.setDate(monday.getDate() + (chartWeekOffset * 7));
-        
+
         const weekDays = Array.from({ length: 7 }).map((_, i) => {
           const d = new Date(monday);
           d.setDate(monday.getDate() + i);
@@ -1870,25 +1804,24 @@ function OwnerEmployeesInner() {
                   Tuần sau &rarr;
                 </button>
               </div>
-              
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
                 {weekDays.map((wd, idx) => {
                   const shiftsInDay = viewShiftsModal.shifts.filter(s => {
                     const shiftDateStr = s.date ? s.date.split('T')[0] : "";
                     return shiftDateStr === wd.dateStr;
                   }).sort((a, b) => {
-                    // Sắp xếp thứ tự: Ca sáng -> Ca chiều -> Ca tối
                     const order = { "Ca sáng": 1, "Ca chiều": 2, "Ca tối": 3 };
                     return (order[a.shift] || 99) - (order[b.shift] || 99);
                   });
-                  
+
                   return (
                     <div key={idx} style={{ display: "flex", flexDirection: "column", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, overflow: "hidden", minHeight: 170, background: "var(--bg-tertiary, #f8fafc)" }}>
                       <div style={{ padding: "10px 0", textAlign: "center", background: chartWeekOffset === 0 && idx === (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1) ? "#18a967" : "#2634d5", color: "#fff", fontWeight: 600, fontSize: 13 }}>
                         <div>{wd.dayName}</div>
                         <div style={{ fontSize: 11, opacity: 0.9 }}>{wd.dateNum}</div>
                       </div>
-                      
+
                       <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
                         {shiftsInDay.length === 0 ? (
                           <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 10 }}>Trống</div>
@@ -1897,7 +1830,7 @@ function OwnerEmployeesInner() {
                             <div key={s.id} style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: s.status === 'pending' ? "1px dashed #f59e0b" : "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 2 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                 <span style={{ fontSize: 12, fontWeight: 600, color: s.status === 'pending' ? "#f59e0b" : "#172033" }}>{s.shift}</span>
-                                <button 
+                                <button
                                   onClick={async () => {
                                     if(!window.confirm("Bạn có chắc muốn hủy ca làm này?")) return;
                                     try {
@@ -1926,7 +1859,7 @@ function OwnerEmployeesInner() {
                   );
                 })}
               </div>
-              
+
               <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <button onClick={() => setChartWeekOffset(0)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f8fafc)", border: "1px solid var(--border-color, #e5e9ef)", color: "var(--text-primary, #172033)", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Về tuần này</button>
                 <button onClick={() => setViewShiftsModal(null)} style={{ padding: "8px 24px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Đóng</button>
@@ -1935,66 +1868,7 @@ function OwnerEmployeesInner() {
           </div>
         );
       })()}
-
-      
-      {/* PENDING SHIFTS MODAL */}
-      {pendingModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 99999 }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 18 }}>Danh sách ca chờ duyệt</h3>
-              <button onClick={() => setPendingModalOpen(false)} style={{ background: "transparent", border: 0, cursor: "pointer" }}><X size={20} /></button>
-            </div>
-            
-            {pendingShifts.length === 0 ? (
-              <p style={{ textAlign: "center", color: "#64748b", padding: "20px 0" }}>Không có ca làm nào đang chờ duyệt.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {pendingShifts.map((s) => (
-                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 8, border: "1px solid var(--border-color, #e5e9ef)" }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary, #172033)" }}>{s.employee_name || "Nhân viên"} - {s.shift}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted, #64748b)", marginTop: 4 }}>
-                        Ngày làm: <b>{new Date(s.date).toLocaleDateString("vi-VN")}</b>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button 
-                        onClick={async () => {
-                          try {
-                            await api.shifts.approve(s.id);
-                            toast("Đã duyệt ca", "success");
-                            loadPendingShifts();
-                            loadTodayShifts();
-                          } catch(e) { toast("Lỗi duyệt ca", "error"); }
-                        }}
-                        style={{ background: "#10b981", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}
-                      >
-                        Duyệt
-                      </button>
-                      <button 
-                        onClick={async () => {
-                          if(!window.confirm("Từ chối ca làm này?")) return;
-                          try {
-                            await api.shifts.reject(s.id);
-                            toast("Đã từ chối ca", "success");
-                            loadPendingShifts();
-                          } catch(e) { toast("Lỗi từ chối", "error"); }
-                        }}
-                        style={{ background: "#ef4444", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}
-                      >
-                        Từ chối
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    
-</>
+    </>
   );
 }
 // ============================================================
@@ -2003,7 +1877,6 @@ function OwnerEmployeesInner() {
 
 function EmployeeCard({
   onViewShifts,
-  onAssignShift,
   emp,
   todayShifts = [],
   todayAttendance,
@@ -2020,7 +1893,6 @@ function EmployeeCard({
   const isActive = (emp.status || "Hoạt động") === "Hoạt động";
   const hasShiftToday = todayShifts.length > 0;
 
-  // Chấm công hôm nay
   let attendanceLabel = null;
   let attendanceVariant = "neutral";
   if (todayAttendance?.checkIn) {
@@ -2046,7 +1918,6 @@ function EmployeeCard({
       }`}
       style={{ display: "flex", flexDirection: "column", height: "100%" }}
     >
-      {/* Avatar + Status */}
       <div className="admin-emp-card__header">
         <div className="admin-emp-card__avatar">
           {getInitials(emp.name)}
@@ -2065,7 +1936,6 @@ function EmployeeCard({
         <StatusBadge status={emp.status || "Hoạt động"} t={t} />
       </div>
 
-      {/* Contact info */}
       <div className="admin-emp-card__info">
         <div className="admin-emp-card__info-row">
           <Mail size={12} />
@@ -2079,9 +1949,7 @@ function EmployeeCard({
         </div>
       </div>
 
-      {/* Status row: Ca + Chấm công + Task count */}
       <div className="admin-emp-card__status-row">
-        {/* Ca hôm nay */}
         <div
           className={`admin-emp-card__chip ${
             hasShiftToday ? "admin-emp-card__chip--shift" : ""
@@ -2095,7 +1963,6 @@ function EmployeeCard({
           </span>
         </div>
 
-        {/* Chấm công */}
         {attendanceLabel && (
           <div
             className={`admin-emp-card__chip admin-emp-card__chip--att-${attendanceVariant}`}
@@ -2105,7 +1972,6 @@ function EmployeeCard({
           </div>
         )}
 
-        {/* Task count */}
         {taskCount > 0 && (
           <button
             type="button"
@@ -2121,19 +1987,18 @@ function EmployeeCard({
         )}
       </div>
 
-      {/* Actions */}
       <div className="admin-emp-card__actions" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto", paddingTop: 12 }}>
-          <button style={{ flex: 1, justifyContent: "center", margin: 0, padding: "8px 12px" }}
-            type="button"
-            className="admin-emp-card__btn admin-emp-card__btn--primary"
-            onClick={onAssign}
-            title={t("Giao việc cho nhân viên")}
-          >
-            <ClipboardList size={14} />
-            <span>{t("Giao việc")}</span>
-          </button>
+        <button style={{ flex: 1, justifyContent: "center", margin: 0, padding: "8px 12px" }}
+          type="button"
+          className="admin-emp-card__btn admin-emp-card__btn--primary"
+          onClick={onAssign}
+          title={t("Giao việc cho nhân viên")}
+        >
+          <ClipboardList size={14} />
+          <span>{t("Giao việc")}</span>
+        </button>
 
-          <div className="admin-emp-card__icon-actions">
+        <div className="admin-emp-card__icon-actions">
           {onPermissions && (
             <button
               type="button"
@@ -2351,49 +2216,40 @@ const REFRESH_MS = 30000;
 
 function OwnerShiftsInner() {
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState("employees");
-
+  // 🔧 Batch 10 FIX: đã xóa `activeTab` state trùng (chỉ giữ `tab`)
   const [tab, setTab] = useState("today");
 
-  // ---------- Data ----------
   const [shifts, setShifts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [attendances, setAttendances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // ---------- UI state ----------
   const [assignModal, setAssignModal] = useState(null);
   const [weekDate, setWeekDate] = useState(getToday());
   const [historyMonth, setHistoryMonth] = useState(getToday().slice(0, 7));
   const [search, setSearch] = useState("");
   const [historyFilter, setHistoryFilter] = useState("nextWeek");
 
-  // Processing per-shift (approve/reject)
   const [processingId, setProcessingId] = useState(null);
 
-  // Confirm dialog
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // Race-safe
   const reqIdRef = useRef(0);
 
-  // Tab visible (pause auto-refresh)
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
   );
 
-  // ---------- Track tab visibility ----------
   useEffect(() => {
     const handler = () => setTabVisible(!document.hidden);
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
   }, []);
 
-  // ---------- Load all data ----------
-
   const load = useCallback(async (silent = false) => {
+    if (!getToken()) return; // 🔧 Batch 10 FIX
     const myReqId = ++reqIdRef.current;
     if (!silent) setLoading(true);
     setError("");
@@ -2402,7 +2258,6 @@ function OwnerShiftsInner() {
       const [empsRes, attsRes, shiftsRes] = await Promise.all([
         api.users.list("EMPLOYEE").catch(() => []),
         api.attendance.all({ month: historyMonth }).catch(() => []),
-        // Lấy CẢ ca pending để admin duyệt
         api.shifts.all({ include_pending: 1 }).catch(() => []),
       ]);
 
@@ -2424,14 +2279,11 @@ function OwnerShiftsInner() {
     load(false);
   }, [load]);
 
-  // Auto-refresh 30s khi tab visible
   useEffect(() => {
     if (!tabVisible) return;
     const timer = setInterval(() => load(true), REFRESH_MS);
     return () => clearInterval(timer);
   }, [load, tabVisible]);
-
-  // ---------- Computed ----------
 
   const stats = useMemo(() => {
     const today = getToday();
@@ -2444,7 +2296,6 @@ function OwnerShiftsInner() {
     };
   }, [employees, attendances]);
 
-  // Chỉ hiển thị ca APPROVED trong tab "Hôm nay"
   const todayShifts = useMemo(() => {
     const today = getToday();
     return SHIFT_DEFS.map((s) => ({
@@ -2458,7 +2309,6 @@ function OwnerShiftsInner() {
     }));
   }, [shifts]);
 
-  // Đếm ca pending hôm nay (để hiện cảnh báo)
   const pendingTodayCount = useMemo(() => {
     const today = getToday();
     return shifts.filter(
@@ -2466,7 +2316,6 @@ function OwnerShiftsInner() {
     ).length;
   }, [shifts]);
 
-  // Week days (Mon-Sun) của tuần chứa weekDate
   const weekDays = useMemo(() => {
     const start = new Date(weekDate + "T00:00:00");
     const day = start.getDay();
@@ -2500,7 +2349,6 @@ function OwnerShiftsInner() {
     );
   }, [weekDays]);
 
-  // Nhắc nhở Chủ nhật — update mỗi phút
   const [sundayReminder, setSundayReminder] = useState(null);
   useEffect(() => {
     const check = () => {
@@ -2517,7 +2365,6 @@ function OwnerShiftsInner() {
     return () => clearInterval(timer);
   }, []);
 
-  // Filter shifts theo tuần (this/next/all) + search
   const filteredShifts = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -2553,7 +2400,6 @@ function OwnerShiftsInner() {
     return list;
   }, [shifts, historyFilter, search]);
 
-  // Group shifts theo ngày
   const groupedShifts = useMemo(() => {
     const map = {};
     for (const s of filteredShifts) {
@@ -2568,9 +2414,7 @@ function OwnerShiftsInner() {
         const d = new Date(date + "T00:00:00");
         return {
           date,
-          // 🔧 FIX #91: dùng DATE_LONG_FORMATTER
           label: DATE_LONG_FORMATTER.format(d),
-          // 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER
           weekdayShort: WEEKDAY_SHORT_FORMATTER.format(d),
           dayNum: String(d.getDate()).padStart(2, "0"),
           shifts: list,
@@ -2584,8 +2428,6 @@ function OwnerShiftsInner() {
     [filteredShifts]
   );
 
-  // ---------- Actions ----------
-
   const changeWeek = (delta) => {
     const d = new Date(weekDate + "T00:00:00");
     d.setDate(d.getDate() + delta * 7);
@@ -2597,7 +2439,6 @@ function OwnerShiftsInner() {
 
   const goToThisWeek = () => setWeekDate(getToday());
 
-  // Approve ca pending
   const approveShift = useCallback(
     async (shift) => {
       if (processingId !== null) return;
@@ -2619,7 +2460,6 @@ function OwnerShiftsInner() {
     [load, processingId, t]
   );
 
-  // Reject ca pending (mở ConfirmDialog)
   const rejectShift = useCallback(
     (shift) => {
       if (processingId !== null) return;
@@ -2732,15 +2572,8 @@ function OwnerShiftsInner() {
   const openEdit = (s) => setAssignModal({ ...s, _isEdit: true });
   const openNew = () => setAssignModal({ _isNew: true });
 
-  // ============================================================
-  // RENDER
-  // ============================================================
-
   return (
     <div>
-      {/* ============================================================
-          NHẮC NHỞ CHỦ NHẬT
-          ============================================================ */}
       {sundayReminder && (
         <div
           style={{
@@ -2817,9 +2650,6 @@ function OwnerShiftsInner() {
         </div>
       )}
 
-      {/* ============================================================
-          CẢNH BÁO CA PENDING HÔM NAY
-          ============================================================ */}
       {pendingTodayCount > 0 && !loading && (
         <div
           style={{
@@ -2884,9 +2714,6 @@ function OwnerShiftsInner() {
         </div>
       )}
 
-      {/* ============================================================
-          STATS
-          ============================================================ */}
       <div
         className="shifts-stats-grid"
         style={{
@@ -2922,9 +2749,6 @@ function OwnerShiftsInner() {
         />
       </div>
 
-      {/* ============================================================
-          SHIFT_TABS
-          ============================================================ */}
       <div
         className="shifts-tabs"
         style={{
@@ -2958,9 +2782,6 @@ function OwnerShiftsInner() {
         ))}
       </div>
 
-      {/* ============================================================
-          LOADING
-          ============================================================ */}
       {loading && (
         <>
           <div style={{ marginBottom: 20 }}>
@@ -3019,9 +2840,6 @@ function OwnerShiftsInner() {
         </>
       )}
 
-      {/* ============================================================
-          ERROR
-          ============================================================ */}
       {!loading && error && (
         <div
           style={{
@@ -3058,9 +2876,6 @@ function OwnerShiftsInner() {
         </div>
       )}
 
-      {/* ============================================================
-          TAB: HÔM NAY (chỉ approved)
-          ============================================================ */}
       {!loading && !error && tab === "today" && (
         <div
           style={{
@@ -3073,7 +2888,6 @@ function OwnerShiftsInner() {
             const Icon = s.icon;
             return (
               <div key={s.id} style={shiftCardStyle}>
-                {/* Header ca */}
                 <div
                   style={{
                     display: "flex",
@@ -3129,7 +2943,6 @@ function OwnerShiftsInner() {
                   </span>
                 </div>
 
-                {/* Danh sách nhân viên */}
                 {s.employees.length === 0 ? (
                   <div
                     style={{
@@ -3233,12 +3046,9 @@ function OwnerShiftsInner() {
           })}
         </div>
       )}
-      {/* ============================================================
-          TAB: THEO TUẦN (chỉ approved)
-          ============================================================ */}
+
       {!loading && !error && tab === "week" && (
         <div style={shiftCardStyle}>
-          {/* Toolbar tuần */}
           <div
             style={{
               display: "flex",
@@ -3292,11 +3102,9 @@ function OwnerShiftsInner() {
               >
                 <ChevronRight size={18} />
               </button>
-              
             </div>
           </div>
 
-          {/* Bảng tuần */}
           <div style={{ overflowX: "auto" }}>
             <table
               style={{
@@ -3324,7 +3132,6 @@ function OwnerShiftsInner() {
                         }}
                       >
                         <div style={{ fontWeight: 700 }}>
-                          {/* 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER */}
                           {WEEKDAY_SHORT_FORMATTER.format(dayObj)}
                         </div>
                         <div style={{ fontSize: 10, opacity: 0.7 }}>
@@ -3347,7 +3154,6 @@ function OwnerShiftsInner() {
                       <b>{emp.name}</b>
                     </td>
                     {weekDays.map((d) => {
-                      // Chỉ hiển thị ca APPROVED
                       const empShifts = shifts.filter(
                         (s) =>
                           String(s.employee_id) === String(emp.id) &&
@@ -3422,7 +3228,6 @@ function OwnerShiftsInner() {
             </table>
           </div>
 
-          {/* Legend */}
           <div
             style={{
               marginTop: 14,
@@ -3470,12 +3275,8 @@ function OwnerShiftsInner() {
         </div>
       )}
 
-      {/* ============================================================
-          TAB: PHÂN CA (cả pending + approved + nút duyệt)
-          ============================================================ */}
       {!loading && !error && tab === "assign" && (
         <div>
-          {/* Toolbar */}
           <div
             style={{
               display: "flex",
@@ -3533,7 +3334,6 @@ function OwnerShiftsInner() {
               )}
             </div>
 
-            {/* Filter tuần */}
             <div
               style={{
                 display: "flex",
@@ -3593,7 +3393,6 @@ function OwnerShiftsInner() {
             </button>
           </div>
 
-          {/* Summary */}
           <div
             style={{
               display: "grid",
@@ -3624,7 +3423,6 @@ function OwnerShiftsInner() {
             />
           </div>
 
-          {/* Danh sách ca */}
           {groupedShifts.length === 0 ? (
             <div style={{ ...shiftCardStyle, textAlign: "center", padding: 40 }}>
               <CalendarDays
@@ -3648,7 +3446,6 @@ function OwnerShiftsInner() {
                   key={group.date}
                   style={{ ...shiftCardStyle, padding: 0, overflow: "hidden" }}
                 >
-                  {/* Header ngày */}
                   <div
                     style={{
                       padding: "12px 18px",
@@ -3691,7 +3488,6 @@ function OwnerShiftsInner() {
                               opacity: 0.9,
                             }}
                           >
-                            {/* 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER đã apply từ groupedShifts */}
                             {group.weekdayShort}
                           </span>
                           <span style={{ fontSize: 15, fontWeight: 800 }}>
@@ -3738,7 +3534,6 @@ function OwnerShiftsInner() {
                     </div>
                   </div>
 
-                  {/* List ca trong ngày */}
                   <div>
                     {group.shifts.map((s, i) => {
                       const isPendingShift = isPending(s);
@@ -3763,7 +3558,6 @@ function OwnerShiftsInner() {
                             opacity: isProcessing ? 0.6 : 1,
                           }}
                         >
-                          {/* Avatar + name */}
                           <div
                             style={{
                               display: "flex",
@@ -3810,7 +3604,6 @@ function OwnerShiftsInner() {
                                   {s.employee_name}
                                 </b>
 
-                                {/* Badge status */}
                                 <span
                                   style={{
                                     padding: "2px 8px",
@@ -3831,7 +3624,6 @@ function OwnerShiftsInner() {
                                     : t("Đã duyệt")}
                                 </span>
 
-                                {/* Badge shift */}
                                 <span
                                   style={{
                                     padding: "2px 10px",
@@ -3862,11 +3654,9 @@ function OwnerShiftsInner() {
                             </div>
                           </div>
 
-                          {/* Actions */}
                           <div
                             style={{ display: "flex", gap: 6, flexShrink: 0 }}
                           >
-                            {/* Nút DUYỆT cho ca pending */}
                             {isPendingShift && (
                               <>
                                 <button
@@ -3945,7 +3735,6 @@ function OwnerShiftsInner() {
                               </>
                             )}
 
-                            {/* Nút Sửa / Xóa */}
                             <button
                               onClick={() => openEdit(s)}
                               title={t("Sửa")}
@@ -3976,9 +3765,6 @@ function OwnerShiftsInner() {
         </div>
       )}
 
-      {/* ============================================================
-          TAB: LỊCH SỬ
-          ============================================================ */}
       {!loading && !error && tab === "history" && (
         <div style={shiftCardStyle}>
           <div
@@ -4104,9 +3890,6 @@ function OwnerShiftsInner() {
         </div>
       )}
 
-      {/* ============================================================
-          ASSIGN MODAL
-          ============================================================ */}
       {assignModal && (
         <ShiftAssignModal
           modal={assignModal}
@@ -4119,7 +3902,6 @@ function OwnerShiftsInner() {
         />
       )}
 
-      {/* Confirm dialog */}
       {confirm && (
         <ConfirmDialog
           open
@@ -4165,7 +3947,6 @@ function ShiftAssignModal({
 
   const [saving, setSaving] = useState(false);
 
-  // Tính ngày tuần sau — memo 1 lần
   const displayWeekDays = useMemo(() => {
     if (isEdit) return weekDays;
     const d = new Date();
@@ -4195,7 +3976,6 @@ function ShiftAssignModal({
   const [employeeId, setEmployeeId] = useState(modal.employee_id || "");
   const [note, setNote] = useState(modal.note || "");
 
-  // Ngày đã có ca (để đánh dấu)
   const assignedDays = useMemo(() => {
     if (!employeeId || isEdit) return new Set();
     const empId = String(employeeId);
@@ -4215,7 +3995,6 @@ function ShiftAssignModal({
   const isDayAssigned = (d) =>
     (dateShifts[d] && dateShifts[d].length > 0) || assignedDays.has(d);
 
-  // ESC đóng modal
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Escape" && !saving) onClose();
@@ -4343,7 +4122,6 @@ function ShiftAssignModal({
           overflowY: "auto",
         }}
       >
-        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -4414,7 +4192,6 @@ function ShiftAssignModal({
         )}
 
         <form onSubmit={submit} autoComplete="off">
-          {/* Nhân viên */}
           <label style={shiftLabelStyle}>{t("Nhân viên")} *</label>
           <select
             value={employeeId}
@@ -4431,7 +4208,6 @@ function ShiftAssignModal({
             ))}
           </select>
 
-          {/* Chọn ngày */}
           {!isEdit && (
             <div
               style={{
@@ -4487,7 +4263,6 @@ function ShiftAssignModal({
           )}
           {isEdit && <label style={shiftLabelStyle}>{t("Ngày")} *</label>}
 
-          {/* Grid ngày */}
           <div
             style={{
               display: "grid",
@@ -4500,7 +4275,6 @@ function ShiftAssignModal({
               const isActive = activeDate === d;
               const isAssigned = isDayAssigned(d);
               const dayObj = new Date(d + "T00:00:00");
-              // 🔧 FIX #91: dùng WEEKDAY_SHORT_FORMATTER
               const dayLabel = WEEKDAY_SHORT_FORMATTER.format(dayObj);
 
               let bg = "var(--bg-tertiary, #f5f7fb)";
@@ -4576,7 +4350,6 @@ function ShiftAssignModal({
             })}
           </div>
 
-          {/* Chọn ca */}
           <label style={shiftLabelStyle}>
             {t("Ca làm")} *{" "}
             {!isEdit && activeDate && (
@@ -4645,7 +4418,6 @@ function ShiftAssignModal({
             })}
           </div>
 
-          {/* Ghi chú */}
           <label style={shiftLabelStyle}>{t("Ghi chú")}</label>
           <input
             value={note}
@@ -4655,7 +4427,6 @@ function ShiftAssignModal({
             style={shiftInputStyle}
           />
 
-          {/* Tổng kết */}
           {!isEdit && totalAssignments > 0 && (
             <div
               style={{
@@ -4674,7 +4445,6 @@ function ShiftAssignModal({
             </div>
           )}
 
-          {/* Buttons */}
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             <button
               type="button"
@@ -4921,9 +4691,6 @@ const shiftNavBtnWide = {
 // ============================================================
 // WRAPPER: OwnerEmployees
 // ============================================================
-// 🔧 FIX: Xóa hoàn toàn tab "Ca làm & chấm công" — route
-//         /owner/shifts đã redirect sang /owner/attendance trong App.jsx.
-//         Tab này không còn cần thiết vì OwnerShifts.jsx đã bị xóa.
 
 export default function OwnerEmployees() {
   return <OwnerEmployeesInner />;

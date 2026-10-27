@@ -3,6 +3,10 @@
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
 // 🔧 FIX #87: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
+// 🔧 Batch 11 FIX:
+//   - Import getToken
+//   - Guard 8 hàm load (Overview, Account, Revenue, Transactions,
+//     Expenses, Stats, Reconcile, Export) chống spam 401
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -10,7 +14,7 @@ import {
   Wallet, CreditCard, TrendingUp, Receipt, DollarSign, BarChart3, CheckCircle2, Download, Save, Plus, Pencil, X, Loader2, AlertCircle, Trash2, ArrowUpDown, Filter, CalendarDays, CalendarRange, Calendar,
 } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ComposedChart, Line, Legend, Cell } from "recharts";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
@@ -34,7 +38,6 @@ const BANKS = [
   { code: "AGB",  name: "Agribank" },
 ];
 
-// 🔧 FIX #87: formatter cố định VN timezone, 24h
 const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
   day: "2-digit",
@@ -53,7 +56,6 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-// Status → màu badge giao dịch
 // ============================================================
 // CHART HELPERS
 // ============================================================
@@ -98,10 +100,8 @@ const ORDER_STATUS_COLORS = {
 // HELPERS
 // ============================================================
 
-/** ✅ #7.4: format VNĐ đồng nhất */
 const fmtMoney = (n) => money(n);
 
-/** "YYYY-MM-DD" theo local time */
 function getLocalDateStr(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -109,7 +109,6 @@ function getLocalDateStr(d = new Date()) {
   return `${y}-${m}-${dt}`;
 }
 
-// 🔧 FIX #87: format datetime / date dùng formatter cố định VN
 function fmtDateTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -133,7 +132,6 @@ export default function OwnerFinance() {
   const [mainTab, setMainTab] = useState("report");
   const [tab, setTab] = useState("account");
 
-  // Tabs config — useMemo vì phụ thuộc t
   const TABS = useMemo(
     () => [
       { id: "account",      label: t("Tài khoản nhận tiền"), icon: CreditCard },
@@ -149,7 +147,6 @@ export default function OwnerFinance() {
 
   return (
     <div>
-      {/* PAGE HEAD */}
       <div className="admin-page-head" style={{ marginBottom: 20 }}>
         <div className="admin-page-head__left">
           <span className="admin-page-head__eyebrow">
@@ -159,13 +156,7 @@ export default function OwnerFinance() {
         </div>
       </div>
 
-      {/* SECTION DROPDOWN */}
-      <div
-        style={{
-          marginBottom: 20,
-        }}
-      >
-        {/* TAB BUTTONS */}
+      <div style={{ marginBottom: 20 }}>
         <div style={{ display: "inline-flex", background: "var(--bg-tertiary, #f5f7fb)", padding: 4, borderRadius: 10, gap: 4 }}>
           <button
             type="button"
@@ -206,7 +197,6 @@ export default function OwnerFinance() {
         </div>
       </div>
 
-      {/* TAB CONTENT */}
       {mainTab === "report" && <OverviewTab />}
 
       {mainTab === "finance" && (
@@ -255,10 +245,10 @@ export default function OwnerFinance() {
           </div>
 
           {tab === "account" && <AccountTab />}
-      {tab === "revenue" && <RevenueTab />}
-      {tab === "transactions" && <TransactionsTab />}
-      {tab === "expenses" && <ExpensesTab />}
-      {tab === "stats" && <StatsTab />}
+          {tab === "revenue" && <RevenueTab />}
+          {tab === "transactions" && <TransactionsTab />}
+          {tab === "expenses" && <ExpensesTab />}
+          {tab === "stats" && <StatsTab />}
           {tab === "reconcile" && <ReconcileTab />}
           {tab === "export" && <ExportTab />}
         </>
@@ -268,7 +258,7 @@ export default function OwnerFinance() {
 }
 
 // ============================================================
-// TAB 0: OVERVIEW — Báo cáo tài chính tổng quan
+// TAB 0: OVERVIEW
 // ============================================================
 
 const OVERVIEW_RANGES = [
@@ -342,6 +332,7 @@ function OverviewTab() {
   const [customTo, setCustomTo] = useState(getLocalDateStr());
 
   const load = useCallback(async (silent = false) => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     if (!silent) setRefreshing(true);
     setError("");
     try {
@@ -577,6 +568,7 @@ function AccountTab() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     setLoading(true);
     setError("");
     try {
@@ -879,6 +871,7 @@ function RevenueTab() {
   );
 
   useEffect(() => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -928,7 +921,6 @@ function RevenueTab() {
         <KPI label={t("Giá trị TB/đơn")} value={fmtMoney(data?.avgOrder || 0)}    color="#f59e0b" />
       </div>
 
-      {/* 📊 BIỂU ĐỒ PHÂN TÍCH DOANH THU */}
       {loading ? (
         <LoadingBox t={t} />
       ) : error ? (
@@ -970,6 +962,7 @@ function RevenueTab() {
     </div>
   );
 }
+
 // ============================================================
 // TAB 3: GIAO DỊCH
 // ============================================================
@@ -991,6 +984,7 @@ function TransactionsTab() {
   );
 
   useEffect(() => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     let cancelled = false;
     setLoading(true);
     api.orders
@@ -1059,7 +1053,6 @@ function TransactionsTab() {
                   <tr key={o._id || o.id} style={trStyle}>
                     <td style={tdStyle}><b>{o.code}</b></td>
                     <td style={tdStyle}>{o.customer_name}</td>
-                    {/* 🔧 FIX #87: dùng formatter cố định VN */}
                     <td style={tdStyle}>{fmtDateTime(o.created_at)}</td>
                     <td style={tdStyle}>{o.payment || t("Tiền mặt")}</td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
@@ -1129,6 +1122,7 @@ function ExpensesTab() {
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   useEffect(() => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     setLoading(true);
     api.settings
       .get()
@@ -1446,7 +1440,6 @@ function ExpensesTab() {
                 <tbody>
                   {filteredExpenses.map((e) => (
                     <tr key={e.id} style={trStyle}>
-                      {/* 🔧 FIX #87: dùng formatter cố định VN */}
                       <td style={tdStyle}>{fmtDate(e.date)}</td>
                       <td style={tdStyle}><b>{e.title}</b></td>
                       <td style={tdStyle}>{e.category}</td>
@@ -1530,6 +1523,7 @@ function StatsTab() {
   );
 
   useEffect(() => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     let cancelled = false;
     setLoading(true);
     Promise.all([
@@ -1601,7 +1595,6 @@ function StatsTab() {
         />
       </div>
 
-      {/* 📊 BIỂU ĐỒ PHÂN TÍCH THỐNG KÊ */}
       {!loading && revenue?.data?.length > 0 && (
         <>
           <ChartCard title={t("Doanh thu vs Lợi nhuận")} subtitle={t("Đơn vị: VNĐ")} height={320}>
@@ -1654,6 +1647,7 @@ function StatsTab() {
     </div>
   );
 }
+
 // ============================================================
 // TAB 6: ĐỐI SOÁT
 // ============================================================
@@ -1664,6 +1658,7 @@ function ReconcileTab() {
   const [actualInput, setActualInput] = useState("");
 
   useEffect(() => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     api.orders
       .all("Tất cả")
       .then((d) => setOrders(Array.isArray(d) ? d : []))
@@ -1793,6 +1788,7 @@ function ExportTab() {
   };
 
   const handleExport = async () => {
+    if (!getToken()) return; // 🔧 Batch 11 FIX
     if (new Date(from) > new Date(to)) {
       return toast(t("Ngày bắt đầu phải trước ngày kết thúc"), "error");
     }

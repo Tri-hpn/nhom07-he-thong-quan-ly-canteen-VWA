@@ -40,7 +40,7 @@ import EmployeeChat from "./pages/employee/EmployeeChat";
 import EmployeeShifts from "./pages/employee/EmployeeShifts";
 
 import OwnerDashboard from "./pages/owner/OwnerDashboard";
-import OwnerEmployees from './pages/owner/OwnerEmployees';
+import OwnerEmployees from "./pages/owner/OwnerEmployees";
 import OwnerAttendance from "./pages/owner/OwnerAttendance";
 import OwnerCustomers from "./pages/owner/OwnerCustomers";
 import OwnerMenu from "./pages/owner/OwnerMenu";
@@ -55,6 +55,7 @@ import OwnerSettings from "./pages/owner/OwnerSettings";
 import OwnerChat from "./pages/owner/OwnerChat";
 
 // ── Helpers ─────────────────────────────────────────────────
+/** Đọc ?returnUrl=… nhưng CHỈ chấp nhận URL nội bộ (chống open-redirect) */
 function getSafeReturnUrl(search) {
   try {
     const params = new URLSearchParams(search || "");
@@ -112,6 +113,8 @@ export default function App() {
     useAuth();
 
   const [orderChatRequest, setOrderChatRequest] = useState(null);
+
+  // Giỏ hàng: khôi phục từ localStorage, đồng bộ ngược lại
   const [cart, setCart] = useState(() => {
     try {
       const saved = localStorage.getItem("canteen_cart");
@@ -131,7 +134,7 @@ export default function App() {
     } catch {}
   }, [cart]);
 
-  // auth-expired: về /login?returnUrl=<trang hiện tại>
+  // auth-expired: về /login?returnUrl=<trang hiện tại>, dedup trong 2s
   useEffect(() => {
     const handler = () => {
       const now = Date.now();
@@ -159,10 +162,7 @@ export default function App() {
       if (here.startsWith("/login")) {
         navigate("/login", { replace: true });
       } else {
-        navigate(
-          "/login?returnUrl=" + encodeURIComponent(here),
-          { replace: true }
-        );
+        navigate("/login?returnUrl=" + encodeURIComponent(here), { replace: true });
       }
     };
 
@@ -170,7 +170,7 @@ export default function App() {
     return () => window.removeEventListener("auth-expired", handler);
   }, [navigate, setUser]);
 
-  // Login: đọc returnUrl → điều hướng thông minh
+  /** Login: chuyển hướng thông minh qua returnUrl → fallback homePathForRole */
   const handleLogin = async (email, password) => {
     const u = await login(email, password);
     setUser(u);
@@ -232,19 +232,13 @@ export default function App() {
           <Route
             path="/auth/google/callback"
             element={
-              <OAuthCallback
-                provider="google"
-                onLoginSuccess={(u) => setUser(u)}
-              />
+              <OAuthCallback provider="google" onLoginSuccess={(u) => setUser(u)} />
             }
           />
           <Route
             path="/auth/facebook/callback"
             element={
-              <OAuthCallback
-                provider="facebook"
-                onLoginSuccess={(u) => setUser(u)}
-              />
+              <OAuthCallback provider="facebook" onLoginSuccess={(u) => setUser(u)} />
             }
           />
           <Route
@@ -264,6 +258,7 @@ export default function App() {
   }
 
   // ── Đã đăng nhập ──────────────────────────────────────────
+  /** Layout có heading (employee + owner) */
   const wrap = (title, subtitle, node, options = {}) => (
     <Layout
       role={user.role}
@@ -279,6 +274,7 @@ export default function App() {
     </Layout>
   );
 
+  /** Layout không heading (customer) */
   const wrapCustomer = (node, options = {}) => (
     <Layout
       role="CUSTOMER"
@@ -302,12 +298,9 @@ export default function App() {
         {/* 403 */}
         <Route path="/403" element={<Forbidden />} />
 
-        {/* Customer */}
+        {/* ───── Customer ───── */}
         <Route element={<ProtectedRoute allow={["CUSTOMER"]} />}>
-          <Route
-            path="/customer"
-            element={<Navigate to="/customer/home" replace />}
-          />
+          <Route path="/customer" element={<Navigate to="/customer/home" replace />} />
           <Route
             path="/customer/home"
             element={wrapCustomer(
@@ -323,32 +316,20 @@ export default function App() {
           />
           <Route
             path="/customer/cart"
-            element={wrapCustomer(
-              <CustomerCart cart={cart} setCart={setCart} />
-            )}
+            element={wrapCustomer(<CustomerCart cart={cart} setCart={setCart} />)}
           />
           <Route
             path="/customer/checkout"
             element={wrapCustomer(
-              <CustomerCheckout
-                cart={cart}
-                setCart={setCart}
-                user={user}
-              />
+              <CustomerCheckout cart={cart} setCart={setCart} user={user} />
             )}
           />
-          <Route
-            path="/customer/points"
-            element={<Navigate to="/customer/promotions" replace />}
-          />
+          <Route path="/customer/points" element={<Navigate to="/customer/promotions" replace />} />
           <Route
             path="/customer/orders"
             element={wrapCustomer(
               <>
-                <CustomerOrders
-                  user={user}
-                  onOpenSupport={setOrderChatRequest}
-                />
+                <CustomerOrders user={user} onOpenSupport={setOrderChatRequest} />
                 <ChatBotWidget
                   cart={cart}
                   setCart={setCart}
@@ -362,35 +343,19 @@ export default function App() {
           />
           <Route
             path="/customer/profile"
-            element={wrapCustomer(
-              <CustomerProfile user={user} setUser={setUser} />
-            )}
+            element={wrapCustomer(<CustomerProfile user={user} setUser={setUser} />)}
           />
-          <Route
-            path="/customer/promotions"
-            element={wrapCustomer(<CustomerPromotions />)}
-          />
-          <Route
-            path="/customer/wallet"
-            element={wrapCustomer(<CustomerWallet user={user} />)}
-          />
+          <Route path="/customer/promotions" element={wrapCustomer(<CustomerPromotions />)} />
+          <Route path="/customer/wallet" element={wrapCustomer(<CustomerWallet user={user} />)} />
           <Route
             path="/customer/chat"
-            element={wrapCustomer(
-              <CustomerChat user={user} cart={cart} setCart={setCart} />
-            )}
+            element={wrapCustomer(<CustomerChat user={user} cart={cart} setCart={setCart} />)}
           />
-          <Route
-            path="/customer/success"
-            element={wrapCustomer(<CustomerSuccess />)}
-          />
-          <Route
-            path="/customer/payment-result"
-            element={wrapCustomer(<PaymentResult />)}
-          />
+          <Route path="/customer/success" element={wrapCustomer(<CustomerSuccess />)} />
+          <Route path="/customer/payment-result" element={wrapCustomer(<PaymentResult />)} />
         </Route>
 
-        {/* Employee */}
+        {/* ───── Employee ───── */}
         <Route element={<ProtectedRoute allow={["EMPLOYEE"]} />}>
           <Route
             path="/employee"
@@ -407,22 +372,12 @@ export default function App() {
               </Layout>
             }
           />
-          <Route
-            path="/employee/prep"
-            element={<Navigate to="/employee/orders?station=kitchen" replace />}
-          />
+          <Route path="/employee/prep" element={<Navigate to="/employee/orders?station=kitchen" replace />} />
           <Route
             path="/employee/shifts"
-            element={wrap(
-              "Ca làm việc",
-              "Chấm công & lịch sử ca",
-              <EmployeeShifts />
-            )}
+            element={wrap("Ca làm việc", "Chấm công & lịch sử ca", <EmployeeShifts />)}
           />
-          <Route
-            path="/employee/attendance"
-            element={<Navigate to="/employee/shifts" replace />}
-          />
+          <Route path="/employee/attendance" element={<Navigate to="/employee/shifts" replace />} />
           <Route
             path="/employee/orders"
             element={wrap("Đơn hàng", "Xử lý đơn khách", <EmployeeOrders />)}
@@ -441,112 +396,61 @@ export default function App() {
           />
           <Route
             path="/employee/chat"
-            element={wrap(
-              "Chat khách hàng",
-              "Hỗ trợ khách hàng",
-              <EmployeeChat />
-            )}
+            element={wrap("Chat khách hàng", "Hỗ trợ khách hàng", <EmployeeChat />)}
           />
         </Route>
 
-        {/* Admin / Owner */}
+        {/* ───── Admin / Owner ───── */}
         <Route element={<ProtectedRoute allow={["ADMIN"]} />}>
           <Route
             path="/owner"
-            element={wrap(
-              "Tổng quan",
-              "Theo dõi hoạt động Canteen",
-              <OwnerDashboard />
-            )}
+            element={wrap("Tổng quan", "Theo dõi hoạt động Canteen", <OwnerDashboard />)}
           />
           <Route
             path="/owner/employees"
-            element={wrap(
-              "Quản lý nhân viên",
-              "Danh sách nhân viên",
-              <OwnerEmployees />
-            )}
+            element={wrap("Quản lý nhân viên", "Danh sách nhân viên", <OwnerEmployees />)}
           />
-          )} />
+          {/* ⚠️ ĐÃ XOÁ DÒNG LỖI SYNTAX ")} />" Ở ĐÂY */}
           <Route
             path="/owner/attendance"
-            element={wrap(
-              "Chấm công",
-              "Lịch sử chấm công nhân viên",
-              <OwnerAttendance />
-            )}
+            element={wrap("Chấm công", "Lịch sử chấm công nhân viên", <OwnerAttendance />)}
           />
           <Route
             path="/owner/customers"
-            element={wrap(
-              "Quản lý khách hàng",
-              "Danh sách khách hàng",
-              <OwnerCustomers />
-            )}
+            element={wrap("Quản lý khách hàng", "Danh sách khách hàng", <OwnerCustomers />)}
           />
           <Route
             path="/owner/menu"
-            element={wrap(
-              "Quản lý thực đơn",
-              "Món ăn",
-              <OwnerMenu />
-            )}
+            element={wrap("Quản lý thực đơn", "Món ăn", <OwnerMenu />)}
           />
           <Route
             path="/owner/price-history"
-            element={wrap(
-              "Lịch sử giá",
-              "Theo dõi thay đổi giá món ăn",
-              <OwnerPriceHistory />
-            )}
+            element={wrap("Lịch sử giá", "Theo dõi thay đổi giá món ăn", <OwnerPriceHistory />)}
           />
           <Route
             path="/owner/inventory"
             element={wrap("Kho hàng", "Nguyên liệu", <OwnerInventory />)}
           />
-          <Route
-            path="/owner/reports"
-            element={<Navigate to="/owner/finance" replace />}
-          />
+          <Route path="/owner/reports" element={<Navigate to="/owner/finance" replace />} />
           <Route
             path="/owner/orders"
-            element={wrap(
-              "Quản lý đơn hàng",
-              "Xử lý đơn khách như nhân viên",
-              <OwnerOrders />
-            )}
+            element={wrap("Quản lý đơn hàng", "Xử lý đơn khách như nhân viên", <OwnerOrders />)}
           />
           <Route
             path="/owner/vouchers"
-            element={wrap(
-              "Quản lý Voucher",
-              "Tạo / sửa / xóa voucher cho khách",
-              <OwnerVouchers />
-            )}
+            element={wrap("Quản lý Voucher", "Tạo / sửa / xóa voucher cho khách", <OwnerVouchers />)}
           />
           <Route
             path="/owner/finance"
-            element={wrap(
-              "Quản lý tài chính",
-              "Báo cáo tài chính tổng hợp",
-              <OwnerFinance />
-            )}
+            element={wrap("Quản lý tài chính", "Báo cáo tài chính tổng hợp", <OwnerFinance />)}
           />
           <Route
             path="/owner/wallet"
-            element={wrap(
-              "Quản lý Ví Canteen",
-              "Duyệt nạp / rút / thanh toán của khách",
-              <OwnerWallet />
-            )}
+            element={wrap("Quản lý Ví Canteen", "Duyệt nạp / rút / thanh toán của khách", <OwnerWallet />)}
           />
           <Route
             path="/owner/settings"
-            element={wrap(
-              "Cài đặt",
-              "Tài khoản nhận tiền + thông tin liên hệ",
-              <OwnerSettings />
-            )}
+            element={wrap("Cài đặt", "Tài khoản nhận tiền + thông tin liên hệ", <OwnerSettings />)}
           />
           <Route
             path="/owner/profile"
@@ -558,19 +462,11 @@ export default function App() {
           />
           <Route
             path="/owner/backup"
-            element={wrap(
-              "Backup dữ liệu",
-              "Xuất / nhập / reset database",
-              <OwnerBackup />
-            )}
+            element={wrap("Backup dữ liệu", "Xuất / nhập / reset database", <OwnerBackup />)}
           />
           <Route
             path="/owner/chat"
-            element={wrap(
-              "Chat & Hỗ trợ",
-              "Giám sát & điều phối chat toàn hệ thống",
-              <OwnerChat />
-            )}
+            element={wrap("Chat & Hỗ trợ", "Giám sát & điều phối chat toàn hệ thống", <OwnerChat />)}
           />
         </Route>
 
@@ -579,22 +475,10 @@ export default function App() {
         <Route path="/payment-result" element={<PaymentResult />} />
 
         {/* Root & fallback khi đã login */}
-        <Route
-          path="/"
-          element={<Navigate to={homePathForRole(user.role)} replace />}
-        />
-        <Route
-          path="/login"
-          element={<Navigate to={homePathForRole(user.role)} replace />}
-        />
-        <Route
-          path="/register"
-          element={<Navigate to={homePathForRole(user.role)} replace />}
-        />
-        <Route
-          path="*"
-          element={<Navigate to={homePathForRole(user.role)} replace />}
-        />
+        <Route path="/" element={<Navigate to={homePathForRole(user.role)} replace />} />
+        <Route path="/login" element={<Navigate to={homePathForRole(user.role)} replace />} />
+        <Route path="/register" element={<Navigate to={homePathForRole(user.role)} replace />} />
+        <Route path="*" element={<Navigate to={homePathForRole(user.role)} replace />} />
       </Routes>
     </>
   );

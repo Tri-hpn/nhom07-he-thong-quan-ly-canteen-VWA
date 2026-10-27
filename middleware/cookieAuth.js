@@ -8,7 +8,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import mongoose from "mongoose";
 
-const ACCESS_TOKEN_TTL = "7d"; // Demo: cho phép 7 ngày để sinh viên không phải login lại
+const ACCESS_TOKEN_TTL = "7d";
 const SESSION_COLLECTION = "sessions";
 
 function sha256(str) {
@@ -34,7 +34,6 @@ export async function issueTokens(res, userPayload, jwtSecret, { req } = {}) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    // Dọn session hết hạn của user (nhưng KHÔNG dọn session khác đang active)
     try {
       await coll.deleteMany({
         user_id: userPayload.id,
@@ -42,12 +41,11 @@ export async function issueTokens(res, userPayload, jwtSecret, { req } = {}) {
       });
     } catch {}
 
-    // Tạo session mới — throw nếu fail để endpoint biết
     try {
       await coll.insertOne({
         jti,
         user_id: userPayload.id,
-        refresh_hash: null, // không dùng nữa
+        refresh_hash: null,
         ua: req?.headers?.["user-agent"] || "",
         ip: req?.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req?.ip || "",
         created_at: now.toISOString(),
@@ -60,12 +58,11 @@ export async function issueTokens(res, userPayload, jwtSecret, { req } = {}) {
     }
   }
 
-  // 🔴 KHÔNG set cookie nữa
   return { accessToken, jti, sid };
 }
 
-// Giữ để tương thích ngược — không làm gì
-export function clearAuthCookies(res) {
+// 🔧 FIX: nhận thêm `req` (server-json gọi clearAuthCookies(res, req))
+export function clearAuthCookies(res, _req) {
   res.clearCookie("vwa_access", { path: "/" });
   res.clearCookie("vwa_refresh", { path: "/" });
 }
@@ -106,7 +103,6 @@ export async function revokeAllSessions(userId, exceptJti = null) {
   } catch { return 0; }
 }
 
-// 🔴 Chỉ đọc từ Authorization header (Bearer), KHÔNG đọc cookie
 export function verifyAnyToken(req, jwtSecret, expectedType = "access") {
   if (!jwtSecret) return { ok: false, error: "JWT_SECRET missing" };
 
@@ -123,7 +119,6 @@ export function verifyAnyToken(req, jwtSecret, expectedType = "access") {
   }
 }
 
-// Không dùng nữa — giữ để tương thích
 export async function verifyRefreshAndMatch() {
   return { ok: false, error: "refresh-disabled" };
 }

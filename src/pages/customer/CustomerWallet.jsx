@@ -790,10 +790,6 @@ export default function CustomerWallet({ user }) {
               {t("Tra cứu chi tiết các lần thanh toán, nạp tiền và tiền trợ giá học viện")}
             </p>
           </div>
-          <button className="wallet-history__export">
-            <Download size={16} />
-            {t("Tải sao kê PDF / Excel")}
-          </button>
         </div>
 
         <div className="wallet-history__filters">

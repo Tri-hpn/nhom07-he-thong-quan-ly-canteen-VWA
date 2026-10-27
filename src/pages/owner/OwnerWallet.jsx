@@ -3,6 +3,11 @@
 // ============================================================
 // ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
 // 🔧 FIX #93: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
+// 🔧 Batch 12 FIX:
+//   - Import getToken
+//   - Guard load() chống spam 401
+//   - Guard auto-refresh: pause khi !token hoặc tab ẩn
+//   - Mounted guard tránh setState on unmounted
 // ============================================================
 
 import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
@@ -10,7 +15,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingBag, Check, Ban, Search, AlertTriangle, Eye, Building2, X, Loader2, AlertCircle, RefreshCw, CheckSquare, Square, Clock,
 } from "lucide-react";
-import { api } from "../../api";
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
@@ -179,9 +184,32 @@ export default function OwnerWallet() {
   // Race-safe
   const reqIdRef = useRef(0);
 
+  // 🔧 Batch 12 FIX: mounted guard tránh setState on unmounted
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // 🔧 Batch 12 FIX: tab visibility để pause auto-refresh khi tab ẩn
+  const [tabVisible, setTabVisible] = useState(
+    typeof document === "undefined" || !document.hidden
+  );
+  useEffect(() => {
+    const handler = () => setTabVisible(!document.hidden);
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
+
   // ---------- Load ----------
 
   const load = useCallback(async (silent = false) => {
+    // 🔧 Batch 12 FIX: guard chống spam 401
+    if (!getToken()) {
+      setLoading(false);
+      return;
+    }
+
     const myReqId = ++reqIdRef.current;
     if (!silent) setRefreshing(true);
     setError("");
@@ -193,15 +221,16 @@ export default function OwnerWallet() {
       ]);
 
       if (myReqId !== reqIdRef.current) return;
+      if (!mountedRef.current) return;
 
       setAllTx(Array.isArray(txs) ? txs : []);
       setStats(st || EMPTY_STATS);
     } catch (e) {
-      if (myReqId === reqIdRef.current) {
+      if (myReqId === reqIdRef.current && mountedRef.current) {
         setError(e.message || t("Không tải được dữ liệu ví"));
       }
     } finally {
-      if (myReqId === reqIdRef.current) {
+      if (myReqId === reqIdRef.current && mountedRef.current) {
         setLoading(false);
         if (!silent) setRefreshing(false);
       }
@@ -212,11 +241,14 @@ export default function OwnerWallet() {
     load(false);
   }, [load]);
 
-  // Auto-refresh
+  // 🔧 Batch 12 FIX: auto-refresh chỉ khi có token + tab visible
   useEffect(() => {
+    if (!getToken()) return;
+    if (!tabVisible) return;
+
     const timer = setInterval(() => load(true), REFRESH_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, tabVisible]);
 
   // ESC đóng modals
   useEffect(() => {
@@ -269,7 +301,7 @@ export default function OwnerWallet() {
       return timeB - timeA; // Các tab khác: Mới nhất lên đầu
     });
     return result;
-  }, [allTx, tab, typeFilter, rangeFilter, q]);
+  }, [allTx, tab, typeFilter, rangeFilter, q, TIME_RANGES]);
 
   const counts = useMemo(
     () => ({
@@ -330,17 +362,22 @@ export default function OwnerWallet() {
         setProcessing((p) => ({ ...p, [tx.id]: "approve" }));
         try {
           await api.wallet.approve(tx.id);
+          if (!mountedRef.current) return;
           toast(`${t("Đã duyệt")} ${tx.code}`, "success");
           setConfirm(null);
           load(true);
         } catch (e) {
-          toast(e.message || t("Không duyệt được"), "error");
+          if (mountedRef.current) {
+            toast(e.message || t("Không duyệt được"), "error");
+          }
         } finally {
-          setProcessing((p) => {
-            const n = { ...p };
-            delete n[tx.id];
-            return n;
-          });
+          if (mountedRef.current) {
+            setProcessing((p) => {
+              const n = { ...p };
+              delete n[tx.id];
+              return n;
+            });
+          }
         }
       },
     });
@@ -377,6 +414,8 @@ export default function OwnerWallet() {
           }
         }
 
+        if (!mountedRef.current) return;
+
         setBulkProcessing(false);
         setConfirm(null);
         setSelectedIds([]);
@@ -408,7 +447,7 @@ export default function OwnerWallet() {
     try {
       await confirm.onConfirm();
     } finally {
-      setConfirmBusy(false);
+      if (mountedRef.current) setConfirmBusy(false);
     }
   };
 
@@ -419,16 +458,21 @@ export default function OwnerWallet() {
     setRejectModal(null);
     try {
       await api.wallet.reject(tx.id, note);
+      if (!mountedRef.current) return;
       toast(`${t("Đã từ chối")} ${tx.code}`, "success");
       load(true);
     } catch (e) {
-      toast(e.message || t("Không từ chối được"), "error");
+      if (mountedRef.current) {
+        toast(e.message || t("Không từ chối được"), "error");
+      }
     } finally {
-      setProcessing((p) => {
-        const n = { ...p };
-        delete n[tx.id];
-        return n;
-      });
+      if (mountedRef.current) {
+        setProcessing((p) => {
+          const n = { ...p };
+          delete n[tx.id];
+          return n;
+        });
+      }
     }
   };
 
@@ -1085,7 +1129,6 @@ function TxRow({
         transition: "all 0.2s",
       }}
     >
-      {/* Checkbox khi pending */}
       {canSelect && (
         <button
           onClick={onToggleSelect}
@@ -1109,7 +1152,6 @@ function TxRow({
         </button>
       )}
 
-      {/* Icon */}
       <div
         style={{
           width: 46,
@@ -1125,7 +1167,6 @@ function TxRow({
         <Icon size={22} />
       </div>
 
-      {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -1178,7 +1219,6 @@ function TxRow({
           <span style={{ fontFamily: "monospace" }}>{tx.code}</span>
           <span>· {tx.user_email}</span>
           <span>
-            {/* 🔧 FIX #93: dùng fmtDateTime cố định VN */}
             · {fmtDateTime(tx.created_at)}
           </span>
         </div>
@@ -1196,7 +1236,6 @@ function TxRow({
         )}
       </div>
 
-      {/* Amount */}
       <div style={{ textAlign: "right", flexShrink: 0, marginRight: 8 }}>
         <b style={{ fontSize: 16, color: config.color, display: "block" }}>
           {config.sign}
@@ -1204,7 +1243,6 @@ function TxRow({
         </b>
       </div>
 
-      {/* Actions */}
       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
         <button
           onClick={onView}
@@ -1272,6 +1310,7 @@ function TxRow({
     </div>
   );
 }
+
 // ============================================================
 // SUB-COMPONENT: DetailModal
 // ============================================================
@@ -1315,7 +1354,6 @@ function DetailModal({ tx, onClose, TX_CONFIG, STATUS_CONFIG, METHOD_BADGES, t }
           value={METHOD_BADGES[tx.method]?.label || tx.method || "—"}
         />
         <InfoRow label={t("Trạng thái")} value={statusConfig.label} />
-        {/* 🔧 FIX #93: dùng fmtDateTime cố định VN */}
         <InfoRow
           label={t("Ngày tạo")}
           value={fmtDateTime(tx.created_at)}
@@ -1443,6 +1481,7 @@ function DetailModal({ tx, onClose, TX_CONFIG, STATUS_CONFIG, METHOD_BADGES, t }
     </Modal>
   );
 }
+
 // ============================================================
 // SUB-COMPONENT: RejectModal
 // ============================================================
