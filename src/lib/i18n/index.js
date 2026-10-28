@@ -1,15 +1,8 @@
 // ============================================================
-// I18N CORE — Hệ thống đa ngôn ngữ (V9 - MULTI-TAB ISOLATED)
+// I18N CORE — Hệ thống đa ngôn ngữ (V10 - B8)
 // ============================================================
-// V9 (2026-10):
-//   - 🔴 localStorage → sessionStorage: mỗi TAB độc lập
-//   - 🔴 BỎ "storage" event listener (không sync cross-tab nữa)
-//   - 🔴 BỎ OLD_STORAGE_KEY (không đọc localStorage nữa)
-//   - ✅ "language-change" listener add ngay khi module load
-//     (không cần gọi initI18n)
-//   - ✅ useSettings(role) lo persist per-role; lib/i18n chỉ là
-//     bộ nhớ đệm cho boot (đọc sessionStorage.vwa_lang không role)
-// ============================================================
+// V10 (B8): applyVars escape regex special chars trong `key`
+//           → tránh crash nếu key chứa . $ + ( [ ...
 
 import vi from "./locales/vi.json";
 import en from "./locales/en.json";
@@ -17,7 +10,7 @@ import ja from "./locales/ja.json";
 import ko from "./locales/ko.json";
 import zh from "./locales/zh.json";
 
-const LANG_KEY = "vwa_lang"; // sessionStorage key (per tab)
+const LANG_KEY = "vwa_lang";
 const DEFAULT_LANG = "vi";
 
 export const AVAILABLE_LANGS = [
@@ -37,9 +30,9 @@ let inited = false;
 const listeners = new Set();
 const translationCache = new Map();
 
-// ============================================================
-// BOOT: Đọc lang đã lưu (per-tab) — chỉ sessionStorage
-// ============================================================
+// Escape regex specials trong tên biến {var}
+const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+
 try {
   if (typeof window !== "undefined" && typeof sessionStorage !== "undefined") {
     const saved = sessionStorage.getItem(LANG_KEY);
@@ -49,30 +42,25 @@ try {
   }
 } catch {}
 
-// ============================================================
-// API CƠ BẢN
-// ============================================================
 export function getLang() { return currentLang; }
-export function getLocale() { return currentLang; } // Alias cho useI18n
+export function getLocale() { return currentLang; }
 export function isReady() { return ready; }
 export function getAvailableLangs() { return AVAILABLE_LANGS; }
 
-// ---------- Subscribe / Listener ----------
 export function onLangChange(cb) {
   if (typeof cb !== "function") return () => {};
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
-export function subscribe(cb) { return onLangChange(cb); } // Alias cho useI18n
+export function subscribe(cb) { return onLangChange(cb); }
 
-// ============================================================
-// HÀM DỊCH
-// ============================================================
+// 🔧 B8: escape ký tự regex đặc biệt trong `key`
 function applyVars(text, vars) {
   if (!vars || typeof vars !== "object") return text;
   let out = text;
   for (const key of Object.keys(vars)) {
-    const re = new RegExp(`\\{${key}\\}`, "g");
+    const safeKey = String(key).replace(REGEX_SPECIALS, "\\$&");
+    const re = new RegExp(`\\{${safeKey}\\}`, "g");
     out = out.replace(re, String(vars[key]));
   }
   return out;
@@ -93,7 +81,6 @@ export function t(source, vars) {
     const dict = DICTS[currentLang] || {};
     translated = dict[key];
 
-    // Fallback: trim / normalize
     if (!translated || translated === key) {
       const trimmed = key.trim();
       if (trimmed !== key) translated = dict[trimmed];
@@ -116,9 +103,6 @@ export function t(source, vars) {
   return applyVars(translated, vars);
 }
 
-// ============================================================
-// ĐỔI NGÔN NGỮ
-// ============================================================
 export function setLang(lang) {
   if (!lang || typeof lang !== "string") return;
   if (!DICTS[lang]) return;
@@ -127,30 +111,23 @@ export function setLang(lang) {
   currentLang = lang;
   translationCache.clear();
 
-  // 🔴 Ghi vào sessionStorage (per tab) — KHÔNG ghi localStorage
   try {
     sessionStorage.setItem(LANG_KEY, lang);
   } catch {}
 
-  // Notify hook
   listeners.forEach((cb) => {
     try { cb(lang); } catch (e) { console.error("[i18n] listener error:", e); }
   });
 
-  // Notify same-tab components
   try {
     window.dispatchEvent(new CustomEvent("language-change", { detail: { lang } }));
   } catch {}
 
   try { document.documentElement.lang = lang; } catch {}
 }
-export function setLocale(lang) { setLang(lang); } // Alias
+export function setLocale(lang) { setLang(lang); }
 
-// ============================================================
-// 🔴 SAME-TAB EVENT LISTENER (add ngay, không cần initI18n)
-// ============================================================
 if (typeof window !== "undefined") {
-  // Lắng nghe "language-change" (do useSettings dispatch)
   try {
     window.addEventListener("language-change", (e) => {
       const next = e?.detail?.lang;
@@ -158,13 +135,8 @@ if (typeof window !== "undefined") {
       setLang(next);
     });
   } catch {}
-
-  // 🔴 KHÔNG listen "storage" event nữa — mỗi tab đã độc lập qua sessionStorage
 }
 
-// ============================================================
-// KHỞI TẠO (giữ để tương thích ngược, không bắt buộc)
-// ============================================================
 export function initI18n() {
   ready = true;
   if (inited) return Promise.resolve(true);
@@ -174,15 +146,9 @@ export function initI18n() {
     document.documentElement.lang = currentLang;
   } catch {}
 
-  // 🔴 Không add "storage" listener nữa
-  // "language-change" đã được add ở module load
-
   return Promise.resolve(true);
 }
 
-// ============================================================
-// EXPORT BỔ SUNG
-// ============================================================
 export function getAvailableKeys() {
   return Object.keys(DICTS[currentLang] || {});
 }

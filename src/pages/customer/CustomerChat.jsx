@@ -1,6 +1,11 @@
 // ============================================================
-// CUSTOMERCHAT.JSX — Chat khách hàng (V4 - FIX RACE CONDITION)
+// CUSTOMERCHAT.JSX — Chat khách hàng (V5)
 // ============================================================
+// V5 (B9.3):
+//   - quickAdd: check maxStock TRƯỚC setCart (tránh stale closure)
+//   - .replace → object interpolation
+//   - tData cho tên món
+//   - DateDivider nhận `t`
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -12,26 +17,13 @@ import { toast } from "../../components/Effects";
 import { getBotReply } from "../../components/ChatBot";
 import { useI18n } from "../../hooks/useI18n";
 import FoodDetailModal from "../../components/FoodDetailModal";
-import {
-  fmtTime,
-  fmtDateLabel,
-  getDateLabelVariant,
-} from "../../lib/datetime";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
+import { fmtTime, fmtDateLabel, getDateLabelVariant } from "../../lib/datetime";
 
 const BOT_AVATAR = "/bot-avatar.svg";
-
 const POLL_MS = 3000;
 const AI_REPLY_DELAY_MS = 600;
 const MAX_MESSAGE_LENGTH = 2000;
 const SCROLL_THRESHOLD_PX = 30;
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function makeId(prefix) {
   const rand =
@@ -51,20 +43,13 @@ function sameDay(iso1, iso2) {
       d1.getMonth() === d2.getMonth() &&
       d1.getDate() === d2.getDate()
     );
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
-// ============================================================
-// SUB: DateDivider
-// ============================================================
-
-function DateDivider({ iso }) {
-  const label = fmtDateLabel(iso);
+function DateDivider({ iso, t }) {
+  const label = fmtDateLabel(iso, t);
   const variant = getDateLabelVariant(iso);
   if (!label) return null;
-
   return (
     <div className={`chat-date-divider chat-date-divider--${variant}`}>
       <span className="chat-date-divider__line" />
@@ -74,84 +59,55 @@ function DateDivider({ iso }) {
   );
 }
 
-// ============================================================
-// SUB: BotAvatar
-// ============================================================
-
 function BotAvatar({ size = 32 }) {
   const [error, setError] = useState(false);
-
   if (error) {
     return (
       <div
         style={{
-          width: size,
-          height: size,
-          borderRadius: "50%",
+          width: size, height: size, borderRadius: "50%",
           background: "linear-gradient(135deg, #8b5cf6, #2634d5)",
-          color: "#fff",
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
-          alignSelf: "flex-end",
+          color: "#fff", display: "grid", placeItems: "center",
+          flexShrink: 0, alignSelf: "flex-end",
         }}
       >
         <Bot size={size * 0.5} />
       </div>
     );
   }
-
   return (
     <img
       src={BOT_AVATAR}
       alt="Bot"
       onError={() => setError(true)}
       style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        objectFit: "cover",
-        flexShrink: 0,
-        alignSelf: "flex-end",
-        border: "2px solid #c7d2fe",
-        backgroundColor: "#fff",
+        width: size, height: size, borderRadius: "50%", objectFit: "cover",
+        flexShrink: 0, alignSelf: "flex-end",
+        border: "2px solid #c7d2fe", backgroundColor: "#fff",
       }}
     />
   );
 }
-
-// ============================================================
-// SUB: TabButton
-// ============================================================
 
 function TabButton({ active, onClick, icon, title, subtitle, color }) {
   return (
     <button
       onClick={onClick}
       style={{
-        flex: 1,
-        padding: "14px 16px",
+        flex: 1, padding: "14px 16px",
         background: active ? "var(--bg-tertiary, #f5f7fb)" : "transparent",
         border: 0,
         borderBottom: active ? "3px solid " + color : "3px solid transparent",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        textAlign: "left",
-        transition: "all 0.2s",
+        cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+        textAlign: "left", transition: "all 0.2s",
       }}
     >
       <div
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
+          width: 36, height: 36, borderRadius: 10,
           background: active ? color : color + "20",
           color: active ? "#fff" : color,
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
+          display: "grid", placeItems: "center", flexShrink: 0,
         }}
       >
         {icon}
@@ -159,22 +115,16 @@ function TabButton({ active, onClick, icon, title, subtitle, color }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: active
-              ? "var(--text-primary, #172033)"
-              : "var(--text-muted, #475569)",
+            fontSize: 13, fontWeight: 700,
+            color: active ? "var(--text-primary, #172033)" : "var(--text-muted, #475569)",
           }}
         >
           {title}
         </div>
         <div
           style={{
-            fontSize: 11,
-            color: "var(--text-light, #8993a3)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            fontSize: 11, color: "var(--text-light, #8993a3)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}
         >
           {subtitle}
@@ -184,32 +134,22 @@ function TabButton({ active, onClick, icon, title, subtitle, color }) {
   );
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function CustomerChat({ cart, setCart, user }) {
-  const { t } = useI18n();
+  const { t, tData } = useI18n();
 
   const QUICK_REPLIES = [
-    t("Dưới 30k"),
-    t("Món chay"),
-    t("Đồ uống"),
-    t("Món cay"),
-    t("Bán chạy"),
-    t("Gợi ý"),
+    t("Dưới 30k"), t("Món chay"), t("Đồ uống"),
+    t("Món cay"), t("Bán chạy"), t("Gợi ý"),
   ];
 
   const [tab, setTab] = useState("ai");
 
-  // Staff chat
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [staffError, setStaffError] = useState("");
 
-  // AI chat
   const [aiMessages, setAiMessages] = useState([]);
   const [aiText, setAiText] = useState("");
   const [aiTyping, setAiTyping] = useState(false);
@@ -224,22 +164,18 @@ export default function CustomerChat({ cart, setCart, user }) {
 
   const staffReqIdRef = useRef(0);
   const aiTimerRef = useRef(null);
-  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
+  const isSendingRef = useRef(false);
 
-  // ✅ Refs cho smart scroll
   const lastAiCountRef = useRef(0);
   const lastStaffCountRef = useRef(0);
   const aiInitializedRef = useRef(false);
   const staffInitializedRef = useRef(false);
 
-  // ✅ Cờ "user đang chạm feed" — không auto-scroll khi true
   const aiTouchingRef = useRef(false);
   const staffTouchingRef = useRef(false);
-  // ✅ Cờ "user vừa bấm gửi" — cần scroll xuống để thấy tin mình
   const aiPendingScrollRef = useRef(false);
   const staffPendingScrollRef = useRef(false);
 
-  // Load menu 1 lần
   useEffect(() => {
     api.menu
       .listActive("", "Tất cả", "popular")
@@ -247,21 +183,17 @@ export default function CustomerChat({ cart, setCart, user }) {
       .catch(() => setMenuItems([]));
   }, []);
 
-  // Cleanup AI timeout
   useEffect(() => {
     return () => {
       if (aiTimerRef.current) clearTimeout(aiTimerRef.current);
     };
   }, []);
 
-  // Load staff
   const loadStaff = useCallback(
     async (silent = false) => {
-      // 🔴 FIX: Chặn Polling nếu đang gửi tin
       if (silent && isSendingRef.current) return;
 
       const myReqId = ++staffReqIdRef.current;
-
       if (!silent) setLoading(true);
       if (!silent) setStaffError("");
 
@@ -282,15 +214,11 @@ export default function CustomerChat({ cart, setCart, user }) {
 
   useEffect(() => {
     if (tab !== "staff") return;
-
     loadStaff(false);
     const timer = setInterval(() => loadStaff(true), POLL_MS);
     return () => clearInterval(timer);
   }, [tab, loadStaff]);
 
-  // ============================================================
-  // AI SCROLL — SMART V3
-  // ============================================================
   useEffect(() => {
     if (tab !== "ai") return;
     const container = aiScrollRef.current;
@@ -322,14 +250,12 @@ export default function CustomerChat({ cart, setCart, user }) {
     };
   }, [tab]);
 
-  // --- AI: auto scroll ---
   useEffect(() => {
     if (tab !== "ai") return;
     const container = aiScrollRef.current;
     if (!container) return;
 
     const isInitialLoad = !aiInitializedRef.current;
-
     if (isInitialLoad && aiMessages.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -364,21 +290,14 @@ export default function CustomerChat({ cart, setCart, user }) {
 
     const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
     const nearBottom = dist < SCROLL_THRESHOLD_PX;
-
     if (nearBottom || aiTyping) {
       requestAnimationFrame(() => {
         container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
       });
     }
-
     lastAiCountRef.current = aiMessages.length;
   }, [tab, aiMessages, aiTyping]);
 
-  // ============================================================
-  // STAFF SCROLL — SMART V3
-  // ============================================================
-
-  // --- Staff: listener chạm feed ---
   useEffect(() => {
     if (tab !== "staff") return;
     const container = staffScrollRef.current;
@@ -410,14 +329,12 @@ export default function CustomerChat({ cart, setCart, user }) {
     };
   }, [tab]);
 
-  // --- Staff: auto scroll ---
   useEffect(() => {
     if (tab !== "staff") return;
     const container = staffScrollRef.current;
     if (!container) return;
 
     const isInitialLoad = !staffInitializedRef.current;
-
     if (isInitialLoad && messages.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -452,23 +369,17 @@ export default function CustomerChat({ cart, setCart, user }) {
 
     const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
     const nearBottom = dist < SCROLL_THRESHOLD_PX;
-
     if (nearBottom) {
       requestAnimationFrame(() => {
         container.scrollTo({ top: container.scrollHeight, behavior: "auto" });
       });
     }
-
     lastStaffCountRef.current = messages.length;
   }, [tab, messages]);
 
-  // Reset init ref khi đổi tab
   useEffect(() => {
-    if (tab === "ai") {
-      staffInitializedRef.current = false;
-    } else {
-      aiInitializedRef.current = false;
-    }
+    if (tab === "ai") staffInitializedRef.current = false;
+    else aiInitializedRef.current = false;
   }, [tab]);
 
   const sendStaff = async () => {
@@ -476,14 +387,14 @@ export default function CustomerChat({ cart, setCart, user }) {
     if (!val || sending) return;
 
     if (val.length > MAX_MESSAGE_LENGTH) {
-      toast(t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH), "error");
+      toast(t("Tin nhắn tối đa {n} ký tự", { n: MAX_MESSAGE_LENGTH }), "error");
       return;
     }
 
-    isSendingRef.current = true; // 🔴
+    isSendingRef.current = true;
     staffPendingScrollRef.current = true;
     setSending(true);
-    
+
     try {
       const msg = await api.chat.send({ content: val });
       setText("");
@@ -496,7 +407,7 @@ export default function CustomerChat({ cart, setCart, user }) {
       staffPendingScrollRef.current = false;
     } finally {
       setSending(false);
-      isSendingRef.current = false; // 🔴
+      isSendingRef.current = false;
     }
   };
 
@@ -505,7 +416,7 @@ export default function CustomerChat({ cart, setCart, user }) {
     if (!val || aiTyping) return;
 
     if (val.length > MAX_MESSAGE_LENGTH) {
-      toast(t("Tin nhắn tối đa {n} ký tự").replace("{n}", MAX_MESSAGE_LENGTH), "error");
+      toast(t("Tin nhắn tối đa {n} ký tự", { n: MAX_MESSAGE_LENGTH }), "error");
       return;
     }
 
@@ -543,38 +454,39 @@ export default function CustomerChat({ cart, setCart, user }) {
     }, AI_REPLY_DELAY_MS);
   };
 
+  // 🔧 B9.3: check maxStock TRƯỚC setCart (dùng cart state hiện tại)
   const quickAdd = (m) => {
     const id = m._id || m.id;
+    if (!id) return;
     const key = `${id}-S-`;
+    const maxStock = typeof m.stock === "number" && m.stock > 0 ? m.stock : 99;
+    const currentQty = Number(cart?.[key]?.qty) || 0;
+
+    if (currentQty >= maxStock) {
+      toast(t("Chỉ còn {n} phần trong kho", { n: maxStock }), "error");
+      return;
+    }
 
     setCart((c) => {
-      const existing = c[key];
-      const maxStock = typeof m.stock === "number" ? Math.max(1, m.stock) : 99;
-      const newQty = Math.min(maxStock, (existing?.qty || 0) + 1);
-
-      if (existing && existing.qty >= maxStock) return c;
-
+      const actual = Number(c?.[key]?.qty) || 0;
+      if (actual >= maxStock) return c;
       return {
         ...c,
         [key]: {
           ...m,
           name: m.name,
           price: m.price,
-          qty: newQty,
+          qty: actual + 1,
           stock: m.stock ?? 99,
           _originalId: id,
         },
       };
     });
 
-    const existing = cart[key];
-    const maxStock = typeof m.stock === "number" ? Math.max(1, m.stock) : 99;
-    if (existing && existing.qty >= maxStock) {
-      toast(t("Chỉ còn {n} phần trong kho").replace("{n}", maxStock), "error");
-      return;
-    }
-
-    toast(t("Đã thêm {name} vào giỏ").replace("{name}", m.name), "success");
+    toast(
+      t("Đã thêm {name} vào giỏ", { name: tData(m, "name") || m.name }),
+      "success"
+    );
   };
 
   const onAiKey = (e) => {
@@ -596,15 +508,10 @@ export default function CustomerChat({ cart, setCart, user }) {
       style={{
         background: "var(--card-bg, #fff)",
         border: "1px solid var(--border-color, #e7ebf0)",
-        borderRadius: 12,
-        display: "flex",
-        flexDirection: "column",
-        height: "calc(100vh - 180px)",
-        minHeight: 520,
-        overflow: "hidden",
+        borderRadius: 12, display: "flex", flexDirection: "column",
+        height: "calc(100vh - 180px)", minHeight: 520, overflow: "hidden",
       }}
     >
-      {/* ============ TABS ============ */}
       <div
         style={{
           display: "flex",
@@ -613,16 +520,14 @@ export default function CustomerChat({ cart, setCart, user }) {
         }}
       >
         <TabButton
-          active={tab === "ai"}
-          onClick={() => setTab("ai")}
+          active={tab === "ai"} onClick={() => setTab("ai")}
           icon={<Bot size={16} />}
           title={t("Trợ lý AI")}
           subtitle={t("Gợi ý món, hỏi đáp nhanh")}
           color="#8b5cf6"
         />
         <TabButton
-          active={tab === "staff"}
-          onClick={() => setTab("staff")}
+          active={tab === "staff"} onClick={() => setTab("staff")}
           icon={<Store size={16} />}
           title={t("Nhân viên Canteen")}
           subtitle={t("Hỗ trợ trực tiếp")}
@@ -630,17 +535,13 @@ export default function CustomerChat({ cart, setCart, user }) {
         />
       </div>
 
-      {/* ============ TAB AI ============ */}
       {tab === "ai" && (
         <>
           <div
             ref={aiScrollRef}
             style={{
-              flex: 1,
-              overflowY: "auto",
-              overflowX: "hidden",
-              padding: 16,
-              background: "var(--bg-tertiary, #f5f7fb)",
+              flex: 1, overflowY: "auto", overflowX: "hidden",
+              padding: 16, background: "var(--bg-tertiary, #f5f7fb)",
             }}
           >
             {aiMessages.length === 0 && (
@@ -648,29 +549,19 @@ export default function CustomerChat({ cart, setCart, user }) {
                 <BotAvatar />
                 <div
                   style={{
-                    maxWidth: "80%",
-                    padding: "12px 14px",
+                    maxWidth: "80%", padding: "12px 14px",
                     borderRadius: "16px 16px 16px 4px",
-                    background: "#eef2ff",
-                    color: "#172033",
-                    fontSize: 13,
+                    background: "#eef2ff", color: "#172033", fontSize: 13,
                     border: "1px solid #c7d2fe",
                   }}
                 >
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      color: "#2634d5",
-                      marginBottom: 6,
-                    }}
-                  >
+                  <div style={{ fontWeight: 700, color: "#2634d5", marginBottom: 6 }}>
                     🤖 {t("Trợ lý Canteen")}
                   </div>
                   <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                    {t("Xin chào {name}! Mình có thể giúp gì cho bạn?").replace(
-                      "{name}",
-                      user?.name || t("bạn")
-                    )}
+                    {t("Xin chào {name}! Mình có thể giúp gì cho bạn?", {
+                      name: user?.name || t("bạn"),
+                    })}
                   </div>
                 </div>
               </div>
@@ -679,45 +570,34 @@ export default function CustomerChat({ cart, setCart, user }) {
             {aiMessages.map((m, idx) => {
               const isUser = m.from === "user";
               const prev = aiMessages[idx - 1];
-              const showDate =
-                !prev || !sameDay(prev.created_at, m.created_at);
+              const showDate = !prev || !sameDay(prev.created_at, m.created_at);
 
               return (
                 <div key={m.id}>
-                  {showDate && <DateDivider iso={m.created_at} />}
+                  {showDate && <DateDivider iso={m.created_at} t={t} />}
 
                   <div
                     style={{
                       display: "flex",
                       justifyContent: isUser ? "flex-end" : "flex-start",
-                      gap: 8,
-                      marginBottom: 12,
+                      gap: 8, marginBottom: 12,
                     }}
                   >
                     {!isUser && <BotAvatar />}
                     <div
                       style={{
-                        maxWidth: "75%",
-                        padding: "10px 14px",
+                        maxWidth: "75%", padding: "10px 14px",
                         borderRadius: isUser
                           ? "16px 16px 4px 16px"
                           : "16px 16px 16px 4px",
                         background: isUser ? "#2634d5" : "#eef2ff",
-                        color: isUser ? "#fff" : "#172033",
-                        fontSize: 13,
+                        color: isUser ? "#fff" : "#172033", fontSize: 13,
                         border: isUser ? "none" : "1px solid #c7d2fe",
                         boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
                       }}
                     >
                       {!isUser && (
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#2634d5",
-                            marginBottom: 4,
-                          }}
-                        >
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#2634d5", marginBottom: 4 }}>
                           🤖 {t("Trợ lý")}
                         </div>
                       )}
@@ -726,117 +606,70 @@ export default function CustomerChat({ cart, setCart, user }) {
                       </div>
 
                       {!isUser && m.items && m.items.length > 0 && (
-                        <div
-                          style={{
-                            marginTop: 10,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 6,
-                          }}
-                        >
-                          {m.items.map((it) => (
-                            <div
-                              key={it.id || it._id}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: 6,
-                                background: "#fff",
-                                borderRadius: 10,
-                                border: "1px solid #c7d2fe",
-                              }}
-                            >
-                              <img
-                                src={it.image}
-                                alt={it.name}
-                                style={{
-                                  width: 44,
-                                  height: 44,
-                                  borderRadius: 8,
-                                  objectFit: "cover",
-                                  flexShrink: 0,
-                                }}
-                              />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                    color: "#172033",
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {it.name}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: "#18a967",
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {money(it.price)}
-                                </div>
-                              </div>
+                        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                          {m.items.map((it) => {
+                            const itName = tData(it, "name") || it.name;
+                            return (
                               <div
+                                key={it.id || it._id}
                                 style={{
-                                  display: "flex",
-                                  gap: 4,
-                                  flexShrink: 0,
+                                  display: "flex", alignItems: "center", gap: 8,
+                                  padding: 6, background: "#fff", borderRadius: 10,
+                                  border: "1px solid #c7d2fe",
                                 }}
                               >
-                                <button
-                                  onClick={() => quickAdd(it)}
-                                  aria-label={t(
-                                    "Thêm vào giỏ {name}"
-                                  ).replace("{name}", it.name)}
+                                <img
+                                  src={it.image}
+                                  alt={itName}
                                   style={{
-                                    background: "#2634d5",
-                                    color: "#fff",
-                                    border: 0,
-                                    width: 30,
-                                    height: 30,
-                                    borderRadius: 7,
-                                    cursor: "pointer",
-                                    display: "grid",
-                                    placeItems: "center",
+                                    width: 44, height: 44, borderRadius: 8,
+                                    objectFit: "cover", flexShrink: 0,
                                   }}
-                                >
-                                  <ShoppingCart size={13} />
-                                </button>
-                                <button
-                                  onClick={() => setSelected(it)}
-                                  style={{
-                                    background: "#f59e0b",
-                                    color: "#fff",
-                                    border: 0,
-                                    padding: "0 10px",
-                                    height: 30,
-                                    borderRadius: 7,
-                                    cursor: "pointer",
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {t("Xem")}
-                                </button>
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontSize: 12, fontWeight: 700, color: "#172033",
+                                      whiteSpace: "nowrap", overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {itName}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: "#18a967", fontWeight: 700 }}>
+                                    {money(it.price)}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                                  <button
+                                    onClick={() => quickAdd(it)}
+                                    aria-label={t("Thêm vào giỏ {name}", { name: itName })}
+                                    style={{
+                                      background: "#2634d5", color: "#fff", border: 0,
+                                      width: 30, height: 30, borderRadius: 7,
+                                      cursor: "pointer", display: "grid", placeItems: "center",
+                                    }}
+                                  >
+                                    <ShoppingCart size={13} />
+                                  </button>
+                                  <button
+                                    onClick={() => setSelected(it)}
+                                    style={{
+                                      background: "#f59e0b", color: "#fff", border: 0,
+                                      padding: "0 10px", height: 30, borderRadius: 7,
+                                      cursor: "pointer", fontSize: 11, fontWeight: 700,
+                                    }}
+                                  >
+                                    {t("Xem")}
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
-                      <div
-                        style={{
-                          fontSize: 10,
-                          opacity: 0.7,
-                          marginTop: 4,
-                          textAlign: "right",
-                        }}
-                      >
+                      <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4, textAlign: "right" }}>
                         {fmtTime(m.created_at)}
                       </div>
                     </div>
@@ -850,24 +683,15 @@ export default function CustomerChat({ cart, setCart, user }) {
                 <BotAvatar />
                 <div
                   style={{
-                    padding: "12px 16px",
-                    background: "#eef2ff",
+                    padding: "12px 16px", background: "#eef2ff",
                     borderRadius: "16px 16px 16px 4px",
-                    display: "flex",
-                    gap: 4,
-                    alignItems: "center",
+                    display: "flex", gap: 4, alignItems: "center",
                     border: "1px solid #c7d2fe",
                   }}
                 >
                   <span className="dot-typing" />
-                  <span
-                    className="dot-typing"
-                    style={{ animationDelay: "0.15s" }}
-                  />
-                  <span
-                    className="dot-typing"
-                    style={{ animationDelay: "0.3s" }}
-                  />
+                  <span className="dot-typing" style={{ animationDelay: "0.15s" }} />
+                  <span className="dot-typing" style={{ animationDelay: "0.3s" }} />
                 </div>
               </div>
             )}
@@ -875,14 +699,10 @@ export default function CustomerChat({ cart, setCart, user }) {
             <div ref={aiBottomRef} />
           </div>
 
-          {/* Quick replies */}
           <div
             style={{
-              padding: "10px 12px 0",
-              display: "flex",
-              gap: 6,
-              overflowX: "auto",
-              background: "var(--card-bg, #fff)",
+              padding: "10px 12px 0", display: "flex", gap: 6,
+              overflowX: "auto", background: "var(--card-bg, #fff)",
               borderTop: "1px solid var(--border-color, #eef2f7)",
               scrollbarWidth: "none",
             }}
@@ -893,17 +713,12 @@ export default function CustomerChat({ cart, setCart, user }) {
                 onClick={() => sendAI(q)}
                 disabled={aiTyping}
                 style={{
-                  padding: "6px 12px",
-                  background: "var(--bg-tertiary, #f5f7fb)",
+                  padding: "6px 12px", background: "var(--bg-tertiary, #f5f7fb)",
                   border: "1px solid var(--border-color, #e5e9ef)",
-                  borderRadius: 20,
-                  cursor: aiTyping ? "not-allowed" : "pointer",
-                  fontSize: 12,
-                  color: "var(--text-muted, #475569)",
-                  whiteSpace: "nowrap",
-                  fontWeight: 500,
-                  opacity: aiTyping ? 0.5 : 1,
-                  flexShrink: 0,
+                  borderRadius: 20, cursor: aiTyping ? "not-allowed" : "pointer",
+                  fontSize: 12, color: "var(--text-muted, #475569)",
+                  whiteSpace: "nowrap", fontWeight: 500,
+                  opacity: aiTyping ? 0.5 : 1, flexShrink: 0,
                 }}
               >
                 {q}
@@ -911,7 +726,6 @@ export default function CustomerChat({ cart, setCart, user }) {
             ))}
           </div>
 
-          {/* Input */}
           <div style={{ padding: 12, display: "flex", gap: 8 }}>
             <input
               value={aiText}
@@ -921,15 +735,12 @@ export default function CustomerChat({ cart, setCart, user }) {
               disabled={aiTyping}
               maxLength={MAX_MESSAGE_LENGTH}
               style={{
-                flex: 1,
-                padding: "10px 14px",
+                flex: 1, padding: "10px 14px",
                 border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 24,
-                outline: "none",
+                borderRadius: 24, outline: "none",
                 background: "var(--bg-secondary, #f5f7fb)",
                 color: "var(--text-primary, #172033)",
-                fontSize: 13,
-                minWidth: 0,
+                fontSize: 13, minWidth: 0,
               }}
             />
             <button
@@ -937,17 +748,11 @@ export default function CustomerChat({ cart, setCart, user }) {
               disabled={aiTyping || !aiText.trim()}
               aria-label={t("Gửi tin nhắn")}
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
+                width: 44, height: 44, borderRadius: "50%",
                 background: aiText.trim() ? "#8b5cf6" : "#94a3b8",
-                color: "#fff",
-                border: 0,
-                cursor:
-                  aiText.trim() && !aiTyping ? "pointer" : "not-allowed",
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
+                color: "#fff", border: 0,
+                cursor: aiText.trim() && !aiTyping ? "pointer" : "not-allowed",
+                display: "grid", placeItems: "center", flexShrink: 0,
               }}
             >
               <Send size={18} />
@@ -956,17 +761,13 @@ export default function CustomerChat({ cart, setCart, user }) {
         </>
       )}
 
-      {/* ============ TAB STAFF ============ */}
       {tab === "staff" && (
         <>
           <div
             ref={staffScrollRef}
             style={{
-              flex: 1,
-              overflowY: "auto",
-              overflowX: "hidden",
-              padding: 16,
-              background: "var(--bg-tertiary, #f5f7fb)",
+              flex: 1, overflowY: "auto", overflowX: "hidden",
+              padding: 16, background: "var(--bg-tertiary, #f5f7fb)",
             }}
           >
             {staffError && !loading && (
@@ -974,14 +775,9 @@ export default function CustomerChat({ cart, setCart, user }) {
                 style={{
                   background: "rgba(239, 68, 68, 0.08)",
                   border: "1px solid rgba(239, 68, 68, 0.2)",
-                  borderRadius: 10,
-                  padding: "12px 16px",
-                  marginBottom: 14,
-                  color: "#ef4444",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  fontSize: 13,
+                  borderRadius: 10, padding: "12px 16px", marginBottom: 14,
+                  color: "#ef4444", display: "flex", alignItems: "center",
+                  gap: 10, fontSize: 13,
                 }}
               >
                 <AlertCircle size={18} style={{ flexShrink: 0 }} />
@@ -989,14 +785,9 @@ export default function CustomerChat({ cart, setCart, user }) {
                 <button
                   onClick={() => loadStaff(false)}
                   style={{
-                    padding: "6px 12px",
-                    background: "#ef4444",
-                    color: "#fff",
-                    border: 0,
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    fontSize: 12,
+                    padding: "6px 12px", background: "#ef4444", color: "#fff",
+                    border: 0, borderRadius: 6, cursor: "pointer",
+                    fontWeight: 600, fontSize: 12,
                   }}
                 >
                   {t("Thử lại")}
@@ -1007,19 +798,11 @@ export default function CustomerChat({ cart, setCart, user }) {
             {loading && (
               <div
                 style={{
-                  textAlign: "center",
-                  padding: 30,
-                  color: "var(--text-light, #8993a3)",
-                  fontSize: 13,
+                  textAlign: "center", padding: 30,
+                  color: "var(--text-light, #8993a3)", fontSize: 13,
                 }}
               >
-                <Loader2
-                  size={22}
-                  style={{
-                    animation: "spin 1s linear infinite",
-                    marginBottom: 8,
-                  }}
-                />
+                <Loader2 size={22} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
                 <div>{t("Đang tải tin nhắn...")}</div>
               </div>
             )}
@@ -1027,46 +810,26 @@ export default function CustomerChat({ cart, setCart, user }) {
             {!loading && !staffError && messages.length === 0 && (
               <div
                 style={{
-                  textAlign: "center",
-                  padding: 60,
-                  color: "var(--text-light, #8993a3)",
-                  fontSize: 13,
+                  textAlign: "center", padding: 60,
+                  color: "var(--text-light, #8993a3)", fontSize: 13,
                 }}
               >
-                <Store
-                  size={48}
-                  style={{
-                    opacity: 0.3,
-                    margin: "0 auto 12px",
-                    display: "block",
-                  }}
-                />
-                <b
-                  style={{
-                    display: "block",
-                    color: "var(--text-primary, #172033)",
-                    fontSize: 14,
-                    marginBottom: 6,
-                  }}
-                >
+                <Store size={48} style={{ opacity: 0.3, margin: "0 auto 12px", display: "block" }} />
+                <b style={{ display: "block", color: "var(--text-primary, #172033)", fontSize: 14, marginBottom: 6 }}>
                   {t("Chat với nhân viên Canteen")}
                 </b>
-                <p style={{ margin: 0 }}>
-                  {t("Gửi tin nhắn để được hỗ trợ trực tiếp.")}
-                </p>
+                <p style={{ margin: 0 }}>{t("Gửi tin nhắn để được hỗ trợ trực tiếp.")}</p>
               </div>
             )}
 
             {messages.map((m, idx) => {
               const isOwn = m.from === "customer";
               const prev = messages[idx - 1];
-              const showDate =
-                !prev || !sameDay(prev.created_at, m.created_at);
+              const showDate = !prev || !sameDay(prev.created_at, m.created_at);
 
               return (
                 <div key={m.id}>
-                  {showDate && <DateDivider iso={m.created_at} />}
-
+                  {showDate && <DateDivider iso={m.created_at} t={t} />}
                   <div
                     style={{
                       display: "flex",
@@ -1076,49 +839,24 @@ export default function CustomerChat({ cart, setCart, user }) {
                   >
                     <div
                       style={{
-                        maxWidth: "70%",
-                        padding: "10px 14px",
+                        maxWidth: "70%", padding: "10px 14px",
                         borderRadius: isOwn
                           ? "16px 16px 4px 16px"
                           : "16px 16px 16px 4px",
-                        background: isOwn
-                          ? "#2634d5"
-                          : "var(--card-bg, #fff)",
-                        color: isOwn
-                          ? "#fff"
-                          : "var(--text-primary, #172033)",
-                        fontSize: 13,
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                        background: isOwn ? "#2634d5" : "var(--card-bg, #fff)",
+                        color: isOwn ? "#fff" : "var(--text-primary, #172033)",
+                        fontSize: 13, boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
                       }}
                     >
                       {m.from === "staff" && (
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: "#2634d5",
-                            marginBottom: 4,
-                          }}
-                        >
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#2634d5", marginBottom: 4 }}>
                           {m.from_name || t("Nhân viên Canteen")}
                         </div>
                       )}
-                      <div
-                        style={{
-                          wordBreak: "break-word",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
+                      <div style={{ wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
                         {m.content}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          opacity: 0.7,
-                          marginTop: 4,
-                          textAlign: "right",
-                        }}
-                      >
+                      <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4, textAlign: "right" }}>
                         {fmtTime(m.created_at)}
                       </div>
                     </div>
@@ -1126,7 +864,6 @@ export default function CustomerChat({ cart, setCart, user }) {
                 </div>
               );
             })}
-
             <div ref={staffBottomRef} />
           </div>
 
@@ -1134,8 +871,7 @@ export default function CustomerChat({ cart, setCart, user }) {
             style={{
               padding: 12,
               borderTop: "1px solid var(--border-color, #eef2f7)",
-              display: "flex",
-              gap: 8,
+              display: "flex", gap: 8,
             }}
           >
             <input
@@ -1146,15 +882,12 @@ export default function CustomerChat({ cart, setCart, user }) {
               disabled={sending}
               maxLength={MAX_MESSAGE_LENGTH}
               style={{
-                flex: 1,
-                padding: "10px 14px",
+                flex: 1, padding: "10px 14px",
                 border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 24,
-                outline: "none",
+                borderRadius: 24, outline: "none",
                 background: "var(--bg-secondary, #f5f7fb)",
                 color: "var(--text-primary, #172033)",
-                fontSize: 13,
-                minWidth: 0,
+                fontSize: 13, minWidth: 0,
               }}
             />
             <button
@@ -1162,24 +895,15 @@ export default function CustomerChat({ cart, setCart, user }) {
               disabled={sending || !text.trim()}
               aria-label={t("Gửi tin nhắn")}
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
+                width: 44, height: 44, borderRadius: "50%",
                 background: text.trim() ? "#2634d5" : "#94a3b8",
-                color: "#fff",
-                border: 0,
-                cursor:
-                  text.trim() && !sending ? "pointer" : "not-allowed",
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
+                color: "#fff", border: 0,
+                cursor: text.trim() && !sending ? "pointer" : "not-allowed",
+                display: "grid", placeItems: "center", flexShrink: 0,
               }}
             >
               {sending ? (
-                <Loader2
-                  size={18}
-                  style={{ animation: "spin 1s linear infinite" }}
-                />
+                <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
               ) : (
                 <Send size={18} />
               )}

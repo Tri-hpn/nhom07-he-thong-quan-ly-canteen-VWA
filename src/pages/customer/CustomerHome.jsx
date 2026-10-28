@@ -1,11 +1,12 @@
 // ============================================================
-// CUSTOMERHOME.JSX — Trang chủ khách hàng (V5 - FINAL + i18n)
+// CUSTOMERHOME.JSX — Trang chủ khách hàng (V6)
 // ============================================================
-// V5 (2026-10):
-//   - 🔧 FIX #29: scheduleRefetch clear timer khi unmount
-//                 + guard mountedRef trước khi setState
-//   - Giữ nguyên logic khác từ V4
-// ============================================================
+// V6 (B9.3):
+//   - Fix HOME_CATEGORIES: icon + label "Phở"/"Ăn vặt" chuẩn
+//   - Fix t("\u0043\u00f2\u006e") → t("Còn") / t("suất")
+//   - Countdown dùng remainingSeconds thật
+//   - .replace → object interpolation
+//   - tData cho cart preview
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -38,31 +39,31 @@ const FALLBACK_IMG =
   encodeURIComponent(
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
       <rect fill='#f5f7fb' width='100' height='100'/>
-      <text x='50' y='58' font-size='40' text-anchor='middle'></text>
+      <text x='50' y='58' font-size='40' text-anchor='middle'>🍽️</text>
     </svg>`
   );
 
 const QUICK_SEARCH_CHIPS = [
-  { label: "Cơm tấm sườn",     query: "Cơm tấm sườn" },
-  { label: "Bún bò Huế",       query: "Bún bò Huế" },
-  { label: "Trà đào cam sả",   query: "Trà đào cam sả" },
-  { label: "Bánh mì chảo",     query: "Bánh mì chảo" },
-  { label: "Combo 25k ⚡",      query: "Combo", highlight: true },
+  { label: "Cơm tấm sườn",   query: "Cơm tấm sườn" },
+  { label: "Bún bò Huế",     query: "Bún bò Huế" },
+  { label: "Trà đào cam sả", query: "Trà đào cam sả" },
+  { label: "Bánh mì chảo",   query: "Bánh mì chảo" },
+  { label: "Combo 25k ⚡",    query: "Combo", highlight: true },
 ];
 
+// 🔧 B9.3: fix icon + label
 const HOME_CATEGORIES = [
-  { id: "all",    label: "Tất cả món",            icon: "", value: "" },
-  { id: "com",    label: "Cơm & Món chính",       icon: "𾍨", value: "Cơm" },
-  { id: "bun",    label: "Bún - PhỾ - Mì",        icon: "𾍽", value: "Bún - PhỾ - Cháo" },
-  { id: "anvat", label: "Ăn vật & Fastfood", icon: "🥗", value: "Đồ ăn nhanh" },
-  { id: "douong", label: "Đồ uống & Tráng miệng", icon: "☕", value: "Đồ uống" },
-  { id: "chay",   label: "Món chay",              icon: "🥗", value: "Món chay" },
+  { id: "all",    label: "Tất cả món",             icon: "🍽️", value: "" },
+  { id: "com",    label: "Cơm & Món chính",        icon: "🍚", value: "Cơm" },
+  { id: "bun",    label: "Bún - Phở - Mì",         icon: "🍜", value: "Bún - Phở - Cháo" },
+  { id: "anvat",  label: "Ăn vặt & Fastfood",      icon: "🍟", value: "Đồ ăn nhanh" },
+  { id: "douong", label: "Đồ uống & Tráng miệng",  icon: "☕", value: "Đồ uống" },
+  { id: "chay",   label: "Món chay",               icon: "🥗", value: "Món chay" },
 ];
 
 function getFlashSaleStatus() {
   const now = new Date();
   const minutes = now.getHours() * 60 + now.getMinutes();
-  const seconds = now.getSeconds();
 
   const lunchStart = 11 * 60;
   const lunchEnd = 14 * 60;
@@ -70,12 +71,7 @@ function getFlashSaleStatus() {
   if (minutes >= lunchStart && minutes < lunchEnd) {
     const end = new Date(now);
     end.setHours(14, 0, 0, 0);
-
-    const remainingSeconds = Math.max(
-      0,
-      Math.floor((end.getTime() - now.getTime()) / 1000)
-    );
-
+    const remainingSeconds = Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000));
     return {
       label: "Đang diễn ra ca trưa",
       remainingSeconds,
@@ -86,13 +82,9 @@ function getFlashSaleStatus() {
   if (minutes < lunchStart) {
     const start = new Date(now);
     start.setHours(11, 0, 0, 0);
-
     return {
       label: "Flash Sale ca trưa bắt đầu lúc 11:00",
-      remainingSeconds: Math.max(
-        0,
-        Math.floor((start.getTime() - now.getTime()) / 1000)
-      ),
+      remainingSeconds: Math.max(0, Math.floor((start.getTime() - now.getTime()) / 1000)),
       active: false,
     };
   }
@@ -109,11 +101,11 @@ function formatCountdown(totalSeconds) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-
   return [hours, minutes, secs]
     .map((value) => String(value).padStart(2, "0"))
     .join(":");
 }
+
 function getItemId(m) {
   return m?._id || m?.id;
 }
@@ -129,9 +121,9 @@ function normalizeVi(str) {
 
 function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
   const id = getItemId(m);
-  const isOutOfStock = m.stock === 0;
-  const isHot = (m.sold || 0) >= 50;
-  const hasDiscount = m.discount_percent > 0 && m.original_price > m.price;
+  const isOutOfStock = Number(m.stock) === 0;
+  const isHot = (Number(m.sold) || 0) >= 50;
+  const hasDiscount = Number(m.discount_percent) > 0 && Number(m.original_price) > Number(m.price);
   const sold = Math.max(0, Number(m.sold) || 0);
   const remaining = Math.max(0, Number(m.stock ?? 0));
   const total = sold + remaining;
@@ -149,15 +141,10 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
             src={m.image || FALLBACK_IMG}
             alt={tData(m, "name")}
             loading="lazy"
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = FALLBACK_IMG;
-            }}
+            onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
           />
           {hasDiscount && (
-            <span className="home-flash-card__discount">
-              -{m.discount_percent}%
-            </span>
+            <span className="home-flash-card__discount">-{m.discount_percent}%</span>
           )}
           {!hasDiscount && isHot && (
             <span className="home-flash-card__discount">
@@ -165,10 +152,7 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
             </span>
           )}
           {isOutOfStock && (
-            <span
-              className="home-flash-card__discount"
-              style={{ background: "#6B7280" }}
-            >
+            <span className="home-flash-card__discount" style={{ background: "#6B7280" }}>
               {t("Hết")}
             </span>
           )}
@@ -180,13 +164,9 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
           </span>
           <h4 className="home-flash-card__name">{tData(m, "name")}</h4>
           <div className="home-flash-card__price">
-            <span className="home-flash-card__price-now">
-              {money(m.price)}
-            </span>
-            {hasDiscount && m.original_price > m.price && (
-              <span className="home-flash-card__price-old">
-                {money(m.original_price)}
-              </span>
+            <span className="home-flash-card__price-now">{money(m.price)}</span>
+            {hasDiscount && (
+              <span className="home-flash-card__price-old">{money(m.original_price)}</span>
             )}
           </div>
         </div>
@@ -196,18 +176,13 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
         <>
           <div className="home-flash-card__progress-wrap">
             <div className="home-flash-card__progress-info">
-              <span>
-                {t("Đã bán")} {sold}/{total} {t("suất")}
-              </span>
+              <span>{t("Đã bán")} {sold}/{total} {t("suất")}</span>
               <span className="home-flash-card__remain">
                 {t("Còn")} {remaining} {t("suất")}
               </span>
             </div>
             <div className="home-flash-card__progress-bar">
-              <div
-                className="home-flash-card__progress-fill"
-                style={{ width: `${percent}%` }}
-              />
+              <div className="home-flash-card__progress-fill" style={{ width: `${percent}%` }} />
             </div>
           </div>
 
@@ -221,27 +196,18 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
                 aria-label={t("Giảm số lượng")}
                 disabled={qty <= 1}
                 onClick={() => onQtyChange(id, Math.max(1, qty - 1))}
-              >
-                −
-              </button>
+              >−</button>
               <span>{qty}</span>
               <button
                 type="button"
                 aria-label={t("Tăng số lượng")}
-                onClick={() =>
-                  onQtyChange(id, Math.min(FLASH_QTY_MAX, qty + 1))
-                }
-              >
-                +
-              </button>
+                onClick={() => onQtyChange(id, Math.min(FLASH_QTY_MAX, qty + 1))}
+              >+</button>
             </div>
             <button
               type="button"
               className="home-flash-card__add"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd(m);
-              }}
+              onClick={(e) => { e.stopPropagation(); onAdd(m); }}
             >
               <ShoppingCart size={16} />
               {t("Thêm")}
@@ -251,12 +217,8 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
       ) : (
         <div className="home-flash-card__progress-wrap">
           <div className="home-flash-card__progress-info">
-            <span style={{ color: "#dc2626", fontWeight: 700 }}>
-              {t("Tạm hết món")}
-            </span>
-            <span className="home-flash-card__remain">
-              {t("Vui lòng chọn món khác")}
-            </span>
+            <span style={{ color: "#dc2626", fontWeight: 700 }}>{t("Tạm hết món")}</span>
+            <span className="home-flash-card__remain">{t("Vui lòng chọn món khác")}</span>
           </div>
         </div>
       )}
@@ -266,21 +228,21 @@ function HomeFoodCard({ m, qty = 1, onQtyChange, onAdd, onView, t, tData }) {
 
 export default function CustomerHome({ user, cart, setCart }) {
   const navigate = useNavigate();
-  const { t, tData } = useI18n();
+  const { t, tData, locale } = useI18n();
 
-  const [flashSaleTick, setFlashSaleTick] = useState(0);
+  // 🔧 B9.3: tick 1s để recompute flashSaleStatus (không dùng state countdown giả nữa)
+  const [, setFlashSaleTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFlashSaleTick((v) => v + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const flashSaleStatus = getFlashSaleStatus();
   const flashSaleCountdown = formatCountdown(flashSaleStatus.remainingSeconds);
 
-useEffect(() => {
-  const timer = setInterval(() => {
-    setFlashSaleTick((value) => value + 1);
-  }, 1000);
-
-  return () => clearInterval(timer);
-}, []);
-
-const [items, setItems] = useState([]);
+  const [items, setItems] = useState([]);
   const [walletBalance, setWalletBalance] = useState(0);
   const [newItems, setNewItems] = useState([]);
   const [signatureItems, setSignatureItems] = useState([]);
@@ -291,19 +253,14 @@ const [items, setItems] = useState([]);
     : null;
 
   useEffect(() => {
-    if (promotions.length < 2) {
-      setFlashHeroIndex(0);
-      return;
-    }
-
+    if (promotions.length < 2) { setFlashHeroIndex(0); return; }
     const timer = setInterval(() => {
       setFlashHeroIndex((current) => (current + 1) % promotions.length);
     }, 5000);
-
     return () => clearInterval(timer);
   }, [promotions.length]);
-  const [allMenu, setAllMenu] = useState([]);
 
+  const [allMenu, setAllMenu] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -316,14 +273,11 @@ const [items, setItems] = useState([]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  const [countdown, setCountdown] = useState({ h: 1, m: 24, s: 15 });
-
   const inFlightRef = useRef(false);
   const searchBoxRef = useRef(null);
   const refetchTimerRef = useRef(null);
   const mountedRef = useRef(true);
 
-  // 🔧 FIX #29: mount tracking + cleanup refetch timer
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -360,15 +314,9 @@ const [items, setItems] = useState([]);
           .filter((m) => (m.sold || 0) > 0)
           .sort((a, b) => (b.sold || 0) - (a.sold || 0))
           .slice(0, BEST_SELLERS_LIMIT);
-        setItems(
-          bestSellers.length > 0
-            ? bestSellers
-            : list.slice(0, BEST_SELLERS_LIMIT)
-        );
+        setItems(bestSellers.length > 0 ? bestSellers : list.slice(0, BEST_SELLERS_LIMIT));
 
-        const sortedById = [...list].sort(
-          (a, b) => (b.id || 0) - (a.id || 0)
-        );
+        const sortedById = [...list].sort((a, b) => (b.id || 0) - (a.id || 0));
         setNewItems(sortedById.slice(0, NEW_ITEMS_LIMIT));
 
         const sig = list.filter((m) => m.is_signature === true);
@@ -391,23 +339,7 @@ const [items, setItems] = useState([]);
     [t]
   );
 
-  useEffect(() => {
-    load(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((c) => {
-        let { h, m, s } = c;
-        if (s > 0) s--;
-        else if (m > 0) { m--; s = 59; }
-        else if (h > 0) { h--; m = 59; s = 59; }
-        return { h, m, s };
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  useEffect(() => { load(false); }, [load]);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -440,10 +372,9 @@ const [items, setItems] = useState([]);
   }, [debouncedQuery, allMenu]);
 
   const showSuggestions =
-    searchFocused &&
-    debouncedQuery.length >= 1 &&
-    searchSuggestions.length > 0;
+    searchFocused && debouncedQuery.length >= 1 && searchSuggestions.length > 0;
 
+  // 🔧 B9.3: tData cho cart preview
   const cartStats = useMemo(() => {
     const lines = Object.values(cart || {});
     const totalQty = lines.reduce((s, m) => s + (Number(m.qty) || 0), 0);
@@ -453,12 +384,12 @@ const [items, setItems] = useState([]);
     );
     const preview = lines
       .slice(0, 2)
-      .map((m) => m.name)
+      .map((m) => tData(m, "name") || m.name || "")
+      .filter(Boolean)
       .join(" + ");
     return { totalQty, totalPrice, preview };
-  }, [cart]);
+  }, [cart, tData]);
 
-  // 🔧 FIX #29: clear timer cũ trước khi set mới + guard mounted
   const scheduleRefetch = useCallback(() => {
     if (refetchTimerRef.current) {
       clearTimeout(refetchTimerRef.current);
@@ -503,27 +434,22 @@ const [items, setItems] = useState([]);
   const addToCart = useCallback(
     (m) => {
       const id = getItemId(m);
+      if (!id) return;
       const key = `${id}-S-`;
       const qty = flashQty[id] || 1;
       const maxStock = typeof m.stock === "number" ? m.stock : 99;
+      const currentQty = Number(cart?.[key]?.qty) || 0;
 
-      if (qty > maxStock) {
-        toast(
-          t("Chỉ còn {n} phần trong kho").replace("{n}", maxStock),
-          "error"
-        );
+      if (currentQty + qty > maxStock) {
+        toast(t("Chỉ còn {n} phần trong kho", { n: maxStock }), "error");
         return;
       }
 
       let added = false;
-
       setCart((c) => {
         const existing = c[key];
-        const currentQty = Number(existing?.qty) || 0;
-        const newQty = Math.min(maxStock, currentQty + qty);
-
-        if (existing && currentQty >= maxStock) return c;
-
+        const actualQty = Number(existing?.qty) || 0;
+        if (existing && actualQty >= maxStock) return c;
         added = true;
         return {
           ...c,
@@ -531,7 +457,7 @@ const [items, setItems] = useState([]);
             ...m,
             name: m.name,
             price: m.price,
-            qty: newQty,
+            qty: Math.min(maxStock, actualQty + qty),
             stock: m.stock ?? 99,
             _originalId: id,
           },
@@ -540,7 +466,7 @@ const [items, setItems] = useState([]);
 
       if (added) {
         toast(
-          t("Đã thêm {name} vào giỏ").replace("{name}", m.name),
+          t("Đã thêm {name} vào giỏ", { name: tData(m, "name") || m.name }),
           "success"
         );
         scheduleRefetch();
@@ -550,13 +476,12 @@ const [items, setItems] = useState([]);
         const next = { ...q, [id]: 1 };
         const keys = Object.keys(next);
         if (keys.length > 100) {
-          const toDelete = keys.slice(0, keys.length - 100);
-          toDelete.forEach((k) => delete next[k]);
+          keys.slice(0, keys.length - 100).forEach((k) => delete next[k]);
         }
         return next;
       });
     },
-    [flashQty, setCart, t, scheduleRefetch]
+    [flashQty, cart, setCart, t, tData, scheduleRefetch]
   );
 
   const handleQtyChange = useCallback((id, newQty) => {
@@ -570,9 +495,7 @@ const [items, setItems] = useState([]);
       if (cat.id === "all" || !cat.value) {
         navigate("/customer/menu");
       } else {
-        navigate(
-          `/customer/menu?category=${encodeURIComponent(cat.value)}`
-        );
+        navigate(`/customer/menu?category=${encodeURIComponent(cat.value)}`);
       }
     },
     [navigate]
@@ -584,11 +507,7 @@ const [items, setItems] = useState([]);
         <div className="home-error-banner">
           <AlertCircle size={18} style={{ flexShrink: 0 }} />
           <span style={{ flex: 1 }}>{error}</span>
-          <button
-            type="button"
-            onClick={() => load(false)}
-            className="home-error-btn"
-          >
+          <button type="button" onClick={() => load(false)} className="home-error-btn">
             <RefreshCw size={12} /> {t("Thử lại")}
           </button>
         </div>
@@ -598,23 +517,16 @@ const [items, setItems] = useState([]);
         <div className="home-welcome-glow" />
         <div className="home-welcome-content">
           <div className="home-welcome-left">
-            
             <h1 className="home-welcome-title">
               {t("Xin chào,")}{" "}
-              <span className="home-welcome-name">
-                {user?.name || t("bạn")}
-              </span>{" "}
+              <span className="home-welcome-name">{user?.name || t("bạn")}</span>{" "}
               {user?.studentId && (
-                <span className="home-welcome-id">
-                  (MSSV: {user.studentId})
-                </span>
+                <span className="home-welcome-id">(MSSV: {user.studentId})</span>
               )}{" "}
               👋
             </h1>
             <p className="home-welcome-desc">
-              {t(
-                "Hôm nay bạn muốn thưởng thức món gì tại Căng tin VWA? Đặt trước ngay để nhận món đúng ca nghỉ!"
-              )}
+              {t("Hôm nay bạn muốn thưởng thức món gì tại Căng tin VWA? Đặt trước ngay để nhận món đúng ca nghỉ!")}
             </p>
           </div>
 
@@ -623,12 +535,9 @@ const [items, setItems] = useState([]);
               <Wallet size={22} />
             </div>
             <div className="home-wallet-info">
-              <span className="home-wallet-label">
-                {t("Thẻ sinh viên VWA Pay")}
-              </span>
+              <span className="home-wallet-label">{t("Thẻ sinh viên VWA Pay")}</span>
               <span className="home-wallet-value">
-                {money(walletBalance)}{" "}
-                <span className="home-wallet-unit">VNĐ</span>
+                {money(walletBalance)} <span className="home-wallet-unit">VNĐ</span>
               </span>
             </div>
             <button
@@ -642,18 +551,12 @@ const [items, setItems] = useState([]);
           </div>
         </div>
 
-        <div
-          className="home-search-box"
-          ref={searchBoxRef}
-          style={{ position: "relative" }}
-        >
+        <div className="home-search-box" ref={searchBoxRef} style={{ position: "relative" }}>
           <form
             onSubmit={handleSearch}
             style={{
-              display: "flex",
-              alignItems: "center",
-              width: "100%",
-              position: "relative",
+              display: "flex", alignItems: "center",
+              width: "100%", position: "relative",
             }}
           >
             <Search className="home-search-icon" size={22} />
@@ -662,30 +565,19 @@ const [items, setItems] = useState([]);
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
-              placeholder={t(
-                "Tìm món ngon, cơm sinh viên, phở, bún chả, nước ép..."
-              )}
+              placeholder={t("Tìm món ngon, cơm sinh viên, phở, bún chả, nước ép...")}
               className="home-search-input"
               autoComplete="off"
             />
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearchQuery("");
-                  setSearchFocused(false);
-                }}
+                onClick={() => { setSearchQuery(""); setSearchFocused(false); }}
                 aria-label={t("Xoá")}
                 style={{
-                  position: "absolute",
-                  right: 130,
-                  background: "transparent",
-                  border: 0,
-                  cursor: "pointer",
-                  color: "#94a3b8",
-                  padding: 4,
-                  display: "grid",
-                  placeItems: "center",
+                  position: "absolute", right: 130, background: "transparent",
+                  border: 0, cursor: "pointer", color: "#94a3b8", padding: 4,
+                  display: "grid", placeItems: "center",
                 }}
               >
                 <X size={16} />
@@ -699,9 +591,7 @@ const [items, setItems] = useState([]);
           {showSuggestions && (
             <div className="home-search-suggest" style={{ zIndex: 60 }}>
               <div className="home-search-suggest__head">
-                <span>
-                  {t("Gợi ý cho")} "<b>{debouncedQuery}</b>"
-                </span>
+                <span>{t("Gợi ý cho")} "<b>{debouncedQuery}</b>"</span>
                 <span className="home-search-suggest__count">
                   {searchSuggestions.length} {t("kết quả")}
                 </span>
@@ -718,34 +608,22 @@ const [items, setItems] = useState([]);
                   >
                     <img
                       src={m.image || FALLBACK_IMG}
-                      alt={m.name}
+                      alt={tData(m, "name")}
                       loading="lazy"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = FALLBACK_IMG;
-                      }}
+                      onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
                     />
                     <div className="home-search-suggest__info">
-                      <span className="home-search-suggest__name">
-                        {tData(m, "name")}
-                      </span>
+                      <span className="home-search-suggest__name">{tData(m, "name")}</span>
                       <span className="home-search-suggest__meta">
-                        {m.category} Ѣ {money(m.price)}
+                        {m.category} • {money(m.price)}
                       </span>
                     </div>
-                    <ArrowRight
-                      size={16}
-                      className="home-search-suggest__arrow"
-                    />
+                    <ArrowRight size={16} className="home-search-suggest__arrow" />
                   </button>
                 );
               })}
 
-              <button
-                type="button"
-                className="home-search-suggest__all"
-                onClick={handleSearch}
-              >
+              <button type="button" className="home-search-suggest__all" onClick={handleSearch}>
                 {t("Xem tất cả kết quả cho")} "{debouncedQuery}"
                 <ArrowRight size={14} />
               </button>
@@ -762,9 +640,7 @@ const [items, setItems] = useState([]);
             <button
               key={i}
               type="button"
-              className={`home-quick-chip ${
-                c.highlight ? "home-quick-chip--highlight" : ""
-              }`}
+              className={`home-quick-chip ${c.highlight ? "home-quick-chip--highlight" : ""}`}
               onClick={() => handleQuickSearch(c.query)}
             >
               {t(c.label)}
@@ -782,9 +658,7 @@ const [items, setItems] = useState([]);
                 <Zap size={14} className="home-flash-badge-icon" />
                 {t("Flash Sale Ca Trưa Sinh Viên")}
               </div>
-              <h2 className="home-flash-title">
-                {tData(flashHeroItem, "name")}
-              </h2>
+              <h2 className="home-flash-title">{tData(flashHeroItem, "name")}</h2>
               <p className="home-flash-desc">
                 {tData(flashHeroItem, "description") ||
                   flashHeroItem?.description ||
@@ -794,21 +668,14 @@ const [items, setItems] = useState([]);
 
               <div className="home-flash-bottom">
                 <div className="home-flash-timer-wrap">
-                  <span className="home-flash-timer-label">
-                    {t("Kết thúc sau:")}
-                  </span>
+                  <span className="home-flash-timer-label">{t("Kết thúc sau:")}</span>
                   <div className="home-flash-timer">
-                    <span className="home-flash-timer-num">
-                      {String(countdown.h).padStart(2, "0")}
-                    </span>
-                    <span>:</span>
-                    <span className="home-flash-timer-num">
-                      {String(countdown.m).padStart(2, "0")}
-                    </span>
-                    <span>:</span>
-                    <span className="home-flash-timer-num">
-                      {String(countdown.s).padStart(2, "0")}
-                    </span>
+                    {flashSaleCountdown.split(":").map((part, i) => (
+                      <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                        {i > 0 && <span>:</span>}
+                        <span className="home-flash-timer-num">{part}</span>
+                      </span>
+                    ))}
                   </div>
                 </div>
                 <button
@@ -817,8 +684,7 @@ const [items, setItems] = useState([]);
                   onClick={() => { setMode("buy"); setSelected(flashHeroItem); }}
                 >
                   <ShoppingCart size={18} />
-                  {t("Đặt món ngay")} ⤢{" "}
-                  {money(flashHeroItem?.price || 28000)}
+                  {t("Đặt món ngay")} • {money(flashHeroItem?.price || 28000)}
                 </button>
               </div>
             </div>
@@ -827,16 +693,15 @@ const [items, setItems] = useState([]);
               <div className="home-flash-image-wrap">
                 <img
                   src={flashHeroItem?.image || FALLBACK_IMG}
-                  alt={flashHeroItem?.name || "Flash"}
+                  alt={tData(flashHeroItem, "name") || "Flash"}
                   className="home-flash-image"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = FALLBACK_IMG;
-                  }}
+                  onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
                 />
-                <span className="home-flash-discount-badge">-{flashHeroItem?.discount_percent || 0}% OFF</span>
+                <span className="home-flash-discount-badge">
+                  -{flashHeroItem?.discount_percent || 0}% OFF
+                </span>
                 <span className="home-flash-stock-badge">
-                  {t("\u0043\u00f2\u006e")} {Math.max(0, Number(flashHeroItem?.stock ?? 0))} {t("\u0073\u0075\u1ea5\u0074")}
+                  {t("Còn")} {Math.max(0, Number(flashHeroItem?.stock ?? 0))} {t("suất")}
                 </span>
               </div>
             </div>
@@ -856,9 +721,7 @@ const [items, setItems] = useState([]);
             {t("Căng tin mở cửa từ")} <b>06:30 - 18:30</b>.{" "}
             {t("Khung giờ nhận đông nhất:")}{" "}
             <b style={{ color: "#dc2626" }}>11:30 - 12:30</b>.{" "}
-            {t(
-              "Vui lòng đặt món trước tối thiểu 15 phút để nhà bếp chuẩn bị sẵn, không cần xếp hàng đợi lấy số!"
-            )}
+            {t("Vui lòng đặt món trước tối thiểu 15 phút để nhà bếp chuẩn bị sẵn, không cần xếp hàng đợi lấy số!")}
           </p>
         </div>
         <Link to="/customer/orders" className="home-advisory-btn">
@@ -869,36 +732,31 @@ const [items, setItems] = useState([]);
       {promotions.length > 0 && flashSaleStatus.active && (
         <div className="home-flash-section">
           <div className="home-section-head home-flash-section-head">
-  <div className="home-section-title-wrap">
-    <span className="home-section-icon home-section-icon--error">
-      <Flame size={20} />
-    </span>
-
-    <h3 className="home-section-title">
-      {t("Flash Sale")}
-    </h3>
-
-    <div className="home-section-live">
-      <span className="home-live-dot" />
-      {t(flashSaleStatus.label)}
-      <span className="home-flash-countdown">
-        {flashSaleStatus.active
-          ? `${t("Kết thúc sau")} ${flashSaleCountdown}`
-          : flashSaleStatus.remainingSeconds > 0
-            ? `${t("Bắt đầu sau")} ${flashSaleCountdown}`
-            : t("Đã kết thúc")}
-      </span>
-    </div>
-  </div>
-
-  <Link
-    to="/customer/menu?promotion=flash-sale"
-    className="home-section-link home-flash-view-all"
-  >
-    {t("Xem tất cả")} <ArrowRight size={16} />
-  </Link>
-</div>
-<div className="home-flash-grid">
+            <div className="home-section-title-wrap">
+              <span className="home-section-icon home-section-icon--error">
+                <Flame size={20} />
+              </span>
+              <h3 className="home-section-title">{t("Flash Sale")}</h3>
+              <div className="home-section-live">
+                <span className="home-live-dot" />
+                {t(flashSaleStatus.label)}
+                <span className="home-flash-countdown">
+                  {flashSaleStatus.active
+                    ? `${t("Kết thúc sau")} ${flashSaleCountdown}`
+                    : flashSaleStatus.remainingSeconds > 0
+                      ? `${t("Bắt đầu sau")} ${flashSaleCountdown}`
+                      : t("Đã kết thúc")}
+                </span>
+              </div>
+            </div>
+            <Link
+              to="/customer/menu?promotion=flash-sale"
+              className="home-section-link home-flash-view-all"
+            >
+              {t("Xem tất cả")} <ArrowRight size={16} />
+            </Link>
+          </div>
+          <div className="home-flash-grid">
             {promotions.slice(0, FLASH_PROMOS_LIMIT).map((m) => {
               const id = getItemId(m);
               return (
@@ -972,12 +830,8 @@ const [items, setItems] = useState([]);
                 <Sparkles size={20} color="#2563eb" />
               </span>
               <div>
-                <h3 className="home-section-title">
-                  {t("Món mới lên kệ hôm nay")}
-                </h3>
-                <p className="home-section-sub">
-                  {t("Những món vừa được cập nhật vào thực đơn")}
-                </p>
+                <h3 className="home-section-title">{t("Món mới lên kệ hôm nay")}</h3>
+                <p className="home-section-sub">{t("Những món vừa được cập nhật vào thực đơn")}</p>
               </div>
             </div>
             <Link to="/customer/menu" className="home-section-link">
@@ -1013,12 +867,8 @@ const [items, setItems] = useState([]);
                 <Gift size={20} color="#2563eb" />
               </span>
               <div>
-                <h3 className="home-section-title">
-                  {t("Món Signature của Canteen")}
-                </h3>
-                <p className="home-section-sub">
-                  {t("Đặc sản được đầu bếp chọn lọc mỗi ngày")}
-                </p>
+                <h3 className="home-section-title">{t("Món Signature của Canteen")}</h3>
+                <p className="home-section-sub">{t("Đặc sản được đầu bếp chọn lọc mỗi ngày")}</p>
               </div>
             </div>
             <Link to="/customer/menu" className="home-section-link">
@@ -1052,27 +902,16 @@ const [items, setItems] = useState([]);
             <div className="home-sticky-cart__left">
               <div className="home-sticky-cart__icon-wrap">
                 <ShoppingBag size={24} />
-                <span className="home-sticky-cart__badge">
-                  {cartStats.totalQty}
-                </span>
+                <span className="home-sticky-cart__badge">{cartStats.totalQty}</span>
               </div>
               <div className="home-sticky-cart__info">
-                <span className="home-sticky-cart__title">
-                  {t("Giỏ hàng của bạn")}
-                </span>
+                <span className="home-sticky-cart__title">{t("Giỏ hàng của bạn")}</span>
                 <span className="home-sticky-cart__preview">
                   ({cartStats.preview || t("Chưa có món")})
                 </span>
                 <div className="home-sticky-cart__total-row">
-                  <span className="home-sticky-cart__label">
-                    {t("Tạm tính:")}
-                  </span>
-                  <b className="home-sticky-cart__total">
-                    {money(cartStats.totalPrice)}
-                  </b>
-                  <span className="home-sticky-cart__tag">
-                    {t("Đã áp dụng trợ giá SV")}
-                  </span>
+                  <span className="home-sticky-cart__label">{t("Tạm tính:")}</span>
+                  <b className="home-sticky-cart__total">{money(cartStats.totalPrice)}</b>
                 </div>
               </div>
             </div>

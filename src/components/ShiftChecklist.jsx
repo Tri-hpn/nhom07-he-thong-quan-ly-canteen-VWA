@@ -1,10 +1,7 @@
 // ============================================================
 // SHIFTCHECKLIST.JSX — VSATTP checklist (dùng localStorage)
 // ============================================================
-// Lưu state theo ngày: "vsattp_checklist_YYYY-MM-DD"
-// 🔧 FIX #68: getTodayKey + stamp dùng timezone VN (Asia/Ho_Chi_Minh)
-//             để tránh lệch ngày khi server ở UTC
-// ============================================================
+// B7: audit — không phát hiện bug. Giữ nguyên logic + FIX #68.
 
 import { useState, useEffect, useMemo } from "react";
 import {
@@ -14,9 +11,7 @@ import { useI18n } from "../hooks/useI18n";
 
 const VN_TZ = "Asia/Ho_Chi_Minh";
 
-// 🔧 FIX #68: format YYYY-MM-DD theo giờ VN, không phụ thuộc local timezone
 function getVnYmd(date = new Date()) {
-  // en-CA → YYYY-MM-DD
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: VN_TZ,
     year: "numeric",
@@ -29,7 +24,6 @@ function getTodayKey() {
   return `vsattp_checklist_${getVnYmd()}`;
 }
 
-// 🔧 FIX #68: lấy ngày + tháng theo giờ VN cho stamp "Mã kiểm"
 function getVnDayMonth() {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: VN_TZ,
@@ -46,7 +40,6 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
 
   const [checked, setChecked] = useState({});
 
-  // Load từ localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(getTodayKey());
@@ -54,7 +47,6 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
     } catch {}
   }, []);
 
-  // Persist
   useEffect(() => {
     try {
       localStorage.setItem(getTodayKey(), JSON.stringify(checked));
@@ -70,12 +62,10 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
     setChecked((c) => ({ ...c, [i]: !c[i] }));
   };
 
-  // 🔧 FIX #68: stamp dùng giờ VN
   const { day: vnDay, month: vnMonth } = getVnDayMonth();
 
   return (
     <div className="vsattp-card">
-      {/* HEAD */}
       <div className="vsattp-card__head">
         <div className="vsattp-card__head-left">
           <CheckSquare size={20} style={{ color: "var(--st-primary-container)" }} />
@@ -88,7 +78,6 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
         </span>
       </div>
 
-      {/* Supervisor note */}
       {supervisorNote && (
         <div className="vsattp-note">
           <AlertCircle size={20} className="vsattp-note__icon" />
@@ -101,7 +90,6 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
         </div>
       )}
 
-      {/* Checklist */}
       <div className="vsattp-checklist">
         {tasks.map((task, i) => {
           const done = !!checked[i];
@@ -121,7 +109,6 @@ export default function ShiftChecklist({ tasks = [], supervisorNote }) {
         })}
       </div>
 
-      {/* Stamp */}
       <div className="vsattp-stamp">
         <span className="vsattp-stamp__left">
           <Shield size={14} />

@@ -1,12 +1,13 @@
 ﻿// ============================================================
-// REGISTER.JSX — Đăng ký tài khoản (V9 — AuthLayout + background VWA)
+// REGISTER.JSX — Đăng ký tài khoản (V10 — B9.8)
 // ============================================================
-// V9 (2026-10):
-//   - 🎨 Dùng AuthLayout wrapper, background ảnh trường
-//   - Giữ 100% logic: MSSV, OAuth, validate, i18n
+// V10:
+//   - Bug 1–3: chuyển .replace() → object interpolation
+//   - Bug 4: xoá parsedMssv dead state
+//   - Bug 5: thêm submittingRef chống double-submit
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Eye, EyeOff, LockKeyhole, Mail, ArrowRight, Loader2,
@@ -86,7 +87,6 @@ export default function Register({ onRegister }) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [studentCode, setStudentCode] = useState("");
-  const [parsedMssv, setParsedMssv] = useState(null);
   const [mssvError, setMssvError] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -96,6 +96,9 @@ export default function Register({ onRegister }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // 🔧 B9.8 — chống double-submit
+  const submittingRef = useRef(false);
 
   const clearError = () => error && setError("");
 
@@ -127,12 +130,13 @@ export default function Register({ onRegister }) {
 
   const submit = async (e) => {
     if (e) e.preventDefault();
-    if (loading) return;
+    if (submittingRef.current) return;
 
     const errMsg = validate();
     if (errMsg) return setError(errMsg);
 
     setError("");
+    submittingRef.current = true;
     setLoading(true);
 
     try {
@@ -151,18 +155,18 @@ export default function Register({ onRegister }) {
       const newUser = res.user || { email: email.trim().toLowerCase() };
 
       toast(
-        t("Đăng ký thành công! Chào mừng {name}").replace(
-          "{name}",
-          newUser.name || name.trim()
-        ),
+        t("Đăng ký thành công! Chào mừng {name}", {
+          name: newUser.name || name.trim(),
+        }),
         "success"
       );
 
       if (newUser.student_code && newUser.major_name) {
         toast(
-          t("Đã liên kết MSSV {code} — {major}")
-            .replace("{code}", newUser.student_code)
-            .replace("{major}", newUser.major_name),
+          t("Đã liên kết MSSV {code} — {major}", {
+            code: newUser.student_code,
+            major: newUser.major_name,
+          }),
           "info"
         );
       }
@@ -180,22 +184,20 @@ export default function Register({ onRegister }) {
         msg.includes("MSSV này đã được liên kết")
       ) {
         setMssvError(
-          t(
-            "MSSV này đã được liên kết với tài khoản khác. Vui lòng đăng nhập bằng tài khoản trường."
-          )
+          t("MSSV này đã được liên kết với tài khoản khác. Vui lòng đăng nhập bằng tài khoản trường.")
         );
         setError(
           err.body?.linked_email_masked
-            ? t("MSSV đã liên kết với {email}").replace(
-                "{email}",
-                err.body.linked_email_masked
-              )
+            ? t("MSSV đã liên kết với {email}", {
+                email: err.body.linked_email_masked,
+              })
             : msg
         );
       } else {
         setError(msg);
       }
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
@@ -216,7 +218,7 @@ export default function Register({ onRegister }) {
       <p className="v10-auth-subtitle">
         {t("Đăng ký miễn phí — chỉ mất 30 giây.")}
       </p>
-{error && <div className="v10-auth-error">{error}</div>}
+      {error && <div className="v10-auth-error">{error}</div>}
 
       <form onSubmit={submit} autoComplete="off" name="register-form">
         <label className="v10-auth-label" htmlFor="register-name">
@@ -291,9 +293,8 @@ export default function Register({ onRegister }) {
         <fieldset className="v10-auth-fieldset">
           <StudentCodeInput
             value={studentCode}
-            onChange={(code, info) => {
+            onChange={(code) => {
               setStudentCode(code);
-              setParsedMssv(info);
               if (mssvError) setMssvError("");
               clearError();
             }}

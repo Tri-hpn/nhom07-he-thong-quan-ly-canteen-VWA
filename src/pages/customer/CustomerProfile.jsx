@@ -1,86 +1,29 @@
 // ============================================================
-// CUSTOMERPROFILE.JSX — Hồ sơ cá nhân (V7 - FINAL + School)
+// CUSTOMERPROFILE.JSX — Hồ sơ cá nhân (V8)
 // ============================================================
-// V6 (2026-10):
-//   - ✅ Layout mới: card chính full-width, form ẩn mặc định
-//   - ✅ Card "Liên kết MSSV" cho user mới chưa có MSSV
-//
-// V7 (2026-10) - FINAL:
-//   - 🔧 FIX L18/L19/L20: BỎ toàn bộ logic tự quản theme /
-//     fontScale / dietary / notiPrefs / mealSlots trong component.
-//     Trước đây CustomerProfile tự:
-//       • set class "dark-mode" + localStorage "vwa_theme"
-//       • set CSS var "--app-font-scale" + localStorage "vwa_font_size"
-//       • ghi localStorage "vwa_dietary"/"vwa_noti_prefs"/"vwa_meal_slots"
-//     → 2 nguồn ghi trùng với useSettings, có thể gây race.
-//   - Sau fix: theme + fontSize do useSettings quản toàn cục.
-//     Component này chỉ còn giữ dietary như dữ liệu hiển thị local
-//     (không ghi localStorage) — để tránh xung đột.
-// ============================================================
+// V8 (B9.2):
+//   - Xoá dead code: DIETARY_OPTIONS, DEFAULT_DIETARY, dietary state,
+//     showThemeModal/showLangModal/showNotiModal + 3 ProfileModal blocks,
+//     linkParsed state
+//   - Fix t(...).replace() → object interpolation
 
 import {
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-  useRef,
+  useState, useEffect, useMemo, useCallback, useRef,
 } from "react";
 import {
-  User, Mail, Phone, Save, Shield, Camera, Pencil, X, Check, KeyRound,
-  Lock, Eye, EyeOff, Loader2, ChevronRight, BadgeCheck, Wallet, Bell,
-  Palette, Globe, Sun, Moon, Monitor, Type, RefreshCw,
-  Trash2, Upload, CreditCard, HelpCircle, CheckCircle2, GraduationCap,
+  User, Mail, Phone, Save, Camera, Pencil, X, Check, KeyRound,
+  Lock, Eye, EyeOff, Loader2, BadgeCheck, Palette, Globe, Type,
+  RefreshCw, Trash2, Upload, GraduationCap, CheckCircle2,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import StudentCodeInput from "../../components/StudentCodeInput";
 
-// ============================================================
-// CONSTANTS
-// ============================================================
-
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 const ALLOWED_AVATAR_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
+  "image/jpeg", "image/jpg", "image/png", "image/webp",
 ];
-
-const DIETARY_OPTIONS = [
-  {
-    key: "vegetarian",
-    title: "Ăn chay mùng 1 & ngày Rằm",
-    desc: "Tự động đề xuất thực đơn chay thanh đạm vào các ngày âm lịch đặc biệt.",
-  },
-  {
-    key: "lessSpicy",
-    title: "Ít cay / Không ớt",
-    desc: "Bếp canteen tự động giảm ớt và gia vị cay nóng trong các món bún, phở, xào.",
-  },
-  {
-    key: "seafoodAllergy",
-    title: "Dị ứng hải sản vỏ cứng",
-    desc: "Cảnh báo nhãn đỏ nếu món ăn chứa tôm, cua, sò, nghêu hoặc nước luộc hải sản.",
-  },
-  {
-    key: "brownRice",
-    title: "Ưu tiên cơm gạo lứt / Eat Clean",
-    desc: "Tự động đổi suất cơm trắng sang gạo lứt dinh dưỡng nếu căn tin còn suất.",
-  },
-];
-
-const DEFAULT_DIETARY = {
-  vegetarian: true,
-  lessSpicy: true,
-  seafoodAllergy: false,
-  brownRice: false,
-};
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function buildFormFromUser(u) {
   return {
@@ -117,16 +60,10 @@ function getInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// ============================================================
-// SUB: ProfileModal
-// ============================================================
-
 function ProfileModal({ open, onClose, title, icon, children, maxWidth = 720 }) {
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => {
-      if (e.key === "Escape") onClose();
-    };
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
@@ -158,10 +95,7 @@ function ProfileModal({ open, onClose, title, icon, children, maxWidth = 720 }) 
         style={{ maxWidth }}
       >
         <div className="profile-modal__head">
-          <h3>
-            {icon}
-            {title}
-          </h3>
+          <h3>{icon}{title}</h3>
           <button type="button" onClick={onClose} aria-label="Đóng">
             <X size={20} />
           </button>
@@ -172,10 +106,6 @@ function ProfileModal({ open, onClose, title, icon, children, maxWidth = 720 }) 
   );
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function CustomerProfile({ user, setUser }) {
   const { t } = useI18n();
 
@@ -184,22 +114,11 @@ export default function CustomerProfile({ user, setUser }) {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  // Modal states
-  const [showThemeModal, setShowThemeModal] = useState(false);
-  const [showLangModal, setShowLangModal] = useState(false);
   const [showPwdModal, setShowPwdModal] = useState(false);
-  const [showNotiModal, setShowNotiModal] = useState(false);
 
-  // MSSV linking state (cho user mới)
   const [linkMssv, setLinkMssv] = useState("");
-  const [linkParsed, setLinkParsed] = useState(null);
   const [linkError, setLinkError] = useState("");
   const [linkLoading, setLinkLoading] = useState(false);
-
-  // 🔧 FIX L18-L20: dietary giữ local state (không ghi localStorage).
-  // Theme + fontScale + language + notiPrefs + mealSlots đã được
-  // useSettings quản lý toàn cục qua SettingsModal. Không trùng lặp.
-  const [dietary, setDietary] = useState({ ...DEFAULT_DIETARY });
 
   const [pwdForm, setPwdForm] = useState({
     currentPassword: "",
@@ -214,9 +133,7 @@ export default function CustomerProfile({ user, setUser }) {
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
+    return () => { mountedRef.current = false; };
   }, []);
 
   useEffect(() => {
@@ -229,13 +146,9 @@ export default function CustomerProfile({ user, setUser }) {
 
   const avatarStyle = useMemo(() => {
     if (avatarSrc) {
-      return {
-        background: `url("${escapeForCssUrl(avatarSrc)}") center/cover`,
-      };
+      return { background: `url("${escapeForCssUrl(avatarSrc)}") center/cover` };
     }
-    return {
-      background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
-    };
+    return { background: "linear-gradient(135deg, #2563EB, #1D4ED8)" };
   }, [avatarSrc]);
 
   const resetForm = useCallback(() => {
@@ -243,15 +156,8 @@ export default function CustomerProfile({ user, setUser }) {
     setErrors({});
   }, [user]);
 
-  const startEdit = () => {
-    resetForm();
-    setEditing(true);
-  };
-
-  const cancelEdit = () => {
-    resetForm();
-    setEditing(false);
-  };
+  const startEdit = () => { resetForm(); setEditing(true); };
+  const cancelEdit = () => { resetForm(); setEditing(false); };
 
   const update = (k) => (e) => {
     const value = e.target.value;
@@ -322,14 +228,10 @@ export default function CustomerProfile({ user, setUser }) {
       };
 
       const updated = await api.updateProfile(payload);
-
       if (!mountedRef.current) return;
-
       if (setUser) setUser((u) => ({ ...u, ...updated }));
 
-      try {
-        window.dispatchEvent(new CustomEvent("refresh-user"));
-      } catch {}
+      try { window.dispatchEvent(new CustomEvent("refresh-user")); } catch {}
 
       toast(t("Đã cập nhật thông tin"), "success");
       setEditing(false);
@@ -342,21 +244,12 @@ export default function CustomerProfile({ user, setUser }) {
     }
   };
 
-  // ============================================================
-  // LIÊN KẾT MSSV
-  // ============================================================
   const handleLinkMssv = async () => {
     if (linkLoading) return;
 
     const code = linkMssv.trim();
-    if (!code) {
-      setLinkError(t("Vui lòng nhập MSSV"));
-      return;
-    }
-    if (!/^\d{10}$/.test(code)) {
-      setLinkError(t("MSSV phải là 10 chữ số"));
-      return;
-    }
+    if (!code) { setLinkError(t("Vui lòng nhập MSSV")); return; }
+    if (!/^\d{10}$/.test(code)) { setLinkError(t("MSSV phải là 10 chữ số")); return; }
     if (linkError) setLinkError("");
 
     setLinkLoading(true);
@@ -365,22 +258,16 @@ export default function CustomerProfile({ user, setUser }) {
       if (!mountedRef.current) return;
 
       if (setUser) setUser((u) => ({ ...u, ...updated }));
-      try {
-        window.dispatchEvent(new CustomEvent("refresh-user"));
-      } catch {}
+      try { window.dispatchEvent(new CustomEvent("refresh-user")); } catch {}
 
       toast(
         updated.major_name
-          ? t("Đã liên kết MSSV — {major}").replace(
-              "{major}",
-              updated.major_name
-            )
+          ? t("Đã liên kết MSSV — {major}", { major: updated.major_name })
           : t("Đã liên kết MSSV thành công"),
         "success"
       );
 
       setLinkMssv("");
-      setLinkParsed(null);
       setLinkError("");
     } catch (err) {
       const msg = err.message || t("Không liên kết được MSSV");
@@ -400,11 +287,7 @@ export default function CustomerProfile({ user, setUser }) {
   };
 
   const openPwdModal = () => {
-    setPwdForm({
-      currentPassword: "",
-      newPassword: "",
-      confirmPassword: "",
-    });
+    setPwdForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
     setPwdError("");
     setShowPwd(false);
     setShowPwdModal(true);
@@ -441,11 +324,7 @@ export default function CustomerProfile({ user, setUser }) {
       if (!mountedRef.current) return;
       toast(t("Đổi mật khẩu thành công!"), "success");
       setShowPwdModal(false);
-      setPwdForm({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
+      setPwdForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
     } catch (e) {
       if (mountedRef.current) {
         setPwdError(e.message || t("Lỗi đổi mật khẩu"));
@@ -455,15 +334,11 @@ export default function CustomerProfile({ user, setUser }) {
     }
   };
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   const hasMssv = !!user?.student_code;
   const isMssvLocked = hasMssv;
 
   return (
     <div className="customer-profile-v2">
-      {/* CARD CHÍNH */}
       <section className="profile-main-card">
         <div className="profile-main-card__top">
           <div className="profile-main-card__avatar-wrap">
@@ -502,9 +377,7 @@ export default function CustomerProfile({ user, setUser }) {
                   )}
                 </>
               ) : user?.faculty ? (
-                <span className="profile-main-card__tag">
-                  🏫 {user.faculty}
-                </span>
+                <span className="profile-main-card__tag">🏫 {user.faculty}</span>
               ) : null}
             </div>
 
@@ -514,7 +387,6 @@ export default function CustomerProfile({ user, setUser }) {
             </div>
           </div>
         </div>
-
 
         <div className="profile-main-card__actions">
           {!editing ? (
@@ -560,7 +432,6 @@ export default function CustomerProfile({ user, setUser }) {
         </div>
       </section>
 
-      {/* CHẾ ĐỘ XEM */}
       {!editing && (
         <section className="profile-info-card">
           <h3 className="profile-info-card__title">
@@ -575,31 +446,11 @@ export default function CustomerProfile({ user, setUser }) {
               mono
               locked={isMssvLocked}
             />
-            <InfoRow
-              icon={<GraduationCap size={16} />}
-              label={t("Ngành học")}
-              value={user?.major_name || "—"}
-            />
-            <InfoRow
-              icon={<User size={16} />}
-              label={t("Khoa")}
-              value={user?.faculty || "—"}
-            />
-            <InfoRow
-              icon={<Phone size={16} />}
-              label={t("Số điện thoại")}
-              value={user?.phone || t("Chưa cập nhật")}
-            />
-            <InfoRow
-              icon={<Mail size={16} />}
-              label={t("Email")}
-              value={user?.email || "—"}
-            />
-            <InfoRow
-              icon={<Type size={16} />}
-              label={t("Năm nhập học")}
-              value={user?.year_in ? String(user.year_in) : "—"}
-            />
+            <InfoRow icon={<GraduationCap size={16} />} label={t("Ngành học")} value={user?.major_name || "—"} />
+            <InfoRow icon={<User size={16} />} label={t("Khoa")} value={user?.faculty || "—"} />
+            <InfoRow icon={<Phone size={16} />} label={t("Số điện thoại")} value={user?.phone || t("Chưa cập nhật")} />
+            <InfoRow icon={<Mail size={16} />} label={t("Email")} value={user?.email || "—"} />
+            <InfoRow icon={<Type size={16} />} label={t("Năm nhập học")} value={user?.year_in ? String(user.year_in) : "—"} />
             <InfoRow
               icon={<GraduationCap size={16} />}
               label={t("L\u1edbp")}
@@ -632,7 +483,6 @@ export default function CustomerProfile({ user, setUser }) {
         </section>
       )}
 
-      {/* CARD LIÊN KẾT MSSV */}
       {!editing && !hasMssv && (
         <section className="profile-link-card">
           <div className="profile-link-card__head">
@@ -640,9 +490,7 @@ export default function CustomerProfile({ user, setUser }) {
             <div>
               <h3>{t("Liên kết MSSV để xác thực sinh viên")}</h3>
               <p>
-                {t(
-                  "Nhập MSSV (10 số) để tự động lấy ngành học, khoa và nhận ưu đãi dành riêng cho sinh viên VWA."
-                )}
+                {t("Nhập MSSV (10 số) để tự động lấy ngành học, khoa và nhận ưu đãi dành riêng cho sinh viên VWA.")}
               </p>
             </div>
           </div>
@@ -650,9 +498,8 @@ export default function CustomerProfile({ user, setUser }) {
           <div className="profile-link-card__body">
             <StudentCodeInput
               value={linkMssv}
-              onChange={(code, info) => {
+              onChange={(code) => {
                 setLinkMssv(code);
-                setLinkParsed(info);
                 if (linkError) setLinkError("");
               }}
               disabled={linkLoading}
@@ -688,28 +535,18 @@ export default function CustomerProfile({ user, setUser }) {
           </div>
 
           <ul className="profile-link-card__benefits">
-            <li>
-              <Check size={14} /> {t("Nhận ưu đãi dành riêng cho sinh viên VWA")}
-            </li>
-            <li>
-              <Check size={14} /> {t("Hiển thị ngành/khoa trên hồ sơ cá nhân")}
-            </li>
-            <li>
-              <Check size={14} /> {t("Đồng bộ điểm tích lũy và voucher sinh viên")}
-            </li>
+            <li><Check size={14} /> {t("Nhận ưu đãi dành riêng cho sinh viên VWA")}</li>
+            <li><Check size={14} /> {t("Hiển thị ngành/khoa trên hồ sơ cá nhân")}</li>
+            <li><Check size={14} /> {t("Đồng bộ điểm tích lũy và voucher sinh viên")}</li>
           </ul>
         </section>
       )}
 
-      {/* CHẾ ĐỘ EDIT */}
       {editing && (
         <section className="profile-edit-card">
           <div className="profile-avatar-block">
             <div className="profile-avatar-block__img-wrap">
-              <div
-                className="profile-avatar-block__img"
-                style={avatarStyle}
-              >
+              <div className="profile-avatar-block__img" style={avatarStyle}>
                 {!avatarSrc && initials}
               </div>
               {avatarSrc && (
@@ -722,9 +559,7 @@ export default function CustomerProfile({ user, setUser }) {
             <div className="profile-avatar-block__body">
               <h4>{t("Ảnh đại diện thẻ Canteen")}</h4>
               <p>
-                {t(
-                  "Ảnh đại diện giúp nhân viên căng tin đối chiếu khi nhận suất ăn đặt trước tại quầy thông minh. Định dạng cho phép: JPG, PNG tối đa 5MB."
-                )}
+                {t("Ảnh đại diện giúp nhân viên căng tin đối chiếu khi nhận suất ăn đặt trước tại quầy thông minh. Định dạng cho phép: JPG, PNG tối đa 5MB.")}
               </p>
               <div className="profile-avatar-block__actions">
                 <label className="profile-btn profile-btn--primary">
@@ -755,9 +590,7 @@ export default function CustomerProfile({ user, setUser }) {
             <div className="profile-form-field">
               <label className="profile-form-label" htmlFor="profile-name">
                 <span>{t("Họ và tên đầy đủ")}</span>
-                <small className="profile-form-label--required">
-                  {t("Bắt buộc")}
-                </small>
+                <small className="profile-form-label--required">{t("Bắt buộc")}</small>
               </label>
               <div className="profile-form-input-wrap">
                 <User size={18} className="profile-form-input-icon" />
@@ -770,9 +603,7 @@ export default function CustomerProfile({ user, setUser }) {
                   className="profile-form-input"
                 />
               </div>
-              {errors.name && (
-                <span className="profile-form-error">{errors.name}</span>
-              )}
+              {errors.name && <span className="profile-form-error">{errors.name}</span>}
             </div>
 
             <div className="profile-form-field">
@@ -824,9 +655,7 @@ export default function CustomerProfile({ user, setUser }) {
                   className="profile-form-input"
                 />
               </div>
-              {errors.phone && (
-                <span className="profile-form-error">{errors.phone}</span>
-              )}
+              {errors.phone && <span className="profile-form-error">{errors.phone}</span>}
             </div>
 
             <div className="profile-form-field">
@@ -839,11 +668,7 @@ export default function CustomerProfile({ user, setUser }) {
               </label>
               <div className="profile-form-input-wrap profile-form-input-wrap--locked">
                 <Mail size={18} className="profile-form-input-icon" />
-                <input
-                  value={form.email}
-                  readOnly
-                  className="profile-form-input"
-                />
+                <input value={form.email} readOnly className="profile-form-input" />
               </div>
             </div>
 
@@ -916,74 +741,9 @@ export default function CustomerProfile({ user, setUser }) {
                 />
               </div>
             </div>
-          </div></section>
+          </div>
+        </section>
       )}
-
-      {/* MODALS */}
-      <ProfileModal
-        open={showThemeModal}
-        onClose={() => setShowThemeModal(false)}
-        title={t("Giao diện & Trải nghiệm")}
-        icon={<Palette size={20} />}
-        maxWidth={760}
-      >
-        <div className="profile-modal-section">
-          <h4 className="profile-modal-section__title">
-            {t("Chế độ hiển thị (Theme Mode)")}
-          </h4>
-          <p className="profile-modal-section__desc">
-            {t(
-              "Tùy chọn tông màu giao diện phù hợp với môi trường sử dụng hoặc tự động theo thiết bị của bạn."
-            )}
-          </p>
-          <div style={{ padding: 14, background: "var(--bg-tertiary, #f8fafc)", borderRadius: 12 }}>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted, #64748b)" }}>
-              {t("Để đổi giao diện, vui lòng mở")}{" "}
-              <b>{t("Cài đặt → Giao diện & Trải nghiệm")}</b>.
-            </p>
-          </div>
-        </div>
-      </ProfileModal>
-
-      <ProfileModal
-        open={showLangModal}
-        onClose={() => setShowLangModal(false)}
-        title={t("Ngôn ngữ giao diện & Khu vực")}
-        icon={<Globe size={20} />}
-        maxWidth={720}
-      >
-        <div className="profile-modal-section">
-          <h4 className="profile-modal-section__title">
-            {t("Chọn ngôn ngữ hiển thị")}
-          </h4>
-          <div style={{ padding: 14, background: "var(--bg-tertiary, #f8fafc)", borderRadius: 12 }}>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted, #64748b)" }}>
-              {t("Để đổi ngôn ngữ, vui lòng mở")}{" "}
-              <b>{t("Cài đặt → Ngôn ngữ & Khu vực")}</b>.
-            </p>
-          </div>
-        </div>
-      </ProfileModal>
-
-      <ProfileModal
-        open={showNotiModal}
-        onClose={() => setShowNotiModal(false)}
-        title={t("Thông báo & Giờ ca ăn")}
-        icon={<Bell size={20} />}
-        maxWidth={640}
-      >
-        <div className="profile-modal-section">
-          <h4 className="profile-modal-section__title">
-            {t("Cài đặt thông báo")}
-          </h4>
-          <div style={{ padding: 14, background: "var(--bg-tertiary, #f8fafc)", borderRadius: 12 }}>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted, #64748b)" }}>
-              {t("Để đổi cài đặt thông báo, vui lòng mở")}{" "}
-              <b>{t("Cài đặt → Thông báo & Giờ ca ăn")}</b>.
-            </p>
-          </div>
-        </div>
-      </ProfileModal>
 
       <ProfileModal
         open={showPwdModal}
@@ -994,20 +754,13 @@ export default function CustomerProfile({ user, setUser }) {
       >
         {pwdError && <div className="profile-modal__error">{pwdError}</div>}
 
-        <label className="profile-modal__label">
-          {t("Mật khẩu hiện tại")}
-        </label>
+        <label className="profile-modal__label">{t("Mật khẩu hiện tại")}</label>
         <div className="profile-modal__input-wrap">
           <Lock size={16} />
           <input
             type={showPwd ? "text" : "password"}
             value={pwdForm.currentPassword}
-            onChange={(e) =>
-              setPwdForm((f) => ({
-                ...f,
-                currentPassword: e.target.value,
-              }))
-            }
+            onChange={(e) => setPwdForm((f) => ({ ...f, currentPassword: e.target.value }))}
             placeholder={t("Nhập mật khẩu hiện tại")}
             disabled={pwdLoading}
           />
@@ -1019,12 +772,7 @@ export default function CustomerProfile({ user, setUser }) {
           <input
             type={showPwd ? "text" : "password"}
             value={pwdForm.newPassword}
-            onChange={(e) =>
-              setPwdForm((f) => ({
-                ...f,
-                newPassword: e.target.value,
-              }))
-            }
+            onChange={(e) => setPwdForm((f) => ({ ...f, newPassword: e.target.value }))}
             placeholder={t("Tối thiểu 6 ký tự")}
             disabled={pwdLoading}
           />
@@ -1037,25 +785,16 @@ export default function CustomerProfile({ user, setUser }) {
           </button>
         </div>
 
-        <label className="profile-modal__label">
-          {t("Xác nhận mật khẩu mới")}
-        </label>
+        <label className="profile-modal__label">{t("Xác nhận mật khẩu mới")}</label>
         <div className="profile-modal__input-wrap">
           <Check size={16} />
           <input
             type={showPwd ? "text" : "password"}
             value={pwdForm.confirmPassword}
-            onChange={(e) =>
-              setPwdForm((f) => ({
-                ...f,
-                confirmPassword: e.target.value,
-              }))
-            }
+            onChange={(e) => setPwdForm((f) => ({ ...f, confirmPassword: e.target.value }))}
             placeholder={t("Nhập lại mật khẩu mới")}
             disabled={pwdLoading}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") changePassword();
-            }}
+            onKeyDown={(e) => { if (e.key === "Enter") changePassword(); }}
           />
         </div>
 
@@ -1079,9 +818,7 @@ export default function CustomerProfile({ user, setUser }) {
                 <Loader2 size={14} className="profile-spin" />
                 {t("Đang xử lý...")}
               </>
-            ) : (
-              t("Đổi mật khẩu")
-            )}
+            ) : t("Đổi mật khẩu")}
           </button>
         </div>
       </ProfileModal>
@@ -1097,10 +834,6 @@ export default function CustomerProfile({ user, setUser }) {
   );
 }
 
-// ============================================================
-// SUB: InfoRow
-// ============================================================
-
 function InfoRow({ icon, label, value, mono = false, locked = false }) {
   return (
     <div className="profile-info-row">
@@ -1114,11 +847,7 @@ function InfoRow({ icon, label, value, mono = false, locked = false }) {
             </span>
           )}
         </span>
-        <span
-          className={`profile-info-row__value ${
-            mono ? "profile-info-row__value--mono" : ""
-          }`}
-        >
+        <span className={`profile-info-row__value ${mono ? "profile-info-row__value--mono" : ""}`}>
           {value}
         </span>
       </div>

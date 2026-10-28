@@ -1,21 +1,13 @@
 // ============================================================
 // FORCE PASSWORD CHANGE — Bắt buộc đổi mật khẩu lần đầu đăng nhập
 // ============================================================
-// GIAI ĐOẠN 2 — Theo yêu cầu khách hàng:
-//   "Nhân viên được cấp tài khoản phải đổi mật khẩu trong lần đăng
-//    nhập đầu tiên, sau đó đăng nhập lại."
-//
-// Luồng:
-//   1. Nhân viên đăng nhập bằng mật khẩu tạm do admin cấp
-//      → /api/auth/login trả về user.must_change_password = true
-//   2. App.jsx thấy cờ này → render trang này (chặn mọi route khác)
-//   3. Nhân viên nhập mật khẩu hiện tại + mật khẩu mới
-//      → PUT /api/auth/password (server xóa cờ must_change_password)
-//   4. Tự động đăng xuất → quay về trang đăng nhập → đăng nhập lại
-//      bằng mật khẩu mới.
+// B9.8:
+//   - Bug 1/2: bỏ `{ center: true }` khỏi toast (toast chỉ 2 args)
+//   - Bug 3: thêm submittingRef chống double-submit
+//   - Bug 4: bỏ onEnter trùng form onSubmit
 // ============================================================
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ShieldAlert, LockKeyhole, Eye, EyeOff, Loader2, LogOut, CheckCircle2,
@@ -43,7 +35,9 @@ export default function ForcePasswordChange() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // ---------- Ràng buộc hiển thị ngay cho người dùng ----------
+  // 🔧 B9.8 — chống double-submit
+  const submittingRef = useRef(false);
+
   const rules = [
     { ok: newPassword.length >= MIN_LENGTH, text: t("Ít nhất 6 ký tự") },
     {
@@ -60,7 +54,7 @@ export default function ForcePasswordChange() {
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (saving) return;
+    if (submittingRef.current) return;
 
     if (!currentPassword) return setError(t("Vui lòng nhập mật khẩu hiện tại"));
     if (newPassword.length < MIN_LENGTH)
@@ -71,46 +65,38 @@ export default function ForcePasswordChange() {
       return setError(t("Nhập lại mật khẩu không trùng khớp"));
 
     setError("");
+    submittingRef.current = true;
     setSaving(true);
 
     try {
       await api.changePassword({ currentPassword, newPassword });
 
-      toast(t("Đổi mật khẩu thành công!"), "success", { center: true });
+      toast(t("Đổi mật khẩu thành công!"), "success");
 
-      // Xoá giỏ hàng & session storage liên quan
       try {
         localStorage.removeItem("canteen_cart");
         localStorage.removeItem("canteen_cart_selected");
       } catch {}
 
-      // 🔧 FIX: await logout() để setUserState(null) kịp chạy TRƯỚC navigate.
-      // Trước đây logout() không await → navigate("/") render lại FPC (flash bug),
-      // sau đó user mới bị set null → mới chuyển sang Login.
       await logout();
 
       navigate("/", { replace: true });
-      toast(t("Vui lòng đăng nhập lại bằng mật khẩu mới."), "info", {
-        center: true,
-      });
+      toast(t("Vui lòng đăng nhập lại bằng mật khẩu mới."), "info");
     } catch (err) {
       const msg = err && err.message ? err.message : t("Đổi mật khẩu thất bại");
       setError(msg);
       toast(msg, "error");
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   };
 
-  // 🔧 FIX: cũng await logout để tránh flash FPC trước khi Login render
   const handleLogout = async () => {
     await logout();
     navigate("/", { replace: true });
   };
 
-  // ============================================================
-  // UI
-  // ============================================================
   return (
     <div
       style={{
@@ -135,7 +121,6 @@ export default function ForcePasswordChange() {
           border: "1px solid #e5e9ef",
         }}
       >
-        {/* Brand */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div
             style={{
@@ -164,42 +149,17 @@ export default function ForcePasswordChange() {
           </div>
         </div>
 
-        {/* Tiêu đề */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginTop: 24,
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 24 }}>
           <ShieldAlert size={22} style={{ color: "#f59e0b" }} />
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 19,
-              fontWeight: 800,
-              color: "#172033",
-            }}
-          >
+          <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#172033" }}>
             {t("Đổi mật khẩu lần đầu đăng nhập")}
           </h2>
         </div>
 
-        <p
-          style={{
-            margin: "10px 0 0",
-            fontSize: 13.5,
-            lineHeight: 1.65,
-            color: "#64748b",
-          }}
-        >
-          {t(
-            "Vì lý do bảo mật, tài khoản được cấp mới phải đổi mật khẩu trước khi sử dụng hệ thống."
-          )}
+        <p style={{ margin: "10px 0 0", fontSize: 13.5, lineHeight: 1.65, color: "#64748b" }}>
+          {t("Vì lý do bảo mật, tài khoản được cấp mới phải đổi mật khẩu trước khi sử dụng hệ thống.")}
         </p>
 
-        {/* Thông tin tài khoản */}
         {user && (
           <div
             style={{
@@ -235,12 +195,7 @@ export default function ForcePasswordChange() {
           </div>
         )}
 
-        {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          autoComplete="off"
-          style={{ marginTop: 18 }}
-        >
+        <form onSubmit={handleSubmit} autoComplete="off" style={{ marginTop: 18 }}>
           <PasswordField
             id="fpc-current"
             label={t("Mật khẩu hiện tại")}
@@ -283,11 +238,9 @@ export default function ForcePasswordChange() {
             show={showConfirm}
             onToggleShow={() => setShowConfirm((s) => !s)}
             disabled={saving}
-            onEnter={handleSubmit}
             t={t}
           />
 
-          {/* Checklist ràng buộc */}
           <ul
             style={{
               listStyle: "none",
@@ -351,7 +304,6 @@ export default function ForcePasswordChange() {
           </button>
         </form>
 
-        {/* Đăng xuất */}
         <button
           type="button"
           onClick={handleLogout}
@@ -396,9 +348,6 @@ export default function ForcePasswordChange() {
   );
 }
 
-// ============================================================
-// SUB-COMPONENT — Ô nhập mật khẩu có nút hiện / ẩn
-// ============================================================
 function PasswordField({
   id,
   label,
@@ -408,7 +357,6 @@ function PasswordField({
   show,
   onToggleShow,
   disabled,
-  onEnter,
   t,
 }) {
   return (
@@ -450,9 +398,6 @@ function PasswordField({
           autoCorrect="off"
           autoCapitalize="off"
           autoComplete="new-password"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && onEnter) onEnter(e);
-          }}
           style={{
             width: "100%",
             padding: "11px 42px",

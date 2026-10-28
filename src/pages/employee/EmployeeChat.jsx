@@ -1,6 +1,12 @@
 // ============================================================
-// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V16 - FIX RACE CONDITION)
+// EMPLOYEECHAT.JSX — Trung tâm Chat & Hỗ trợ khách (V17 - B9.4)
 // ============================================================
+// V17:
+//   - 🔴 EAGER LOAD: clear contextData trước khi fetch + auto-retry
+//     nếu null sau khi load xong
+//   - fmtRelative/fmtMoney nhận locale + t
+//   - Toast cleanup (bỏ options không support)
+//   - .replace → object interpolation
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
@@ -8,20 +14,12 @@ import {
   Printer, Pin, ImagePlus, Smile, MessageSquareMore, Ticket,
   Send, Bolt, Headset, User as UserIcon, Clock, Smartphone, Utensils,
   CheckCircle2, Heart, Edit3, Megaphone, Bell, ArrowLeftRight,
-  Microwave, Sparkles, Check, PinOff, Lock, ChevronLeft, ChevronRight
+  Microwave, Sparkles, Check, PinOff, Lock, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { api } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
-import {
-  fmtTime,
-  fmtDateLabel,
-  getDateLabelVariant,
-} from "../../lib/datetime";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
+import { fmtTime, fmtDateLabel, getDateLabelVariant } from "../../lib/datetime";
 
 const POLL_INTERVAL_MS = 3000;
 const PERMISSION_POLL_MS = 5000;
@@ -40,27 +38,24 @@ const QUICK_MACROS = [
 ];
 
 const FILTERS = [
-  { id: "all", label: "Tất cả", icon: null },
-  { id: "pinned", label: "Đã ghim", icon: null },
+  { id: "all", label: "Tất cả" },
+  { id: "pinned", label: "Đã ghim" },
   { id: "unread", label: "Chưa đọc", dot: true },
   { id: "urgent", label: "Khẩn" },
   { id: "processing", label: "Xử lý" },
 ];
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-function fmtRelative(iso) {
+// 🔧 B9.4: nhận t + locale
+function fmtRelative(iso, t, locale) {
   if (!iso) return "";
   try {
     const diff = Date.now() - new Date(iso).getTime();
     const m = Math.floor(diff / 60000);
-    if (m < 1) return "Vừa xong";
-    if (m < 60) return `${m} phút trước`;
+    if (m < 1) return t("Vừa xong");
+    if (m < 60) return t("{n} phút trước", { n: m });
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h} giờ trước`;
-    return new Date(iso).toLocaleDateString("vi-VN");
+    if (h < 24) return t("{n} giờ trước", { n: h });
+    return new Date(iso).toLocaleDateString(locale || "vi");
   } catch {
     return "";
   }
@@ -81,9 +76,9 @@ function genToken(id) {
   return `${letters[idx]}-${String(num).padStart(2, "0")}`;
 }
 
-function fmtMoney(n) {
+function fmtMoney(n, locale) {
   const num = Number(n) || 0;
-  return num.toLocaleString("vi-VN") + "đ";
+  return num.toLocaleString(locale || "vi") + "đ";
 }
 
 function sameDay(iso1, iso2) {
@@ -138,44 +133,36 @@ function writePrintNote(orderCode, note) {
   } catch {}
 }
 
-function fallbackBrowserTTS(text, langCode) {
+function fallbackBrowserTTS(text, langCode, t) {
   if (!("speechSynthesis" in window)) {
-    toast("Trình duyệt không hỗ trợ tính năng đọc.", "warning");
+    toast(t("Trình duyệt không hỗ trợ tính năng đọc."), "warning");
     return;
   }
 
   try {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    
     const apiLangMap = {
-      vi: "vi-VN",
-      en: "en-US",
-      ja: "ja-JP",
-      ko: "ko-KR",
-      zh: "zh-CN",
+      vi: "vi-VN", en: "en-US", ja: "ja-JP", ko: "ko-KR", zh: "zh-CN",
     };
     const targetLang = apiLangMap[langCode] || langCode;
-
     utterance.lang = targetLang;
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
 
     const doSpeak = () => {
       const voices = window.speechSynthesis.getVoices();
-      
       let voice = null;
       if (langCode === "vi") {
         voice = voices.find((v) => v.lang === "vi-VN") || voices.find((v) => v.lang.startsWith("vi"));
       } else {
         voice = voices.find((v) => v.lang === targetLang) || voices.find((v) => v.lang.startsWith(langCode));
       }
-
       if (voice) {
         utterance.voice = voice;
         window.speechSynthesis.speak(utterance);
       } else if (langCode === "vi") {
-        toast("Máy tính chưa cài giọng đọc tiếng Việt. Vui lòng thêm gói ngôn ngữ trong Cài đặt Windows/Mac.", "warning", { duration: 5000 });
+        toast(t("Máy tính chưa cài giọng đọc tiếng Việt. Vui lòng thêm gói ngôn ngữ trong Cài đặt Windows/Mac."), "warning");
       } else {
         window.speechSynthesis.speak(utterance);
       }
@@ -194,46 +181,25 @@ function fallbackBrowserTTS(text, langCode) {
   }
 }
 
-function speakCustomerCall(text, locale) {
+function speakCustomerCall(text, locale, t) {
   if (!text) return;
-
-  const langMap = {
-    vi: "vi",
-    en: "en",
-    ja: "ja",
-    ko: "ko",
-    zh: "zh-CN",
-  };
-  
+  const langMap = { vi: "vi", en: "en", ja: "ja", ko: "ko", zh: "zh-CN" };
   const targetLang = langMap[locale] || "vi";
 
   try {
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${targetLang}&client=tw-ob`;
     const audio = new Audio(url);
-    
-    audio.onerror = () => {
-      console.warn("Google TTS bị lỗi, chuyển sang giọng trình duyệt");
-      fallbackBrowserTTS(text, targetLang);
-    };
-
-    audio.play().catch((err) => {
-      console.warn("Không thể tự động phát âm thanh, chuyển sang giọng trình duyệt:", err);
-      fallbackBrowserTTS(text, targetLang);
-    });
+    audio.onerror = () => fallbackBrowserTTS(text, targetLang, t);
+    audio.play().catch(() => fallbackBrowserTTS(text, targetLang, t));
   } catch (err) {
-    fallbackBrowserTTS(text, targetLang);
+    fallbackBrowserTTS(text, targetLang, t);
   }
 }
 
-// ============================================================
-// SUB: DateDivider
-// ============================================================
-
-function DateDivider({ iso }) {
-  const label = fmtDateLabel(iso);
+function DateDivider({ iso, t }) {
+  const label = fmtDateLabel(iso, t);
   const variant = getDateLabelVariant(iso);
   if (!label) return null;
-
   return (
     <div className={`chat-date-divider chat-date-divider--${variant}`}>
       <span className="chat-date-divider__line" />
@@ -243,14 +209,8 @@ function DateDivider({ iso }) {
   );
 }
 
-// ============================================================
-// MODAL: Gọi điện
-// ============================================================
-
-function CallModal({ open, customer, onClose }) {
-  const { t } = useI18n();
+function CallModal({ open, customer, onClose, t }) {
   if (!open || !customer) return null;
-
   const phone = customer.phone || "";
   const hasPhone = !!phone;
 
@@ -260,114 +220,58 @@ function CallModal({ open, customer, onClose }) {
       role="dialog"
       aria-modal="true"
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.55)",
-        backdropFilter: "blur(4px)",
-        zIndex: 2147483600,
-        display: "grid",
-        placeItems: "center",
-        padding: 20,
+        position: "fixed", inset: 0,
+        background: "rgba(15, 23, 42, 0.55)", backdropFilter: "blur(4px)",
+        zIndex: 2147483600, display: "grid", placeItems: "center", padding: 20,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--st-surface, #fff)",
-          borderRadius: 16,
-          padding: 28,
-          width: "100%",
-          maxWidth: 380,
-          textAlign: "center",
+          background: "var(--st-surface, #fff)", borderRadius: 16, padding: 28,
+          width: "100%", maxWidth: 380, textAlign: "center",
           boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
         }}
       >
-        <div
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: "50%",
-            margin: "0 auto 16px",
-            background: "linear-gradient(135deg, #18a967, #16a34a)",
-            display: "grid",
-            placeItems: "center",
-            color: "#fff",
-            boxShadow: "0 8px 24px rgba(24, 169, 103, 0.35)",
-          }}
-        >
+        <div style={{
+          width: 72, height: 72, borderRadius: "50%", margin: "0 auto 16px",
+          background: "linear-gradient(135deg, #18a967, #16a34a)",
+          display: "grid", placeItems: "center", color: "#fff",
+          boxShadow: "0 8px 24px rgba(24, 169, 103, 0.35)",
+        }}>
           <Phone size={32} />
         </div>
-
-        <h3
-          style={{
-            margin: "0 0 6px",
-            fontFamily: "var(--st-font-head)",
-            fontSize: 18,
-            fontWeight: 700,
-            color: "var(--st-text)",
-          }}
-        >
+        <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "var(--st-text)" }}>
           {t("Gọi điện cho khách")}
         </h3>
-
-        <p
-          style={{
-            margin: "0 0 6px",
-            fontFamily: "var(--st-font-body)",
-            fontSize: 13,
-            color: "var(--st-text-muted)",
-          }}
-        >
+        <p style={{ margin: "0 0 6px", fontSize: 13, color: "var(--st-text-muted)" }}>
           {customer.user_name || t("Khách")}
         </p>
-
         {hasPhone ? (
-          <div
-            style={{
-              padding: "14px 20px",
-              margin: "12px 0 20px",
-              borderRadius: 12,
-              background: "var(--st-surface-low, #f5f7fb)",
-              fontFamily: "var(--st-font-head)",
-              fontSize: 22,
-              fontWeight: 800,
-              letterSpacing: 0.5,
-              color: "var(--st-primary)",
-            }}
-          >
-            {phone}
-          </div>
+          <div style={{
+            padding: "14px 20px", margin: "12px 0 20px", borderRadius: 12,
+            background: "var(--st-surface-low, #f5f7fb)",
+            fontSize: 22, fontWeight: 800, letterSpacing: 0.5,
+            color: "var(--st-primary)",
+          }}>{phone}</div>
         ) : (
-          <div
-            style={{
-              padding: "14px 20px",
-              margin: "12px 0 20px",
-              borderRadius: 12,
-              background: "var(--st-danger-bg, #fef2f2)",
-              fontFamily: "var(--st-font-body)",
-              fontSize: 13,
-              color: "var(--st-danger, #dc2626)",
-            }}
-          >
+          <div style={{
+            padding: "14px 20px", margin: "12px 0 20px", borderRadius: 12,
+            background: "var(--st-danger-bg, #fef2f2)", fontSize: 13,
+            color: "var(--st-danger, #dc2626)",
+          }}>
             {t("Khách chưa cập nhật số điện thoại")}
           </div>
         )}
-
         <div style={{ display: "flex", gap: 10 }}>
           <button
             type="button"
             onClick={onClose}
             style={{
-              flex: 1,
-              padding: 12,
-              borderRadius: 10,
+              flex: 1, padding: 12, borderRadius: 10,
               border: "1px solid var(--st-outline-light, #e5e9ef)",
-              background: "var(--st-surface, #fff)",
-              color: "var(--st-text)",
-              fontFamily: "var(--st-font-head)",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
+              background: "var(--st-surface, #fff)", color: "var(--st-text)",
+              fontSize: 14, fontWeight: 700, cursor: "pointer",
             }}
           >
             {t("Huỷ")}
@@ -383,24 +287,13 @@ function CallModal({ open, customer, onClose }) {
               setTimeout(onClose, 200);
             }}
             style={{
-              flex: 1,
-              padding: 12,
-              borderRadius: 10,
-              border: 0,
-              background: hasPhone
-                ? "linear-gradient(135deg, #18a967, #16a34a)"
-                : "#94a3b8",
-              color: "#fff",
-              fontFamily: "var(--st-font-head)",
-              fontSize: 14,
-              fontWeight: 700,
-              textDecoration: "none",
-              textAlign: "center",
+              flex: 1, padding: 12, borderRadius: 10, border: 0,
+              background: hasPhone ? "linear-gradient(135deg, #18a967, #16a34a)" : "#94a3b8",
+              color: "#fff", fontSize: 14, fontWeight: 700,
+              textDecoration: "none", textAlign: "center",
               cursor: hasPhone ? "pointer" : "not-allowed",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
+              display: "inline-flex", alignItems: "center",
+              justifyContent: "center", gap: 6,
             }}
           >
             <Phone size={16} />
@@ -412,12 +305,7 @@ function CallModal({ open, customer, onClose }) {
   );
 }
 
-// ============================================================
-// MODAL: In tem dán ly
-// ============================================================
-
-function PrintLabelModal({ open, customer, order, onClose }) {
-  const { t } = useI18n();
+function PrintLabelModal({ open, customer, order, onClose, t, locale }) {
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -444,129 +332,63 @@ function PrintLabelModal({ open, customer, order, onClose }) {
   };
 
   const doPrint = () => {
-    if (orderCode && orderCode !== "—") {
-      writePrintNote(orderCode, note);
-    }
-
+    if (orderCode && orderCode !== "—") writePrintNote(orderCode, note);
     const w = window.open("", "_blank", "width=420,height=680");
     if (!w) {
       toast(t("Trình duyệt chặn popup. Vui lòng bật popup và thử lại."), "error");
       return;
     }
-
     const esc = (s) =>
       String(s == null ? "" : s)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
-
-    const itemRows = items
-      .map(
-        (it) => `
-          <tr>
-            <td class="qty">${esc(it.qty)}×</td>
-            <td class="name">${esc(it.name)}</td>
-            <td class="price">${esc(fmtMoney((Number(it.price) || 0) * (Number(it.qty) || 0)))}</td>
-          </tr>
-        `
-      )
-      .join("");
-
+    const itemRows = items.map((it) => `
+      <tr>
+        <td class="qty">${esc(it.qty)}×</td>
+        <td class="name">${esc(it.name)}</td>
+        <td class="price">${esc(fmtMoney((Number(it.price) || 0) * (Number(it.qty) || 0), locale))}</td>
+      </tr>`).join("");
     const noteBlock = note.trim()
-      ? `<div class="note"><b>Ghi chú cho khách:</b><br>${esc(note.trim()).replace(/\n/g, "<br>")}</div>`
+      ? `<div class="note"><b>${esc(t("Ghi chú cho khách:"))}</b><br>${esc(note.trim()).replace(/\n/g, "<br>")}</div>`
       : "";
 
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Tem dán ly - ${esc(orderCode)}</title>
-        <style>
-          * { box-sizing: border-box; }
-          body {
-            font-family: "Courier New", monospace;
-            padding: 16px;
-            margin: 0;
-            color: #000;
-          }
-          .sheet {
-            max-width: 320px;
-            margin: 0 auto;
-            border: 2px dashed #000;
-            padding: 16px;
-          }
-          h1 { margin: 0 0 4px; font-size: 18px; text-align: center; letter-spacing: 0.5px; }
-          .brand { text-align: center; font-size: 11px; margin-bottom: 12px; color: #555; }
-          .token {
-            text-align: center;
-            font-size: 36px;
-            font-weight: 900;
-            letter-spacing: 2px;
-            padding: 8px 0;
-            border-top: 2px solid #000;
-            border-bottom: 2px solid #000;
-            margin: 8px 0 12px;
-          }
-          .info { font-size: 12px; line-height: 1.6; margin-bottom: 10px; }
-          .info .row { display: flex; justify-content: space-between; }
-          .info .row b { font-weight: 700; }
-          .items { border-top: 1px solid #000; padding-top: 8px; margin-top: 8px; }
-          .items table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          .items td { padding: 3px 0; vertical-align: top; }
-          .items .qty { width: 32px; font-weight: 700; }
-          .items .price { text-align: right; white-space: nowrap; padding-left: 8px; color: #333; }
-          .note {
-            margin-top: 10px;
-            padding: 8px;
-            border: 1px solid #999;
-            border-radius: 4px;
-            font-size: 12px;
-            line-height: 1.5;
-            background: #f9f9f9;
-          }
-          .footer { margin-top: 12px; text-align: center; font-size: 10px; color: #777; }
-          @media print {
-            body { padding: 0; }
-            .sheet { border: 2px solid #000; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="sheet">
-          <h1>CANTEEN VWA</h1>
-          <div class="brand">Học viện Phụ Nữ Việt Nam</div>
-
-          <div class="token">#${esc(token)}</div>
-
-          <div class="info">
-            <div class="row"><span>Mã đơn:</span><b>${esc(orderCode)}</b></div>
-            <div class="row"><span>Khách:</span><b>${esc(customerName)}</b></div>
-          </div>
-
-          ${
-            items.length > 0
-              ? `<div class="items">
-                   <table>${itemRows}</table>
-                 </div>`
-              : `<div class="items"><i>Chưa có đơn đang xử lý</i></div>`
-          }
-
-          ${noteBlock}
-
-          <div class="footer">In lúc ${new Date().toLocaleString("vi-VN")}</div>
+      <!DOCTYPE html><html><head><meta charset="utf-8" />
+      <title>${esc(t("In tem dán ly"))} - ${esc(orderCode)}</title>
+      <style>
+        *{box-sizing:border-box}
+        body{font-family:"Courier New",monospace;padding:16px;margin:0;color:#000}
+        .sheet{max-width:320px;margin:0 auto;border:2px dashed #000;padding:16px}
+        h1{margin:0 0 4px;font-size:18px;text-align:center;letter-spacing:.5px}
+        .brand{text-align:center;font-size:11px;margin-bottom:12px;color:#555}
+        .token{text-align:center;font-size:36px;font-weight:900;letter-spacing:2px;padding:8px 0;border-top:2px solid #000;border-bottom:2px solid #000;margin:8px 0 12px}
+        .info{font-size:12px;line-height:1.6;margin-bottom:10px}
+        .info .row{display:flex;justify-content:space-between}
+        .items{border-top:1px solid #000;padding-top:8px;margin-top:8px}
+        .items table{width:100%;border-collapse:collapse;font-size:12px}
+        .items td{padding:3px 0;vertical-align:top}
+        .items .qty{width:32px;font-weight:700}
+        .items .price{text-align:right;white-space:nowrap;padding-left:8px;color:#333}
+        .note{margin-top:10px;padding:8px;border:1px solid #999;border-radius:4px;font-size:12px;line-height:1.5;background:#f9f9f9}
+        .footer{margin-top:12px;text-align:center;font-size:10px;color:#777}
+        @media print{body{padding:0}.sheet{border:2px solid #000}}
+      </style></head>
+      <body><div class="sheet">
+        <h1>CANTEEN VWA</h1>
+        <div class="brand">${esc(t("Học viện Phụ Nữ Việt Nam"))}</div>
+        <div class="token">#${esc(token)}</div>
+        <div class="info">
+          <div class="row"><span>${esc(t("Mã đơn:"))}</span><b>${esc(orderCode)}</b></div>
+          <div class="row"><span>${esc(t("Khách:"))}</span><b>${esc(customerName)}</b></div>
         </div>
-
-        <script>
-          window.onload = function () {
-            setTimeout(function () { window.print(); }, 400);
-          };
-        <\/script>
-      </body>
-      </html>
-    `;
-
+        ${items.length > 0 ? `<div class="items"><table>${itemRows}</table></div>` : `<div class="items"><i>${esc(t("Chưa có đơn đang xử lý"))}</i></div>`}
+        ${noteBlock}
+        <div class="footer">${esc(t("In lúc"))} ${new Date().toLocaleString(locale || "vi")}</div>
+      </div>
+      <scr` + `ipt>window.onload=function(){setTimeout(function(){window.print()},400)}</scr` + `ipt>
+      </body></html>`;
     w.document.open();
     w.document.write(html);
     w.document.close();
@@ -578,48 +400,22 @@ function PrintLabelModal({ open, customer, order, onClose }) {
       role="dialog"
       aria-modal="true"
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.55)",
-        backdropFilter: "blur(4px)",
-        zIndex: 2147483600,
-        display: "grid",
-        placeItems: "center",
-        padding: 20,
-        overflowY: "auto",
+        position: "fixed", inset: 0,
+        background: "rgba(15, 23, 42, 0.55)", backdropFilter: "blur(4px)",
+        zIndex: 2147483600, display: "grid", placeItems: "center",
+        padding: 20, overflowY: "auto",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--st-surface, #fff)",
-          borderRadius: 16,
-          padding: 24,
-          width: "100%",
-          maxWidth: 480,
+          background: "var(--st-surface, #fff)", borderRadius: 16, padding: 24,
+          width: "100%", maxWidth: 480,
           boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 16,
-          }}
-        >
-          <h3
-            style={{
-              margin: 0,
-              fontFamily: "var(--st-font-head)",
-              fontSize: 17,
-              fontWeight: 700,
-              color: "var(--st-text)",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--st-text)", display: "inline-flex", alignItems: "center", gap: 8 }}>
             <Printer size={18} />
             {t("In tem dán ly")}
           </h3>
@@ -628,33 +424,22 @@ function PrintLabelModal({ open, customer, order, onClose }) {
             onClick={onClose}
             aria-label={t("Đóng")}
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              border: 0,
+              width: 32, height: 32, borderRadius: "50%", border: 0,
               background: "var(--st-surface-container, #eaedff)",
-              color: "var(--st-text-muted)",
-              cursor: "pointer",
-              display: "grid",
-              placeItems: "center",
+              color: "var(--st-text-muted)", cursor: "pointer",
+              display: "grid", placeItems: "center",
             }}
           >
             <X size={16} />
           </button>
         </div>
 
-        <div
-          style={{
-            padding: 14,
-            borderRadius: 12,
-            background: "var(--st-surface-low, #f5f7fb)",
-            marginBottom: 16,
-            fontFamily: "var(--st-font-body)",
-            fontSize: 13,
-            lineHeight: 1.7,
-            color: "var(--st-text)",
-          }}
-        >
+        <div style={{
+          padding: 14, borderRadius: 12,
+          background: "var(--st-surface-low, #f5f7fb)",
+          marginBottom: 16, fontSize: 13, lineHeight: 1.7,
+          color: "var(--st-text)",
+        }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ color: "var(--st-text-muted)" }}>{t("Mã đơn:")}</span>
             <b style={{ color: "var(--st-primary)" }}>{orderCode}</b>
@@ -665,22 +450,11 @@ function PrintLabelModal({ open, customer, order, onClose }) {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ color: "var(--st-text-muted)" }}>{t("Số token:")}</span>
-            <b style={{ color: "var(--st-primary)", fontSize: 16 }}>
-              #{token}
-            </b>
+            <b style={{ color: "var(--st-primary)", fontSize: 16 }}>#{token}</b>
           </div>
         </div>
 
-        <label
-          style={{
-            display: "block",
-            marginBottom: 6,
-            fontFamily: "var(--st-font-head)",
-            fontSize: 12.5,
-            fontWeight: 700,
-            color: "var(--st-text)",
-          }}
-        >
+        <label style={{ display: "block", marginBottom: 6, fontSize: 12.5, fontWeight: 700, color: "var(--st-text)" }}>
           {t("Ghi chú cho khách (sẽ in trên tem):")}
         </label>
         <textarea
@@ -690,17 +464,11 @@ function PrintLabelModal({ open, customer, order, onClose }) {
           placeholder={t("VD: Ít đá, ít đường, không hành...")}
           maxLength={300}
           style={{
-            width: "100%",
-            padding: 10,
-            borderRadius: 10,
+            width: "100%", padding: 10, borderRadius: 10,
             border: "1px solid var(--st-outline-light, #e5e9ef)",
-            background: "var(--st-surface, #fff)",
-            fontFamily: "var(--st-font-body)",
-            fontSize: 13,
-            color: "var(--st-text)",
-            outline: "none",
-            resize: "vertical",
-            boxSizing: "border-box",
+            background: "var(--st-surface, #fff)", fontSize: 13,
+            color: "var(--st-text)", outline: "none",
+            resize: "vertical", boxSizing: "border-box",
           }}
         />
 
@@ -709,16 +477,10 @@ function PrintLabelModal({ open, customer, order, onClose }) {
             type="button"
             onClick={saveNote}
             style={{
-              flex: 1,
-              padding: 12,
-              borderRadius: 10,
+              flex: 1, padding: 12, borderRadius: 10,
               border: "1px solid var(--st-outline-light, #e5e9ef)",
-              background: "var(--st-surface, #fff)",
-              color: "var(--st-text)",
-              fontFamily: "var(--st-font-head)",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
+              background: "var(--st-surface, #fff)", color: "var(--st-text)",
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
             }}
           >
             <Check size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
@@ -728,20 +490,11 @@ function PrintLabelModal({ open, customer, order, onClose }) {
             type="button"
             onClick={doPrint}
             style={{
-              flex: 1,
-              padding: 12,
-              borderRadius: 10,
-              border: 0,
+              flex: 1, padding: 12, borderRadius: 10, border: 0,
               background: "linear-gradient(135deg, #004ac6, #2563eb)",
-              color: "#fff",
-              fontFamily: "var(--st-font-head)",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
+              color: "#fff", fontSize: 13, fontWeight: 700,
+              cursor: "pointer", display: "inline-flex",
+              alignItems: "center", justifyContent: "center", gap: 6,
             }}
           >
             <Printer size={14} />
@@ -752,10 +505,6 @@ function PrintLabelModal({ open, customer, order, onClose }) {
     </div>
   );
 }
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 
 export default function EmployeeChat() {
   const { t, locale } = useI18n();
@@ -772,12 +521,12 @@ export default function EmployeeChat() {
 
   const [contextData, setContextData] = useState(null);
   const [loadingContext, setLoadingContext] = useState(false);
+  const [contextError, setContextError] = useState("");
 
   const [customerOrders, setCustomerOrders] = useState([]);
   const [currentOrderIdx, setCurrentOrderIdx] = useState(0);
 
   const [currentStaff, setCurrentStaff] = useState([]);
-
   const [pinnedIds, setPinnedIds] = useState(() => readPinned());
 
   const [showCallModal, setShowCallModal] = useState(false);
@@ -785,12 +534,10 @@ export default function EmployeeChat() {
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-
   const [internalNote, setInternalNote] = useState("");
 
   const [chatPermission, setChatPermission] = useState({
-    enabled: true,
-    assignedToAdminUsers: [],
+    enabled: true, assignedToAdminUsers: [],
   });
   const [loadingPermission, setLoadingPermission] = useState(true);
 
@@ -798,21 +545,19 @@ export default function EmployeeChat() {
   const messagesEndRef = useRef(null);
   const selectedRef = useRef(null);
   const msgsReqIdRef = useRef(0);
-  const isSendingRef = useRef(false); // 🔴 FIX RACE CONDITION
+  const contextReqIdRef = useRef(0);
+  const isSendingRef = useRef(false);
 
   const lastMsgCountRef = useRef(0);
   const lastConvIdRef = useRef(null);
 
-  useEffect(() => {
-    selectedRef.current = selected;
-  }, [selected]);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   // ============================================================
-  // LOAD QUYỀN CHAT + POLLING
+  // LOAD PERMISSION
   // ============================================================
   useEffect(() => {
     let cancelled = false;
-
     const load = async () => {
       try {
         const res = await api.chat.admin.myChatStatus();
@@ -820,28 +565,20 @@ export default function EmployeeChat() {
         setChatPermission({
           enabled: res?.enabled !== false,
           assignedToAdminUsers: Array.isArray(res?.assigned_to_admin_users)
-            ? res.assigned_to_admin_users.map(String)
-            : [],
+            ? res.assigned_to_admin_users.map(String) : [],
         });
-      } catch {
-        // silent
-      } finally {
+      } catch {} finally {
         if (!cancelled) setLoadingPermission(false);
       }
     };
-
     load();
     const timer = setInterval(load, PERMISSION_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
+    return () => { cancelled = true; clearInterval(timer); };
   }, []);
 
   // ============================================================
   // LOAD CONVERSATIONS
   // ============================================================
-
   const loadConvs = useCallback(
     async (silent = false) => {
       try {
@@ -853,18 +590,15 @@ export default function EmployeeChat() {
       } finally {
         if (!silent) setLoadingConvs(false);
       }
-    },
-    [t]
+    }, [t]
   );
 
   const loadMessages = useCallback(
     async (userId, silent = false) => {
       if (!userId) return;
-      if (silent && isSendingRef.current) return; // 🔴 CHẶN POLLING
-
+      if (silent && isSendingRef.current) return;
       const myReqId = ++msgsReqIdRef.current;
       if (!silent) setLoadingMsgs(true);
-
       try {
         const data = await api.chat.messagesWith(userId);
         if (myReqId !== msgsReqIdRef.current) return;
@@ -877,55 +611,88 @@ export default function EmployeeChat() {
       } finally {
         if (myReqId === msgsReqIdRef.current) setLoadingMsgs(false);
       }
-    },
-    [t]
+    }, [t]
   );
 
-  useEffect(() => {
-    loadConvs(false);
-  }, [loadConvs]);
+  // 🔧 B9.4: EAGER LOAD — clear + fetch, có race guard
+  const loadContext = useCallback(
+    async (userId) => {
+      if (!userId) return;
+      const myReqId = ++contextReqIdRef.current;
+      setLoadingContext(true);
+      setContextData(null);
+      setContextError("");
+      try {
+        const data = await api.chat.getContext(userId);
+        if (myReqId !== contextReqIdRef.current) return;
+        if (String(selectedRef.current?.user_id) !== String(userId)) return;
+        setContextData(data && typeof data === "object" ? data : null);
+      } catch (e) {
+        if (myReqId !== contextReqIdRef.current) return;
+        if (String(selectedRef.current?.user_id) !== String(userId)) return;
+        setContextData(null);
+        setContextError(e?.message || t("Không tải được thông tin khách"));
+      } finally {
+        if (myReqId === contextReqIdRef.current) setLoadingContext(false);
+      }
+    }, [t]
+  );
+
+  const loadCustomerOrders = useCallback(async (userId) => {
+    try {
+      const allOrders = await api.orders.all("Tất cả");
+      if (String(selectedRef.current?.user_id) !== String(userId)) return;
+      const list = Array.isArray(allOrders) ? allOrders : [];
+      const myOrders = list
+        .filter((o) => o.customer_id === userId && !["Hoàn thành", "Đã hủy"].includes(o.status))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setCustomerOrders(myOrders);
+      setCurrentOrderIdx(0);
+    } catch {
+      setCustomerOrders([]);
+    }
+  }, []);
+
+  useEffect(() => { loadConvs(false); }, [loadConvs]);
 
   useEffect(() => {
     const timer = setInterval(() => {
       loadConvs(true);
-      if (selectedRef.current) {
-        loadMessages(selectedRef.current.user_id, true);
-      }
+      if (selectedRef.current) loadMessages(selectedRef.current.user_id, true);
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [loadConvs, loadMessages]);
 
-  // ============================================================
-  // LOAD CURRENT STAFF
-  // ============================================================
   useEffect(() => {
     let cancelled = false;
-
     const loadStaff = () => {
-      api.shifts
-        .currentStaff()
+      api.shifts.currentStaff()
         .then((data) => {
           if (cancelled) return;
-          const list = Array.isArray(data) ? data : (data ? [data] : []);
-          setCurrentStaff(list);
+          setCurrentStaff(Array.isArray(data) ? data : (data ? [data] : []));
         })
-        .catch(() => {
-          if (!cancelled) setCurrentStaff([]);
-        });
+        .catch(() => { if (!cancelled) setCurrentStaff([]); });
     };
-
     loadStaff();
     const timer = setInterval(loadStaff, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
+    return () => { cancelled = true; clearInterval(timer); };
   }, []);
+
+  // 🔴 B9.4 SPECIAL: auto-retry context nếu null (chưa có dữ liệu)
+  const contextRetriedRef = useRef({});
+  useEffect(() => {
+    const uid = selected?.user_id;
+    if (!uid) return;
+    if (loadingContext) return;
+    if (contextData !== null && contextData !== undefined) return;
+    if (contextRetriedRef.current[uid]) return; // đã retry 1 lần
+    contextRetriedRef.current[uid] = true;
+    loadContext(uid);
+  }, [selected?.user_id, contextData, loadingContext, loadContext]);
 
   // ============================================================
   // OPEN CONVERSATION
   // ============================================================
-
   const openConv = useCallback(
     async (c) => {
       setSelected(c);
@@ -933,103 +700,53 @@ export default function EmployeeChat() {
       setInternalNote(c.note || "");
       setCustomerOrders([]);
       setCurrentOrderIdx(0);
+      setContextData(null);           // 🔴 clear stale
+      setContextError("");
       lastMsgCountRef.current = 0;
       lastConvIdRef.current = null;
+      delete contextRetriedRef.current[c.user_id]; // cho phép retry lại
 
       setConversations((list) =>
-        list.map((x) =>
-          x.user_id === c.user_id ? { ...x, unread: 0 } : x
-        )
+        list.map((x) => (x.user_id === c.user_id ? { ...x, unread: 0 } : x))
       );
 
       await loadMessages(c.user_id, false);
-
       loadConvs(true);
-
-      // Context
-      setLoadingContext(true);
-      api.chat
-        .getContext(c.user_id)
-        .then((data) => {
-          if (selectedRef.current?.user_id === c.user_id) {
-            setContextData(data);
-          }
-        })
-        .catch(() => setContextData(null))
-        .finally(() => setLoadingContext(false));
-
-      // Đơn đang xử lý (Lấy tất cả)
-      api.orders
-        .all("Tất cả")
-        .then((allOrders) => {
-          if (selectedRef.current?.user_id !== c.user_id) return;
-          const list = Array.isArray(allOrders) ? allOrders : [];
-          const myOrders = list
-            .filter(
-              (o) =>
-                o.customer_id === c.user_id &&
-                !["Hoàn thành", "Đã hủy"].includes(o.status)
-            )
-            .sort(
-              (a, b) =>
-                new Date(b.created_at).getTime() -
-                new Date(a.created_at).getTime()
-            );
-          setCustomerOrders(myOrders);
-          setCurrentOrderIdx(0);
-        })
-        .catch(() => setCustomerOrders([]));
+      loadContext(c.user_id);         // 🔴 eager fire
+      loadCustomerOrders(c.user_id);
     },
-    [loadMessages, loadConvs]
+    [loadMessages, loadConvs, loadContext, loadCustomerOrders]
   );
 
   // ============================================================
   // AUTO SCROLL
   // ============================================================
-
   useEffect(() => {
     const container = messagesEndRef.current;
     if (!container) return;
-
     const convId = selected?.user_id ?? null;
     const isNewConv = convId !== lastConvIdRef.current;
-
     if (isNewConv && messages.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          bottomRef.current?.scrollIntoView({
-            behavior: "auto",
-            block: "end",
-          });
+          bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
         });
       });
       lastConvIdRef.current = convId;
       lastMsgCountRef.current = messages.length;
       return;
     }
-
     const grew = messages.length > lastMsgCountRef.current;
-    if (!grew) {
-      lastMsgCountRef.current = messages.length;
-      return;
-    }
-
+    if (!grew) { lastMsgCountRef.current = messages.length; return; }
     const lastMsg = messages[messages.length - 1];
     const isOwnMessage = lastMsg?.from === "staff";
-
-    const distanceFromBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     const isNearBottom = distanceFromBottom < SCROLL_THRESHOLD_PX;
-
     if (isOwnMessage || isNearBottom) {
       requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({
-          behavior: "auto",
-          block: "end",
-        });
+        bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
       });
     }
-
     lastMsgCountRef.current = messages.length;
   }, [messages, selected?.user_id]);
 
@@ -1037,102 +754,69 @@ export default function EmployeeChat() {
   // COMPUTED
   // ============================================================
   const isSelectedHeldByAdmin =
-    selected &&
-    chatPermission.assignedToAdminUsers.includes(String(selected.user_id));
-
-  const isInputDisabled =
-    sending || !chatPermission.enabled || isSelectedHeldByAdmin;
-
+    selected && chatPermission.assignedToAdminUsers.includes(String(selected.user_id));
+  const isInputDisabled = sending || !chatPermission.enabled || isSelectedHeldByAdmin;
   const currentOrder = customerOrders[currentOrderIdx];
 
   // ============================================================
   // SEND
   // ============================================================
-
   const send = useCallback(
     async (contentOverride) => {
       const val = (contentOverride ?? text).trim();
       if (!val || !selected || sending) return;
 
       if (!chatPermission.enabled) {
-        toast(
-          t("Admin đã tắt quyền chat của bạn. Vui lòng liên hệ quản trị viên."),
-          "error"
-        );
+        toast(t("Admin đã tắt quyền chat của bạn. Vui lòng liên hệ quản trị viên."), "error");
         return;
       }
       if (isSelectedHeldByAdmin) {
-        toast(
-          t("Admin đang xử lý hội thoại này. Bạn không thể gửi tin lúc này."),
-          "error"
-        );
+        toast(t("Admin đang xử lý hội thoại này. Bạn không thể gửi tin lúc này."), "error");
         return;
       }
-
       if (val.length > MAX_MESSAGE_LENGTH) {
-        toast(
-          t("Tin nhắn tối đa {n} ký tự", { n: MAX_MESSAGE_LENGTH }),
-          "error"
-        );
+        toast(t("Tin nhắn tối đa {n} ký tự", { n: MAX_MESSAGE_LENGTH }), "error");
         return;
       }
 
-      isSendingRef.current = true; // 🔴
+      isSendingRef.current = true;
       setSending(true);
-      const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2,6);
-
+      const tempId = "tmp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
       const tempMsg = {
-        id: tempId,
-        from: "staff",
-        from_name: t("Bạn"),
-        content: val,
-        created_at: new Date().toISOString(),
-        _pending: true,
+        id: tempId, from: "staff", from_name: t("Bạn"),
+        content: val, created_at: new Date().toISOString(), _pending: true,
       };
       setMessages((m) => [...m, tempMsg]);
       setText("");
 
       try {
-        const msg = await api.chat.send({
-          content: val,
-          toUserId: selected.user_id,
-        });
-
+        const msg = await api.chat.send({ content: val, toUserId: selected.user_id });
         const safeMsg = {
-          ...msg,
-          id: msg?.id || tempId,
+          ...msg, id: msg?.id || tempId,
           created_at: msg?.created_at || new Date().toISOString(),
-          from: msg?.from || "staff",
-          from_name: msg?.from_name || t("Bạn"),
+          from: msg?.from || "staff", from_name: msg?.from_name || t("Bạn"),
         };
-
         setMessages((m) => m.map((x) => (x.id === tempId ? safeMsg : x)));
-        // loadMessages(selected.user_id, true); -> Đã bỏ vì không cần thiết
       } catch (e) {
         setMessages((m) => m.filter((x) => x.id !== tempId));
         toast(e.message || t("Không gửi được"), "error");
       } finally {
         setSending(false);
-        isSendingRef.current = false; // 🔴
+        isSendingRef.current = false;
       }
     },
-    [text, selected, sending, loadMessages, t, chatPermission.enabled, isSelectedHeldByAdmin]
+    [text, selected, sending, t, chatPermission.enabled, isSelectedHeldByAdmin]
   );
 
   const onKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
   // ============================================================
   // COMPUTED
   // ============================================================
-
   const filteredConversations = useMemo(() => {
     let list = conversations;
-
     if (search.trim()) {
       const s = search.toLowerCase().trim();
       list = list.filter(
@@ -1142,13 +826,10 @@ export default function EmployeeChat() {
           (c.token || "").toLowerCase().includes(s)
       );
     }
-
-    if (filter === "pinned")
-      list = list.filter((c) => pinnedIds.includes(Number(c.user_id)));
+    if (filter === "pinned") list = list.filter((c) => pinnedIds.includes(Number(c.user_id)));
     if (filter === "unread") list = list.filter((c) => c.unread > 0);
     if (filter === "urgent") list = list.filter((c) => c.urgent);
-    if (filter === "processing")
-      list = list.filter((c) => c.status === "processing");
+    if (filter === "processing") list = list.filter((c) => c.status === "processing");
 
     return [...list].sort((a, b) => {
       const ap = pinnedIds.includes(Number(a.user_id)) ? 1 : 0;
@@ -1169,40 +850,18 @@ export default function EmployeeChat() {
   // ============================================================
   // ACTIONS
   // ============================================================
-
-  const handlePrintLabel = () => {
-    if (!selected) return;
-    setShowPrintModal(true);
-  };
-
-  const handleCall = () => {
-    if (!selected) return;
-    setShowCallModal(true);
-  };
+  const handlePrintLabel = () => { if (selected) setShowPrintModal(true); };
+  const handleCall = () => { if (selected) setShowCallModal(true); };
 
   const handleRecall = () => {
     if (!selected) return;
-    const token = selected.token || genToken(selected.user_id);
     const customerName = selected.user_name || t("Khách");
-    const counterNum = selected.table || currentOrder?.station || "01"; 
-
-    const announceTemplate = t("Xin mời khách hàng {name} đến quầy số {counter} nhận đồ.");
-    const announceText = announceTemplate
-      .replace("{name}", customerName)
-      .replace("{counter}", counterNum);
-
-    speakCustomerCall(announceText, locale);
-
-    toast(
-      `📢 ${t("Đang phát loa:")} ${announceText}`,
-      "info",
-      {
-        variant: "card",
-        title: `📢 ${t("Đang phát loa")}`,
-        description: announceText,
-        duration: 5000,
-      }
-    );
+    const counterNum = selected.table || currentOrder?.station || "01";
+    const announceText = t("Xin mời khách hàng {name} đến quầy số {counter} nhận đồ.", {
+      name: customerName, counter: counterNum,
+    });
+    speakCustomerCall(announceText, locale, t);
+    toast(`📢 ${t("Đang phát loa:")} ${announceText}`, "info");
   };
 
   const handleNotify = () => {
@@ -1213,13 +872,10 @@ export default function EmployeeChat() {
   const handleTransferAdmin = async () => {
     if (!selected) return;
     try {
-      await api.chat.admin.requestTransfer({
-        customerId: selected.user_id,
-        reason: "",
-      });
+      await api.chat.admin.requestTransfer({ customerId: selected.user_id, reason: "" });
       toast(t("Đã gửi yêu cầu chuyển lên Admin"), "success");
     } catch (e) {
-      toast(e.message || t("Không gửi được yêu cầu rút"), "error");
+      toast(e.message || t("Không gửi được yêu cầu"), "error");
     }
   };
 
@@ -1232,108 +888,68 @@ export default function EmployeeChat() {
   const handleTogglePin = useCallback(() => {
     if (!selected) return;
     const uid = Number(selected.user_id);
-
     setPinnedIds((prev) => {
       const isPinned = prev.includes(uid);
-      const next = isPinned
-        ? prev.filter((id) => id !== uid)
-        : [...prev, uid];
+      const next = isPinned ? prev.filter((id) => id !== uid) : [...prev, uid];
       writePinned(next);
-
       toast(
-        isPinned
-          ? t("Đã bỏ ghim hội thoại")
-          : t("Đã ghim hội thoại lên đầu danh sách"),
+        isPinned ? t("Đã bỏ ghim hội thoại") : t("Đã ghim hội thoại lên đầu danh sách"),
         isPinned ? "info" : "success"
       );
-
       return next;
     });
   }, [selected, t]);
 
-  const handlePrevOrder = () => {
-    setCurrentOrderIdx((prev) => Math.max(0, prev - 1));
-  };
+  const handlePrevOrder = () => setCurrentOrderIdx((p) => Math.max(0, p - 1));
+  const handleNextOrder = () => setCurrentOrderIdx((p) => Math.min(customerOrders.length - 1, p + 1));
 
-  const handleNextOrder = () => {
-    setCurrentOrderIdx((prev) => Math.min(customerOrders.length - 1, prev + 1));
-  };
+  const isSelectedPinned = selected ? pinnedIds.includes(Number(selected.user_id)) : false;
 
   // ============================================================
   // RENDER
   // ============================================================
-
-  const isSelectedPinned = selected
-    ? pinnedIds.includes(Number(selected.user_id))
-    : false;
-
   return (
     <div className="chat-workspace">
-      {/* ============ KPI RIBBON ============ */}
       <div className="chat-kpi-ribbon">
         <div className="chat-kpi">
-          <div className="chat-kpi__icon">
-            <Headset size={20} />
-          </div>
+          <div className="chat-kpi__icon"><Headset size={20} /></div>
           <div className="chat-kpi__body">
             <span className="chat-kpi__label">{t("Trực tuyến")}</span>
-            <span className="chat-kpi__value">
-              {kpi.online} {t("nhân sự")}
-            </span>
+            <span className="chat-kpi__value">{kpi.online} {t("nhân sự")}</span>
           </div>
         </div>
-
         <div className="chat-kpi">
-          <div className="chat-kpi__icon">
-            <MessageCircle size={20} />
-          </div>
+          <div className="chat-kpi__icon"><MessageCircle size={20} /></div>
           <div className="chat-kpi__body">
             <span className="chat-kpi__label">{t("Hội thoại ca")}</span>
-            <span className="chat-kpi__value">
-              {kpi.total} {t("phiên")}
-            </span>
+            <span className="chat-kpi__value">{kpi.total} {t("phiên")}</span>
           </div>
         </div>
-
         <div className="chat-kpi">
-          <div className="chat-kpi__icon chat-kpi__icon--danger">
-            <Bell size={20} />
-          </div>
+          <div className="chat-kpi__icon chat-kpi__icon--danger"><Bell size={20} /></div>
           <div className="chat-kpi__body">
             <span className="chat-kpi__label">{t("Cần phản hồi")}</span>
-            <span className="chat-kpi__value chat-kpi__value--danger">
-              {kpi.unread} {t("khách")}
-            </span>
+            <span className="chat-kpi__value chat-kpi__value--danger">{kpi.unread} {t("khách")}</span>
           </div>
         </div>
-
         <div className="chat-kpi">
-          <div className="chat-kpi__icon chat-kpi__icon--info">
-            <Clock size={20} />
-          </div>
+          <div className="chat-kpi__icon chat-kpi__icon--info"><Clock size={20} /></div>
           <div className="chat-kpi__body">
             <span className="chat-kpi__label">{t("Phản hồi TB")}</span>
             <span className="chat-kpi__value">42 {t("giây")}</span>
           </div>
         </div>
-
         <div className="chat-kpi">
-          <div className="chat-kpi__icon">
-            <Sparkles size={20} />
-          </div>
+          <div className="chat-kpi__icon"><Sparkles size={20} /></div>
           <div className="chat-kpi__body">
             <span className="chat-kpi__label">{t("Độ hài lòng")}</span>
-            <span className="chat-kpi__value">
-              4.9/5
-              <span className="chat-kpi__suffix">(98%)</span>
-            </span>
+            <span className="chat-kpi__value">4.9/5<span className="chat-kpi__suffix">(98%)</span></span>
           </div>
         </div>
       </div>
 
-      {/* ============ 3-COLUMN GRID ============ */}
       <div className="chat-workspace-grid">
-        {/* ===== COLUMN 1: CONVERSATIONS ===== */}
+        {/* COLUMN 1: CONVERSATIONS */}
         <div className="chat-conv">
           <div className="chat-conv__head">
             <div className="chat-conv__search">
@@ -1349,13 +965,9 @@ export default function EmployeeChat() {
                   type="button"
                   onClick={() => setSearch("")}
                   style={{
-                    position: "absolute",
-                    right: 10,
-                    top: "50%",
+                    position: "absolute", right: 10, top: "50%",
                     transform: "translateY(-50%)",
-                    background: "transparent",
-                    border: 0,
-                    cursor: "pointer",
+                    background: "transparent", border: 0, cursor: "pointer",
                     color: "var(--st-text-light)",
                   }}
                   aria-label={t("Xoá tìm kiếm")}
@@ -1370,21 +982,15 @@ export default function EmployeeChat() {
                 <button
                   key={f.id}
                   type="button"
-                  className={`chat-conv__filter ${
-                    filter === f.id ? "active" : ""
-                  }`}
+                  className={`chat-conv__filter ${filter === f.id ? "active" : ""}`}
                   onClick={() => setFilter(f.id)}
                 >
-                  {f.label}
+                  {t(f.label)}
                   {f.id === "all" && ` (${conversations.length})`}
-                  {f.dot && filter !== f.id && kpi.unread > 0 && (
-                    <span className="chat-conv__filter-dot" />
-                  )}
+                  {f.dot && filter !== f.id && kpi.unread > 0 && <span className="chat-conv__filter-dot" />}
                   {f.id === "unread" && kpi.unread > 0 && ` (${kpi.unread})`}
                   {f.id === "urgent" && kpi.urgent > 0 && ` (${kpi.urgent})`}
-                  {f.id === "pinned" &&
-                    pinnedIds.length > 0 &&
-                    ` (${pinnedIds.length})`}
+                  {f.id === "pinned" && pinnedIds.length > 0 && ` (${pinnedIds.length})`}
                 </button>
               ))}
             </div>
@@ -1393,17 +999,10 @@ export default function EmployeeChat() {
           <div className="chat-conv__body">
             {loadingConvs && (
               <div className="chat-conv__empty">
-                <Loader2
-                  size={22}
-                  style={{
-                    animation: "spin 1s linear infinite",
-                    marginBottom: 8,
-                  }}
-                />
+                <Loader2 size={22} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
                 <div>{t("Đang tải...")}</div>
               </div>
             )}
-
             {!loadingConvs && convsError && (
               <div className="chat-conv__empty">
                 <AlertCircle size={22} style={{ marginBottom: 8 }} />
@@ -1412,253 +1011,142 @@ export default function EmployeeChat() {
                   type="button"
                   onClick={() => loadConvs(false)}
                   style={{
-                    padding: "6px 14px",
-                    background: "var(--st-primary-container)",
-                    color: "var(--st-on-primary)",
-                    border: 0,
-                    borderRadius: "var(--st-radius-md)",
-                    cursor: "pointer",
-                    fontFamily: "var(--st-font-head)",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    padding: "6px 14px", background: "var(--st-primary-container)",
+                    color: "var(--st-on-primary)", border: 0,
+                    borderRadius: "var(--st-radius-md)", cursor: "pointer",
+                    fontSize: 12, fontWeight: 600,
                   }}
                 >
                   {t("Thử lại")}
                 </button>
               </div>
             )}
-
-            {!loadingConvs &&
-              !convsError &&
-              filteredConversations.length === 0 && (
-                <div className="chat-conv__empty">
-                  <MessageCircle
-                    size={36}
-                    style={{ opacity: 0.3, marginBottom: 8 }}
-                  />
-                  <div>
-                    {search || filter !== "all"
-                      ? t("Không có hội thoại khớp bộ lọc")
-                      : t("Chưa có tin nhắn nào")}
-                  </div>
+            {!loadingConvs && !convsError && filteredConversations.length === 0 && (
+              <div className="chat-conv__empty">
+                <MessageCircle size={36} style={{ opacity: 0.3, marginBottom: 8 }} />
+                <div>
+                  {search || filter !== "all" ? t("Không có hội thoại khớp bộ lọc") : t("Chưa có tin nhắn nào")}
                 </div>
-              )}
+              </div>
+            )}
+            {!loadingConvs && filteredConversations.map((c) => {
+              const isSelected = String(selected?.user_id) === String(c.user_id);
+              const isUrgent = !!c.urgent;
+              const hasUnread = c.unread > 0;
+              const token = c.token || genToken(c.user_id);
+              const initials = getInitials(c.user_name);
+              const isPinned = pinnedIds.includes(Number(c.user_id));
+              const isHeldByAdmin = chatPermission.assignedToAdminUsers.includes(String(c.user_id));
 
-            {!loadingConvs &&
-              filteredConversations.map((c) => {
-                const isSelected =
-                  String(selected?.user_id) === String(c.user_id);
-                const isUrgent = !!c.urgent;
-                const hasUnread = c.unread > 0;
-                const token = c.token || genToken(c.user_id);
-                const initials = getInitials(c.user_name);
-                const isPinned = pinnedIds.includes(Number(c.user_id));
-                const isHeldByAdmin = chatPermission.assignedToAdminUsers.includes(
-                  String(c.user_id)
-                );
-
-                return (
-                  <div
-                    key={c.user_id}
-                    role="button"
-                    tabIndex={0}
-                    className={`chat-conv__item ${
-                      isSelected ? "active" : ""
-                    } ${isUrgent ? "chat-conv__item--urgent" : ""} ${
-                      hasUnread
-                        ? "chat-conv__item--unread"
-                        : "chat-conv__item--read"
-                    }`}
-                    onClick={() => openConv(c)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openConv(c);
-                      }
-                    }}
-                  >
-                    <div className="chat-conv__row1">
-                      <div className="chat-conv__user">
-                        <div
-                          className={`chat-conv__avatar ${
-                            isUrgent
-                              ? "chat-conv__avatar--danger"
-                              : c.isVip
-                              ? "chat-conv__avatar--tertiary"
-                              : ""
-                          }`}
-                        >
-                          {initials}
-                        </div>
-                        <div className="chat-conv__user-info">
-                          <span
-                            className={`chat-conv__user-name ${
-                              hasUnread
-                                ? "chat-conv__user-name--unread"
-                                : ""
-                            }`}
-                          >
-                            {isPinned && (
-                              <Pin
-                                size={11}
-                                style={{
-                                  color: "#f59e0b",
-                                  marginRight: 4,
-                                  verticalAlign: "middle",
-                                }}
-                                fill="#f59e0b"
-                              />
-                            )}
-                            {c.user_name || t("Khách")}
-                            {c.isVip && (
-                              <span className="chat-conv__vip-tag">
-                                {c.vipLabel || "VIP"}
-                              </span>
-                            )}
-                          </span>
-                          <span className="chat-conv__user-meta">
-                            {c.studentId || "2151010088"} • {c.cohort || "K21"}
-                          </span>
-                        </div>
+              return (
+                <div
+                  key={c.user_id}
+                  role="button"
+                  tabIndex={0}
+                  className={`chat-conv__item ${isSelected ? "active" : ""} ${isUrgent ? "chat-conv__item--urgent" : ""} ${hasUnread ? "chat-conv__item--unread" : "chat-conv__item--read"}`}
+                  onClick={() => openConv(c)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openConv(c);
+                    }
+                  }}
+                >
+                  <div className="chat-conv__row1">
+                    <div className="chat-conv__user">
+                      <div className={`chat-conv__avatar ${isUrgent ? "chat-conv__avatar--danger" : c.isVip ? "chat-conv__avatar--tertiary" : ""}`}>
+                        {initials}
                       </div>
-                      <div className="chat-conv__time-group">
-                        <span
-                          className={`chat-conv__time ${
-                            hasUnread ? "chat-conv__time--new" : ""
-                          }`}
-                        >
-                          {fmtRelative(c.last_time || c.updated_at)}
+                      <div className="chat-conv__user-info">
+                        <span className={`chat-conv__user-name ${hasUnread ? "chat-conv__user-name--unread" : ""}`}>
+                          {isPinned && (
+                            <Pin size={11} style={{ color: "#f59e0b", marginRight: 4, verticalAlign: "middle" }} fill="#f59e0b" />
+                          )}
+                          {c.user_name || t("Khách")}
+                          {c.isVip && <span className="chat-conv__vip-tag">{c.vipLabel || "VIP"}</span>}
                         </span>
-                        {token && (
-                          <span className="chat-conv__token">#{token}</span>
-                        )}
+                        <span className="chat-conv__user-meta">
+                          {c.studentId || "—"} • {c.cohort || "—"}
+                        </span>
                       </div>
                     </div>
-
-                    <p
-                      className={`chat-conv__preview ${
-                        hasUnread
-                          ? "chat-conv__preview--unread"
-                          : "chat-conv__preview--read"
-                      }`}
-                    >
-                      "{c.last_message || t("Chưa có tin nhắn")}"
-                    </p>
-
-                    {(c.statusLabel || hasUnread || isHeldByAdmin) && (
-                      <div className="chat-conv__tags">
-                        {isHeldByAdmin ? (
-                          <span className="chat-conv__tag chat-conv__tag--success">
-                            <Headset size={11} /> {t("Admin giữ")}
-                          </span>
-                        ) : c.statusLabel ? (
-                          <span
-                            className={`chat-conv__tag ${
-                              isUrgent
-                                ? "chat-conv__tag--danger"
-                                : c.statusLabelType === "success"
-                                ? "chat-conv__tag--success"
-                                : ""
-                            }`}
-                          >
-                            {c.statusLabel}
-                          </span>
-                        ) : (
-                          <span />
-                        )}
-                        {hasUnread && (
-                          <span
-                            className="chat-conv__unread-dot"
-                            aria-label={t("Chưa đọc")}
-                          />
-                        )}
-                      </div>
-                    )}
+                    <div className="chat-conv__time-group">
+                      <span className={`chat-conv__time ${hasUnread ? "chat-conv__time--new" : ""}`}>
+                        {fmtRelative(c.last_time || c.updated_at, t, locale)}
+                      </span>
+                      {token && <span className="chat-conv__token">#{token}</span>}
+                    </div>
                   </div>
-                );
-              })}
+
+                  <p className={`chat-conv__preview ${hasUnread ? "chat-conv__preview--unread" : "chat-conv__preview--read"}`}>
+                    "{c.last_message || t("Chưa có tin nhắn")}"
+                  </p>
+
+                  {(c.statusLabel || hasUnread || isHeldByAdmin) && (
+                    <div className="chat-conv__tags">
+                      {isHeldByAdmin ? (
+                        <span className="chat-conv__tag chat-conv__tag--success">
+                          <Headset size={11} /> {t("Admin giữ")}
+                        </span>
+                      ) : c.statusLabel ? (
+                        <span className={`chat-conv__tag ${isUrgent ? "chat-conv__tag--danger" : c.statusLabelType === "success" ? "chat-conv__tag--success" : ""}`}>
+                          {c.statusLabel}
+                        </span>
+                      ) : <span />}
+                      {hasUnread && <span className="chat-conv__unread-dot" aria-label={t("Chưa đọc")} />}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* ===== COLUMN 2: CHAT STREAM ===== */}
+        {/* COLUMN 2: CHAT STREAM */}
         <div className="chat-main">
           {!selected ? (
             <div className="chat-main--empty">
               <div>
-                <MessageCircle
-                  size={64}
-                  style={{ opacity: 0.3, marginBottom: 12 }}
-                />
-                <p
-                  style={{
-                    margin: 0,
-                    fontFamily: "var(--st-font-head)",
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: "var(--st-text)",
-                  }}
-                >
+                <MessageCircle size={64} style={{ opacity: 0.3, marginBottom: 12 }} />
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--st-text)" }}>
                   {t("Chọn 1 cuộc trò chuyện để bắt đầu")}
                 </p>
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    fontFamily: "var(--st-font-body)",
-                    fontSize: 13,
-                    color: "var(--st-text-muted)",
-                  }}
-                >
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--st-text-muted)" }}>
                   {t("Tin nhắn sẽ hiển thị ở đây")}
                 </p>
               </div>
             </div>
           ) : (
             <>
-              {/* HEADER */}
               <div className="chat-main__header">
                 <div className="chat-main__header-left">
                   <div className="chat-main__avatar-wrap">
-                    <div className="chat-main__avatar">
-                      {getInitials(selected.user_name)}
-                    </div>
+                    <div className="chat-main__avatar">{getInitials(selected.user_name)}</div>
                     <span className="chat-main__online-dot" />
                   </div>
                   <div className="chat-main__header-info">
                     <div className="chat-main__header-name-row">
-                      <span className="chat-main__header-name">
-                        {selected.user_name || t("Khách")}
-                      </span>
+                      <span className="chat-main__header-name">{selected.user_name || t("Khách")}</span>
                       {selected.studentId && (
-                        <span className="chat-main__header-mssv">
-                          {t("MSSV:")} {selected.studentId}
-                        </span>
+                        <span className="chat-main__header-mssv">{t("MSSV:")} {selected.studentId}</span>
                       )}
                     </div>
                     <div className="chat-main__header-meta">
                       <span className="chat-main__header-meta-item chat-main__header-meta-item--primary">
-                        <Smartphone size={12} />
-                        {t("App Canteen VWA")}
+                        <Smartphone size={12} />{t("App Canteen VWA")}
                       </span>
                       <span>•</span>
                       <span className="chat-main__header-meta-item">
-                        <Utensils size={12} />
-                        {selected.table || t("Bàn 06 (Sảnh 1)")}
+                        <Utensils size={12} />{selected.table || t("Bàn 06 (Sảnh 1)")}
                       </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="chat-main__header-actions">
-                  <button
-                    type="button"
-                    className="chat-main__icon-btn"
-                    onClick={handleCall}
-                    title={t("Gọi điện")}
-                    aria-label={t("Gọi điện")}
-                  >
+                  <button type="button" className="chat-main__icon-btn" onClick={handleCall} title={t("Gọi điện")} aria-label={t("Gọi điện")}>
                     <Phone size={18} />
                   </button>
-                  
                   <button
                     type="button"
                     className="chat-main__icon-btn"
@@ -1669,73 +1157,44 @@ export default function EmployeeChat() {
                   >
                     <Headset size={18} style={{ color: "var(--st-danger)" }} />
                   </button>
-
-                  <button
-                    type="button"
-                    className="chat-main__icon-btn"
-                    onClick={handlePrintLabel}
-                    title={t("In tem dán ly")}
-                    aria-label={t("In tem dán ly")}
-                  >
+                  <button type="button" className="chat-main__icon-btn" onClick={handlePrintLabel} title={t("In tem dán ly")} aria-label={t("In tem dán ly")}>
                     <Printer size={18} />
                   </button>
                   <button
                     type="button"
-                    className={`chat-main__icon-btn ${
-                      isSelectedPinned ? "chat-main__icon-btn--pinned" : ""
-                    }`}
+                    className={`chat-main__icon-btn ${isSelectedPinned ? "chat-main__icon-btn--pinned" : ""}`}
                     onClick={handleTogglePin}
-                    title={
-                      isSelectedPinned ? t("Bỏ ghim") : t("Ghim hội thoại")
-                    }
-                    aria-label={
-                      isSelectedPinned ? t("Bỏ ghim") : t("Ghim hội thoại")
-                    }
+                    title={isSelectedPinned ? t("Bỏ ghim") : t("Ghim hội thoại")}
+                    aria-label={isSelectedPinned ? t("Bỏ ghim") : t("Ghim hội thoại")}
                   >
-                    {isSelectedPinned ? (
-                      <PinOff size={18} style={{ color: "#f59e0b" }} />
-                    ) : (
-                      <Pin size={18} />
-                    )}
+                    {isSelectedPinned ? <PinOff size={18} style={{ color: "#f59e0b" }} /> : <Pin size={18} />}
                   </button>
                 </div>
               </div>
 
-              {/* Banner bị tắt chat / bị admin giữ */}
               {!loadingPermission && (
                 !chatPermission.enabled ? (
                   <div className="emp-chat-banner emp-chat-banner--danger">
                     <Lock size={16} />
-                    <span>
-                      {t("Admin đã TẮT quyền chat của bạn. Vui lòng liên hệ quản trị viên.")}
-                    </span>
+                    <span>{t("Admin đã TẮT quyền chat của bạn. Vui lòng liên hệ quản trị viên.")}</span>
                   </div>
                 ) : isSelectedHeldByAdmin ? (
                   <div className="emp-chat-banner emp-chat-banner--info">
                     <Headset size={16} />
-                    <span>
-                      {t("Admin đang xử lý hội thoại này. Bạn chỉ có thể xem, không gửi được tin.")}
-                    </span>
+                    <span>{t("Admin đang xử lý hội thoại này. Bạn chỉ có thể xem, không gửi được tin.")}</span>
                   </div>
                 ) : null
               )}
 
-              {/* FEED */}
               <div ref={messagesEndRef} className="chat-main__feed">
                 {loadingMsgs ? (
                   <div className="chat-main--empty">
-                    <Loader2
-                      size={24}
-                      style={{ animation: "spin 1s linear infinite" }}
-                    />
+                    <Loader2 size={24} style={{ animation: "spin 1s linear infinite" }} />
                   </div>
                 ) : messages.length === 0 ? (
                   <div className="chat-main--empty">
                     <div>
-                      <MessageCircle
-                        size={36}
-                        style={{ opacity: 0.3, marginBottom: 8 }}
-                      />
+                      <MessageCircle size={36} style={{ opacity: 0.3, marginBottom: 8 }} />
                       <div>{t("Chưa có tin nhắn. Bắt đầu trò chuyện!")}</div>
                     </div>
                   </div>
@@ -1743,44 +1202,26 @@ export default function EmployeeChat() {
                   messages.map((m, idx) => {
                     const isOwn = m.from === "staff";
                     const prev = messages[idx - 1];
-                    const showDate =
-                      !prev || !sameDay(prev.created_at, m.created_at);
-
+                    const showDate = !prev || !sameDay(prev.created_at, m.created_at);
                     return (
                       <div key={m.id}>
-                        {showDate && <DateDivider iso={m.created_at} />}
-
-                        <div
-                          className={`chat-msg-row ${
-                            isOwn ? "chat-msg-row--own" : ""
-                          }`}
-                        >
+                        {showDate && <DateDivider iso={m.created_at} t={t} />}
+                        <div className={`chat-msg-row ${isOwn ? "chat-msg-row--own" : ""}`}>
                           {!isOwn && (
                             <div className="chat-msg-avatar">
-                              {getInitials(
-                                m.from_name || selected.user_name
-                              )}
+                              {getInitials(m.from_name || selected.user_name)}
                             </div>
                           )}
-
                           <div className="chat-msg-body">
-                            <div
-                              className={`chat-msg-bubble ${
-                                isOwn ? "chat-msg-bubble--own" : ""
-                              }`}
-                            >
-                              <div style={{ whiteSpace: "pre-wrap" }}>
-                                {m.content}
-                              </div>
+                            <div className={`chat-msg-bubble ${isOwn ? "chat-msg-bubble--own" : ""}`}>
+                              <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
                             </div>
-
                             <span className="chat-msg-time">
                               {fmtTime(m.created_at)}
                               {isOwn && ` • ${m.from_name || t("Bạn")}`}
                               {m._pending && ` • ${t("Đang gửi...")}`}
                             </span>
                           </div>
-
                           {isOwn && (
                             <div className="chat-msg-avatar chat-msg-avatar--staff">
                               {getInitials("Trần Thị Mai")}
@@ -1791,67 +1232,41 @@ export default function EmployeeChat() {
                     );
                   })
                 )}
-
                 <div ref={bottomRef} />
               </div>
 
-              {/* QUICK MACROS */}
               <div className="chat-quick-bar">
                 <Bolt size={16} className="chat-quick-bar__icon" />
                 {QUICK_MACROS.map((q, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className="chat-quick-chip"
-                    onClick={() => send(q)}
-                    disabled={isInputDisabled}
-                  >
+                  <button key={i} type="button" className="chat-quick-chip" onClick={() => send(q)} disabled={isInputDisabled}>
                     {q}
                   </button>
                 ))}
               </div>
 
-              {/* INPUT */}
               <div className="chat-input-area">
                 <div className="chat-input-tools">
+                  <button type="button" className="chat-input-tool" title={t("Đính kèm ảnh")} aria-label={t("Đính kèm ảnh")}><ImagePlus size={18} /></button>
+                  <button type="button" className="chat-input-tool" title={t("Biểu tượng cảm xúc")} aria-label={t("Biểu tượng cảm xúc")}><Smile size={18} /></button>
+                  <button type="button" className="chat-input-tool chat-input-tool--macro" title={t("Mẫu câu sẵn")} aria-label={t("Mẫu câu sẵn")}><MessageSquareMore size={18} /></button>
                   <button
                     type="button"
-                    className="chat-input-tool"
-                    title={t("Đính kèm ảnh")}
-                    aria-label={t("Đính kèm ảnh")}
-                  >
-                    <ImagePlus size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    className="chat-input-tool"
-                    title={t("Biểu tượng cảm xúc")}
-                    aria-label={t("Biểu tượng cảm xúc")}
-                  >
-                    <Smile size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    className="chat-input-tool chat-input-tool--macro"
-                    title={t("Mẫu câu sẵn")}
-                    aria-label={t("Mẫu câu sẵn")}
-                  >
-                    <MessageSquareMore size={18} />
-                  </button>
-                  <button type="button" onClick={() => { 
-      const uid = selected?.user_id; 
-      const uname = selected?.user_name; 
-      if(uid) { window.location.href = `/owner/vouchers?action=create&userId=${uid}&userName=${encodeURIComponent(uname)}`; } 
-      else { alert("Vui lòng chọn khách hàng trước!"); }
-    }} className="chat-input-tool chat-input-tool--voucher"
+                    onClick={() => {
+                      const uid = selected?.user_id;
+                      const uname = selected?.user_name;
+                      if (uid) {
+                        window.location.href = `/owner/vouchers?action=create&userId=${uid}&userName=${encodeURIComponent(uname)}`;
+                      } else {
+                        toast(t("Vui lòng chọn khách hàng trước"), "warning");
+                      }
+                    }}
+                    className="chat-input-tool chat-input-tool--voucher"
                     title={t("Tặng Voucher")}
                     aria-label={t("Tặng Voucher")}
                   >
                     <Ticket size={18} />
                   </button>
-                  <span className="chat-input-hint">
-                    {t("Phím tắt: Enter gửi • Shift+Enter xuống dòng")}
-                  </span>
+                  <span className="chat-input-hint">{t("Phím tắt: Enter gửi • Shift+Enter xuống dòng")}</span>
                 </div>
 
                 <div className="chat-input-row">
@@ -1861,31 +1276,15 @@ export default function EmployeeChat() {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={onKey}
-                    placeholder={`${t("Nhập tin nhắn phản hồi")} ${
-                      selected.user_name || t("khách")
-                    }...`}
+                    placeholder={`${t("Nhập tin nhắn phản hồi")} ${selected.user_name || t("khách")}...`}
                     disabled={isInputDisabled}
                     maxLength={MAX_MESSAGE_LENGTH}
                   />
-                  <button
-                    type="button"
-                    className="chat-input-send"
-                    onClick={() => send()}
-                    disabled={isInputDisabled || !text.trim()}
-                  >
+                  <button type="button" className="chat-input-send" onClick={() => send()} disabled={isInputDisabled || !text.trim()}>
                     {sending ? (
-                      <>
-                        <Loader2
-                          size={16}
-                          style={{ animation: "spin 1s linear infinite" }}
-                        />
-                        <span>{t("Đang gửi...")}</span>
-                      </>
+                      <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /><span>{t("Đang gửi...")}</span></>
                     ) : (
-                      <>
-                        <span>{t("Gửi tin")}</span>
-                        <Send size={16} />
-                      </>
+                      <><span>{t("Gửi tin")}</span><Send size={16} /></>
                     )}
                   </button>
                 </div>
@@ -1894,165 +1293,130 @@ export default function EmployeeChat() {
           )}
         </div>
 
-        {/* ===== COLUMN 3: CONTEXT INSPECTOR ===== */}
+        {/* COLUMN 3: CONTEXT INSPECTOR */}
         {selected && (
           <div className="chat-context">
             <div className="chat-context-card">
               <div className="chat-context-card__head">
-                <span className="chat-context-card__label">
-                  {t("Hồ sơ khách dùng bữa")}
-                </span>
+                <span className="chat-context-card__label">{t("Hồ sơ khách dùng bữa")}</span>
                 <span className="chat-context-card__badge">
-                  {loadingContext
-                    ? t("Đang tải...")
-                    : contextData?.user?.tier || t("Hạng Bạc (Silver)")}
+                  {loadingContext ? t("Đang tải...") : contextData?.user?.tier || t("Hạng Bạc (Silver)")}
                 </span>
               </div>
 
-              <div className="chat-context-profile">
-                <div className="chat-context-profile__avatar">
-                  {contextData?.user?.avatar || selected.user_avatar ? (
-                    <img
-                      src={contextData?.user?.avatar || selected.user_avatar}
-                      alt={selected.user_name}
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <UserIcon
-                      size={24}
-                      style={{ color: "var(--st-text-light)" }}
-                    />
-                  )}
+              {loadingContext && !contextData ? (
+                <div style={{ padding: 24, textAlign: "center", color: "var(--st-text-muted)" }}>
+                  <Loader2 size={20} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
+                  <div style={{ fontSize: 13 }}>{t("Đang tải thông tin khách...")}</div>
                 </div>
-                <div className="chat-context-profile__info">
-                  <span className="chat-context-profile__name">
-                    {contextData?.user?.name ||
-                      selected.user_name ||
-                      t("Khách")}
-                  </span>
-                  <span className="chat-context-profile__faculty">
-                    {contextData?.user?.faculty || "—"}
-                  </span>
-                  <span className="chat-context-profile__points">
-                    {t("Tích lũy:")} {contextData?.user?.points || 0}{" "}
-                    {t("Green Points")}
-                  </span>
+              ) : contextError && !contextData ? (
+                <div style={{ padding: 20, textAlign: "center" }}>
+                  <AlertCircle size={22} style={{ color: "var(--st-danger)", marginBottom: 8 }} />
+                  <div style={{ fontSize: 13, color: "var(--st-text-muted)", marginBottom: 12 }}>{contextError}</div>
+                  <button
+                    type="button"
+                    onClick={() => loadContext(selected.user_id)}
+                    style={{
+                      padding: "8px 16px", background: "var(--st-primary-container)",
+                      color: "var(--st-on-primary)", border: 0, borderRadius: 8,
+                      cursor: "pointer", fontSize: 13, fontWeight: 600,
+                    }}
+                  >
+                    <RefreshCw size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
+                    {t("Thử lại")}
+                  </button>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="chat-context-profile">
+                    <div className="chat-context-profile__avatar">
+                      {contextData?.user?.avatar || selected.user_avatar ? (
+                        <img
+                          src={contextData?.user?.avatar || selected.user_avatar}
+                          alt={selected.user_name}
+                          onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
+                        />
+                      ) : (
+                        <UserIcon size={24} style={{ color: "var(--st-text-light)" }} />
+                      )}
+                    </div>
+                    <div className="chat-context-profile__info">
+                      <span className="chat-context-profile__name">
+                        {contextData?.user?.name || selected.user_name || t("Khách")}
+                      </span>
+                      <span className="chat-context-profile__faculty">
+                        {contextData?.user?.faculty || "—"}
+                      </span>
+                      <span className="chat-context-profile__points">
+                        {t("Tích lũy:")} {contextData?.user?.points || 0} {t("Green Points")}
+                      </span>
+                    </div>
+                  </div>
 
-              <div className="chat-context-meta">
-                <div className="chat-context-meta__item">
-                  <span className="chat-context-meta__label">
-                    {t("Ví VWA Pay")}
-                  </span>
-                  <span className="chat-context-meta__value">
-                    {fmtMoney(contextData?.wallet?.balance || 0)}
-                  </span>
-                </div>
-                <div className="chat-context-meta__item">
-                  <span className="chat-context-meta__label">
-                    {t("Đơn tháng này")}
-                  </span>
-                  <span className="chat-context-meta__value chat-context-meta__value--primary">
-                    {contextData?.ordersThisMonth || 0} {t("đơn")}
-                  </span>
-                </div>
-              </div>
+                  <div className="chat-context-meta">
+                    <div className="chat-context-meta__item">
+                      <span className="chat-context-meta__label">{t("Ví VWA Pay")}</span>
+                      <span className="chat-context-meta__value">
+                        {fmtMoney(contextData?.wallet?.balance || 0, locale)}
+                      </span>
+                    </div>
+                    <div className="chat-context-meta__item">
+                      <span className="chat-context-meta__label">{t("Đơn tháng này")}</span>
+                      <span className="chat-context-meta__value chat-context-meta__value--primary">
+                        {contextData?.ordersThisMonth || 0} {t("đơn")}
+                      </span>
+                    </div>
+                  </div>
 
-              <div className="chat-context-note">
-                <Heart size={18} className="chat-context-note__icon" />
-                <div className="chat-context-note__text">
-                  <span className="chat-context-note__title">
-                    {t("Ghi chú khẩu vị cá nhân:")}
-                  </span>
-                  <span className="chat-context-note__content">
-                    "
-                    {t(
-                      "Không ăn cay nhiều, ưu tiên cơm nóng, dùng ít đá giải khát."
-                    )}
-                    "
-                  </span>
-                </div>
-              </div>
+                  <div className="chat-context-note">
+                    <Heart size={18} className="chat-context-note__icon" />
+                    <div className="chat-context-note__text">
+                      <span className="chat-context-note__title">{t("Ghi chú khẩu vị cá nhân:")}</span>
+                      <span className="chat-context-note__content">
+                        "{t("Không ăn cay nhiều, ưu tiên cơm nóng, dùng ít đá giải khát.")}"
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {customerOrders.length > 0 ? (
               <div className="chat-context-card">
                 <div className="chat-order-inspector__head">
                   <div className="chat-order-inspector__info">
-                    <span className="chat-order-inspector__label">
-                      {t("Đơn hàng đang xử lý")}
-                    </span>
-                    <span className="chat-order-inspector__code">
-                      {currentOrder.code}
-                    </span>
+                    <span className="chat-order-inspector__label">{t("Đơn hàng đang xử lý")}</span>
+                    <span className="chat-order-inspector__code">{currentOrder.code}</span>
                   </div>
-                  
                   {customerOrders.length > 1 && (
                     <div style={{ display: "flex", gap: 4 }}>
-                      <button
-                        onClick={handlePrevOrder}
-                        disabled={currentOrderIdx === 0}
-                        style={{
-                          width: 24, height: 24, borderRadius: 6, border: "1px solid var(--st-outline-light)",
-                          background: "var(--st-surface)", cursor: currentOrderIdx === 0 ? "not-allowed" : "pointer",
-                          display: "grid", placeItems: "center", opacity: currentOrderIdx === 0 ? 0.5 : 1
-                        }}
-                      >
+                      <button onClick={handlePrevOrder} disabled={currentOrderIdx === 0} style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid var(--st-outline-light)", background: "var(--st-surface)", cursor: currentOrderIdx === 0 ? "not-allowed" : "pointer", display: "grid", placeItems: "center", opacity: currentOrderIdx === 0 ? 0.5 : 1 }}>
                         <ChevronLeft size={16} />
                       </button>
-                      <button
-                        onClick={handleNextOrder}
-                        disabled={currentOrderIdx === customerOrders.length - 1}
-                        style={{
-                          width: 24, height: 24, borderRadius: 6, border: "1px solid var(--st-outline-light)",
-                          background: "var(--st-surface)", cursor: currentOrderIdx === customerOrders.length - 1 ? "not-allowed" : "pointer",
-                          display: "grid", placeItems: "center", opacity: currentOrderIdx === customerOrders.length - 1 ? 0.5 : 1
-                        }}
-                      >
+                      <button onClick={handleNextOrder} disabled={currentOrderIdx === customerOrders.length - 1} style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid var(--st-outline-light)", background: "var(--st-surface)", cursor: currentOrderIdx === customerOrders.length - 1 ? "not-allowed" : "pointer", display: "grid", placeItems: "center", opacity: currentOrderIdx === customerOrders.length - 1 ? 0.5 : 1 }}>
                         <ChevronRight size={16} />
                       </button>
                     </div>
                   )}
-
-                  <div className="chat-order-inspector__token">
-                    #{selected.token || genToken(selected.user_id)}
-                  </div>
+                  <div className="chat-order-inspector__token">#{selected.token || genToken(selected.user_id)}</div>
                 </div>
 
                 <div className="chat-order-inspector__status">
                   <span className="chat-order-inspector__status-label">
-                    <Microwave
-                      size={16}
-                      style={{ color: "var(--st-primary)" }}
-                    />
+                    <Microwave size={16} style={{ color: "var(--st-primary)" }} />
                     {t("Trạng thái hiện tại")}
                   </span>
-                  <span className="chat-order-inspector__status-value">
-                    {t(currentOrder.status)}
-                  </span>
+                  <span className="chat-order-inspector__status-value">{t(currentOrder.status)}</span>
                 </div>
 
                 <div className="chat-order-inspector__items">
                   {(currentOrder.items || []).map((item, index) => (
-                    <div
-                      key={index}
-                      className="chat-order-inspector__item"
-                    >
+                    <div key={index} className="chat-order-inspector__item">
                       <div className="chat-order-inspector__item-left">
-                        <span className="chat-order-inspector__item-qty">
-                          {item.qty}x
-                        </span>
-                        <span className="chat-order-inspector__item-name">
-                          {t(item.name)}
-                        </span>
+                        <span className="chat-order-inspector__item-qty">{item.qty}x</span>
+                        <span className="chat-order-inspector__item-name">{item.name}</span>
                       </div>
-                      <span className="chat-order-inspector__item-price">
-                        {fmtMoney(item.price)}
-                      </span>
+                      <span className="chat-order-inspector__item-price">{fmtMoney(item.price, locale)}</span>
                     </div>
                   ))}
                 </div>
@@ -2060,48 +1424,33 @@ export default function EmployeeChat() {
                 <div className="chat-order-inspector__summary">
                   <div className="chat-order-inspector__row">
                     <span>{t("Tổng cộng")}</span>
-                    <span>{fmtMoney(currentOrder.subtotal)}</span>
+                    <span>{fmtMoney(currentOrder.subtotal, locale)}</span>
                   </div>
                   {currentOrder.discount > 0 && (
                     <div className="chat-order-inspector__row chat-order-inspector__row--success">
                       <span>{t("Giảm giá")}</span>
-                      <span>-{fmtMoney(currentOrder.discount)}</span>
+                      <span>-{fmtMoney(currentOrder.discount, locale)}</span>
                     </div>
                   )}
                   <div className="chat-order-inspector__row chat-order-inspector__row--final">
                     <span className="chat-order-inspector__row-label">
                       {t("Đã thu qua")} {currentOrder.payment}:
                     </span>
-                    <span className="chat-order-inspector__row-value">
-                      {fmtMoney(currentOrder.total)}
-                    </span>
+                    <span className="chat-order-inspector__row-value">{fmtMoney(currentOrder.total, locale)}</span>
                   </div>
                 </div>
 
                 <div className="chat-order-inspector__triggers">
-                  <button
-                    type="button"
-                    className="chat-trigger-btn chat-trigger-btn--primary"
-                    onClick={handleRecall}
-                  >
+                  <button type="button" className="chat-trigger-btn chat-trigger-btn--primary" onClick={handleRecall}>
                     <Megaphone size={18} />
-                    {t("Bấm Loa Gọi Số")} #
-                    {selected.token || genToken(selected.user_id)}
+                    {t("Bấm Loa Gọi Số")} #{selected.token || genToken(selected.user_id)}
                   </button>
-                  <button
-                    type="button"
-                    className="chat-trigger-btn"
-                    onClick={handleNotify}
-                  >
+                  <button type="button" className="chat-trigger-btn" onClick={handleNotify}>
                     <Bell size={18} />
                     {t("Bắn thông báo 'Món Đã Sẵn Sàng'")}
                   </button>
                   <div className="chat-trigger-grid-2">
-                    <button
-                      type="button"
-                      className="chat-trigger-btn"
-                      onClick={handleSwapDish}
-                    >
+                    <button type="button" className="chat-trigger-btn" onClick={handleSwapDish}>
                       <ArrowLeftRight size={14} />
                       {t("Đổi món khác")}
                     </button>
@@ -2109,32 +1458,21 @@ export default function EmployeeChat() {
                 </div>
               </div>
             ) : (
-              <div
-                className="chat-context-card"
-                style={{
-                  textAlign: "center",
-                  padding: 20,
-                  color: "var(--st-text-muted)",
-                }}
-              >
+              <div className="chat-context-card" style={{ textAlign: "center", padding: 20, color: "var(--st-text-muted)" }}>
                 {t("Khách chưa có đơn nào đang xử lý")}
               </div>
             )}
           </div>
         )}
 
-        {/* ===== GHI CHÚ NỘI BỘ ===== */}
         {selected && (
           <div className="chat-context-card chat-context-card--fullwidth">
             <div className="chat-internal-note">
               <div className="chat-internal-note__head">
                 <span className="chat-internal-note__title">
-                  <Edit3 size={14} />
-                  {t("Ghi chú nội bộ cho ca sau")}
+                  <Edit3 size={14} />{t("Ghi chú nội bộ cho ca sau")}
                 </span>
-                <span className="chat-internal-note__saved">
-                  {t("Tự động lưu")}
-                </span>
+                <span className="chat-internal-note__saved">{t("Tự động lưu")}</span>
               </div>
               <textarea
                 className="chat-internal-note__textarea"
@@ -2148,52 +1486,27 @@ export default function EmployeeChat() {
         )}
       </div>
 
-      {/* ===== MODALS ===== */}
-      <CallModal
-        open={showCallModal}
-        customer={selected}
-        onClose={() => setShowCallModal(false)}
-      />
+      <CallModal open={showCallModal} customer={selected} onClose={() => setShowCallModal(false)} t={t} />
 
       <PrintLabelModal
         open={showPrintModal}
         customer={selected}
         order={currentOrder}
         onClose={() => setShowPrintModal(false)}
+        t={t}
+        locale={locale}
       />
 
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-        .chat-main__icon-btn--pinned {
-          background: rgba(245, 158, 11, 0.12) !important;
-        }
-
-        /* ✅ V7: banner tắt chat / admin giữ */
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .chat-main__icon-btn--pinned { background: rgba(245, 158, 11, 0.12) !important; }
         .emp-chat-banner {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 14px;
-          margin: 0 0 8px;
-          border-radius: 10px;
-          font-family: var(--st-font-body);
-          font-size: 13px;
-          font-weight: 600;
+          display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+          margin: 0 0 8px; border-radius: 10px; font-size: 13px; font-weight: 600;
           line-height: 1.5;
         }
-        .emp-chat-banner--danger {
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.3);
-          color: #dc2626;
-        }
-        .emp-chat-banner--info {
-          background: rgba(38, 52, 213, 0.08);
-          border: 1px solid rgba(38, 52, 213, 0.25);
-          color: #2634d5;
-        }
+        .emp-chat-banner--danger { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #dc2626; }
+        .emp-chat-banner--info { background: rgba(38, 52, 213, 0.08); border: 1px solid rgba(38, 52, 213, 0.25); color: #2634d5; }
       `}</style>
     </div>
   );

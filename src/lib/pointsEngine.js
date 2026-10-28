@@ -1,6 +1,8 @@
 // ============================================================
 // POINTS ENGINE — Pure functions cho tích/đổi điểm VWA
 // ============================================================
+// B8: DEFAULT_POINTS_CONFIG.redeem khớp usePointsConfig (100 điểm = 10.000đ)
+//     canRedeem nhận `t` tùy chọn để i18n
 
 export const DEFAULT_POINTS_CONFIG = {
   earn: {
@@ -13,15 +15,15 @@ export const DEFAULT_POINTS_CONFIG = {
     review_points: 5,
   },
   redeem: {
-    rate_points: 1,
-    rate_value: 1,
-    min_points: 1,
+    rate_points: 100,
+    rate_value: 10000,
+    min_points: 100,
     max_unused_vouchers: 50,
     tiers: [
-      { points: 100, value: 100 },
-      { points: 200, value: 200 },
-      { points: 500, value: 500 },
-      { points: 1000, value: 1000 },
+      { points: 100, value: 10000 },
+      { points: 200, value: 20000 },
+      { points: 500, value: 50000 },
+      { points: 1000, value: 100000 },
     ],
   },
 };
@@ -72,18 +74,36 @@ export function calcRedeemValue(points, config) {
   return { value: Math.floor(p / ratePoints) * rateValue, tier: null };
 }
 
-export function canRedeem(userPoints, points, activeVoucherCount, config) {
+// 🔧 B8: nhận `t` tùy chọn (nếu không có → giữ tiếng Việt như cũ)
+export function canRedeem(userPoints, points, activeVoucherCount, config, t) {
+  const tr = typeof t === "function" ? t : (s) => s;
   const cfg = mergeConfig(config);
   const min = Number(cfg.redeem.min_points) || 100;
   const max = Number(cfg.redeem.max_unused_vouchers) || 50;
   const p = Number(points) || 0;
 
-  if (p < min) return { ok: false, reason: "Cần ít nhất " + min + " điểm" };
-  if (p > (Number(userPoints) || 0)) return { ok: false, reason: "Không đủ điểm" };
-  if (Number(activeVoucherCount) >= max)
-    return { ok: false, reason: "Đã có " + activeVoucherCount + "/" + max + " voucher chưa dùng" };
+  if (p < min) {
+    return {
+      ok: false,
+      reason: tr("Cần ít nhất {value} điểm để đổi", { value: min }),
+    };
+  }
+  if (p > (Number(userPoints) || 0)) {
+    return { ok: false, reason: tr("Không đủ điểm") };
+  }
+  if (Number(activeVoucherCount) >= max) {
+    return {
+      ok: false,
+      reason: tr("Đã có {count}/{max} voucher chưa dùng", {
+        count: activeVoucherCount,
+        max,
+      }),
+    };
+  }
 
   const { value, tier } = calcRedeemValue(p, cfg);
-  if (value <= 0) return { ok: false, reason: "Giá trị voucher không hợp lệ" };
+  if (value <= 0) {
+    return { ok: false, reason: tr("Giá trị voucher không hợp lệ") };
+  }
   return { ok: true, value, tier };
 }

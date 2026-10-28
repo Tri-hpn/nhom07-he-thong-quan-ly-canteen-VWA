@@ -1,11 +1,8 @@
 // ============================================================
 // INVENTORY86LIST.JSX — Panel kiểm soát tồn kho + toggle 86
 // ============================================================
-// Map API:
-//   - Danh sách: api.menu.list() filter stock < min hoặc stock === 0
-//   - Toggle 86: api.menu.update(id, { stock: 0 })
-//   - Bật lại:   api.menu.update(id, { stock: 20 })
-// ============================================================
+// B7: Number(stock) thay vì strict ===; tData(item,"name");
+//     role="switch" + aria-checked cho toggle
 
 import { useState, useMemo } from "react";
 import {
@@ -16,10 +13,16 @@ import { useI18n } from "../hooks/useI18n";
 
 const MIN_STOCK_THRESHOLD = 15;
 
+function getStockNum(item) {
+  const n = Number(item?.stock);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function getStatus(item) {
-  if (item.stock === 0) return "out";
-  if (item.stock < MIN_STOCK_THRESHOLD) return "critical";
-  if (item.stock < MIN_STOCK_THRESHOLD * 2) return "warning";
+  const stock = getStockNum(item);
+  if (stock === 0) return "out";
+  if (stock < MIN_STOCK_THRESHOLD) return "critical";
+  if (stock < MIN_STOCK_THRESHOLD * 2) return "warning";
   return "ok";
 }
 
@@ -37,13 +40,12 @@ export default function Inventory86List({
   onAddTo86,
   limit = 6,
 }) {
-  const { t } = useI18n();
+  const { t, tData } = useI18n();
   const [togglingIds, setTogglingIds] = useState(new Set());
 
   const displayItems = useMemo(() => {
     return [...items]
       .sort((a, b) => {
-        // Ưu tiên: hết hàng > critical > warning > ok
         const order = { out: 0, critical: 1, warning: 2, ok: 3 };
         return order[getStatus(a)] - order[getStatus(b)];
       })
@@ -51,7 +53,7 @@ export default function Inventory86List({
   }, [items, limit]);
 
   const outOfStockCount = useMemo(
-    () => items.filter((m) => m.stock === 0).length,
+    () => items.filter((m) => getStockNum(m) === 0).length,
     [items]
   );
 
@@ -73,7 +75,6 @@ export default function Inventory86List({
 
   return (
     <div className="inv86-card">
-      {/* HEAD */}
       <div className="inv86-card__head">
         <div className="inv86-card__head-left">
           <Package size={22} className="inv86-card__head-icon" />
@@ -91,7 +92,6 @@ export default function Inventory86List({
         )}
       </div>
 
-      {/* BODY */}
       <div className="inv86-card__body">
         {displayItems.length === 0 ? (
           <div className="kds-column__empty">
@@ -100,13 +100,15 @@ export default function Inventory86List({
         ) : (
           displayItems.map((item) => {
             const id = item._id || item.id;
+            const stockNum = getStockNum(item);
             const status = getStatus(item);
             const tag = getStatusTag(item);
-            const isOff = item.stock === 0;
+            const isOff = stockNum === 0;
             const isToggling = togglingIds.has(id);
+            const itemName = tData(item, "name");
             const progressPct =
-              item.stock > 0
-                ? Math.min(100, (item.stock / (MIN_STOCK_THRESHOLD * 4)) * 100)
+              stockNum > 0
+                ? Math.min(100, (stockNum / (MIN_STOCK_THRESHOLD * 4)) * 100)
                 : 0;
 
             return (
@@ -121,7 +123,7 @@ export default function Inventory86List({
                         isOff ? "inv86-row__name--out" : ""
                       }`}
                     >
-                      {item.name}
+                      {itemName}
                     </span>
                     <span
                       className={`inv86-row__tag inv86-row__tag--${tag.variant}`}
@@ -149,7 +151,7 @@ export default function Inventory86List({
                           status === "critical" ? "inv86-row__qty--danger" : ""
                         }`}
                       >
-                        {t("Còn")} <b>{item.stock}</b> {t("phần")}
+                        {t("Còn")} <b>{stockNum}</b> {t("phần")}
                       </span>
                     </div>
                   )}
@@ -163,13 +165,15 @@ export default function Inventory86List({
 
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={!isOff}
                   className={`inv86-switch ${isOff ? "inv86-switch--off" : ""}`}
                   onClick={() => handleToggle(item)}
                   disabled={isToggling}
                   aria-label={
                     isOff
-                      ? `${t("Mở lại")} ${item.name}`
-                      : `${t("Báo hết")} ${item.name}`
+                      ? `${t("Mở lại")} ${itemName}`
+                      : `${t("Báo hết")} ${itemName}`
                   }
                 >
                   <span className="inv86-switch__knob" />
@@ -180,7 +184,6 @@ export default function Inventory86List({
         )}
       </div>
 
-      {/* FOOTER */}
       <div className="inv86-card__footer">
         <button
           type="button"

@@ -1,14 +1,13 @@
 // ============================================================
-// STAFFPROFILE.JSX — Hồ sơ Nhân viên / Admin (V3 - FINAL)
+// STAFFPROFILE.JSX — Hồ sơ Nhân viên / Admin (V4 — B9.8)
 // ============================================================
-// V3 (2026-10):
-//   - ✅ Hiển thị mã GV (teacher_code) nếu có
-//   - ✅ Hiển thị năm vào + đơn vị (parse từ mã GV)
-//   - ✅ Gợi ý liên hệ admin nếu chưa có mã GV
-//   - Giữ V2: nén avatar, đổi mật khẩu
+// V4:
+//   - Bug 1: PasswordModal thêm body scroll lock
+//   - Bug 2: PasswordModal thêm submittingRef chống double-submit
+//   - Bug 3: overlay/X không đóng khi đang loading
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   User, Mail, Phone, MapPin, Save, Shield, Camera, Pencil, X, Check,
   Lock, KeyRound, Eye, EyeOff, BadgeCheck, GraduationCap, Building2,
@@ -17,7 +16,6 @@ import { api } from "../api";
 import { toast } from "../components/Effects";
 import { useI18n } from "../hooks/useI18n";
 
-// ---------- Nén avatar ----------
 const MAX_AVATAR_DIM = 512;
 const AVATAR_QUALITY = 0.85;
 
@@ -303,7 +301,6 @@ export default function StaffProfile({
           </div>
         </div>
 
-        {/* ✅ MỚI: Mã GV */}
         {hasTeacherCode && (
           <div
             style={{
@@ -347,7 +344,6 @@ export default function StaffProfile({
           </div>
         )}
 
-        {/* Gợi ý nếu chưa có mã GV */}
         {!hasTeacherCode && user?.email?.includes("@vwa.edu.vn") && (
           <div
             style={{
@@ -362,9 +358,7 @@ export default function StaffProfile({
             }}
           >
             ⚠️{" "}
-            {t(
-              "Tài khoản của bạn chưa có mã giảng viên. Vui lòng liên hệ phòng Tổ chức để được cấp."
-            )}
+            {t("Tài khoản của bạn chưa có mã giảng viên. Vui lòng liên hệ phòng Tổ chức để được cấp.")}
           </div>
         )}
 
@@ -453,7 +447,6 @@ export default function StaffProfile({
               value={user?.name}
             />
 
-            {/* ✅ MỚI: Mã GV */}
             {hasTeacherCode && (
               <InfoRow
                 icon={<BadgeCheck size={16} />}
@@ -464,7 +457,6 @@ export default function StaffProfile({
               />
             )}
 
-            {/* ✅ MỚI: Năm vào + đơn vị */}
             {hasTeacherCode && user?.year_in && (
               <InfoRow
                 icon={<GraduationCap size={16} />}
@@ -582,16 +574,31 @@ function PasswordModal({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // 🔧 B9.8 — chống double-submit
+  const submittingRef = useRef(false);
+
   const update = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  // 🔧 B9.8 — body scroll lock
   useEffect(() => {
-    const handler = (e) => e.key === "Escape" && onClose();
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape" && !submittingRef.current) onClose();
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
   const submit = async () => {
+    if (submittingRef.current) return;
     setError("");
     if (!form.currentPassword || !form.newPassword) {
       setError(t("Nhập đầy đủ thông tin"));
@@ -606,6 +613,7 @@ function PasswordModal({ onClose }) {
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
     try {
       await api.changePassword({
@@ -618,13 +626,14 @@ function PasswordModal({ onClose }) {
     } catch (e) {
       setError(e.message || t("Lỗi đổi mật khẩu"));
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   return (
     <div
-      onClick={onClose}
+      onClick={() => !loading && onClose()}
       role="dialog"
       aria-modal="true"
       aria-label={t("Đổi mật khẩu")}
@@ -668,13 +677,14 @@ function PasswordModal({ onClose }) {
             <Lock size={20} /> {t("Đổi mật khẩu")}
           </h3>
           <button
-            onClick={onClose}
+            onClick={() => !loading && onClose()}
+            disabled={loading}
             style={{
               background: "transparent",
               border: 0,
               fontSize: 24,
               color: "var(--text-light, #8993a3)",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               lineHeight: 1,
             }}
           >
@@ -749,14 +759,15 @@ function PasswordModal({ onClose }) {
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button
-            onClick={onClose}
+            onClick={() => !loading && onClose()}
+            disabled={loading}
             style={{
               flex: 1,
               padding: 12,
               border: "1px solid var(--border-color, #e5e9ef)",
               borderRadius: 8,
               background: "var(--card-bg, #fff)",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               color: "var(--text-primary, #172033)",
               fontWeight: 600,
             }}
@@ -829,9 +840,7 @@ function InfoRow({ icon, label, value, note, mono = false }) {
         >
           {label}
           {note && (
-            <span
-              style={{ fontSize: 10, color: "#f59e0b", fontWeight: 600 }}
-            >
+            <span style={{ fontSize: 10, color: "#f59e0b", fontWeight: 600 }}>
               ({note})
             </span>
           )}

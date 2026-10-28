@@ -1,10 +1,8 @@
 // ============================================================
 // TOPPINGSELECTOR.JSX — Chọn size + topping cho món ăn
 // ============================================================
-// 🔧 FIX #42: mở rộng TOPPING_GROUPS_BY_CATEGORY + fallback rộng
-//   - Thêm category: Bữa sáng/trưa/tối, Bánh mì - Xôi, Combo...
-//   - resolveToppingGroups: fallback trả [key] + nhóm mặc định
-//   - Filter topping có applies_to rỗng (áp dụng mọi món) — giữ nguyên
+// FIX #42: mở rộng TOPPING_GROUPS_BY_CATEGORY + fallback rộng
+// B7: auto-select size đầu tiên nếu selectedSize không khớp size thực
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -30,13 +28,7 @@ function isSameIdArray(a, b) {
   return true;
 }
 
-// Ánh xạ danh mục món (menu khách) → nhóm topping (`applies_to` do admin cấu hình).
-// Hai bên dùng tên nhóm khác nhau nên phải map, nếu không món thuộc các danh mục
-// Đồ uống / Bún - Phở - Cháo / Ăn vặt… sẽ không có topping nào để chọn.
-//
-// 🔧 FIX #42: bổ sung category còn thiếu để đồng bộ với menu thực tế.
 const TOPPING_GROUPS_BY_CATEGORY = {
-  // Món chính
   "Cơm": ["Cơm", "Món mặn"],
   "Bún - Phở - Cháo": ["Món mặn", "Cơm"],
   "Bánh mì - Xôi": ["Món mặn", "Cơm"],
@@ -45,29 +37,23 @@ const TOPPING_GROUPS_BY_CATEGORY = {
   "Đồ chay": ["Món chay"],
   "Món phụ": ["Món phụ", "Cơm"],
 
-  // Ăn nhẹ / ăn vặt
   "Ăn vặt": ["Đồ ăn nhanh"],
   "Đồ ăn nhanh": ["Đồ ăn nhanh"],
   "Tráng miệng": ["Đồ uống", "Đồ ăn nhanh"],
 
-  // Đồ uống
   "Coffee & Tea": ["Đồ uống"],
   "Nước ép - Sinh tố": ["Đồ uống"],
   "Đồ uống": ["Đồ uống"],
 
-  // Combo
   "Combo": ["Cơm", "Món mặn"],
   "Combo 1 người": ["Cơm", "Món mặn"],
   "Combo siêu hời": ["Cơm", "Món mặn"],
 
-  // 🔧 FIX #42: Bữa sáng/trưa/tối map về nhóm món mặn + cơm
   "Bữa sáng": ["Cơm", "Món mặn"],
   "Bữa trưa": ["Cơm", "Món mặn"],
   "Bữa tối": ["Cơm", "Món mặn"],
 };
 
-// 🔧 FIX #42: nhóm fallback khi category không có trong map
-//   → vẫn cho phép hiển thị topping, tránh mất selector.
 const FALLBACK_GROUPS = ["Cơm", "Món mặn", "Món phụ", "Đồ uống", "Đồ ăn nhanh"];
 
 function resolveToppingGroups(category) {
@@ -75,9 +61,6 @@ function resolveToppingGroups(category) {
   const key = String(category).trim();
   const mapped = TOPPING_GROUPS_BY_CATEGORY[key];
   if (mapped && mapped.length > 0) return mapped;
-
-  // 🔧 FIX #42: fallback — trả [key] (để match chính xác applies_to)
-  //   + FALLBACK_GROUPS (để match nhóm phổ biến) → không bao giờ mất topping.
   return [key, ...FALLBACK_GROUPS];
 }
 
@@ -115,9 +98,6 @@ export default function ToppingSelector({
 
     (async () => {
       try {
-        // Lấy TOÀN BỘ topping rồi tự lọc theo nhóm phù hợp với danh mục món.
-        // (Nếu để backend lọc theo đúng tên danh mục menu thì rất nhiều món —
-        // đồ uống, bún/phở, ăn vặt… — không khớp nhóm nào và selector biến mất.)
         const [toppingsRes, sizesRes] = await Promise.all([
           api.toppings.list().catch(() => []),
           api.sizes.list().catch(() => []),
@@ -131,13 +111,11 @@ export default function ToppingSelector({
         const matched = groups.length
           ? all.filter((tp) => {
               const appliesTo = Array.isArray(tp.applies_to) ? tp.applies_to : [];
-              // Topping không giới hạn nhóm → áp dụng cho mọi món
               if (appliesTo.length === 0) return true;
               return appliesTo.some((g) => groups.includes(g));
             })
           : [];
 
-        // Không khớp nhóm nào → vẫn hiện đủ topping để khách chọn (không bao giờ mất)
         setToppings(matched.length > 0 ? matched : all);
         setSizes(Array.isArray(sizesRes) ? sizesRes : []);
       } finally {
@@ -157,6 +135,15 @@ export default function ToppingSelector({
       setSelectedSize(initialSize);
     }
   }, [initialSize]);
+
+  // 🔧 B7 FIX: auto-select size đầu tiên nếu selectedSize không khớp size thực
+  useEffect(() => {
+    if (sizes.length === 0) return;
+    setSelectedSize((cur) => {
+      const exists = sizes.some((s) => normalizeId(s.id) === normalizeId(cur));
+      return exists ? cur : sizes[0].id;
+    });
+  }, [sizes]);
 
   useEffect(() => {
     if (toppings.length === 0) return;

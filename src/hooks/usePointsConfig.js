@@ -1,12 +1,8 @@
 // ============================================================
 // usePointsConfig.js — Cache config points toàn cục
 // ============================================================
-// V2 (2026-10):
-//   - 🔧 notify() cả trong nhánh catch — component khác đang listen
-//     sẽ nhận DEFAULTS thay vì giữ state cũ stale.
-//   - 🔧 Export clearPointsConfigCache() để admin đổi config có thể
-//     force refresh (sau khi PUT /points/config thành công).
-// ============================================================
+// V3 (B8): clearPointsConfigCache notify với DEFAULTS thay vì null
+//          → tránh listener nhận null → crash consumer
 
 import { useEffect, useState } from "react";
 import { api } from "../api";
@@ -67,7 +63,6 @@ export async function fetchPointsConfig() {
       return CACHE;
     })
     .catch(() => {
-      // 🔧 FIX: notify cả khi lỗi
       if (!CACHE) CACHE = DEFAULTS;
       notify();
       return CACHE;
@@ -80,9 +75,9 @@ export function getPointsConfig() {
   return CACHE || DEFAULTS;
 }
 
-// 🔧 Force refresh — gọi sau khi admin PUT /points/config thành công
+// 🔧 B8: reset về DEFAULTS trước (không null) để listener không nhận null
 export function clearPointsConfigCache() {
-  CACHE = null;
+  CACHE = DEFAULTS;
   notify();
   return fetchPointsConfig();
 }
@@ -97,7 +92,7 @@ export function usePointsConfig() {
     } else {
       fetchPointsConfig().then((c) => { if (mounted) setCfg(c); });
     }
-    const listener = (c) => { if (mounted) setCfg(c); };
+    const listener = (c) => { if (mounted && c) setCfg(c); };
     LISTENERS.add(listener);
     return () => { mounted = false; LISTENERS.delete(listener); };
   }, []);

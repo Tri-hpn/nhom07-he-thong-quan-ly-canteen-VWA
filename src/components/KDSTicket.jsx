@@ -1,13 +1,8 @@
 // ============================================================
 // KDSTICKET.JSX — Ticket đơn trong KDS board (V6 - LIVE TIMER)
 // ============================================================
-// V6 (2026-10):
-//   - ⏱ Tự động tick timer mỗi 1s (không phụ thuộc cha re-render).
-//   - 🔧 Fix hiển thị điểm Sống Xanh (điểm/Xu, không phải đ).
-//   - 🎯 Ngưỡng urgency dùng prep_time nếu có.
-//   - ♿ Thêm aria-label cho các nút action.
-//   - ⚡ useMemo cho items/total/paymentLabel.
-// ============================================================
+// V6.1 (B7): PAYMENT_LABELS + ACTION_LABELS qua t();
+//            tData cho tên món; aria-label dùng giá trị đã dịch
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -51,10 +46,7 @@ const PAYMENT_LABELS = {
   "Thẻ SV": "Thẻ SV",
 };
 
-// ============================================================
-// PICKUP TICKET (variant "pickup")
-// ============================================================
-function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
+function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t, tData }) {
   return (
     <div className="kds-pickup">
       <div className="kds-pickup__bar" />
@@ -78,7 +70,7 @@ function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
             {t("Khách:")} <b>{order.customer_name}</b>
           </span>
           <p className="kds-pickup__items">
-            {order.items?.map((it) => `${it.name} x${it.qty}`).join(", ")}
+            {order.items?.map((it) => `${tData(it, "name")} x${it.qty}`).join(", ")}
           </p>
         </div>
 
@@ -115,9 +107,6 @@ function PickupTicket({ order, pickupNumber, onAction, onRecall, loading, t }) {
   );
 }
 
-// ============================================================
-// MAIN KDSTICKET
-// ============================================================
 export default function KDSTicket({
   variant = "prep",
   layout = "compact",
@@ -137,10 +126,9 @@ export default function KDSTicket({
   urgent = false,
   t: tProp,
 }) {
-  const { t: tHook } = useI18n();
+  const { t: tHook, tData } = useI18n();
   const t = tProp || tHook;
 
-  // ─── LIVE TIMER: tự tick mỗi 1s từ order.created_at ─────────
   const [elapsedSec, setElapsedSec] = useState(elapsed);
 
   useEffect(() => {
@@ -166,7 +154,6 @@ export default function KDSTicket({
   const processing = isProcessing || loading;
   const handleAdvance = onAdvance || onAction;
 
-  // ─── Nếu là Pickup variant thì return sớm (trước khi dùng memo) ──
   if (variant === "pickup") {
     return (
       <PickupTicket
@@ -176,6 +163,7 @@ export default function KDSTicket({
         onRecall={onRecall}
         loading={processing}
         t={t}
+        tData={tData}
       />
     );
   }
@@ -186,13 +174,11 @@ export default function KDSTicket({
   const isPrep = normalizedVariant === "prep";
   const isReady = normalizedVariant === "ready";
 
-  // ─── Memo hóa để tick 1s không gây re-render nặng ──────────
   const items = useMemo(() => order?.items || [], [order?.items]);
   const total = useMemo(() => Number(order?.total) || 0, [order?.total]);
 
   const elapsedMin = Math.floor(elapsedSec / 60);
 
-  // Ngưỡng urgency: dùng prep_time lớn nhất + 3 phút buffer, tối thiểu 12 phút
   const maxPrepTime = useMemo(
     () => items.reduce((mx, it) => Math.max(mx, Number(it.prep_time) || 0), 0),
     [items]
@@ -201,15 +187,21 @@ export default function KDSTicket({
   const isUrgent = elapsedMin >= urgencyThreshold;
   const minutesLeft = Math.max(0, urgencyThreshold - elapsedMin);
 
-  const paymentLabel = useMemo(
-    () => PAYMENT_LABELS[order?.payment] || order?.payment || t("Tiền mặt tại quầy"),
-    [order?.payment, t]
-  );
+  // 🔧 B7: wrap qua t() để dịch visible label
+  const paymentLabel = useMemo(() => {
+    const raw =
+      PAYMENT_LABELS[order?.payment] ||
+      order?.payment ||
+      "Tiền mặt tại quầy";
+    return t(raw);
+  }, [order?.payment, t]);
 
-  const actionLabel = useMemo(
-    () => ACTION_LABELS[order?.status] || (isPrep ? t("Báo Xong Món") : t("Xử lý")),
-    [order?.status, isPrep, t]
-  );
+  const actionLabel = useMemo(() => {
+    const raw =
+      ACTION_LABELS[order?.status] ||
+      (isPrep ? "Báo Xong Món" : "Xử lý");
+    return t(raw);
+  }, [order?.status, isPrep, t]);
 
   const dateVariant = getDateLabelVariant(order?.created_at);
   const showDateLabel = dateVariant && dateVariant !== "today";
@@ -225,7 +217,6 @@ export default function KDSTicket({
   const showReject = isPending && typeof onReject === "function";
   const isTall = layout === "tall";
 
-  // Điểm Sống Xanh — có thể là pending, approved hoặc legacy (chỉ có points)
   const hasGreen =
     order?.green_status === "pending" ||
     order?.green_status === "approved" ||
@@ -242,7 +233,6 @@ export default function KDSTicket({
       }`}
       aria-busy={processing}
     >
-      {/* HEAD */}
       <div className="kds-card__head">
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span className="kds-card__code">{order.code}</span>
@@ -288,7 +278,6 @@ export default function KDSTicket({
         </div>
       </div>
 
-      {/* CUSTOMER */}
       {!isTall && (
         <div className="kds-card__customer">
           {order.customer_name || t("Khách")}{" "}
@@ -300,7 +289,6 @@ export default function KDSTicket({
         </div>
       )}
 
-      {/* TIMER — luôn hiện khi Prep hoặc Pending để bếp thấy đang chờ bao lâu */}
       {(isPrep || isPending) && !isTall && (
         <div
           style={{
@@ -322,12 +310,11 @@ export default function KDSTicket({
         </div>
       )}
 
-      {/* ITEMS */}
       <div className="kds-card__items">
         {items.slice(0, 4).map((it, i) => (
           <div key={`${it.menu_item_id || i}-${i}`} className="kds-card__item">
             <span className="kds-card__item-name">
-              {it.qty}x {it.name}
+              {it.qty}x {tData(it, "name")}
               {it.size?.id && it.size.id !== "S" && (
                 <span style={{ color: "var(--st-text-muted)", fontWeight: 500 }}>
                   {" "}({it.size.id})
@@ -362,7 +349,6 @@ export default function KDSTicket({
         )}
       </div>
 
-      {/* META */}
       <div className="kds-card__meta">
         <span
           className={`kds-card__payment ${isWallet ? "kds-card__payment--success" : ""} ${
@@ -375,7 +361,6 @@ export default function KDSTicket({
         <span className="kds-card__total">{money(total)}</span>
       </div>
 
-      {/* GREEN STATUS */}
       {hasGreen &&
         (isReady ? (
           <div
@@ -488,14 +473,12 @@ export default function KDSTicket({
             }}
           >
             <Leaf size={12} />
-            {/* FIX: dùng "điểm" thay vì "đ" (tiền) */}
             <span>
               {t("Khách mang đồ đựng")} (+{greenPoints || 10} {t("điểm")})
             </span>
           </div>
         ))}
 
-      {/* ACTIONS */}
       <div className={`kds-card__actions ${showReject ? "kds-card__actions--stack" : ""}`}>
         {showReject && (
           <button
@@ -524,7 +507,7 @@ export default function KDSTicket({
             }`}
             onClick={() => handleAdvance(order)}
             disabled={processing}
-            aria-label={t(actionLabel)}
+            aria-label={actionLabel}
           >
             {processing ? (
               <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />

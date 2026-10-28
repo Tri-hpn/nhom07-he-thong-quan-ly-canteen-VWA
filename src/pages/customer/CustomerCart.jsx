@@ -1,29 +1,20 @@
 // ============================================================
-// CUSTOMERCART.JSX — Giỏ hàng (V6 - FINAL + i18n)
+// CUSTOMERCART.JSX — Giỏ hàng (V7)
 // ============================================================
-// V6 (2026-11):
-//   - 🔧 FIX: Bỏ dòng "Trợ giá SV -10.000đ" fake trong summary.
-//     Trước đây cart hiển thị tổng = total - 10k, nhưng backend
-//     không áp dụng subsidy → checkout hiện giá cao hơn → user
-//     tưởng web tính sai. Giờ hiển thị đúng money(total).
-//   - 🔧 FIX: setSyncedKeys không còn gọi bên trong setState updater
-//     (StrictMode có thể gọi updater 2 lần → dispatch trùng).
-// ============================================================
+// V7 (B9.1):
+//   - getMaxQty: Number coerce + chặn stock=0
+//   - Number(m.price) chống NaN
+//   - .replace() → object interpolation
+//   - tData cho ConfirmDialog name
 
 import {
-  useState,
-  useEffect,
-  useMemo,
-  useRef,
-  useCallback,
-  memo,
+  useState, useEffect, useMemo, useRef, useCallback, memo,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ShoppingCart, Plus, Minus, Trash2, Check, ArrowRight, Store, Pencil,
-  Home, ChevronRight, Info, AlertCircle, Clock, Utensils, Tag, Shield,
-  Sparkles, Soup, ChevronLeft, X, Loader2, ShoppingBag, RefreshCw,
-  CreditCard,
+  Home, ChevronRight, Info, Clock, Utensils, Tag, Shield,
+  Soup, ChevronLeft, ShoppingBag, CreditCard,
 } from "lucide-react";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
@@ -45,11 +36,17 @@ const FALLBACK_IMG =
     </svg>`
   );
 
+function getStockNum(item) {
+  const n = Number(item?.stock);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+// 🔧 B9.1: chặn stock=0 → max=1 nhưng caller phải reject
 function getMaxQty(item) {
-  if (typeof item?.stock === "number") {
-    return Math.max(1, item.stock);
-  }
-  return DEFAULT_MAX_QTY;
+  const stock = getStockNum(item);
+  if (stock === null) return DEFAULT_MAX_QTY;
+  if (stock <= 0) return 0;
+  return Math.max(1, Math.floor(stock));
 }
 
 function readSavedSelection(cartKeys) {
@@ -66,26 +63,16 @@ function readSavedSelection(cartKeys) {
   return cartKeys;
 }
 
-// ============================================================
-// SUB: CartItemRow — memo để tránh re-render
-// ============================================================
-
 const CartItemRow = memo(function CartItemRow({
-  item,
-  checked,
-  onToggle,
-  onQtyChange,
-  onRemove,
-  onEdit,
-  t,
-  tData,
+  item, checked, onToggle, onQtyChange, onRemove, onEdit, t, tData,
 }) {
   const m = item;
   const maxQty = getMaxQty(m);
-  const atMax = m.qty >= maxQty;
+  const stockNum = getStockNum(m);
+  const atMax = maxQty > 0 && m.qty >= maxQty;
   const atMin = m.qty <= 1;
-  const stockLeft = typeof m.stock === "number" ? m.stock : null;
-  const isLowStock = stockLeft !== null && stockLeft <= 5;
+  const isLowStock = stockNum !== null && stockNum > 0 && stockNum <= 5;
+  const isOutOfStock = stockNum !== null && stockNum === 0;
 
   return (
     <div className={`cart-item ${checked ? "cart-item--checked" : ""}`}>
@@ -106,7 +93,7 @@ const CartItemRow = memo(function CartItemRow({
         {m.image ? (
           <img
             src={m.image}
-            alt={m.name}
+            alt={tData(m, "name")}
             loading="lazy"
             onError={(e) => {
               e.target.onerror = null;
@@ -121,7 +108,7 @@ const CartItemRow = memo(function CartItemRow({
       <div className="cart-item__info">
         <b className="cart-item__name">{tData(m, "name")}</b>
         <div className="cart-item__meta">
-          <span className="cart-item__price">{money(m.price)}</span>
+          <span className="cart-item__price">{money(Number(m.price) || 0)}</span>
           {typeof m._size === "string" && m._size && (
             <span className="cart-item__tag">
               {t("Size")} {m._size}
@@ -133,14 +120,16 @@ const CartItemRow = memo(function CartItemRow({
             </span>
           )}
         </div>
-        {stockLeft !== null && (
+        {stockNum !== null && (
           <span
             className={`cart-item__stock ${
-              isLowStock ? "cart-item__stock--low" : ""
+              isLowStock || isOutOfStock ? "cart-item__stock--low" : ""
             }`}
           >
             <Clock size={11} />
-            {t("Còn")} {stockLeft}
+            {isOutOfStock
+              ? t("Hết hàng")
+              : `${t("Còn")} ${stockNum}`}
           </span>
         )}
       </div>
@@ -166,7 +155,7 @@ const CartItemRow = memo(function CartItemRow({
       </div>
 
       <div className="cart-item__total">
-        {money(m.price * m.qty)}
+        {money((Number(m.price) || 0) * (Number(m.qty) || 0))}
       </div>
 
       <div className="cart-item__actions">
@@ -192,10 +181,6 @@ const CartItemRow = memo(function CartItemRow({
     </div>
   );
 });
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 
 export default function CustomerCart({ cart, setCart }) {
   const { t, tData } = useI18n();
@@ -325,7 +310,6 @@ export default function CustomerCart({ cart, setCart }) {
     [selectedLines]
   );
 
-  // 🔧 FIX: compute next + gọi setSyncedKeys BÊN NGOÀI setState updater
   const toggleItem = useCallback(
     (key) => {
       const prev = selectedKeys;
@@ -351,13 +335,15 @@ export default function CustomerCart({ cart, setCart }) {
       if (!item) return;
 
       const maxQty = getMaxQty(item);
-      const currentQty = Number(item.qty) || 1;
+      if (maxQty <= 0) {
+        toast(t("Món đã hết hàng"), "error");
+        return;
+      }
+
+      const currentQty = Math.max(1, Number(item.qty) || 1);
 
       if (delta > 0 && currentQty >= maxQty) {
-        toast(
-          t("Chỉ còn {n} phần trong kho").replace("{n}", maxQty),
-          "error"
-        );
+        toast(t("Chỉ còn {n} phần trong kho", { n: maxQty }), "error");
         return;
       }
 
@@ -373,12 +359,11 @@ export default function CustomerCart({ cart, setCart }) {
     (key) => {
       const item = safeCart[key];
       if (!item) return;
-      setConfirmRemove({ key, name: item.name });
+      setConfirmRemove({ key, name: tData(item, "name") });
     },
-    [safeCart]
+    [safeCart, tData]
   );
 
-  // 🔧 FIX: tương tự toggleItem — compute next trước, setSyncedKeys ngoài
   const executeRemove = useCallback(() => {
     if (!confirmRemove) return;
     const { key } = confirmRemove;
@@ -531,18 +516,18 @@ export default function CustomerCart({ cart, setCart }) {
 
         <div className="cart-stepper">
           <div className={`cart-stepper__item ${selectedLines.length > 0 ? "cart-stepper__item--done" : "cart-stepper__item--active"}`}>
-              <div className={`cart-stepper__icon ${selectedLines.length === 0 ? "cart-stepper__icon--active" : ""}`}>
-                {selectedLines.length > 0 ? <Check size={16} /> : <Utensils size={16} />}
-              </div>
-              <div>
-                <span className={`cart-stepper__label ${selectedLines.length === 0 ? "cart-stepper__label--active" : ""}`}>
-                  {t("BƯỚC 1")}
-                </span>
-                <b className={selectedLines.length === 0 ? "cart-stepper__label--active" : ""}>
-                  {t("Chọn món")}
-                </b>
-              </div>
+            <div className={`cart-stepper__icon ${selectedLines.length === 0 ? "cart-stepper__icon--active" : ""}`}>
+              {selectedLines.length > 0 ? <Check size={16} /> : <Utensils size={16} />}
             </div>
+            <div>
+              <span className={`cart-stepper__label ${selectedLines.length === 0 ? "cart-stepper__label--active" : ""}`}>
+                {t("BƯỚC 1")}
+              </span>
+              <b className={selectedLines.length === 0 ? "cart-stepper__label--active" : ""}>
+                {t("Chọn món")}
+              </b>
+            </div>
+          </div>
 
           <div className="cart-stepper__item cart-stepper__item--active">
             <div className="cart-stepper__icon cart-stepper__icon--active">
@@ -672,9 +657,6 @@ export default function CustomerCart({ cart, setCart }) {
                 <span>{t("Phí dịch vụ")}</span>
                 <b>{money(0)}</b>
               </div>
-              {/* 🔧 FIX: đã xoá dòng "Trợ giá SV -10.000đ" fake.
-                  Nếu muốn hiển thị "trợ giá", cần implement subsidy ở backend
-                  để giá cart và checkout luôn khớp nhau. */}
             </div>
 
             <div className="cart-summary__total">
@@ -683,7 +665,6 @@ export default function CustomerCart({ cart, setCart }) {
                 <small>{t("Đã bao gồm VAT")}</small>
               </div>
               <div className="cart-summary__total-value">
-                {/* 🔧 FIX: show đúng money(total), không trừ 10k ảo */}
                 {money(total)}
               </div>
             </div>
@@ -743,7 +724,6 @@ export default function CustomerCart({ cart, setCart }) {
               n[newKey] = newItem;
               return n;
             });
-            // 🔧 FIX: compute next trước, gọi setSyncedKeys ngoài updater
             const prev = selectedKeys;
             const next = prev.includes(oldKey)
               ? [...prev.filter((k) => k !== oldKey), newKey]
@@ -760,9 +740,7 @@ export default function CustomerCart({ cart, setCart }) {
         title={t("Xoá món khỏi giỏ hàng?")}
         message={
           confirmRemove
-            ? `"${confirmRemove.name}" ${t(
-                "sẽ bị xoá khỏi giỏ. Bạn có thể thêm lại bất cứ lúc nào."
-              )}`
+            ? `"${confirmRemove.name}" ${t("sẽ bị xoá khỏi giỏ. Bạn có thể thêm lại bất cứ lúc nào.")}`
             : ""
         }
         confirmText={t("Xoá món")}
@@ -777,9 +755,7 @@ export default function CustomerCart({ cart, setCart }) {
         title={t("Xoá toàn bộ giỏ hàng?")}
         message={
           lines.length > 0
-            ? t(
-                "Bạn sắp xoá {n} món khỏi giỏ. Hành động này không thể hoàn tác."
-              ).replace("{n}", lines.length)
+            ? t("Bạn sắp xoá {n} món khỏi giỏ. Hành động này không thể hoàn tác.", { n: lines.length })
             : ""
         }
         confirmText={t("Xoá tất cả")}

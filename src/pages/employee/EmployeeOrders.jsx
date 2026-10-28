@@ -1,10 +1,9 @@
 // ============================================================
-// EMPLOYEEORDERS.JSX — KDS Kanban (V20 - STRICTLY POLLING)
+// EMPLOYEEORDERS.JSX — KDS Kanban (V21 - B9.4)
 // ============================================================
-// V20:
-//   - 🔥 XÓA HOÀN TOÀN SSE. Chỉ dùng Polling (10s) để tránh
-//     mọi lỗi 501 trên Vercel Serverless.
-// ============================================================
+// V21:
+//   - shiftLabel: pass `t` vào getCurrentShiftLabel
+//   - executeReject: object interpolation
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -12,7 +11,7 @@ import {
   CheckCircle2, Wallet, Timer, TrendingUp, User, Lock,
   ChevronDown, PackageCheck, Volume2, VolumeX, Store,
   UtensilsCrossed, ListFilter, Inbox, Play, Soup, ArrowRight,
-  Clock, Flame, ChevronLeft, Wifi
+  Clock, Flame, ChevronLeft, Wifi,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { api, getToken } from "../../api";
@@ -23,15 +22,13 @@ import KDSTicket from "../../components/KDSTicket";
 import { useI18n } from "../../hooks/useI18n";
 import { useAuth } from "../../contexts/AuthContext";
 import { emitOrderUpdated, onOrderUpdated } from "../../lib/orderEvents";
-import {
-  fmtTime, fmtTimeWithLabel, getDateLabelVariant, getCurrentShiftLabel,
-} from "../../lib/datetime";
+import { fmtTime, fmtTimeWithLabel, getDateLabelVariant, getCurrentShiftLabel } from "../../lib/datetime";
 
 const COMPLETED_LIMIT = 8;
 const ROW_LIMIT = 10;
 const SOUND_REPEAT_MS = 4000;
 const SOUND_STORAGE_KEY = "canteen.kds_sound_enabled";
-const POLL_MS = 10000; // 🔧 Polling 10s
+const POLL_MS = 10000;
 
 const NEXT_STATUS = {
   "Chờ xác nhận": "Đã xác nhận",
@@ -69,25 +66,25 @@ function getOrderStation(order) {
   return "all";
 }
 
-const PAYMENT_ALIASES = { 
-  "Tiền mặt": "cash", cash: "cash", CASH: "cash", 
-  QR: "qr", VietQR: "qr", 
-  "Ví Canteen": "wallet", WALLET: "wallet", 
-  "Thẻ": "card", "Thẻ SV": "card" 
+const PAYMENT_ALIASES = {
+  "Tiền mặt": "cash", cash: "cash", CASH: "cash",
+  QR: "qr", VietQR: "qr",
+  "Ví Canteen": "wallet", WALLET: "wallet",
+  "Thẻ": "card", "Thẻ SV": "card",
 };
 function normalizePayment(p) { return PAYMENT_ALIASES[p] || "cash"; }
 
-const TIMEFRAMES = { 
-  all: null, 
-  "1130": [11 * 60 + 30, 12 * 60], 
-  "1200": [12 * 60, 12 * 60 + 30], 
-  "1230": [12 * 60 + 30, 13 * 60] 
+const TIMEFRAMES = {
+  all: null,
+  "1130": [11 * 60 + 30, 12 * 60],
+  "1200": [12 * 60, 12 * 60 + 30],
+  "1230": [12 * 60 + 30, 13 * 60],
 };
 
 function getLocalDateStr(d = new Date()) {
-  const y = d.getFullYear(); 
-  const m = String(d.getMonth() + 1).padStart(2, "0"); 
-  const dt = String(d.getDate()).padStart(2, "0"); 
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dt = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dt}`;
 }
 
@@ -102,7 +99,7 @@ function getOrderPickupMinutes(order) {
   const src = `${order?.pickupTime || order?.pickup || ""} ${order?.note || ""}`;
   const m = src.match(/(\d{1,2}):(\d{2})/);
   if (!m) return null;
-  const h = parseInt(m[1], 10); 
+  const h = parseInt(m[1], 10);
   const mi = parseInt(m[2], 10);
   if (isNaN(h) || isNaN(mi)) return null;
   return h * 60 + mi;
@@ -115,19 +112,19 @@ function playDing() {
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
     const makeTone = (freq, startAt, duration) => {
-      const osc = ctx.createOscillator(); 
+      const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sine"; 
+      osc.type = "sine";
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(0.0001, startAt);
       gain.gain.exponentialRampToValueAtTime(0.25, startAt + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
-      osc.connect(gain); 
+      osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(startAt); 
+      osc.start(startAt);
       osc.stop(startAt + duration + 0.05);
     };
-    makeTone(880, now, 0.18); 
+    makeTone(880, now, 0.18);
     makeTone(1320, now + 0.16, 0.22);
     setTimeout(() => { try { ctx.close(); } catch (_) {} }, 700);
   } catch (e) {}
@@ -232,15 +229,9 @@ export default function EmployeeOrders({ isAdmin = false }) {
     }
   }, [t]);
 
-  // 🔧 CHỈ DÙNG POLLING, KHÔNG DÙNG SSE
   useEffect(() => {
-    load(false); // Load lần đầu
-    
-    // Tự động load lại mỗi 10s
-    const timer = setInterval(() => {
-      load(true); 
-    }, POLL_MS);
-
+    load(false);
+    const timer = setInterval(() => { load(true); }, POLL_MS);
     return () => clearInterval(timer);
   }, [load]);
 
@@ -320,7 +311,8 @@ export default function EmployeeOrders({ isAdmin = false }) {
     return { visible: list.slice(0, ROW_LIMIT), hiddenCount: Math.max(0, list.length - ROW_LIMIT), isExpanded: false };
   }, [expandedRows]);
 
-  const shiftLabel = useMemo(() => getCurrentShiftLabel(new Date()), []);
+  // 🔧 B9.4: pass `t` vào getCurrentShiftLabel
+  const shiftLabel = useMemo(() => getCurrentShiftLabel(new Date(), t), [t]);
   const staffName = user?.name || t("Nhân viên");
   const staffCode = user?.employeeCode || user?.code || "";
 
@@ -355,13 +347,22 @@ export default function EmployeeOrders({ isAdmin = false }) {
 
   const rejectOrder = useCallback((order) => { if (advancingId !== null) return; setConfirmReject(order); }, [advancingId]);
 
+  // 🔧 B9.4: object interpolation
   const executeReject = useCallback(async () => {
     if (!confirmReject) return;
     const order = confirmReject; const id = order._id || order.id;
     setAdvancingId(id);
-    try { await api.orders.setStatus(id, "Đã hủy"); toast(`${t("Đã hủy")} ${order.code} ${t("và hoàn tiền khách")}`, "warning"); setConfirmReject(null); emitOrderUpdated({ ...order, status: "Đã hủy" }); await load(true); }
-    catch (e) { toast(e.message || t("Không hủy được"), "error"); }
-    finally { setAdvancingId(null); }
+    try {
+      await api.orders.setStatus(id, "Đã hủy");
+      toast(t("Đã hủy đơn {code} và hoàn tiền khách", { code: order.code }), "warning");
+      setConfirmReject(null);
+      emitOrderUpdated({ ...order, status: "Đã hủy" });
+      await load(true);
+    } catch (e) {
+      toast(e.message || t("Không hủy được"), "error");
+    } finally {
+      setAdvancingId(null);
+    }
   }, [confirmReject, load, t]);
 
   const showRow1 = stationFilter === "all" || stationFilter === "pending";
@@ -462,7 +463,7 @@ export default function EmployeeOrders({ isAdmin = false }) {
         </div>
       </div>
 
-      <ConfirmDialog open={!!confirmReject} title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""} message={confirmReject ? `${t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.")}` : ""} confirmText={t("Từ chối & Hoàn tiền")} cancelText={t("Giữ đơn")} danger loading={!!advancingId} onConfirm={executeReject} onClose={() => !advancingId && setConfirmReject(null)} />
+      <ConfirmDialog open={!!confirmReject} title={confirmReject ? `${t("Từ chối đơn")} ${confirmReject.code}?` : ""} message={confirmReject ? t("Hệ thống sẽ hủy đơn và hoàn tiền cho khách. Lý do có thể là hết nguyên liệu hoặc quá tải.") : ""} confirmText={t("Từ chối & Hoàn tiền")} cancelText={t("Giữ đơn")} danger loading={!!advancingId} onConfirm={executeReject} onClose={() => !advancingId && setConfirmReject(null)} />
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -593,8 +594,15 @@ function KDSRow({ title, subtitle, variant, empty, moreCount = 0, onMore, isExpa
 function CompletedStripItem({ order, t }) {
   return (
     <div className="kds-completed-strip-item">
-      <div className="kds-completed-strip-item__left"><div className="kds-completed-strip-item__icon"><CheckCircle2 size={16} /></div><span className="kds-completed-strip-item__code">{order.code}</span><span className="kds-completed-strip-item__customer">{order.customer_name || t("Khách")}</span></div>
-      <div className="kds-completed-strip-item__right"><span className="kds-completed-strip-item__time">{fmtTimeWithLabel(order.updated_at || order.created_at)}</span><span className="kds-completed-strip-item__total">{money(Number(order.total) || 0)}</span></div>
+      <div className="kds-completed-strip-item__left">
+        <div className="kds-completed-strip-item__icon"><CheckCircle2 size={16} /></div>
+        <span className="kds-completed-strip-item__code">{order.code}</span>
+        <span className="kds-completed-strip-item__customer">{order.customer_name || t("Khách")}</span>
+      </div>
+      <div className="kds-completed-strip-item__right">
+        <span className="kds-completed-strip-item__time">{fmtTimeWithLabel(order.updated_at || order.created_at, t)}</span>
+        <span className="kds-completed-strip-item__total">{money(Number(order.total) || 0)}</span>
+      </div>
     </div>
   );
 }

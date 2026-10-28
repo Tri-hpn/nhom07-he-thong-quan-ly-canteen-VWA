@@ -1,10 +1,7 @@
 // ============================================================
 // STUDENTCODEINPUT.JSX — Ô nhập MSSV + preview ngành/khoa
 // ============================================================
-// V2 (2026-10):
-//   - ✅ Dùng api.school.parseStudent() thay vì fetch trực tiếp
-//   - Giữ V1: debounce 400ms, preview ngành/khoa, validate 10 số
-// ============================================================
+// B7: replace() → object interpolation
 
 import { useEffect, useRef, useState } from "react";
 import { GraduationCap, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react";
@@ -40,9 +37,6 @@ export default function StudentCodeInput({
 
   const isLocked = !!existingCode && existingCode === localValue;
 
-  // ============================================================
-  // PARSE MSSV (debounce 400ms)
-  // ============================================================
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -63,10 +57,9 @@ export default function StudentCodeInput({
       setError(
         clean.length === 10
           ? t("MSSV chỉ được chứa chữ số")
-          : t("MSSV phải có đúng 10 chữ số (còn {n} ký tự)").replace(
-              "{n}",
-              String(10 - clean.length)
-            )
+          : t("MSSV phải có đúng 10 chữ số (còn {n} ký tự)", {
+              n: String(10 - clean.length),
+            })
       );
       setLoading(false);
       return;
@@ -79,7 +72,6 @@ export default function StudentCodeInput({
 
     debounceRef.current = setTimeout(async () => {
       try {
-        // ✅ V2: Dùng api.school.parseStudent
         const res = await api.school.parseStudent(clean);
 
         if (fetchIdRef.current !== myId) return;

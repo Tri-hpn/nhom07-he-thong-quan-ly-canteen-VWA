@@ -1,13 +1,13 @@
 // ============================================================
-// CUSTOMERCHECKOUT.JSX — Thanh toán (V6 - FINAL + i18n)
+// CUSTOMERCHECKOUT.JSX — Thanh toán (V7)
 // ============================================================
-// V6 (2026-11):
-//   - 🔧 FIX: copyToClipboard await writeText() + fallback execCommand
-//             (trước đây báo "Đã sao chép" ngay cả khi copy thất bại)
-//   - 🔧 DEAD CODE: xoá openPayment / paymentOrder / PaymentModal
-//     (không được gọi từ JSX → Modal chưa bao giờ mở)
-//   - Giữ nguyên toàn bộ logic đặt hàng khác
-// ============================================================
+// V7 (B9.1):
+//   - pointsDiscount: tính đúng 1 điểm = rate_value/rate_points (mặc định 100đ)
+//   - transferContent: useMemo [] → ổn định QR
+//   - Voucher UI: object interpolation + i18n
+//   - toast 503: i18n + bỏ options không hỗ trợ
+//   - e.message.includes → guard
+//   - gộp submitOrder/confirmPayment → createOrder()
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
@@ -16,18 +16,14 @@ import {
   Loader2, Home, ChevronRight, Wallet, QrCode, Banknote, Copy, Check,
   Download, ExternalLink, Store, Soup, Utensils, Shield, PhoneCall,
   Microwave, Info, Lightbulb, Sparkles, Plus, Minus, RefreshCw, Wifi,
-  BadgeCheck, AlertCircle, ShoppingBag, Receipt, Timer,
-  Leaf } from "lucide-react";
+  BadgeCheck, AlertCircle, ShoppingBag, Receipt, Timer, Leaf,
+} from "lucide-react";
 import { api } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import { usePointsConfig } from "../../hooks/usePointsConfig";
 import { useCrossTabSync } from "../../hooks/useCrossTabSync";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
 
 const FALLBACK_TIME_SLOTS = [
   "07:00 - 07:30", "07:30 - 08:00", "08:00 - 08:30", "08:30 - 09:00",
@@ -44,15 +40,11 @@ const SELECTED_CART_KEY = "canteen_cart_selected";
 const CART_KEY = "canteen_cart";
 
 const PAYMENT_METHODS = [
-  { id: "wallet", label: "Ví VWA Pay",     icon: Wallet },
-  { id: "qr",     label: "Mã VietQR",      icon: QrCode },
-  { id: "card",   label: "Thẻ Sinh Viên",  icon: CreditCard },
-  { id: "cash",   label: "Tiền mặt",       icon: Banknote },
+  { id: "wallet", apiValue: "WALLET", label: "Ví VWA Pay",     icon: Wallet },
+  { id: "qr",     apiValue: "QR",     label: "Mã VietQR",      icon: QrCode },
+  { id: "card",   apiValue: "CARD",   label: "Thẻ Sinh Viên",  icon: CreditCard },
+  { id: "cash",   apiValue: "CASH",   label: "Tiền mặt",       icon: Banknote },
 ];
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function removeOrderedItems(cart, selectedKeys) {
   const remain = {};
@@ -73,11 +65,9 @@ function isSlotInPast(slot) {
   const startTime = slot.split(" - ")[0];
   const [h, m] = startTime.split(":").map(Number);
   if (isNaN(h) || isNaN(m)) return false;
-
   const now = new Date();
   const slotDate = new Date();
   slotDate.setHours(h, m, 0, 0);
-
   return slotDate.getTime() < now.getTime();
 }
 
@@ -98,17 +88,15 @@ function slotToString(slot) {
   return "";
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function CustomerCheckout({ cart, setCart, user }) {
   const navigate = useNavigate();
   const checkoutLocation = useLocation();
   const buyNowItem = checkoutLocation.state?.buyNowItem || null;
-  const buyNowItems = Array.isArray(checkoutLocation.state?.buyNowItems) ? checkoutLocation.state.buyNowItems : [];
+  const buyNowItems = Array.isArray(checkoutLocation.state?.buyNowItems)
+    ? checkoutLocation.state.buyNowItems
+    : [];
   const isBuyNow = Boolean(buyNowItem || buyNowItems.length);
-  const { t, tData } = useI18n();
+  const { t, tData, locale } = useI18n();
 
   const [name, setName] = useState(() => user?.name || "");
   const [phone, setPhone] = useState(() => user?.phone || "");
@@ -127,7 +115,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const [points, setPoints] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
   const [settings, setSettings] = useState(null);
-  const [qrImageFailedUrl, setQrImageFailedUrl] = useState('');
+  const [qrImageFailedUrl, setQrImageFailedUrl] = useState("");
   const [timeSlots, setTimeSlots] = useState(FALLBACK_TIME_SLOTS);
   const [initLoading, setInitLoading] = useState(true);
 
@@ -143,25 +131,25 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
   const [selectedKeys] = useCrossTabSync(SELECTED_CART_KEY, EMPTY_ARRAY);
 
+  // 🔧 B9.1: cố định preview order code → QR không đổi mỗi render
+  const transferContent = useMemo(() => `CANTEEN ${genPreviewOrderCode()}`, []);
+
   const lines = useMemo(() => {
     if (buyNowItems.length) {
       return buyNowItems.map((item, index) => ({
         ...item,
-        _key: `__buy_now_item_${index}__`
+        _key: `__buy_now_item_${index}__`,
       }));
     }
-
     if (buyNowItem && typeof buyNowItem === "object") {
       return [{ ...buyNowItem, _key: "__buy_now_item__" }];
     }
-
     if (!selectedKeys || !selectedKeys.length) {
       return Object.entries(cart).map(([key, item]) => ({
         ...item,
         _key: key,
       }));
     }
-
     const selectedSet = new Set(selectedKeys);
     return Object.entries(cart)
       .filter(([key]) => selectedSet.has(key))
@@ -181,12 +169,19 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     0,
     Math.min(100, Number(ptsCfg?.redeem?.max_redeem_percent ?? 30))
   );
-  const pointsDiscount = usePoints
-    ? Math.min(
-        Math.max(0, Number(points) || 0),
-        Math.floor(Math.max(0, subtotal - discount) * maxRedeemPercent / 100)
-      )
-    : 0;
+
+  // 🔧 B9.1: tính đúng 1 điểm = rate_value / rate_points (mặc định 100đ)
+  const pointsDiscount = useMemo(() => {
+    if (!usePoints) return 0;
+    const ratePoints = Math.max(1, Number(ptsCfg?.redeem?.rate_points) || 100);
+    const rateValue = Math.max(1, Number(ptsCfg?.redeem?.rate_value) || 10000);
+    const dongPerPoint = rateValue / ratePoints;
+    const userPointsValue = Math.max(0, Number(points) || 0) * dongPerPoint;
+    const maxDiscount = Math.floor(
+      Math.max(0, subtotal - discount) * maxRedeemPercent / 100
+    );
+    return Math.max(0, Math.min(userPointsValue, maxDiscount));
+  }, [usePoints, ptsCfg, points, subtotal, discount, maxRedeemPercent]);
 
   const total = useMemo(
     () => Math.max(0, subtotal - discount - pointsDiscount),
@@ -198,19 +193,14 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       prevSubtotalRef.current = subtotal;
       return;
     }
-
     if (prevSubtotalRef.current !== subtotal && appliedVoucher) {
       if (appliedVoucher.value > subtotal) {
-        toast(
-          t("Voucher không còn hợp lệ do thay đổi đơn hàng"),
-          "warning"
-        );
+        toast(t("Voucher không còn hợp lệ do thay đổi đơn hàng"), "warning");
         setDiscount(0);
         setVoucherCode("");
         setAppliedVoucher(null);
       }
     }
-
     prevSubtotalRef.current = subtotal;
   }, [subtotal, appliedVoucher, t]);
 
@@ -227,10 +217,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }, [countdown]);
 
-  // 🔧 TỐI ƯU: Dùng Promise.allSettled để không block UI nếu 1 API bị chậm/lỗi
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         const results = await Promise.allSettled([
@@ -240,12 +228,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           api.settings.get(),
           api.timeSlots.list(),
         ]);
-
         if (cancelled) return;
 
-        const [vouchersRes, pointsRes, walletRes, settingsRes, timeSlotsRes] = results.map(
-          (r) => (r.status === "fulfilled" ? r.value : null)
-        );
+        const [vouchersRes, pointsRes, walletRes, settingsRes, timeSlotsRes] =
+          results.map((r) => (r.status === "fulfilled" ? r.value : null));
 
         if (vouchersRes) {
           setMyVouchers(
@@ -254,7 +240,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             )
           );
         }
-
         if (pointsRes) setPoints(pointsRes.points || 0);
         if (walletRes) setWalletBalance(walletRes.balance || 0);
         if (settingsRes) setSettings(settingsRes);
@@ -265,7 +250,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             .filter((s) => s.enabled !== false)
             .map(slotToString)
             .filter(Boolean);
-
           setTimeSlots(
             enabledSlots.length > 0 ? enabledSlots : FALLBACK_TIME_SLOTS
           );
@@ -278,7 +262,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
         if (!cancelled) setInitLoading(false);
       }
     })();
-
     return () => {
       cancelled = true;
     };
@@ -289,19 +272,11 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     let requesting = false;
 
     const refreshBankSettings = async () => {
-      if (
-        cancelled ||
-        requesting ||
-        document.visibilityState === "hidden"
-      ) return;
-
+      if (cancelled || requesting || document.visibilityState === "hidden") return;
       requesting = true;
-
       try {
         const latest = await api.settings.get();
-
         if (cancelled || !latest || typeof latest !== "object") return;
-
         setSettings((current) => {
           if (
             current &&
@@ -311,11 +286,10 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           ) {
             return current;
           }
-
           return { ...(current || {}), ...latest };
         });
       } catch {
-        // Giữ cấu hình cũ nếu mạng tạm thời thất bại
+        // giữ cấu hình cũ
       } finally {
         requesting = false;
       }
@@ -327,7 +301,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       }
     };
 
-    // 🔧 TỐI ƯU: Tăng thời gian polling lên 30s để giảm tải cho Vercel
     const timerId = window.setInterval(refreshBankSettings, 30000);
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
@@ -348,29 +321,26 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const applyVoucher = useCallback(
     async (code) => {
       const useCode = (code || voucherCode || "").trim().toUpperCase();
-
       if (!useCode) {
         toast(t("Vui lòng nhập mã voucher"), "error");
         return;
       }
-
       const myReqId = ++voucherReqIdRef.current;
       setApplyingVoucher(true);
-
       try {
         const res = await api.vouchers.validate(useCode);
         if (myReqId !== voucherReqIdRef.current) return;
-
-        setDiscount(res.value);
+        const value = Number(res?.value);
+        if (!Number.isFinite(value) || value <= 0) {
+          throw new Error(t("Giá trị voucher không hợp lệ"));
+        }
+        setDiscount(value);
         setVoucherCode(res.code);
-        setAppliedVoucher({ code: res.code, value: res.value });
-        toast(
-          `${t("Đã áp dụng voucher")}: -${money(res.value)}`,
-          "success"
-        );
+        setAppliedVoucher({ code: res.code, value });
+        toast(`${t("Đã áp dụng voucher")}: -${money(value)}`, "success");
       } catch (e) {
         if (myReqId !== voucherReqIdRef.current) return;
-        toast(e.message || t("Mã voucher không hợp lệ"), "error");
+        toast(e?.message || t("Mã voucher không hợp lệ"), "error");
       } finally {
         if (myReqId === voucherReqIdRef.current) setApplyingVoucher(false);
       }
@@ -388,7 +358,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
   const validate = () => {
     const errs = {};
-
     if (!name.trim()) errs.name = t("Vui lòng nhập họ tên");
 
     if (!phone.trim()) {
@@ -407,14 +376,16 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return Object.keys(errs).length === 0;
   };
 
-  const buildItemsPayload = useCallback(() => {
-    return lines.map((m) => ({
-      menuItem: m._originalId || m.id || m._id,
-      qty: m.qty,
-      toppings: Array.isArray(m._toppings) ? m._toppings : [],
-      size: m._size || "S",
-    }));
-  }, [lines]);
+  const buildItemsPayload = useCallback(
+    () =>
+      lines.map((m) => ({
+        menuItem: m._originalId || m.id || m._id,
+        qty: m.qty,
+        toppings: Array.isArray(m._toppings) ? m._toppings : [],
+        size: m._size || "S",
+      })),
+    [lines]
+  );
 
   const buildNotePayload = useCallback(() => {
     const noteParts = [];
@@ -423,15 +394,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     return noteParts.join(" · ");
   }, [note, pickupTime, t]);
 
-  const buildOrderDiscountPayload = useCallback(async () => {
-    return {
-      discount: Number(discount) || 0,
-      voucherCode: appliedVoucher?.code || "",
-    };
-  }, [discount, appliedVoucher]);
-
-  const submitOrder = useCallback(
-    async (method) => {
+  // 🔧 B9.1: gộp submitOrder + confirmPayment → 1 hàm
+  const createOrder = useCallback(
+    async (apiMethod) => {
       if (submittingRef.current) return;
       if (!lines.length) {
         toast(t("Giỏ hàng trống"), "error");
@@ -446,14 +411,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       setSubmittingOrder(true);
 
       try {
-        const orderDiscountPayload = await buildOrderDiscountPayload();
-
         const order = await api.orders.create({
           items: buildItemsPayload(),
-          payment: method,
+          payment: apiMethod,
           note: buildNotePayload(),
           pickupTime: pickupTime || "",
-          ...orderDiscountPayload,
+          discount: Number(discount) || 0,
+          voucherCode: appliedVoucher?.code || "",
           isGreen,
           useXu: usePoints,
         });
@@ -467,14 +431,17 @@ export default function CustomerCheckout({ cart, setCart, user }) {
           `${t("Đặt hàng thành công!")} ${t("Mã đơn")}: ${order.code}`,
           "success"
         );
-
         navigate("/customer/success", { state: { order } });
       } catch (e) {
-        // 🔧 FIX: Bắt lỗi 503 và hướng dẫn user
-        if (e.status === 503 || e.message.includes("503") || e.message.includes("khởi động")) {
-          toast("Hệ thống đang khởi động. Vui lòng đợi 3-5s và bấm đặt hàng lại!", "warning", { duration: 6000 });
+        const msg = String(e?.message || "");
+        const status = Number(e?.status);
+        if (status === 503 || msg.includes("503") || msg.includes("khởi động")) {
+          toast(
+            t("Hệ thống đang khởi động. Vui lòng đợi 3-5s và bấm đặt hàng lại!"),
+            "warning"
+          );
         } else {
-          toast(e.message || t("Không đặt được hàng"), "error");
+          toast(e?.message || t("Không đặt được hàng"), "error");
         }
       } finally {
         submittingRef.current = false;
@@ -482,62 +449,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
       }
     },
     [
-      lines, isBuyNow, cart, setCart, navigate, buildItemsPayload, 
-      buildNotePayload, pickupTime, discount, pointsDiscount, 
-      usePoints, appliedVoucher, buildOrderDiscountPayload, isGreen, t,
-    ]
-  );
-
-  const confirmPayment = useCallback(
-    async (paymentMethodArg) => {
-      if (submittingRef.current) return;
-      if (!validate()) {
-        toast(t("Kiểm tra lại thông tin"), "error");
-        return;
-      }
-      submittingRef.current = true;
-      setSubmittingOrder(true);
-
-      try {
-        const orderDiscountPayload = await buildOrderDiscountPayload();
-
-        const order = await api.orders.create({
-          items: buildItemsPayload(),
-          payment: paymentMethodArg,
-          note: buildNotePayload(),
-          pickupTime: pickupTime || "",
-          ...orderDiscountPayload,
-          isGreen,
-          useXu: usePoints,
-        });
-
-        if (!isBuyNow) {
-          const selectedKeysArr = lines.map((m) => m._key);
-          const remainCart = removeOrderedItems(cart, selectedKeysArr);
-          setCart(remainCart);
-        }
-        toast(
-          `${t("Đặt hàng thành công!")} ${t("Mã đơn")}: ${order.code}`,
-          "success"
-        );
-
-        navigate("/customer/success", { state: { order } });
-      } catch (e) {
-        // 🔧 FIX: Bắt lỗi 503 và hướng dẫn user
-        if (e.status === 503 || e.message.includes("503") || e.message.includes("khởi động")) {
-          toast("Hệ thống đang khởi động. Vui lòng đợi 3-5s và bấm đặt hàng lại!", "warning", { duration: 6000 });
-        } else {
-          toast(e.message || t("Không đặt được hàng"), "error");
-        }
-      } finally {
-        submittingRef.current = false;
-        setSubmittingOrder(false);
-      }
-    },
-    [
-      lines, isBuyNow, cart, setCart, navigate, buildItemsPayload, 
-      buildNotePayload, pickupTime, discount, pointsDiscount, 
-      usePoints, appliedVoucher, buildOrderDiscountPayload, isGreen, t,
+      lines, isBuyNow, cart, setCart, navigate,
+      buildItemsPayload, buildNotePayload, pickupTime,
+      discount, usePoints, appliedVoucher, isGreen, t,
     ]
   );
 
@@ -581,7 +495,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
   const bankCode = settings?.bank || "VCB";
   const bankAccount = settings?.account || "";
   const bankAccountName = settings?.accountName || "CANTEEN VWA";
-  const transferContent = `CANTEEN ${genPreviewOrderCode()}`;
 
   const normalizedBankCode = String(bankCode || "").trim();
   const normalizedBankAccount = String(bankAccount || "").replace(/\s+/g, "");
@@ -596,45 +509,30 @@ export default function CustomerCheckout({ cart, setCart, user }) {
     normalizedBankCode && normalizedBankAccount
       ? `https://img.vietqr.io/image/${encodeURIComponent(normalizedBankCode)}-${encodeURIComponent(normalizedBankAccount)}-compact2.svg?${vietQrParams.toString()}`
       : "";
-  
+
   const downloadVietQrImage = async () => {
     if (!vietQrImageUrl) {
       toast(t("Chưa có mã QR để tải xuống"), "error");
       return;
     }
-
     try {
       const response = await fetch(vietQrImageUrl, {
-        method: "GET",
-        mode: "cors",
-        cache: "no-store",
+        method: "GET", mode: "cors", cache: "no-store",
       });
-
-      if (!response.ok) {
-        throw new Error("Không tải được ảnh QR");
-      }
-
+      if (!response.ok) throw new Error("Không tải được ảnh QR");
       const blob = await response.blob();
-
       if (!blob.size || (blob.type && !blob.type.startsWith("image/"))) {
         throw new Error("Dữ liệu trả về không phải ảnh QR");
       }
-
-      const extension = /\.svg(?:[?#]|$)/i.test(vietQrImageUrl)
-        ? "svg"
-        : "png";
-
+      const extension = /\.svg(?:[?#]|$)/i.test(vietQrImageUrl) ? "svg" : "png";
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
-
       link.href = objectUrl;
       link.download = `canteen-vwa-vietqr-${Date.now()}.${extension}`;
       link.style.display = "none";
-
       document.body.appendChild(link);
       link.click();
       link.remove();
-
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
       toast(t("Đã tải ảnh mã QR xuống máy"), "success");
     } catch (error) {
@@ -742,9 +640,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <button
                   key={m.id}
                   type="button"
-                  className={`checkout-payment-tab ${
-                    active ? "active" : ""
-                  }`}
+                  className={`checkout-payment-tab ${active ? "active" : ""}`}
                   onClick={() => setPaymentMethod(m.id)}
                 >
                   <Icon size={20} />
@@ -766,9 +662,6 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     <span>{t("Tài khoản thanh toán nội bộ học viện")}</span>
                   </div>
                 </div>
-                <span className="checkout-panel__tag checkout-panel__tag--blue">
-                  {t("Hoàn")} {(ptsCfg?.earn?.rate_points || 1) / ((ptsCfg?.earn?.rate_amount || 10000) / 100)}% Green Points
-                </span>
               </div>
 
               <div className="checkout-wallet-balance">
@@ -780,16 +673,11 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     <b>{money(walletBalance).replace("đ", "")}</b>
                     <span>đ</span>
                     <span className="checkout-wallet-balance__badge">
-                      {total <= walletBalance
-                        ? t("Đủ thanh toán")
-                        : t("Không đủ")}
+                      {total <= walletBalance ? t("Đủ thanh toán") : t("Không đủ")}
                     </span>
                   </div>
                 </div>
-                <Link
-                  to="/customer/wallet"
-                  className="checkout-wallet-balance__btn"
-                >
+                <Link to="/customer/wallet" className="checkout-wallet-balance__btn">
                   <Plus size={16} />
                   {t("Nạp thêm tiền")}
                 </Link>
@@ -798,7 +686,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <button
                 type="button"
                 className="checkout-panel__cta"
-                onClick={() => confirmPayment("WALLET")}
+                onClick={() => createOrder("WALLET")}
                 disabled={submittingOrder || total > walletBalance}
               >
                 <Check size={20} />
@@ -834,7 +722,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       <img
                         src={vietQrImageUrl}
                         className="checkout-qr-svg"
-                        alt={`Ma VietQR thanh toan cho ${bankAccountName}`}
+                        alt={`VietQR ${bankAccountName}`}
                         width="200"
                         height="200"
                         decoding="async"
@@ -844,14 +732,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       <div
                         className="checkout-qr-unavailable"
                         style={{
-                          width: 200,
-                          height: 200,
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "center",
-                          alignItems: "center",
-                          gap: 10,
-                          textAlign: "center",
+                          width: 200, height: 200, display: "flex",
+                          flexDirection: "column", justifyContent: "center",
+                          alignItems: "center", gap: 10, textAlign: "center",
                         }}
                       >
                         <QrCode size={36} />
@@ -891,9 +774,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     {bankAccount && (
                       <button
                         type="button"
-                        onClick={() =>
-                          copyToClipboard(bankAccount.replace(/\s/g, ""))
-                        }
+                        onClick={() => copyToClipboard(bankAccount.replace(/\s/g, ""))}
                       >
                         <Copy size={14} />
                         {t("Sao chép")}
@@ -947,7 +828,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <button
                 type="button"
                 className="checkout-panel__cta"
-                onClick={() => confirmPayment("QR")}
+                onClick={() => createOrder("QR")}
                 disabled={submittingOrder}
               >
                 <BadgeCheck size={20} />
@@ -997,7 +878,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <button
                 type="button"
                 className="checkout-panel__cta"
-                onClick={() => submitOrder("CARD")}
+                onClick={() => createOrder("CARD")}
                 disabled={submittingOrder}
               >
                 {submittingOrder ? (
@@ -1041,13 +922,12 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <b>{money(total)}</b>{" "}
                   {t("để giúp quầy phục vụ trưa nhanh chóng, tránh ùn tắc hàng chờ trong giờ cao điểm của học viện.")}
                 </p>
-
               </div>
 
               <button
                 type="button"
                 className="checkout-panel__cta"
-                onClick={() => submitOrder("CASH")}
+                onClick={() => createOrder("CASH")}
                 disabled={submittingOrder}
               >
                 {submittingOrder ? (
@@ -1119,9 +999,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             </div>
 
             <div className="checkout-verify__grid">
-              <label
-                className={`checkout-field${errors.name ? " has-error" : ""}`}
-              >
+              <label className={`checkout-field${errors.name ? " has-error" : ""}`}>
                 <span className="checkout-field__label">
                   <User size={13} /> {t("Họ tên người nhận")}
                 </span>
@@ -1131,9 +1009,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value);
-                    if (errors.name) {
-                      setErrors((prev) => ({ ...prev, name: "" }));
-                    }
+                    if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
                   }}
                   placeholder={t("Nguyễn Văn A")}
                   autoComplete="name"
@@ -1145,9 +1021,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 )}
               </label>
 
-              <label
-                className={`checkout-field${errors.phone ? " has-error" : ""}`}
-              >
+              <label className={`checkout-field${errors.phone ? " has-error" : ""}`}>
                 <span className="checkout-field__label">
                   <Phone size={13} /> {t("Số điện thoại nhận món")}
                 </span>
@@ -1157,9 +1031,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   value={phone}
                   onChange={(e) => {
                     setPhone(e.target.value);
-                    if (errors.phone) {
-                      setErrors((prev) => ({ ...prev, phone: "" }));
-                    }
+                    if (errors.phone) setErrors((prev) => ({ ...prev, phone: "" }));
                   }}
                   placeholder="0988 123 456"
                   autoComplete="tel"
@@ -1171,11 +1043,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 )}
               </label>
 
-              <label
-                className={`checkout-field checkout-field--full${
-                  errors.pickupTime ? " has-error" : ""
-                }`}
-              >
+              <label className={`checkout-field checkout-field--full${errors.pickupTime ? " has-error" : ""}`}>
                 <span className="checkout-field__label">
                   <Clock size={13} /> {t("Giờ nhận món")}
                 </span>
@@ -1184,9 +1052,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   value={pickupTime}
                   onChange={(e) => {
                     setPickupTime(e.target.value);
-                    if (errors.pickupTime) {
-                      setErrors((prev) => ({ ...prev, pickupTime: "" }));
-                    }
+                    if (errors.pickupTime) setErrors((prev) => ({ ...prev, pickupTime: "" }));
                   }}
                   disabled={initLoading}
                 >
@@ -1214,8 +1080,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
               <label className="checkout-field checkout-field--full">
                 <span className="checkout-field__label">
-                  <FileText size={13} />{" "}
-                  {t("Ghi chú cho bếp (không bắt buộc)")}
+                  <FileText size={13} /> {t("Ghi chú cho bếp (không bắt buộc)")}
                 </span>
                 <textarea
                   className="checkout-field__input checkout-field__input--area"
@@ -1237,9 +1102,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             <div className="checkout-summary__head">
               <div>
                 <Utensils size={20} />
-                <b>
-                  {t("Tóm tắt đơn hàng")} ({lines.length} {t("món")})
-                </b>
+                <b>{t("Tóm tắt đơn hàng")} ({lines.length} {t("món")})</b>
               </div>
             </div>
 
@@ -1258,7 +1121,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                 <div key={m._key} className="checkout-summary-item">
                   <div className="checkout-summary-item__img">
                     {m.image ? (
-                      <img src={m.image} alt={m.name} loading="lazy" />
+                      <img src={m.image} alt={tData(m, "name")} loading="lazy" />
                     ) : (
                       <Soup size={26} />
                     )}
@@ -1266,10 +1129,8 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                   <div className="checkout-summary-item__info">
                     <h4>{tData(m, "name")}</h4>
                     <div className="checkout-summary-item__meta">
-                      <span>Quầy 01</span>
-                      <span>•</span>
                       <span>SL: {m.qty}</span>
-                      {m.discount_percent > 0 && (
+                      {Number(m.discount_percent) > 0 && (
                         <span className="checkout-summary-item__tag">
                           {t("Trợ giá")}
                         </span>
@@ -1277,7 +1138,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                     </div>
                   </div>
                   <span className="checkout-summary-item__price">
-                    {money(m.price * m.qty)}
+                    {money((Number(m.price) || 0) * (Number(m.qty) || 0))}
                   </span>
                 </div>
               ))}
@@ -1286,45 +1147,44 @@ export default function CustomerCheckout({ cart, setCart, user }) {
             <div
               className="checkout-voucher-panel"
               style={{
-                margin: "12px 0",
-                padding: "14px",
-                border: "1px solid #dbeafe",
-                borderRadius: "12px",
-                background: "#f8fbff"
+                margin: "12px 0", padding: "14px",
+                border: "1px solid #dbeafe", borderRadius: "12px",
+                background: "#f8fbff",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "10px" }}>
+              <div
+                style={{
+                  display: "flex", alignItems: "center", gap: "7px",
+                  marginBottom: "10px",
+                }}
+              >
                 <Tag size={17} color="#2563eb" />
-                <strong style={{ color: "#173b8f" }}>Voucher giảm giá</strong>
+                <strong style={{ color: "#173b8f" }}>{t("Mã giảm giá")}</strong>
               </div>
 
               {appliedVoucher ? (
-                <div style={{
-                  padding: "12px",
-                  borderRadius: "8px",
-                  background: "#ecfdf5",
-                  border: "1px solid #a7f3d0"
-                }}>
+                <div
+                  style={{
+                    padding: "12px", borderRadius: "8px",
+                    background: "#ecfdf5", border: "1px solid #a7f3d0",
+                  }}
+                >
                   <div style={{ color: "#047857", fontWeight: 700 }}>
-                    ✓ Đã áp dụng mã {appliedVoucher.code}
+                    ✓ {t("Đã áp dụng voucher")} {appliedVoucher.code}
                   </div>
                   <div style={{ color: "#047857", fontSize: "13px", marginTop: "5px" }}>
-                    Giảm {money(discount)} cho đơn hàng
+                    {t("Giảm {amount} cho đơn hàng", { amount: money(discount) })}
                   </div>
                   <button
                     type="button"
                     onClick={clearVoucher}
                     style={{
-                      marginTop: "8px",
-                      padding: "7px 12px",
-                      border: "1px solid #a7f3d0",
-                      borderRadius: "7px",
-                      background: "#fff",
-                      color: "#047857",
-                      cursor: "pointer"
+                      marginTop: "8px", padding: "7px 12px",
+                      border: "1px solid #a7f3d0", borderRadius: "7px",
+                      background: "#fff", color: "#047857", cursor: "pointer",
                     }}
                   >
-                    Bỏ áp dụng
+                    {t("Bỏ áp dụng")}
                   </button>
                 </div>
               ) : (
@@ -1340,16 +1200,13 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                           applyVoucher(voucherCode);
                         }
                       }}
-                      placeholder="Nhập mã voucher"
-                      aria-label="Mã voucher"
+                      placeholder={t("Nhập mã voucher")}
+                      aria-label={t("Mã voucher")}
                       disabled={applyingVoucher}
                       style={{
-                        flex: 1,
-                        minWidth: 0,
-                        padding: "10px",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "8px",
-                        background: "#fff"
+                        flex: 1, minWidth: 0, padding: "10px",
+                        border: "1px solid #cbd5e1", borderRadius: "8px",
+                        background: "#fff",
                       }}
                     />
                     <button
@@ -1357,23 +1214,25 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                       onClick={() => applyVoucher(voucherCode)}
                       disabled={applyingVoucher || !voucherCode.trim()}
                       style={{
-                        padding: "10px 14px",
-                        border: 0,
-                        borderRadius: "8px",
+                        padding: "10px 14px", border: 0, borderRadius: "8px",
                         background: applyingVoucher || !voucherCode.trim() ? "#94a3b8" : "#2563eb",
-                        color: "#fff",
-                        fontWeight: 700,
-                        cursor: applyingVoucher || !voucherCode.trim() ? "not-allowed" : "pointer"
+                        color: "#fff", fontWeight: 700,
+                        cursor: applyingVoucher || !voucherCode.trim() ? "not-allowed" : "pointer",
                       }}
                     >
-                      {applyingVoucher ? "Đang kiểm tra..." : "Áp dụng"}
+                      {applyingVoucher ? t("Đang kiểm tra...") : t("Áp dụng")}
                     </button>
                   </div>
 
                   {myVouchers.filter((v) => !v.used).length > 0 && (
                     <div style={{ marginTop: "10px" }}>
-                      <label style={{ display: "block", fontSize: "12px", color: "#475569", marginBottom: "5px" }}>
-                        Hoặc chọn voucher đã lưu
+                      <label
+                        style={{
+                          display: "block", fontSize: "12px",
+                          color: "#475569", marginBottom: "5px",
+                        }}
+                      >
+                        {t("Hoặc chọn voucher đã lưu")}
                       </label>
                       <select
                         value=""
@@ -1382,17 +1241,15 @@ export default function CustomerCheckout({ cart, setCart, user }) {
                           if (e.target.value) applyVoucher(e.target.value);
                         }}
                         style={{
-                          width: "100%",
-                          padding: "10px",
-                          border: "1px solid #cbd5e1",
-                          borderRadius: "8px",
-                          background: "#fff"
+                          width: "100%", padding: "10px",
+                          border: "1px solid #cbd5e1", borderRadius: "8px",
+                          background: "#fff",
                         }}
                       >
-                        <option value="">-- Chọn voucher --</option>
+                        <option value="">{t("-- Chọn voucher --")}</option>
                         {myVouchers.filter((v) => !v.used).map((v) => (
                           <option key={v.id || v.code} value={v.code}>
-                            {v.code} — Giảm {money(Number(v.value) || 0)}
+                            {v.code} — {t("Giảm {amount}", { amount: money(Number(v.value) || 0) })}
                           </option>
                         ))}
                       </select>
@@ -1401,7 +1258,7 @@ export default function CustomerCheckout({ cart, setCart, user }) {
 
                   {myVouchers.filter((v) => !v.used).length === 0 && (
                     <p style={{ fontSize: "12px", color: "#64748b", margin: "8px 0 0" }}>
-                      Bạn chưa có voucher đã lưu. Hãy nhập mã voucher hợp lệ.
+                      {t("Bạn chưa có voucher đã lưu. Hãy nhập mã voucher hợp lệ.")}
                     </p>
                   )}
                 </>
@@ -1412,48 +1269,34 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <input
                 type="checkbox"
                 checked={usePoints}
-                onChange={(e) => {
-                  setUsePoints(e.target.checked);
-                }}
+                onChange={(e) => setUsePoints(e.target.checked)}
               />
               <div className="checkout-points-option__body">
                 <span className="checkout-points-option__coin" aria-hidden="true">V</span>
-                <span className="checkout-points-option__label">Dùng {Number(points || 0).toLocaleString("vi-VN")} VWA Xu</span>
+                <span className="checkout-points-option__label">
+                  {t("Dùng {points} VWA Xu", { points: Number(points || 0).toLocaleString(locale || "vi") })}
+                </span>
               </div>
             </label>
 
-            {/* SỐNG XANH HỌC ĐƯỜNG */}
             <label
               className="checkout-field checkout-field--full"
               style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "12px 16px",
-                margin: 0,
-                background: "#fff",
-                border: "1px solid #e2e8f0",
-                borderRadius: 10,
-                cursor: "pointer",
+                display: "flex", flexDirection: "row", alignItems: "center",
+                justifyContent: "space-between", gap: 12, width: "100%",
+                boxSizing: "border-box", padding: "12px 16px", margin: 0,
+                background: "#fff", border: "1px solid #e2e8f0",
+                borderRadius: 10, cursor: "pointer",
               }}
             >
               <span
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  minWidth: 0,
-                  color: "#26334a",
-                  fontSize: 13,
-                  fontWeight: 600,
+                  display: "flex", alignItems: "center", gap: 8,
+                  minWidth: 0, color: "#26334a", fontSize: 13, fontWeight: 600,
                 }}
               >
                 <Leaf size={17} color="#218653" style={{ flexShrink: 0 }} />
-                <span>Mang hộp cơm/ bình nước</span>
+                <span>{t("Mang hộp cơm/ bình nước")}</span>
               </span>
               <input
                 type="checkbox"
@@ -1494,13 +1337,9 @@ export default function CustomerCheckout({ cart, setCart, user }) {
               <div className="checkout-summary__total">
                 <div>
                   <span>{t("TỔNG TIỀN THANH TOÁN")}</span>
-                  <small>
-                    {t("Đã bao gồm VAT & trợ giá học đường")}
-                  </small>
+                  <small>{t("Đã bao gồm VAT & trợ giá học đường")}</small>
                 </div>
-                <div className="checkout-summary__total-value">
-                  {money(total)}
-                </div>
+                <div className="checkout-summary__total-value">{money(total)}</div>
               </div>
             </div>
 

@@ -1,19 +1,16 @@
 // ============================================================
-// OWNERWALLET.JSX — Quản lý Ví Canteen (Admin)
+// OWNERWALLET.JSX — Quản lý Ví Canteen (Admin) (V3 - B9.5a)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-// 🔧 FIX #93: datetime dùng Intl.DateTimeFormat cố định (VN, 24h)
-// 🔧 Batch 12 FIX:
-//   - Import getToken
-//   - Guard load() chống spam 401
-//   - Guard auto-refresh: pause khi !token hoặc tab ẩn
-//   - Mounted guard tránh setState on unmounted
-// ============================================================
+// V3:
+//   - Fix sum + (t.amount || 0) → Number(t.amount) || 0
+//   - Modal: thêm body scroll lock
 
 import { Skeleton, SkeletonList, SkeletonStats } from "../../components/Skeleton";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingBag, Check, Ban, Search, AlertTriangle, Eye, Building2, X, Loader2, AlertCircle, RefreshCw, CheckSquare, Square, Clock,
+  Wallet, ArrowDownCircle, ArrowUpCircle, ShoppingBag, Check, Ban,
+  Search, AlertTriangle, Eye, Building2, X, Loader2, AlertCircle,
+  RefreshCw, CheckSquare, Square, Clock,
 } from "lucide-react";
 import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
@@ -21,22 +18,13 @@ import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
 
-// ============================================================
-// CONSTANTS
-// ============================================================
-
 const MODAL_Z = 2147483600;
 const REFRESH_MS = 20000;
 
-// 🔧 FIX #93: formatter cố định VN timezone, 24h
 const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Ho_Chi_Minh",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
+  day: "2-digit", month: "2-digit", year: "numeric",
+  hour: "2-digit", minute: "2-digit", second: "2-digit",
   hour12: false,
 });
 
@@ -65,11 +53,6 @@ const EMPTY_STATS = {
   pendingDepositCount: 0, pendingWithdrawCount: 0,
 };
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-/** Ngưỡng thời gian bắt đầu của range (ms). null = không filter */
 function getRangeStart(rangeId, TIME_RANGES) {
   const r = TIME_RANGES.find((x) => x.id === rangeId);
   if (!r || !r.days) return null;
@@ -79,7 +62,6 @@ function getRangeStart(rangeId, TIME_RANGES) {
   return d.getTime();
 }
 
-// 🔧 FIX #93: helper format datetime VN
 function fmtDateTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -87,14 +69,9 @@ function fmtDateTime(iso) {
   return DATETIME_FORMATTER.format(d);
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function OwnerWallet() {
   const { t } = useI18n();
 
-  // Config (useMemo vì phụ thuộc t)
   const STATUS_TABS = useMemo(
     () => [
       { id: "pending",  label: t("Chờ duyệt"), color: "#f59e0b" },
@@ -117,10 +94,10 @@ export default function OwnerWallet() {
 
   const TIME_RANGES = useMemo(
     () => [
-      { id: "today",  label: t("Hôm nay"), days: 1 },
-      { id: "7d",     label: t("7 ngày"),  days: 7 },
-      { id: "30d",    label: t("30 ngày"), days: 30 },
-      { id: "all",    label: t("Tất cả"),  days: null },
+      { id: "today", label: t("Hôm nay"), days: 1 },
+      { id: "7d",    label: t("7 ngày"),  days: 7 },
+      { id: "30d",   label: t("30 ngày"), days: 30 },
+      { id: "all",   label: t("Tất cả"),  days: null },
     ],
     [t]
   );
@@ -153,63 +130,47 @@ export default function OwnerWallet() {
     [t]
   );
 
-  // ---------- Data ----------
   const [allTx, setAllTx] = useState([]);
   const [stats, setStats] = useState(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  // ---------- Filters ----------
   const [tab, setTab] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [rangeFilter, setRangeFilter] = useState("all");
   const [q, setQ] = useState("");
 
-  // ---------- Processing state ----------
   const [processing, setProcessing] = useState({});
-
-  // ---------- Bulk selection ----------
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkProcessing, setBulkProcessing] = useState(false);
 
-  // ---------- Modals ----------
   const [detailTx, setDetailTx] = useState(null);
   const [rejectModal, setRejectModal] = useState(null);
 
-  // Confirm dialog
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // Race-safe
   const reqIdRef = useRef(0);
-
-  // 🔧 Batch 12 FIX: mounted guard tránh setState on unmounted
   const mountedRef = useRef(true);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // 🔧 Batch 12 FIX: tab visibility để pause auto-refresh khi tab ẩn
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
   );
+
   useEffect(() => {
     const handler = () => setTabVisible(!document.hidden);
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
   }, []);
 
-  // ---------- Load ----------
-
   const load = useCallback(async (silent = false) => {
-    // 🔧 Batch 12 FIX: guard chống spam 401
-    if (!getToken()) {
-      setLoading(false);
-      return;
-    }
-
+    if (!getToken()) { setLoading(false); return; }
     const myReqId = ++reqIdRef.current;
     if (!silent) setRefreshing(true);
     setError("");
@@ -219,10 +180,8 @@ export default function OwnerWallet() {
         api.wallet.all().catch(() => []),
         api.wallet.stats().catch(() => null),
       ]);
-
       if (myReqId !== reqIdRef.current) return;
       if (!mountedRef.current) return;
-
       setAllTx(Array.isArray(txs) ? txs : []);
       setStats(st || EMPTY_STATS);
     } catch (e) {
@@ -237,20 +196,15 @@ export default function OwnerWallet() {
     }
   }, [t]);
 
-  useEffect(() => {
-    load(false);
-  }, [load]);
+  useEffect(() => { load(false); }, [load]);
 
-  // 🔧 Batch 12 FIX: auto-refresh chỉ khi có token + tab visible
   useEffect(() => {
     if (!getToken()) return;
     if (!tabVisible) return;
-
     const timer = setInterval(() => load(true), REFRESH_MS);
     return () => clearInterval(timer);
   }, [load, tabVisible]);
 
-  // ESC đóng modals
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
@@ -261,23 +215,17 @@ export default function OwnerWallet() {
     return () => window.removeEventListener("keydown", handler);
   }, [detailTx, rejectModal]);
 
-  // Reset selection khi đổi tab/type/range
-  useEffect(() => {
-    setSelectedIds([]);
-  }, [tab, typeFilter, rangeFilter]);
-
-  // ---------- Computed ----------
+  useEffect(() => { setSelectedIds([]); }, [tab, typeFilter, rangeFilter]);
 
   const filtered = useMemo(() => {
     let result = [...allTx];
-
-    if (tab !== "all") result = result.filter((t) => t.status === tab);
-    if (typeFilter !== "all") result = result.filter((t) => t.type === typeFilter);
+    if (tab !== "all") result = result.filter((tx) => tx.status === tab);
+    if (typeFilter !== "all") result = result.filter((tx) => tx.type === typeFilter);
 
     const rangeStart = getRangeStart(rangeFilter, TIME_RANGES);
     if (rangeStart !== null) {
-      result = result.filter((t) => {
-        const ts = new Date(t.created_at || 0).getTime();
+      result = result.filter((tx) => {
+        const ts = new Date(tx.created_at || 0).getTime();
         return ts >= rangeStart;
       });
     }
@@ -285,29 +233,27 @@ export default function OwnerWallet() {
     if (q.trim()) {
       const s = q.toLowerCase().trim();
       result = result.filter(
-        (t) =>
-          (t.user_name || "").toLowerCase().includes(s) ||
-          (t.user_email || "").toLowerCase().includes(s) ||
-          (t.code || "").toLowerCase().includes(s)
+        (tx) =>
+          (tx.user_name || "").toLowerCase().includes(s) ||
+          (tx.user_email || "").toLowerCase().includes(s) ||
+          (tx.code || "").toLowerCase().includes(s)
       );
     }
 
     result.sort((a, b) => {
       const timeA = new Date(a.created_at || 0).getTime();
       const timeB = new Date(b.created_at || 0).getTime();
-      if (tab === "pending") {
-        return timeA - timeB; // Chờ duyệt: Cũ nhất lên đầu
-      }
-      return timeB - timeA; // Các tab khác: Mới nhất lên đầu
+      if (tab === "pending") return timeA - timeB;
+      return timeB - timeA;
     });
     return result;
   }, [allTx, tab, typeFilter, rangeFilter, q, TIME_RANGES]);
 
   const counts = useMemo(
     () => ({
-      pending:  allTx.filter((t) => t.status === "pending").length,
-      approved: allTx.filter((t) => t.status === "approved").length,
-      rejected: allTx.filter((t) => t.status === "rejected").length,
+      pending:  allTx.filter((tx) => tx.status === "pending").length,
+      approved: allTx.filter((tx) => tx.status === "approved").length,
+      rejected: allTx.filter((tx) => tx.status === "rejected").length,
       all:      allTx.length,
     }),
     [allTx]
@@ -317,15 +263,13 @@ export default function OwnerWallet() {
     tab !== "pending" || typeFilter !== "all" || rangeFilter !== "all" || q.trim();
 
   const selectableTxs = useMemo(
-    () => filtered.filter((t) => t.status === "pending"),
+    () => filtered.filter((tx) => tx.status === "pending"),
     [filtered]
   );
 
   const allSelected =
     selectableTxs.length > 0 &&
-    selectableTxs.every((t) => selectedIds.includes(t.id));
-
-  // ---------- Selection handlers ----------
+    selectableTxs.every((tx) => selectedIds.includes(tx.id));
 
   const toggleSelect = (id) => {
     setSelectedIds((s) =>
@@ -334,27 +278,21 @@ export default function OwnerWallet() {
   };
 
   const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(selectableTxs.map((t) => t.id));
-    }
+    if (allSelected) setSelectedIds([]);
+    else setSelectedIds(selectableTxs.map((tx) => tx.id));
   };
-
-  // ---------- Actions ----------
 
   const openApprove = (tx) => {
     if (processing[tx.id]) return;
-
     const action = tx.type === "deposit" ? t("nạp") : t("rút");
     const amount = money(tx.amount);
 
     setConfirm({
-      title: `${t("Duyệt yêu cầu")} ${action}?`,
+      title: t("Duyệt yêu cầu {action}?", { action }),
       message:
-        `${t("Xác nhận duyệt")} ${action} ${amount} ${t("cho")} "${tx.user_name}".\n\n` +
-        `${t("Mã GD")}: ${tx.code}\n` +
-        t("Hành động này không thể hoàn tác."),
+        t("Xác nhận duyệt {action} {amount} cho {name}.\n\nMã GD: {code}\nHành động này không thể hoàn tác.", {
+          action, amount, name: tx.user_name, code: tx.code,
+        }),
       confirmText: t("Duyệt"),
       cancelText: t("Hủy"),
       danger: false,
@@ -363,7 +301,7 @@ export default function OwnerWallet() {
         try {
           await api.wallet.approve(tx.id);
           if (!mountedRef.current) return;
-          toast(`${t("Đã duyệt")} ${tx.code}`, "success");
+          toast(t("Đã duyệt {code}", { code: tx.code }), "success");
           setConfirm(null);
           load(true);
         } catch (e) {
@@ -385,52 +323,42 @@ export default function OwnerWallet() {
 
   const openBulkApprove = () => {
     if (!selectedIds.length || bulkProcessing) return;
-
-    const txs = allTx.filter((t) => selectedIds.includes(t.id));
-    const depositCount = txs.filter((t) => t.type === "deposit").length;
-    const withdrawCount = txs.filter((t) => t.type === "withdraw").length;
-    const totalAmount = txs.reduce((s, t) => s + (t.amount || 0), 0);
+    const txs = allTx.filter((tx) => selectedIds.includes(tx.id));
+    const depositCount = txs.filter((tx) => tx.type === "deposit").length;
+    const withdrawCount = txs.filter((tx) => tx.type === "withdraw").length;
+    // 🔧 B9.5a FIX: Number() coerce chống string concat
+    const totalAmount = txs.reduce((s, tx) => s + (Number(tx.amount) || 0), 0);
 
     setConfirm({
-      title: `${t("Duyệt")} ${txs.length} ${t("giao dịch đã chọn?")}`,
+      title: t("Duyệt {n} giao dịch đã chọn?", { n: txs.length }),
       message:
-        `${t("Bao gồm")} ${depositCount} ${t("nạp và")} ${withdrawCount} ${t("rút.")} ` +
-        `${t("Tổng giá trị")} ${money(totalAmount)}.\n\n` +
-        t("Hành động này không thể hoàn tác."),
-      confirmText: `${t("Duyệt")} ${txs.length}`,
+        t("Bao gồm {d} nạp và {w} rút. Tổng giá trị {total}.\n\nHành động này không thể hoàn tác.", {
+          d: depositCount, w: withdrawCount, total: money(totalAmount),
+        }),
+      confirmText: t("Duyệt {n}", { n: txs.length }),
       cancelText: t("Hủy"),
       danger: false,
       onConfirm: async () => {
         setBulkProcessing(true);
         let success = 0;
         let failed = 0;
-
         for (const id of selectedIds) {
           try {
             await api.wallet.approve(id);
             success++;
-          } catch {
-            failed++;
-          }
+          } catch { failed++; }
         }
-
         if (!mountedRef.current) return;
-
         setBulkProcessing(false);
         setConfirm(null);
         setSelectedIds([]);
-
         if (failed === 0) {
-          toast(`${t("Đã duyệt thành công")} ${success} ${t("giao dịch")}`, "success");
+          toast(t("Đã duyệt thành công {n} giao dịch", { n: success }), "success");
         } else if (success === 0) {
           toast(t("Không duyệt được giao dịch nào"), "error");
         } else {
-          toast(
-            `${t("Đã duyệt")} ${success}, ${t("thất bại")} ${failed} ${t("giao dịch")}`,
-            "warning"
-          );
+          toast(t("Đã duyệt {ok}, thất bại {fail} giao dịch", { ok: success, fail: failed }), "warning");
         }
-
         load(true);
       },
     });
@@ -459,7 +387,7 @@ export default function OwnerWallet() {
     try {
       await api.wallet.reject(tx.id, note);
       if (!mountedRef.current) return;
-      toast(`${t("Đã từ chối")} ${tx.code}`, "success");
+      toast(t("Đã từ chối {code}", { code: tx.code }), "success");
       load(true);
     } catch (e) {
       if (mountedRef.current) {
@@ -486,7 +414,6 @@ export default function OwnerWallet() {
   return (
     <>
       <div>
-        {/* STATS */}
         {loading ? (
           <div style={{ marginBottom: 20 }}>
             <SkeletonStats count={4} columns="repeat(auto-fit, minmax(200px, 1fr))" />
@@ -496,77 +423,37 @@ export default function OwnerWallet() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: 14,
-              marginBottom: 20,
+              gap: 14, marginBottom: 20,
             }}
           >
-            <StatBox
-              icon={<Wallet size={20} />}
-              label={t("Tổng số dư ví")}
-              value={money(stats.totalBalance)}
-              color="#2634d5"
-            />
-            <StatBox
-              icon={<ArrowDownCircle size={20} />}
-              label={t("Đã nạp")}
-              value={money(stats.totalDeposited)}
-              color="#18a967"
-            />
-            <StatBox
-              icon={<ArrowUpCircle size={20} />}
-              label={t("Đã rút")}
-              value={money(stats.totalWithdrawn)}
-              color="#f59e0b"
-            />
-            <StatBox
-              icon={<ShoppingBag size={20} />}
-              label={t("Đã thanh toán")}
-              value={money(stats.totalPaid)}
-              color="#8b5cf6"
-            />
+            <StatBox icon={<Wallet size={20} />} label={t("Tổng số dư ví")} value={money(stats.totalBalance)} color="#2634d5" />
+            <StatBox icon={<ArrowDownCircle size={20} />} label={t("Đã nạp")} value={money(stats.totalDeposited)} color="#18a967" />
+            <StatBox icon={<ArrowUpCircle size={20} />} label={t("Đã rút")} value={money(stats.totalWithdrawn)} color="#f59e0b" />
+            <StatBox icon={<ShoppingBag size={20} />} label={t("Đã thanh toán")} value={money(stats.totalPaid)} color="#8b5cf6" />
           </div>
         )}
 
-        {/* PENDING ALERT */}
         {stats.pendingCount > 0 && (
           <div
             style={{
-              background:
-                "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))",
-              border: "2px solid #f59e0b",
-              borderRadius: 12,
-              padding: "14px 18px",
-              marginBottom: 20,
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              flexWrap: "wrap",
+              background: "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))",
+              border: "2px solid #f59e0b", borderRadius: 12,
+              padding: "14px 18px", marginBottom: 20,
+              display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
             }}
           >
             <div
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                background: "#f59e0b",
-                color: "#fff",
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
+                width: 44, height: 44, borderRadius: "50%",
+                background: "#f59e0b", color: "#fff",
+                display: "grid", placeItems: "center", flexShrink: 0,
               }}
             >
               <AlertTriangle size={22} />
             </div>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <b
-                style={{
-                  fontSize: 14,
-                  color: "#92400e",
-                  display: "block",
-                  marginBottom: 2,
-                }}
-              >
-                {t("Có")} {stats.pendingCount} {t("yêu cầu chờ duyệt")}
+              <b style={{ fontSize: 14, color: "#92400e", display: "block", marginBottom: 2 }}>
+                {t("Có {n} yêu cầu chờ duyệt", { n: stats.pendingCount })}
               </b>
               <span style={{ fontSize: 13, color: "#78350f" }}>
                 {stats.pendingDepositCount} {t("nạp")} · {stats.pendingWithdrawCount} {t("rút")}{" "}
@@ -574,20 +461,10 @@ export default function OwnerWallet() {
               </span>
             </div>
             <button
-              onClick={() => {
-                setTab("pending");
-                setTypeFilter("all");
-                setRangeFilter("all");
-              }}
+              onClick={() => { setTab("pending"); setTypeFilter("all"); setRangeFilter("all"); }}
               style={{
-                padding: "9px 16px",
-                background: "#f59e0b",
-                color: "#fff",
-                border: 0,
-                borderRadius: 8,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontSize: 13,
+                padding: "9px 16px", background: "#f59e0b", color: "#fff",
+                border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13,
               }}
             >
               {t("Xem ngay")}
@@ -595,20 +472,14 @@ export default function OwnerWallet() {
           </div>
         )}
 
-        {/* ERROR BANNER */}
         {error && (
           <div
             style={{
               background: "rgba(239, 68, 68, 0.08)",
               border: "1px solid rgba(239, 68, 68, 0.2)",
-              borderRadius: 10,
-              padding: "12px 16px",
-              marginBottom: 16,
-              color: "#ef4444",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 13,
+              borderRadius: 10, padding: "12px 16px", marginBottom: 16,
+              color: "#ef4444", display: "flex", alignItems: "center",
+              gap: 10, fontSize: 13,
             }}
           >
             <AlertCircle size={18} style={{ flexShrink: 0 }} />
@@ -616,14 +487,9 @@ export default function OwnerWallet() {
             <button
               onClick={() => load(false)}
               style={{
-                padding: "6px 12px",
-                background: "#ef4444",
-                color: "#fff",
-                border: 0,
-                borderRadius: 6,
-                cursor: "pointer",
-                fontWeight: 600,
-                fontSize: 12,
+                padding: "6px 12px", background: "#ef4444", color: "#fff",
+                border: 0, borderRadius: 6, cursor: "pointer",
+                fontWeight: 600, fontSize: 12,
               }}
             >
               {t("Thử lại")}
@@ -631,37 +497,26 @@ export default function OwnerWallet() {
           </div>
         )}
 
-        {/* FILTERS */}
         <div
           style={{
             background: "var(--card-bg, #fff)",
             border: "1px solid var(--border-color, #e7ebf0)",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 16,
+            borderRadius: 12, padding: 16, marginBottom: 16,
           }}
         >
           <div
             style={{
-              display: "flex",
-              gap: 12,
-              flexWrap: "wrap",
-              alignItems: "center",
-              marginBottom: 12,
+              display: "flex", gap: 12, flexWrap: "wrap",
+              alignItems: "center", marginBottom: 12,
             }}
           >
-            {/* Search */}
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
+                display: "flex", alignItems: "center", gap: 8,
                 background: "var(--bg-tertiary, #f5f7fb)",
                 border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 8,
-                padding: "8px 12px",
-                flex: 1,
-                minWidth: 200,
+                borderRadius: 8, padding: "8px 12px",
+                flex: 1, minWidth: 200,
               }}
             >
               <Search size={16} style={{ color: "var(--text-light, #8993a3)" }} />
@@ -670,40 +525,28 @@ export default function OwnerWallet() {
                 onChange={(e) => setQ(e.target.value)}
                 placeholder={t("Tìm theo tên, email, mã GD...")}
                 style={{
-                  flex: 1,
-                  border: 0,
-                  outline: "none",
-                  background: "transparent",
-                  color: "var(--text-primary, #172033)",
-                  fontSize: 13,
-                  minWidth: 0,
+                  flex: 1, border: 0, outline: "none",
+                  background: "transparent", color: "var(--text-primary, #172033)",
+                  fontSize: 13, minWidth: 0,
                 }}
               />
               {q && (
-                <button
-                  onClick={() => setQ("")}
-                  style={clearBtnStyle}
-                  aria-label={t("Xoá tìm kiếm")}
-                >
+                <button onClick={() => setQ("")} style={clearBtnStyle} aria-label={t("Xoá tìm kiếm")}>
                   <X size={14} />
                 </button>
               )}
             </div>
 
-            {/* Type filter */}
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
               style={selectStyle}
             >
               {TYPE_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
+                <option key={o.id} value={o.id}>{o.label}</option>
               ))}
             </select>
 
-            {/* Refresh */}
             <button
               onClick={() => load(false)}
               disabled={refreshing}
@@ -714,11 +557,8 @@ export default function OwnerWallet() {
                 border: "1px solid var(--border-color, #e5e9ef)",
                 borderRadius: 8,
                 cursor: refreshing ? "not-allowed" : "pointer",
-                fontSize: 13,
-                color: "var(--text-primary, #172033)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
+                fontSize: 13, color: "var(--text-primary, #172033)",
+                display: "inline-flex", alignItems: "center", gap: 6,
                 opacity: refreshing ? 0.7 : 1,
               }}
             >
@@ -730,19 +570,13 @@ export default function OwnerWallet() {
               {t("Làm mới")}
             </button>
 
-            {/* Clear */}
             {hasFilter && (
               <button
                 onClick={clearFilters}
                 style={{
-                  padding: "9px 14px",
-                  background: "transparent",
-                  border: "1px solid #ef4444",
-                  color: "#ef4444",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
+                  padding: "9px 14px", background: "transparent",
+                  border: "1px solid #ef4444", color: "#ef4444",
+                  borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
                 }}
               >
                 <X size={13} style={{ marginRight: 4, verticalAlign: -2 }} />
@@ -751,23 +585,11 @@ export default function OwnerWallet() {
             )}
           </div>
 
-          {/* Time range chips */}
-          <div
-            style={{
-              display: "flex",
-              gap: 6,
-              marginBottom: 12,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
             <span
               style={{
-                fontSize: 12,
-                color: "var(--text-muted, #64748b)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                marginRight: 4,
+                fontSize: 12, color: "var(--text-muted, #64748b)",
+                display: "inline-flex", alignItems: "center", gap: 4, marginRight: 4,
               }}
             >
               <Clock size={12} /> {t("Thời gian:")}
@@ -783,11 +605,9 @@ export default function OwnerWallet() {
                     background: active ? "#2634d5" : "var(--bg-tertiary, #f5f7fb)",
                     color: active ? "#fff" : "var(--text-muted, #475569)",
                     border: "1px solid " + (active ? "#2634d5" : "var(--border-color, #e5e9ef)"),
-                    borderRadius: 16,
-                    fontSize: 12,
+                    borderRadius: 16, fontSize: 12,
                     fontWeight: active ? 700 : 500,
-                    cursor: "pointer",
-                    transition: "all 0.15s",
+                    cursor: "pointer", transition: "all 0.15s",
                   }}
                 >
                   {r.label}
@@ -796,15 +616,11 @@ export default function OwnerWallet() {
             })}
           </div>
 
-          {/* Status tabs */}
           <div
             style={{
-              display: "flex",
-              gap: 4,
+              display: "flex", gap: 4,
               background: "var(--bg-tertiary, #f5f7fb)",
-              padding: 4,
-              borderRadius: 10,
-              flexWrap: "wrap",
+              padding: 4, borderRadius: 10, flexWrap: "wrap",
             }}
           >
             {STATUS_TABS.map((s) => {
@@ -818,14 +634,9 @@ export default function OwnerWallet() {
                     padding: "9px 14px",
                     background: active ? s.color : "transparent",
                     color: active ? "#fff" : "var(--text-muted, #475569)",
-                    border: 0,
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
+                    border: 0, borderRadius: 8, cursor: "pointer",
+                    fontSize: 12, fontWeight: 700,
+                    display: "inline-flex", alignItems: "center", gap: 6,
                     whiteSpace: "nowrap",
                   }}
                 >
@@ -835,23 +646,11 @@ export default function OwnerWallet() {
                       style={{
                         background: active
                           ? "rgba(255,255,255,0.3)"
-                          : s.id === "pending"
-                          ? "#ef4444"
-                          : "var(--card-bg, #e2e8f0)",
-                        color: active
-                          ? "#fff"
-                          : s.id === "pending"
-                          ? "#fff"
-                          : "var(--text-muted, #64748b)",
-                        minWidth: 20,
-                        height: 18,
-                        padding: "0 6px",
-                        borderRadius: 9,
-                        fontSize: 10.5,
-                        fontWeight: 800,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                          : s.id === "pending" ? "#ef4444" : "var(--card-bg, #e2e8f0)",
+                        color: active || s.id === "pending" ? "#fff" : "var(--text-muted, #64748b)",
+                        minWidth: 20, height: 18, padding: "0 6px",
+                        borderRadius: 9, fontSize: 10.5, fontWeight: 800,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
                       }}
                     >
                       {count}
@@ -863,31 +662,20 @@ export default function OwnerWallet() {
           </div>
         </div>
 
-        {/* BULK ACTION BAR */}
         {selectedIds.length > 0 && (
           <div
             style={{
-              marginBottom: 16,
-              padding: "12px 16px",
-              background:
-                "linear-gradient(135deg, rgba(24, 169, 103, 0.12), rgba(38, 52, 213, 0.08))",
-              border: "1px solid rgba(24, 169, 103, 0.3)",
-              borderRadius: 10,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: 10,
+              marginBottom: 16, padding: "12px 16px",
+              background: "linear-gradient(135deg, rgba(24, 169, 103, 0.12), rgba(38, 52, 213, 0.08))",
+              border: "1px solid rgba(24, 169, 103, 0.3)", borderRadius: 10,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              flexWrap: "wrap", gap: 10,
             }}
           >
             <span
               style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#18a967",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
+                fontSize: 13, fontWeight: 600, color: "#18a967",
+                display: "inline-flex", alignItems: "center", gap: 6,
               }}
             >
               <CheckSquare size={16} />
@@ -898,13 +686,10 @@ export default function OwnerWallet() {
                 onClick={() => setSelectedIds([])}
                 disabled={bulkProcessing}
                 style={{
-                  padding: "8px 14px",
-                  background: "transparent",
+                  padding: "8px 14px", background: "transparent",
                   border: "1px solid var(--border-color, #e5e9ef)",
-                  color: "var(--text-muted, #64748b)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 600,
+                  color: "var(--text-muted, #64748b)", borderRadius: 8,
+                  fontSize: 12, fontWeight: 600,
                   cursor: bulkProcessing ? "not-allowed" : "pointer",
                 }}
               >
@@ -916,15 +701,10 @@ export default function OwnerWallet() {
                 style={{
                   padding: "8px 16px",
                   background: bulkProcessing ? "#94a3b8" : "#18a967",
-                  color: "#fff",
-                  border: 0,
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
+                  color: "#fff", border: 0, borderRadius: 8,
+                  fontSize: 12, fontWeight: 700,
                   cursor: bulkProcessing ? "not-allowed" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
+                  display: "inline-flex", alignItems: "center", gap: 6,
                 }}
               >
                 {bulkProcessing ? (
@@ -942,54 +722,33 @@ export default function OwnerWallet() {
           </div>
         )}
 
-        {/* TRANSACTIONS LIST */}
         <div
           style={{
             background: "var(--card-bg, #fff)",
             border: "1px solid var(--border-color, #e7ebf0)",
-            borderRadius: 12,
-            padding: 20,
+            borderRadius: 12, padding: 20,
           }}
         >
           {tab === "pending" && selectableTxs.length > 0 && !loading && (
             <div
               style={{
-                marginBottom: 12,
-                paddingBottom: 12,
+                marginBottom: 12, paddingBottom: 12,
                 borderBottom: "1px dashed var(--border-color, #eef2f7)",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
+                display: "flex", alignItems: "center", gap: 8,
               }}
             >
               <button
                 onClick={toggleSelectAll}
                 style={{
-                  background: "transparent",
-                  border: 0,
-                  cursor: "pointer",
-                  padding: 4,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  color: "var(--text-muted, #64748b)",
-                  fontSize: 13,
-                  fontWeight: 600,
+                  background: "transparent", border: 0, cursor: "pointer", padding: 4,
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  color: "var(--text-muted, #64748b)", fontSize: 13, fontWeight: 600,
                 }}
               >
-                {allSelected ? (
-                  <CheckSquare size={18} color="#18a967" />
-                ) : (
-                  <Square size={18} />
-                )}
+                {allSelected ? <CheckSquare size={18} color="#18a967" /> : <Square size={18} />}
                 {allSelected ? t("Bỏ chọn tất cả") : t("Chọn tất cả")}
               </button>
-              <span
-                style={{
-                  fontSize: 12,
-                  color: "var(--text-light, #8993a3)",
-                }}
-              >
+              <span style={{ fontSize: 12, color: "var(--text-light, #8993a3)" }}>
                 ({selectableTxs.length} {t("giao dịch chờ duyệt trong view này")})
               </span>
             </div>
@@ -1034,7 +793,6 @@ export default function OwnerWallet() {
           )}
         </div>
 
-        {/* MODALS */}
         {detailTx && (
           <DetailModal
             tx={detailTx}
@@ -1063,7 +821,6 @@ export default function OwnerWallet() {
         `}</style>
       </div>
 
-      {/* ConfirmDialog */}
       {confirm && (
         <ConfirmDialog
           open
@@ -1091,19 +848,13 @@ function TxRow({
   onApprove, onReject, onView, t,
 }) {
   const config = TX_CONFIG[tx.type] || {
-    icon: Wallet,
-    color: "#2634d5",
-    bg: "#eef2ff",
-    label: t("Giao dịch"),
-    sign: "",
+    icon: Wallet, color: "#2634d5", bg: "#eef2ff",
+    label: t("Giao dịch"), sign: "",
   };
   const statusConfig = STATUS_CONFIG[tx.status] || {
-    label: "—",
-    color: "#64748b",
-    bg: "#f1f5f9",
+    label: "—", color: "#64748b", bg: "#f1f5f9",
   };
   const methodBadge = METHOD_BADGES[tx.method];
-
   const Icon = config.icon;
   const isPending = tx.status === "pending";
   const isProcessing = !!processing;
@@ -1112,13 +863,8 @@ function TxRow({
   return (
     <div
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: 14,
-        background: selected
-          ? "rgba(24, 169, 103, 0.06)"
-          : "var(--bg-tertiary, #f8fafc)",
+        display: "flex", alignItems: "center", gap: 12, padding: 14,
+        background: selected ? "rgba(24, 169, 103, 0.06)" : "var(--bg-tertiary, #f8fafc)",
         borderRadius: 10,
         border: selected
           ? "1px solid #18a967"
@@ -1135,59 +881,34 @@ function TxRow({
           disabled={isProcessing}
           title={selected ? t("Bỏ chọn") : t("Chọn để duyệt hàng loạt")}
           style={{
-            background: "transparent",
-            border: 0,
+            background: "transparent", border: 0,
             cursor: isProcessing ? "not-allowed" : "pointer",
-            padding: 0,
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
+            padding: 0, display: "grid", placeItems: "center", flexShrink: 0,
           }}
         >
-          {selected ? (
-            <CheckSquare size={22} color="#18a967" />
-          ) : (
-            <Square size={22} color="#94a3b8" />
-          )}
+          {selected ? <CheckSquare size={22} color="#18a967" /> : <Square size={22} color="#94a3b8" />}
         </button>
       )}
 
       <div
         style={{
-          width: 46,
-          height: 46,
-          borderRadius: 12,
-          background: config.bg,
-          color: config.color,
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
+          width: 46, height: 46, borderRadius: 12,
+          background: config.bg, color: config.color,
+          display: "grid", placeItems: "center", flexShrink: 0,
         }}
       >
         <Icon size={22} />
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 3,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
           <b style={{ fontSize: 13, color: "var(--text-primary, #172033)" }}>
             {tx.user_name || t("Khách")}
           </b>
           <span
             style={{
-              padding: "2px 8px",
-              borderRadius: 10,
-              fontSize: 10,
-              fontWeight: 700,
-              background: statusConfig.bg,
-              color: statusConfig.color,
+              padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700,
+              background: statusConfig.bg, color: statusConfig.color,
             }}
           >
             {statusConfig.label}
@@ -1195,12 +916,8 @@ function TxRow({
           {methodBadge && (
             <span
               style={{
-                fontSize: 10,
-                color: methodBadge.color,
-                background: methodBadge.bg,
-                padding: "2px 8px",
-                borderRadius: 10,
-                fontWeight: 600,
+                fontSize: 10, color: methodBadge.color, background: methodBadge.bg,
+                padding: "2px 8px", borderRadius: 10, fontWeight: 600,
               }}
             >
               {methodBadge.label}
@@ -1209,26 +926,19 @@ function TxRow({
         </div>
         <div
           style={{
-            fontSize: 11,
-            color: "var(--text-light, #8993a3)",
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
+            fontSize: 11, color: "var(--text-light, #8993a3)",
+            display: "flex", gap: 8, flexWrap: "wrap",
           }}
         >
           <span style={{ fontFamily: "monospace" }}>{tx.code}</span>
           <span>· {tx.user_email}</span>
-          <span>
-            · {fmtDateTime(tx.created_at)}
-          </span>
+          <span>· {fmtDateTime(tx.created_at)}</span>
         </div>
         {tx.note && (
           <div
             style={{
-              fontSize: 11,
-              color: "var(--text-muted, #64748b)",
-              marginTop: 3,
-              fontStyle: "italic",
+              fontSize: 11, color: "var(--text-muted, #64748b)",
+              marginTop: 3, fontStyle: "italic",
             }}
           >
             "{tx.note}"
@@ -1238,8 +948,7 @@ function TxRow({
 
       <div style={{ textAlign: "right", flexShrink: 0, marginRight: 8 }}>
         <b style={{ fontSize: 16, color: config.color, display: "block" }}>
-          {config.sign}
-          {money(tx.amount)}
+          {config.sign}{money(tx.amount)}
         </b>
       </div>
 
@@ -1261,17 +970,11 @@ function TxRow({
               title={t("Duyệt")}
               aria-label={t("Duyệt")}
               style={{
-                padding: "7px 12px",
-                background: "#18a967",
-                color: "#fff",
-                border: 0,
-                borderRadius: 7,
+                padding: "7px 12px", background: "#18a967", color: "#fff",
+                border: 0, borderRadius: 7,
                 cursor: isProcessing ? "not-allowed" : "pointer",
-                fontWeight: 700,
-                fontSize: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
+                fontWeight: 700, fontSize: 12,
+                display: "inline-flex", alignItems: "center", gap: 4,
                 opacity: isProcessing ? 0.5 : 1,
               }}
             >
@@ -1289,16 +992,11 @@ function TxRow({
               aria-label={t("Từ chối")}
               style={{
                 padding: "7px 12px",
-                background: "var(--card-bg, #fff)",
-                color: "#ef4444",
-                border: "1px solid #ef4444",
-                borderRadius: 7,
+                background: "var(--card-bg, #fff)", color: "#ef4444",
+                border: "1px solid #ef4444", borderRadius: 7,
                 cursor: isProcessing ? "not-allowed" : "pointer",
-                fontWeight: 700,
-                fontSize: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
+                fontWeight: 700, fontSize: 12,
+                display: "inline-flex", alignItems: "center", gap: 4,
                 opacity: isProcessing ? 0.5 : 1,
               }}
             >
@@ -1317,19 +1015,13 @@ function TxRow({
 
 function DetailModal({ tx, onClose, TX_CONFIG, STATUS_CONFIG, METHOD_BADGES, t }) {
   const config = TX_CONFIG[tx.type] || {
-    icon: Wallet,
-    color: "#2634d5",
-    label: t("Giao dịch"),
+    icon: Wallet, color: "#2634d5", label: t("Giao dịch"),
   };
   const Icon = config.icon;
-
-  const statusConfig = STATUS_CONFIG[tx.status] || {
-    label: "—",
-    color: "#64748b",
-  };
+  const statusConfig = STATUS_CONFIG[tx.status] || { label: "—", color: "#64748b" };
 
   return (
-    <Modal onClose={onClose} maxWidth={500}>
+    <Modal onClose={onClose} maxWidth={500} label={t("Chi tiết giao dịch")}>
       <div style={modalHeaderStyle}>
         <h3 style={modalTitleStyle}>
           <Icon size={20} style={{ color: config.color }} /> {t("Chi tiết giao dịch")}
@@ -1342,11 +1034,7 @@ function DetailModal({ tx, onClose, TX_CONFIG, STATUS_CONFIG, METHOD_BADGES, t }
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <InfoRow label={t("Mã GD")} value={tx.code} mono />
         <InfoRow label={t("Loại")} value={config.label} />
-        <InfoRow
-          label={t("Số tiền")}
-          value={money(tx.amount)}
-          highlight={config.color}
-        />
+        <InfoRow label={t("Số tiền")} value={money(tx.amount)} highlight={config.color} />
         <InfoRow label={t("Khách hàng")} value={tx.user_name || "—"} />
         <InfoRow label={t("Email")} value={tx.user_email || "—"} />
         <InfoRow
@@ -1354,93 +1042,46 @@ function DetailModal({ tx, onClose, TX_CONFIG, STATUS_CONFIG, METHOD_BADGES, t }
           value={METHOD_BADGES[tx.method]?.label || tx.method || "—"}
         />
         <InfoRow label={t("Trạng thái")} value={statusConfig.label} />
-        <InfoRow
-          label={t("Ngày tạo")}
-          value={fmtDateTime(tx.created_at)}
-        />
+        <InfoRow label={t("Ngày tạo")} value={fmtDateTime(tx.created_at)} />
         {tx.approved_at && (
-          <InfoRow
-            label={t("Ngày duyệt")}
-            value={fmtDateTime(tx.approved_at)}
-          />
+          <InfoRow label={t("Ngày duyệt")} value={fmtDateTime(tx.approved_at)} />
         )}
         {tx.approved_by && <InfoRow label={t("Người duyệt")} value={tx.approved_by} />}
 
         {tx.bank_name && (
-          <div
-            style={{
-              background: "var(--bg-tertiary, #f5f7fb)",
-              borderRadius: 10,
-              padding: 12,
-            }}
-          >
+          <div style={{ background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, padding: 12 }}>
             <div
               style={{
-                fontSize: 11,
-                color: "var(--text-light, #8993a3)",
-                marginBottom: 6,
-                fontWeight: 600,
+                fontSize: 11, color: "var(--text-light, #8993a3)",
+                marginBottom: 6, fontWeight: 600,
               }}
             >
               {t("THÔNG TIN NGÂN HÀNG")}
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                marginBottom: 3,
-              }}
-            >
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
               <Building2 size={13} style={{ color: "#2634d5" }} />
               <b style={{ fontSize: 13 }}>{tx.bank_name}</b>
             </div>
-            <div
-              style={{
-                fontFamily: "monospace",
-                fontSize: 13,
-                color: "var(--text-muted, #64748b)",
-              }}
-            >
+            <div style={{ fontFamily: "monospace", fontSize: 13, color: "var(--text-muted, #64748b)" }}>
               {tx.bank_account}
             </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--text-muted, #64748b)",
-                marginTop: 2,
-              }}
-            >
+            <div style={{ fontSize: 12, color: "var(--text-muted, #64748b)", marginTop: 2 }}>
               {tx.bank_account_name}
             </div>
           </div>
         )}
 
         {tx.note && (
-          <div
-            style={{
-              background: "var(--bg-tertiary, #f5f7fb)",
-              borderRadius: 10,
-              padding: 12,
-            }}
-          >
+          <div style={{ background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, padding: 12 }}>
             <div
               style={{
-                fontSize: 11,
-                color: "var(--text-light, #8993a3)",
-                marginBottom: 4,
-                fontWeight: 600,
+                fontSize: 11, color: "var(--text-light, #8993a3)",
+                marginBottom: 4, fontWeight: 600,
               }}
             >
               {t("GHI CHÚ CỦA KHÁCH")}
             </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--text-primary, #172033)",
-                fontStyle: "italic",
-              }}
-            >
+            <div style={{ fontSize: 13, color: "var(--text-primary, #172033)", fontStyle: "italic" }}>
               "{tx.note}"
             </div>
           </div>
@@ -1449,33 +1090,24 @@ function DetailModal({ tx, onClose, TX_CONFIG, STATUS_CONFIG, METHOD_BADGES, t }
         {tx.admin_note && (
           <div
             style={{
-              background: "#fef3c7",
-              borderRadius: 10,
-              padding: 12,
+              background: "#fef3c7", borderRadius: 10, padding: 12,
               border: "1px solid #f59e0b40",
             }}
           >
             <div
               style={{
-                fontSize: 11,
-                color: "#92400e",
-                marginBottom: 4,
-                fontWeight: 600,
+                fontSize: 11, color: "#92400e",
+                marginBottom: 4, fontWeight: 600,
               }}
             >
               {t("GHI CHÚ CỦA ADMIN")}
             </div>
-            <div style={{ fontSize: 13, color: "#92400e" }}>
-              {tx.admin_note}
-            </div>
+            <div style={{ fontSize: 13, color: "#92400e" }}>{tx.admin_note}</div>
           </div>
         )}
       </div>
 
-      <button
-        onClick={onClose}
-        style={{ ...btnPrimaryStyle, marginTop: 16, width: "100%" }}
-      >
+      <button onClick={onClose} style={{ ...btnPrimaryStyle, marginTop: 16, width: "100%" }}>
         {t("Đóng")}
       </button>
     </Modal>
@@ -1496,40 +1128,26 @@ function RejectModal({ tx, onClose, onConfirm, t }) {
   };
 
   return (
-    <Modal onClose={() => !submitting && onClose()} maxWidth={480}>
+    <Modal onClose={() => !submitting && onClose()} maxWidth={480} label={t("Từ chối giao dịch")}>
       <div style={modalHeaderStyle}>
         <h3 style={modalTitleStyle}>
           <Ban size={20} style={{ color: "#ef4444" }} /> {t("Từ chối giao dịch")}
         </h3>
-        <button
-          onClick={onClose}
-          disabled={submitting}
-          style={modalCloseStyle}
-          aria-label={t("Đóng")}
-        >
+        <button onClick={onClose} disabled={submitting} style={modalCloseStyle} aria-label={t("Đóng")}>
           <X size={20} />
         </button>
       </div>
 
       <div
         style={{
-          background: "var(--bg-tertiary, #f5f7fb)",
-          borderRadius: 10,
-          padding: 14,
-          marginBottom: 16,
-          fontSize: 13,
+          background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10,
+          padding: 14, marginBottom: 16, fontSize: 13,
         }}
       >
         <div style={{ marginBottom: 4 }}>
           <b>{tx.user_name || t("Khách")}</b> · {money(tx.amount)}
         </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--text-light, #94a3b8)",
-            fontFamily: "monospace",
-          }}
-        >
+        <div style={{ fontSize: 11, color: "var(--text-light, #94a3b8)", fontFamily: "monospace" }}>
           {tx.code}
         </div>
       </div>
@@ -1548,19 +1166,14 @@ function RejectModal({ tx, onClose, onConfirm, t }) {
       />
 
       <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-        <button
-          onClick={onClose}
-          disabled={submitting}
-          style={{ ...btnCancelStyle, flex: 1 }}
-        >
+        <button onClick={onClose} disabled={submitting} style={{ ...btnCancelStyle, flex: 1 }}>
           {t("Hủy")}
         </button>
         <button
           onClick={submit}
           disabled={submitting}
           style={{
-            ...btnPrimaryStyle,
-            flex: 1,
+            ...btnPrimaryStyle, flex: 1,
             background: submitting ? "#94a3b8" : "#ef4444",
           }}
         >
@@ -1588,13 +1201,10 @@ function InfoRow({ label, value, mono, highlight }) {
   return (
     <div
       style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
         padding: "8px 0",
         borderBottom: "1px dashed var(--border-color, #eef2f7)",
-        fontSize: 13,
-        gap: 10,
+        fontSize: 13, gap: 10,
       }}
     >
       <span style={{ color: "var(--text-muted, #64748b)" }}>{label}</span>
@@ -1603,8 +1213,7 @@ function InfoRow({ label, value, mono, highlight }) {
           color: highlight || "var(--text-primary, #172033)",
           fontFamily: mono ? "monospace" : "inherit",
           fontSize: highlight ? 15 : 13,
-          textAlign: "right",
-          wordBreak: "break-word",
+          textAlign: "right", wordBreak: "break-word",
         }}
       >
         {value}
@@ -1619,39 +1228,20 @@ function StatBox({ icon, label, value, color }) {
       style={{
         background: "var(--card-bg, #fff)",
         border: "1px solid var(--border-color, #e7ebf0)",
-        borderRadius: 12,
-        padding: 16,
+        borderRadius: 12, padding: 16,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 8,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: color + "18",
-            color,
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
+            width: 36, height: 36, borderRadius: 10,
+            background: color + "18", color,
+            display: "grid", placeItems: "center", flexShrink: 0,
           }}
         >
           {icon}
         </div>
-        <span
-          style={{
-            fontSize: 11.5,
-            color: "var(--text-light, #8993a3)",
-            fontWeight: 600,
-          }}
-        >
+        <span style={{ fontSize: 11.5, color: "var(--text-light, #8993a3)", fontWeight: 600 }}>
           {label}
         </span>
       </div>
@@ -1660,33 +1250,31 @@ function StatBox({ icon, label, value, color }) {
   );
 }
 
-function Modal({ children, onClose, maxWidth = 500 }) {
+function Modal({ children, onClose, maxWidth = 500, label }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   return (
     <div
       onClick={onClose}
       role="dialog"
       aria-modal="true"
+      aria-label={label}
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: MODAL_Z,
-        padding: 20,
-        overflowY: "auto",
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+        display: "grid", placeItems: "center", zIndex: MODAL_Z,
+        padding: 20, overflowY: "auto",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--card-bg, #fff)",
-          borderRadius: 14,
-          padding: 24,
-          width: "100%",
-          maxWidth,
-          maxHeight: "90vh",
-          overflowY: "auto",
+          background: "var(--card-bg, #fff)", borderRadius: 14,
+          padding: 24, width: "100%", maxWidth,
+          maxHeight: "90vh", overflowY: "auto",
         }}
       >
         {children}
@@ -1695,117 +1283,74 @@ function Modal({ children, onClose, maxWidth = 500 }) {
   );
 }
 
-// ============================================================
-// STYLE CONSTANTS
-// ============================================================
-
 const inputStyle = {
-  width: "100%",
-  padding: 10,
+  width: "100%", padding: 10,
   border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  outline: "none",
+  borderRadius: 8, outline: "none",
   background: "var(--bg-secondary, #fff)",
   color: "var(--text-primary, #172033)",
-  fontSize: 13,
-  boxSizing: "border-box",
+  fontSize: 13, boxSizing: "border-box",
 };
 
 const labelStyle = {
-  display: "block",
-  fontSize: 12,
-  fontWeight: 600,
-  marginBottom: 4,
-  color: "var(--text-muted, #475569)",
+  display: "block", fontSize: 12, fontWeight: 600,
+  marginBottom: 4, color: "var(--text-muted, #475569)",
 };
 
 const selectStyle = {
   padding: "9px 12px",
   border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  outline: "none",
+  borderRadius: 8, outline: "none",
   background: "var(--bg-secondary, #fff)",
   color: "var(--text-primary, #172033)",
-  fontSize: 13,
-  cursor: "pointer",
+  fontSize: 13, cursor: "pointer",
 };
 
 const iconBtnStyle = {
-  padding: 6,
-  border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 6,
-  background: "var(--card-bg, #fff)",
-  cursor: "pointer",
-  display: "grid",
-  placeItems: "center",
+  padding: 6, border: "1px solid var(--border-color, #e5e9ef)",
+  borderRadius: 6, background: "var(--card-bg, #fff)",
+  cursor: "pointer", display: "grid", placeItems: "center",
   color: "var(--text-primary, #172033)",
-  width: 30,
-  height: 30,
-  flexShrink: 0,
+  width: 30, height: 30, flexShrink: 0,
 };
 
 const clearBtnStyle = {
-  background: "transparent",
-  border: 0,
-  cursor: "pointer",
-  color: "var(--text-light, #8993a3)",
-  padding: 2,
+  background: "transparent", border: 0, cursor: "pointer",
+  color: "var(--text-light, #8993a3)", padding: 2,
 };
 
 const modalHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 16,
+  display: "flex", justifyContent: "space-between",
+  alignItems: "center", marginBottom: 16,
 };
 
 const modalTitleStyle = {
-  margin: 0,
-  color: "var(--text-primary, #172033)",
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 16,
+  margin: 0, color: "var(--text-primary, #172033)",
+  display: "flex", alignItems: "center", gap: 8, fontSize: 16,
 };
 
 const modalCloseStyle = {
-  background: "transparent",
-  border: 0,
-  cursor: "pointer",
-  color: "var(--text-light, #8993a3)",
-  padding: 4,
-  display: "grid",
-  placeItems: "center",
+  background: "transparent", border: 0, cursor: "pointer",
+  color: "var(--text-light, #8993a3)", padding: 4,
+  display: "grid", placeItems: "center",
 };
 
 const btnPrimaryStyle = {
-  padding: 12,
-  background: "#2634d5",
-  color: "#fff",
-  border: 0,
-  borderRadius: 8,
-  fontWeight: 700,
-  cursor: "pointer",
-  fontSize: 13,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
+  padding: 12, background: "#2634d5", color: "#fff",
+  border: 0, borderRadius: 8, fontWeight: 700,
+  cursor: "pointer", fontSize: 13,
+  display: "inline-flex", alignItems: "center",
+  justifyContent: "center", gap: 6,
 };
 
 const btnCancelStyle = {
-  padding: 12,
-  border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  background: "var(--card-bg, #fff)",
-  cursor: "pointer",
-  color: "var(--text-primary, #172033)",
-  fontWeight: 600,
-  fontSize: 13,
+  padding: 12, border: "1px solid var(--border-color, #e5e9ef)",
+  borderRadius: 8, background: "var(--card-bg, #fff)",
+  cursor: "pointer", color: "var(--text-primary, #172033)",
+  fontWeight: 600, fontSize: 13,
 };
 
 const emptyBoxStyle = {
-  textAlign: "center",
-  padding: 40,
+  textAlign: "center", padding: 40,
   color: "var(--text-light, #8993a3)",
 };

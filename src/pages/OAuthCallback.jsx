@@ -1,6 +1,9 @@
 // ============================================================
 // OAUTHCALLBACK.JSX — Xử lý callback từ Google/Facebook/Microsoft
 // ============================================================
+// B9.8:
+//   - Bug 1: chuyển .replace("{provider}", ...) → object interpolation
+// ============================================================
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
@@ -38,7 +41,7 @@ export default function OAuthCallback({ provider, onLoginSuccess }) {
     }
 
     if (!code) {
-      const msg = t("Không nhận được mã xác thực từ {provider}").replace("{provider}", provider);
+      const msg = t("Không nhận được mã xác thực từ {provider}", { provider });
       setStatus("error");
       setErrorMsg(msg);
       toast(msg, "error");

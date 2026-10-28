@@ -1,31 +1,29 @@
 // ============================================================
-// OWNERINVENTORY.JSX — Quản lý kho nguyên liệu (Admin)
+// OWNERINVENTORY.JSX — Quản lý kho nguyên liệu (Admin) (B9.6b)
 // ============================================================
-// ✅ SOURCE-TEXT I18N: dùng tiếng Việt trực tiếp qua t("...")
-// 🔧 FIX #88: import history dùng Intl.DateTimeFormat cố định (VN, 24h)
-// 🔧 Batch 10 FIX:
-//   - Import getToken
-//   - Guard load() + loadImports() chống spam 401
-//   - Xóa cột "Chi phí" trùng + td rỗng trong bảng lịch sử nhập
+// B9.6b:
+//   - Fix 3 chỗ toLocaleString("vi-VN") → money() từ UI
+//   - Đổi Intl.DateTimeFormat hardcoded → useMemo theo locale
+//   - Wrap text hardcoded trong DishModal qua t()
+//   - Thêm submittingRef cho saveItem + doImport
+//   - Modal + DishModal thêm body scroll lock
+//   - DishModal thêm ESC handler
 // ============================================================
 
 import { SkeletonTable } from "../../components/Skeleton";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  Plus, Search, Pencil, Trash2, AlertTriangle, Package, History, X, Loader2, AlertCircle, PackageX, Boxes, Edit,
+  Plus, Search, Trash2, AlertTriangle, Package, History, X, Loader2,
+  AlertCircle, PackageX, Boxes, Edit,
 } from "lucide-react";
 import { api, getToken } from "../../api";
+import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
 
-// ============================================================
-// CONSTANTS
-// ============================================================
-
 const UNITS = ["kg", "g", "lít", "ml", "chai", "hộp", "cái", "phần"];
 
-// ✅ Định mức: 1 kg → bao nhiêu phần ăn
 const YIELD_PER_KG = {
   "gao": 10, "thit ga": 4, "thit bo": 3, "thit heo": 4,
   "ca": 4, "tom": 6, "bun": 8, "pho": 8, "mi": 8,
@@ -37,7 +35,6 @@ const YIELD_PER_KG = {
   "chao": 8, "dau": 6, "nam": 5, "bap": 4, "suon": 3,
 };
 
-// ✅ Món dùng nguyên liệu
 const DISHES_USING = {
   "gao":      ["Cơm gà", "Cơm tấm sườn", "Cơm chiên dương châu", "Cơm rang thập cẩm"],
   "thit ga":  ["Cơm gà", "Phở gà", "Cháo gà", "Gà rán"],
@@ -93,24 +90,8 @@ function getDishesUsing(name) {
 const MODAL_Z = 2147483600;
 const IMPORT_HISTORY_LIMIT = 30;
 
-// 🔧 FIX #88: formatter cố định VN timezone, 24h
-const DATETIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Asia/Ho_Chi_Minh",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-
 export default function OwnerInventory() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -131,8 +112,31 @@ export default function OwnerInventory() {
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
+  // 🔧 B9.6b — chống double-submit
+  const saveItemRef = useRef(false);
+  const doImportRef = useRef(false);
+
+  // 🔧 B9.6b — formatter theo locale (fallback en-GB 24h)
+  const dateTimeFormatter = useMemo(() => {
+    const opts = {
+      timeZone: "Asia/Ho_Chi_Minh",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    };
+    try {
+      return new Intl.DateTimeFormat(locale || "vi", opts);
+    } catch {
+      return new Intl.DateTimeFormat("en-GB", opts);
+    }
+  }, [locale]);
+
   const load = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    if (!getToken()) return;
     setLoading(true);
     setError("");
     try {
@@ -147,7 +151,7 @@ export default function OwnerInventory() {
   }, [t]);
 
   const loadImports = useCallback(async () => {
-    if (!getToken()) return; // 🔧 Batch 10 FIX
+    if (!getToken()) return;
     try {
       const data = await api.inventory.imports();
       setImports(Array.isArray(data) ? data : []);
@@ -198,17 +202,11 @@ export default function OwnerInventory() {
       lowCount: low.length,
       outCount: out.length,
       okCount: ok.length,
-      criticalItems: critical,
-      lowItems: low,
-      outItems: out,
     };
   }, [list]);
 
   const alertCount = stats.criticalCount + stats.lowCount + stats.outCount;
 
-  /**
-   * ✅ FIX: Generate mã từ MAX của số đứng sau prefix NL.
-   */
   const generateNextCode = () => {
     if (!list.length) return "NL001";
 
@@ -240,7 +238,7 @@ export default function OwnerInventory() {
 
   const saveItem = async (e) => {
     e.preventDefault();
-    if (saving) return;
+    if (saveItemRef.current) return;
 
     const f = new FormData(e.currentTarget);
     const data = {
@@ -256,6 +254,7 @@ export default function OwnerInventory() {
     if (data.qty < 0) return toast(t("Số lượng không được âm"), "error");
     if (data.min < 0) return toast(t("Mức tối thiểu không được âm"), "error");
 
+    saveItemRef.current = true;
     setSaving(true);
     try {
       if (modal.code) {
@@ -270,6 +269,7 @@ export default function OwnerInventory() {
     } catch (e) {
       toast(e.message || t("Không lưu được"), "error");
     } finally {
+      saveItemRef.current = false;
       setSaving(false);
     }
   };
@@ -301,7 +301,7 @@ export default function OwnerInventory() {
 
   const doImport = async (e) => {
     e.preventDefault();
-    if (saving) return;
+    if (doImportRef.current) return;
 
     const f = new FormData(e.currentTarget);
     const qty = Number(f.get("qty"));
@@ -310,6 +310,7 @@ export default function OwnerInventory() {
       return toast(t("Số lượng nhập phải lớn hơn 0"), "error");
     }
 
+    doImportRef.current = true;
     setSaving(true);
     try {
       const res = await api.inventory.import(importItem.code, {
@@ -318,7 +319,7 @@ export default function OwnerInventory() {
         supplier: f.get("supplier")?.trim(),
         note: f.get("note")?.trim(),
       });
-      const costMsg = res?.record?.cost ? " (" + res.record.cost.toLocaleString("vi-VN") + "đ)" : "";
+      const costMsg = res?.record?.cost ? " (" + money(res.record.cost) + ")" : "";
       toast(
         `${t("Đã nhập")} ${res?.record?.qty ?? qty} ${importItem.unit}${costMsg}`,
         "success"
@@ -331,6 +332,7 @@ export default function OwnerInventory() {
     } catch (e) {
       toast(e.message || t("Không nhập được"), "error");
     } finally {
+      doImportRef.current = false;
       setSaving(false);
     }
   };
@@ -353,7 +355,7 @@ export default function OwnerInventory() {
     if (!iso) return "—";
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "—";
-    return DATETIME_FORMATTER.format(d);
+    return dateTimeFormatter.format(d);
   };
 
   return (
@@ -380,11 +382,11 @@ export default function OwnerInventory() {
               </b>
               <div style={{ fontSize: 12.5, opacity: 0.9 }}>
                 {stats.criticalCount > 0 && (
-                <span style={{ color: "#dc2626", fontWeight: 700 }}>
-                  🚨 <b>{stats.criticalCount}</b> {t("nguyên liệu NGUY CẤP")}
-                </span>
-              )}
-              {stats.criticalCount > 0 && (stats.outCount > 0 || stats.lowCount > 0) && " · "}
+                  <span style={{ color: "#dc2626", fontWeight: 700 }}>
+                    🚨 <b>{stats.criticalCount}</b> {t("nguyên liệu NGUY CẤP")}
+                  </span>
+                )}
+                {stats.criticalCount > 0 && (stats.outCount > 0 || stats.lowCount > 0) && " · "}
 
                 {stats.outCount > 0 && (
                   <span>
@@ -567,7 +569,7 @@ export default function OwnerInventory() {
                         <td style={tdStyle}>
                           <button
                             onClick={() => setDishModal(x)}
-                            title="Xem các món dùng nguyên liệu này"
+                            title={t("Xem các món dùng nguyên liệu này")}
                             style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", color: "#2634d5", fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, fontFamily: "inherit", fontSize: "inherit" }}
                           >
                             {x.name}
@@ -594,7 +596,7 @@ export default function OwnerInventory() {
                             const portions = Math.round(x.qty * yld);
                             return (
                               <span title={`1 ${x.unit} ${x.name} ≈ ${yld} phần`} style={{ color: "#2634d5", fontWeight: 700 }}>
-                                ~{portions} phần
+                                ~{portions} {t("phần")}
                               </span>
                             );
                           })()}
@@ -709,7 +711,7 @@ export default function OwnerInventory() {
                   display: "grid",
                   placeItems: "center",
                 }}
-                aria-label="Đóng"
+                aria-label={t("Đóng")}
               >
                 <X size={20} />
               </button>
@@ -731,7 +733,6 @@ export default function OwnerInventory() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
-                      {/* 🔧 Batch 10 FIX: đã xóa cột "Chi phí" trùng */}
                       <th style={thStyle}>{t("Thời gian")}</th>
                       <th style={thStyle}>{t("Nguyên liệu")}</th>
                       <th style={{ ...thStyle, textAlign: "right" }}>{t("SL nhập")}</th>
@@ -766,9 +767,8 @@ export default function OwnerInventory() {
                         >
                           +{r.qty} {r.unit}
                         </td>
-                        {/* 🔧 Batch 10 FIX: đã xóa <td> rỗng của cột "Chi phí" trùng */}
                         <td style={{ ...tdStyle, textAlign: "right", color: "#dc2626", fontWeight: 700 }}>
-                          {r.cost ? r.cost.toLocaleString("vi-VN") + "đ" : "—"}
+                          {r.cost ? money(r.cost) : "—"}
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           {r.after} {r.unit}
@@ -967,7 +967,9 @@ export default function OwnerInventory() {
                 style={{ ...inputStyle, fontSize: 14 }}
               />
 
-              <label style={labelStyle}>Đơn giá (VNĐ/{importItem.unit})</label>
+              <label style={labelStyle}>
+                {t("Đơn giá (VNĐ/{unit})", { unit: importItem.unit })}
+              </label>
               <input
                 name="unitCost"
                 type="number"
@@ -975,7 +977,7 @@ export default function OwnerInventory() {
                 step="1000"
                 value={importUnitCostPreview}
                 onChange={(e) => setImportUnitCostPreview(e.target.value)}
-                placeholder="VD: 50000"
+                placeholder={t("VD: 50000")}
                 style={inputStyle}
               />
 
@@ -991,7 +993,7 @@ export default function OwnerInventory() {
                   color: "#18a967",
                   fontWeight: 700,
                 }}>
-                  💰 {t("Chi phí nhập")}: {(Number(importQtyPreview) * Number(importUnitCostPreview)).toLocaleString("vi-VN")}đ
+                  💰 {t("Chi phí nhập")}: {money(Number(importQtyPreview) * Number(importUnitCostPreview))}
                 </div>
               )}
 
@@ -1053,7 +1055,7 @@ export default function OwnerInventory() {
       </div>
 
       {dishModal && (
-        <DishModal item={dishModal} onClose={() => setDishModal(null)} />
+        <DishModal item={dishModal} onClose={() => setDishModal(null)} t={t} />
       )}
 
       {confirm && (
@@ -1077,7 +1079,24 @@ export default function OwnerInventory() {
 // SUB-COMPONENTS
 // ============================================================
 
-function DishModal({ item, onClose }) {
+function DishModal({ item, onClose, t }) {
+  // 🔧 B9.6b — body scroll lock + ESC
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   if (!item) return null;
   const dishes = getDishesUsing(item.name);
   const yieldPerKg = getYield(item.name);
@@ -1097,9 +1116,9 @@ function DishModal({ item, onClose }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}>
             <Package size={20} style={{ color: "#2634d5" }} />
-            Các món dùng "{item.name}"
+            {t("Các món dùng \"{name}\"", { name: item.name })}
           </h3>
-          <button onClick={onClose} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 4, display: "grid", placeItems: "center" }} aria-label="Đóng">
+          <button onClick={onClose} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 4, display: "grid", placeItems: "center" }} aria-label={t("Đóng")}>
             <X size={20} />
           </button>
         </div>
@@ -1110,10 +1129,10 @@ function DishModal({ item, onClose }) {
             <span style={{ color: "var(--text-light, #94a3b8)", fontFamily: "monospace", fontSize: 11 }}>({item.code})</span>
           </div>
           <div style={{ color: "var(--text-muted, #64748b)" }}>
-            Tồn kho: <b style={{ color: "var(--text-primary, #172033)" }}>{item.qty} {item.unit}</b>
+            {t("Tồn kho")}: <b style={{ color: "var(--text-primary, #172033)" }}>{item.qty} {item.unit}</b>
             {portions !== null && (
               <span style={{ marginLeft: 8 }}>
-                · Ước tính <b style={{ color: "#2634d5" }}>~{portions} phần</b>
+                · {t("Ước tính ~{n} phần", { n: portions })}
               </span>
             )}
           </div>
@@ -1121,7 +1140,7 @@ function DishModal({ item, onClose }) {
 
         {dishes.length === 0 ? (
           <div style={{ textAlign: "center", padding: 30, color: "var(--text-light, #8993a3)", background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10, fontSize: 13 }}>
-            Chưa có thông tin món dùng nguyên liệu này
+            {t("Chưa có thông tin món dùng nguyên liệu này")}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1138,12 +1157,13 @@ function DishModal({ item, onClose }) {
           onClick={onClose}
           style={{ width: "100%", padding: 12, marginTop: 16, background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 13 }}
         >
-          Đóng
+          {t("Đóng")}
         </button>
       </div>
     </div>
   );
 }
+
 function StatBox({ label, value, color, icon }) {
   return (
     <div
@@ -1252,7 +1272,16 @@ function ErrorBox({ message, onRetry, t }) {
   );
 }
 
+// 🔧 B9.6b — Modal body scroll lock
 function Modal({ children, onClose, maxWidth = 480 }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   return (
     <div
       onClick={onClose}
@@ -1288,10 +1317,6 @@ function Modal({ children, onClose, maxWidth = 480 }) {
     </div>
   );
 }
-
-// ============================================================
-// STYLE CONSTANTS
-// ============================================================
 
 const thStyle = {
   padding: 11,

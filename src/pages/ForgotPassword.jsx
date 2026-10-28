@@ -1,12 +1,12 @@
 // ============================================================
-// FORGOTPASSWORD.JSX — Khôi phục mật khẩu (V4 — AuthLayout + bg VWA)
+// FORGOTPASSWORD.JSX — Khôi phục mật khẩu (V5 — B9.8)
 // ============================================================
-// V4 (2026-10):
-//   - 🎨 Dùng AuthLayout wrapper, background ảnh trường
-//   - Giữ 100% logic: 3 bước OTP → reset → success
+// V5:
+//   - Bug 1: thêm submittingRef chống double-submit
+//   - Bug 2: bỏ onKeyDown trùng form onSubmit
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   Mail, LockKeyhole, ArrowRight, Eye, EyeOff, Loader2, RefreshCw,
@@ -31,6 +31,9 @@ export default function ForgotPassword() {
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(0);
 
+  // 🔧 B9.8 — chống double-submit
+  const submittingRef = useRef(false);
+
   useEffect(() => {
     if (countdown <= 0) return;
     const timer = setInterval(() => {
@@ -43,7 +46,7 @@ export default function ForgotPassword() {
 
   const sendOTP = async (e, isResend = false) => {
     if (e) e.preventDefault();
-    if (loading) return;
+    if (submittingRef.current) return;
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail) return setError(t("Vui lòng nhập email"));
@@ -52,6 +55,7 @@ export default function ForgotPassword() {
     }
 
     setError("");
+    submittingRef.current = true;
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 1000));
@@ -67,18 +71,19 @@ export default function ForgotPassword() {
     } catch (err) {
       setError(err.message || t("Không gửi được mã OTP"));
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleResend = () => {
-    if (countdown > 0 || loading) return;
+    if (countdown > 0 || submittingRef.current) return;
     sendOTP(null, true);
   };
 
   const resetPassword = async (e) => {
     if (e) e.preventDefault();
-    if (loading) return;
+    if (submittingRef.current) return;
 
     if (!otp.trim()) return setError(t("Vui lòng nhập mã OTP"));
     if (otp.length !== 6) return setError(t("Mã OTP phải có 6 chữ số"));
@@ -89,6 +94,7 @@ export default function ForgotPassword() {
       return setError(t("Mã OTP không đúng. Vui lòng kiểm tra lại."));
     }
 
+    submittingRef.current = true;
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 1000));
@@ -97,6 +103,7 @@ export default function ForgotPassword() {
     } catch (err) {
       setError(err.message || t("Đặt lại mật khẩu thất bại"));
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
@@ -250,7 +257,6 @@ export default function ForgotPassword() {
               placeholder={t("Tối thiểu 6 ký tự")}
               disabled={loading}
               autoComplete="new-password"
-              onKeyDown={(e) => e.key === "Enter" && resetPassword(e)}
             />
             <button
               type="button"
@@ -281,26 +287,13 @@ export default function ForgotPassword() {
 
       {step === 3 && (
         <div style={{ textAlign: "center", marginTop: 12 }}>
-          <p
-            style={{
-              color: "#18a967",
-              marginBottom: 24,
-              fontSize: 14,
-              lineHeight: 1.6,
-            }}
-          >
-            {t(
-              "Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập lại."
-            )}
+          <p style={{ color: "#18a967", marginBottom: 24, fontSize: 14, lineHeight: 1.6 }}>
+            {t("Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập lại.")}
           </p>
           <Link
             to="/"
             className="v10-auth-submit"
-            style={{
-              textDecoration: "none",
-              display: "inline-flex",
-              marginTop: 0,
-            }}
+            style={{ textDecoration: "none", display: "inline-flex", marginTop: 0 }}
           >
             {t("Đăng nhập ngay")}
             <ArrowRight size={16} />

@@ -1,13 +1,9 @@
 // ============================================================
 // CUSTOMERORDERDETAIL.JSX — Modal chi tiết đơn hàng (Customer)
 // ============================================================
-// V3 (2026-11):
-//   - 🔧 FIX: pointsPerReview đọc từ usePointsConfig() thay vì
-//     hardcode 10 — trước đây lệch với config backend (5 hoặc 500)
-//     khiến toast "Nhận X điểm" sai.
-//   - Giữ nguyên vị trí: src/components/CustomerOrderDetail.jsx
-//   - Giữ nguyên import path (../api, ./UI, ...)
-// ============================================================
+// V3: pointsPerReview đọc từ usePointsConfig()
+// B7: getRelativeDateLabel i18n; order.payment qua t();
+//     replace() → object interpolation; xoá dead code getReviewedKey
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
@@ -57,7 +53,8 @@ function fmtDateTime(iso) {
   }
 }
 
-function getRelativeDateLabel(iso) {
+// 🔧 B7: nhận `t` để dịch nhãn tương đối
+function getRelativeDateLabel(iso, t) {
   if (!iso) return "";
   try {
     const d = new Date(iso);
@@ -66,9 +63,9 @@ function getRelativeDateLabel(iso) {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return "Hôm nay";
-    if (diffDays === 1) return "Hôm qua";
-    if (diffDays < 7) return `${diffDays} ngày trước`;
+    if (diffDays === 0) return t("Hôm nay");
+    if (diffDays === 1) return t("Hôm qua");
+    if (diffDays < 7) return t("{n} ngày trước", { n: diffDays });
     return "";
   } catch {
     return "";
@@ -77,10 +74,6 @@ function getRelativeDateLabel(iso) {
 
 function getOrderId(order) {
   return order?._id || order?.id || null;
-}
-
-function getReviewedKey(code) {
-  return `reviewed_order_${code}`;
 }
 
 export default function CustomerOrderDetail({
@@ -92,8 +85,6 @@ export default function CustomerOrderDetail({
   const { t, tData } = useI18n();
   const ptsCfg = usePointsConfig();
 
-  // 🔧 FIX: đọc từ config admin thay vì hardcode (trước đây = 10,
-  // backend có thể = 5 hoặc 500 → toast hiển thị sai số điểm).
   const pointsPerReview = Math.max(
     1,
     Number(ptsCfg?.earn?.review_points) || 10
@@ -351,9 +342,10 @@ export default function CustomerOrderDetail({
 
       onUpdate?.();
       toast(
-        t("Cảm ơn bạn đã đánh giá {n} món! Nhận {points} điểm thưởng.")
-          .replace("{n}", success)
-          .replace("{points}", success * pointsPerReview),
+        t("Cảm ơn bạn đã đánh giá {n} món! Nhận {points} điểm thưởng.", {
+          n: success,
+          points: success * pointsPerReview,
+        }),
         "success"
       );
     } else {
@@ -372,7 +364,7 @@ export default function CustomerOrderDetail({
     onClose?.();
   };
 
-  const relativeLabel = getRelativeDateLabel(order.created_at);
+  const relativeLabel = getRelativeDateLabel(order.created_at, t);
 
   return (
     <>
@@ -626,7 +618,7 @@ export default function CustomerOrderDetail({
                 />
                 <InfoRow
                   label={t("Phương thức thanh toán")}
-                  value={order.payment || t("Tiền mặt")}
+                  value={t(order.payment || "Tiền mặt")}
                   last
                 />
               </div>
@@ -777,8 +769,9 @@ export default function CustomerOrderDetail({
                     }}
                   >
                     💡{" "}
-                    {t("Đánh giá sẽ được áp dụng cho tất cả {n} món trong đơn.")
-                      .replace("{n}", itemsCount)}
+                    {t("Đánh giá sẽ được áp dụng cho tất cả {n} món trong đơn.", {
+                      n: itemsCount,
+                    })}
                   </div>
 
                   <label style={labelStyle}>{t("Số sao đánh giá")}</label>
@@ -869,10 +862,7 @@ export default function CustomerOrderDetail({
                     ) : (
                       <>
                         <Send size={14} />{" "}
-                        {t("Gửi đánh giá & nhận {n} điểm").replace(
-                          "{n}",
-                          earnPoints
-                        )}
+                        {t("Gửi đánh giá & nhận {n} điểm", { n: earnPoints })}
                       </>
                     )}
                   </button>
@@ -971,10 +961,7 @@ export default function CustomerOrderDetail({
                       }}
                     >
                       <Star size={16} fill="#fff" />{" "}
-                      {t("Đánh giá đơn hàng (+{n} điểm)").replace(
-                        "{n}",
-                        earnPoints
-                      )}
+                      {t("Đánh giá đơn hàng (+{n} điểm)", { n: earnPoints })}
                     </button>
                   )}
 
@@ -1037,9 +1024,10 @@ export default function CustomerOrderDetail({
       <ConfirmDialog
         open={confirmAction === "received"}
         title={t("Xác nhận đã nhận món?")}
-        message={t("Bạn xác nhận đã nhận {n} món của đơn {code}.")
-          .replace("{n}", itemsCount)
-          .replace("{code}", order.code)}
+        message={t("Bạn xác nhận đã nhận {n} món của đơn {code}.", {
+          n: itemsCount,
+          code: order.code,
+        })}
         confirmText={t("Đã nhận món")}
         cancelText={t("Chưa nhận được")}
         loading={receiving}
@@ -1050,8 +1038,9 @@ export default function CustomerOrderDetail({
       <ConfirmDialog
         open={confirmAction === "cancel"}
         title={t("Hủy đơn hàng này?")}
-        message={t("Đơn hàng {code} sẽ bị hủy và không thể khôi phục.")
-          .replace("{code}", order.code)}
+        message={t("Đơn hàng {code} sẽ bị hủy và không thể khôi phục.", {
+          code: order.code,
+        })}
         confirmText={t("Hủy đơn")}
         cancelText={t("Giữ đơn")}
         danger
@@ -1248,10 +1237,7 @@ function MyReviewsView({
           textAlign: "center",
         }}
       >
-        {t("Bạn đã nhận được {points} điểm thưởng").replace(
-          "{points}",
-          totalPoints
-        )}
+        {t("Bạn đã nhận được {points} điểm thưởng", { points: totalPoints })}
       </div>
 
       <h4 style={{ margin: "0 0 10px", color: "var(--text-primary, #172033)" }}>
@@ -1297,6 +1283,7 @@ function MyReviewsView({
     </div>
   );
 }
+
 const labelStyle = {
   display: "block",
   fontSize: 12,

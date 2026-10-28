@@ -1,12 +1,9 @@
 // ============================================================
 // PAYMENTMODAL.JSX — Modal chọn phương thức thanh toán (V3)
 // ============================================================
-// V2:
-//   - 🔧 FIX #36: template string printQR
-//   - 🔧 FIX #54: useMemo vietQR phụ thuộc primitive
-// V3 (Batch 13):
-//   - Import getToken + guard api.settings.get() chống spam 401
-//   - Không treo settingsLoading khi không có token
+// V3 (Batch 13): import getToken + guard api.settings.get() chống spam 401
+// V3.1 (B7): i18n label/desc phương thức; buildPrintHTML nhận labels;
+//            replace() → object interpolation
 // ============================================================
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -71,6 +68,7 @@ const buildPrintHTML = ({
   content,
   totalText,
   qrUrl,
+  labels,
 }) => {
   return [
     "<!DOCTYPE html>",
@@ -93,15 +91,15 @@ const buildPrintHTML = ({
     "</head>",
     "<body>",
     "  <h2>CANTEEN VWA</h2>",
-    "  <p class='sub'>Hệ thống Canteen VWA</p>",
-    `  <p class='code'>Mã đơn: <b>${code}</b></p>`,
+    `  <p class='sub'>${labels.system}</p>`,
+    `  <p class='code'>${labels.orderCode}: <b>${code}</b></p>`,
     `  <img src="${qrUrl}" alt="VietQR" />`,
     `  <div class='total'>${totalText}</div>`,
     "  <div class='info'>",
-    `    <div>Ngân hàng: <b>${bank}</b></div>`,
-    `    <div>STK: <b>${acc}</b></div>`,
-    `    <div>Chủ TK: <b>${accName}</b></div>`,
-    `    <div>Nội dung: <b>${content}</b></div>`,
+    `    <div>${labels.bank}: <b>${bank}</b></div>`,
+    `    <div>${labels.account}: <b>${acc}</b></div>`,
+    `    <div>${labels.holder}: <b>${accName}</b></div>`,
+    `    <div>${labels.content}: <b>${content}</b></div>`,
     "  </div>",
     "  <scr" + "ipt>",
     "    window.onload = function() {",
@@ -128,7 +126,6 @@ export default function PaymentModal({
   useEffect(() => {
     let cancelled = false;
 
-    // 🔧 Batch 13 FIX: guard chống spam 401
     if (!getToken()) {
       setSettingsLoading(false);
       return;
@@ -222,6 +219,14 @@ export default function PaymentModal({
       content: escapeHtml(transferContent),
       totalText: escapeHtml(money(total)),
       qrUrl: vietQR,
+      labels: {
+        system: escapeHtml(t("Hệ thống Canteen VWA")),
+        orderCode: escapeHtml(t("Mã đơn")),
+        bank: escapeHtml(t("Ngân hàng")),
+        account: escapeHtml(t("STK")),
+        holder: escapeHtml(t("Chủ TK")),
+        content: escapeHtml(t("Nội dung")),
+      },
     });
 
     w.document.open();
@@ -235,10 +240,9 @@ export default function PaymentModal({
 
     if (method === "Ví Canteen" && !walletEnough) {
       toast(
-        t("Số dư ví không đủ. Bạn còn thiếu {amount}.").replace(
-          "{amount}",
-          money(walletShortfall)
-        ),
+        t("Số dư ví không đủ. Bạn còn thiếu {amount}.", {
+          amount: money(walletShortfall),
+        }),
         "error"
       );
       return;
@@ -426,7 +430,7 @@ export default function PaymentModal({
                       color: "var(--text-primary, #172033)",
                     }}
                   >
-                    {m.label}
+                    {t(m.label)}
                   </div>
                   <div
                     style={{
@@ -434,7 +438,7 @@ export default function PaymentModal({
                       color: "var(--text-light, #8993a3)",
                     }}
                   >
-                    {m.desc}
+                    {t(m.desc)}
                     {m.needsWallet && (
                       <span
                         style={{

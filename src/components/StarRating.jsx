@@ -1,7 +1,7 @@
 // ============================================================
 // STARRATING.JSX — Đánh giá sao (1-5)
 // ============================================================
-// 🔧 FIX #41: cho phép clear về 0 (ArrowLeft ở mức 1, click lại sao)
+// B7: bỏ namespace rating.*; replace() → object interpolation
 
 import { useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -37,7 +37,6 @@ export default function StarRating({
     return safeHover || safeValue;
   }, [readonly, safeValue, safeHover]);
 
-  // 🔧 FIX #41: click sao đang chọn → toggle về 0 (clear)
   const handleSelect = useCallback(
     (star) => {
       if (readonly) return;
@@ -47,7 +46,6 @@ export default function StarRating({
     [readonly, onChange, safeValue]
   );
 
-  // 🔧 FIX #41: dùng cho keyboard (không toggle) — luôn set đúng giá trị
   const setRating = useCallback(
     (star) => {
       if (readonly) return;
@@ -79,20 +77,18 @@ export default function StarRating({
         case "ArrowRight":
         case "ArrowUp":
           e.preventDefault();
-          // nếu current = 0 → lên 1
           setRating(current + 1 || 1);
           break;
 
         case "ArrowLeft":
         case "ArrowDown":
           e.preventDefault();
-          // 🔧 FIX #41: cho phép về 0 khi current <= 1
           setRating(Math.max(0, current - 1));
           break;
 
         case "Home":
           e.preventDefault();
-          setRating(0); // 🔧 FIX #41: Home = clear
+          setRating(0);
           break;
 
         case "End":
@@ -119,7 +115,7 @@ export default function StarRating({
     <div
       ref={containerRef}
       role="radiogroup"
-      aria-label={t("rating.ariaGroup")}
+      aria-label={t("Đánh giá sao")}
       aria-readonly={readonly}
       tabIndex={containerTabIndex}
       onKeyDown={handleKeyDown}
@@ -149,7 +145,7 @@ export default function StarRating({
             type="button"
             role="radio"
             aria-checked={star === safeValue}
-            aria-label={t("rating.starAria").replace("{n}", star)}
+            aria-label={t("Chọn {n} sao", { n: star })}
             disabled={readonly}
             tabIndex={-1}
             onClick={() => handleSelect(star)}

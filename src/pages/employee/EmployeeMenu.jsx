@@ -1,10 +1,9 @@
 // ============================================================
-// EMPLOYEEMENU.JSX — Quản lý Kho & Báo hết món (V8 - FIX)
+// EMPLOYEEMENU.JSX — Quản lý Kho & Báo hết món (V9 - B9.4)
 // ============================================================
-// V8:
-//   - 🔧 Thêm guard getToken() chặn spam 401/403.
-//   - 🔧 Bổ sung nút Tắt/Bật món (active toggle) cho nhân viên.
-// ============================================================
+// V9:
+//   - handleToggleOut / handleToggleActive: tData + object interpolation
+//   - handleAdjustStock: object interpolation
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -13,7 +12,7 @@ import {
   CheckCircle2, ToggleLeft, ToggleRight, Utensils, Sparkles, RotateCcw,
   Filter, ChevronLeft, ChevronRight, Star, Flame, Clock, Power,
 } from "lucide-react";
-import { api, getToken } from "../../api"; // 🔧 Thêm getToken
+import { api, getToken } from "../../api";
 import { money } from "../../components/UI";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
@@ -26,7 +25,8 @@ const PAGE_SIZE = 12;
 const AUDIT_STORAGE_KEY = "canteen_audit_log";
 
 const AUDIT_TIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
-  timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
 });
 
 const CATEGORY_MAP = { "Cơm": "COM", "Món mặn": "BUN", "Đồ ăn nhanh": "FAST", "Đồ uống": "DRINK", "Món chay": "COM", "Món phụ": "FAST" };
@@ -104,9 +104,7 @@ export default function EmployeeMenu() {
   useEffect(() => { try { localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(auditLog)); } catch (e) {} }, [auditLog]);
 
   const load = useCallback(async (silent = false) => {
-    // 🔧 FIX: Chặn gọi API khi chưa đăng nhập
     if (!getToken()) return;
-
     if (inFlightRef.current) return;
     inFlightRef.current = true;
 
@@ -136,7 +134,11 @@ export default function EmployeeMenu() {
     return items.map((m) => {
       const stock = typeof m.stock === "number" ? m.stock : 0;
       const sold = typeof m.sold === "number" ? m.sold : 0;
-      return { ...m, _catId: getCategoryId(m), _stationId: getStationId(m), _stockStatus: getStockStatus(m), _stock: stock, _sold: sold, _totalStock: stock + sold };
+      return {
+        ...m, _catId: getCategoryId(m), _stationId: getStationId(m),
+        _stockStatus: getStockStatus(m), _stock: stock, _sold: sold,
+        _totalStock: stock + sold,
+      };
     });
   }, [items]);
 
@@ -185,64 +187,91 @@ export default function EmployeeMenu() {
   const staffDisplay = staffCode ? `${staffName} (${staffCode})` : staffName;
 
   const addAudit = useCallback((dish, action, reason, actionVariant = "neutral") => {
-      const timeStr = AUDIT_TIME_FORMATTER.format(new Date());
-      setAuditLog((log) => [{ id: Date.now() + Math.random(), time: timeStr, dish, station: "Quầy NV", action, actionVariant, reason, staff: staffDisplay, status: "Đã đồng bộ" }, ...log].slice(0, 50));
-    }, [staffDisplay]);
+    const timeStr = AUDIT_TIME_FORMATTER.format(new Date());
+    setAuditLog((log) => [{
+      id: Date.now() + Math.random(), time: timeStr, dish,
+      station: "Quầy NV", action, actionVariant, reason, staff: staffDisplay,
+      status: "Đã đồng bộ",
+    }, ...log].slice(0, 50));
+  }, [staffDisplay]);
 
   const markProcessing = (id, on) => {
     setProcessingIds((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; });
   };
 
+  // 🔧 B9.4: tData + object interpolation
   const handleToggleOut = useCallback(async (item) => {
-      const id = item._id || item.id;
-      if (processingIds.has(id)) return;
-      markProcessing(id, true);
+    const id = item._id || item.id;
+    if (processingIds.has(id)) return;
+    markProcessing(id, true);
 
-      const isOut = item._stockStatus === "OUT";
-      const newStock = isOut ? 20 : 0;
+    const isOut = item._stockStatus === "OUT";
+    const newStock = isOut ? 20 : 0;
+    const itemName = tData(item, "name") || item.name;
 
-      try {
-        await api.menu.update(id, { stock: newStock });
-        toast(isOut ? `${t("Đã mở bán lại:")} "${item.name}"` : `${t("Đã tạm hết hàng:")} "${item.name}"`, isOut ? "success" : "warning");
-        addAudit(item.name, isOut ? t("Mở bán lại") : t("Tạm hết hàng"), isOut ? t("Bổ sung mẻ mới") : t("Thao tác nhân viên"), isOut ? "success" : "danger");
-        await load(true);
-      } catch (e) { toast(e.message || t("Không cập nhật được"), "error"); }
-      finally { markProcessing(id, false); }
-    }, [processingIds, load, addAudit, t]);
+    try {
+      await api.menu.update(id, { stock: newStock });
+      toast(
+        isOut
+          ? t("Đã mở bán lại: {name}", { name: itemName })
+          : t("Đã tạm hết hàng: {name}", { name: itemName }),
+        isOut ? "success" : "warning"
+      );
+      addAudit(itemName, isOut ? t("Mở bán lại") : t("Tạm hết hàng"), isOut ? t("Bổ sung mẻ mới") : t("Thao tác nhân viên"), isOut ? "success" : "danger");
+      await load(true);
+    } catch (e) {
+      toast(e.message || t("Không cập nhật được"), "error");
+    } finally {
+      markProcessing(id, false);
+    }
+  }, [processingIds, load, addAudit, t, tData]);
 
-  // 🔧 BỔ SUNG: Hàm bật/tắt hẳn món ăn (dùng cho trường hợp Admin/NV muốn ẩn món)
+  // 🔧 B9.4: tData + object interpolation
   const handleToggleActive = useCallback(async (item) => {
-      const id = item._id || item.id;
-      if (processingIds.has(id)) return;
-      markProcessing(id, true);
+    const id = item._id || item.id;
+    if (processingIds.has(id)) return;
+    markProcessing(id, true);
 
-      const isActive = Number(item.active) !== 0;
-      const newActive = isActive ? 0 : 1;
+    const isActive = Number(item.active) !== 0;
+    const newActive = isActive ? 0 : 1;
+    const itemName = tData(item, "name") || item.name;
 
-      try {
-        await api.menu.update(id, { active: newActive });
-        toast(isActive ? `${t("Đã tắt món:")} "${item.name}"` : `${t("Đã bật bán món:")} "${item.name}"`, isActive ? "warning" : "success");
-        addAudit(item.name, isActive ? t("Tắt món") : t("Bật món"), t("Thay đổi trạng thái bán"), isActive ? "danger" : "success");
-        await load(true);
-      } catch (e) { toast(e.message || t("Không cập nhật được"), "error"); }
-      finally { markProcessing(id, false); }
-    }, [processingIds, load, addAudit, t]);
+    try {
+      await api.menu.update(id, { active: newActive });
+      toast(
+        isActive
+          ? t("Đã tắt món: {name}", { name: itemName })
+          : t("Đã bật bán món: {name}", { name: itemName }),
+        isActive ? "warning" : "success"
+      );
+      addAudit(itemName, isActive ? t("Tắt món") : t("Bật món"), t("Thay đổi trạng thái bán"), isActive ? "danger" : "success");
+      await load(true);
+    } catch (e) {
+      toast(e.message || t("Không cập nhật được"), "error");
+    } finally {
+      markProcessing(id, false);
+    }
+  }, [processingIds, load, addAudit, t, tData]);
 
+  // 🔧 B9.4: object interpolation
   const handleAdjustStock = useCallback(async (item, delta) => {
-      const id = item._id || item.id;
-      if (processingIds.has(id)) return;
-      const currentStock = Number(item.stock) || 0;
-      const newStock = Math.max(0, Math.min(MAX_STOCK, currentStock + delta));
-      if (newStock === currentStock) return;
+    const id = item._id || item.id;
+    if (processingIds.has(id)) return;
+    const currentStock = Number(item.stock) || 0;
+    const newStock = Math.max(0, Math.min(MAX_STOCK, currentStock + delta));
+    if (newStock === currentStock) return;
 
-      markProcessing(id, true);
-      try {
-        await api.menu.update(id, { stock: newStock });
-        toast(`${t("Tồn kho:")} ${newStock} ${t("suất")}`, "success", { id: "stock-toast-" + id, duration: 1500 });
-        await load(true);
-      } catch (e) { toast(e.message || t("Không cập nhật được"), "error"); }
-      finally { markProcessing(id, false); }
-    }, [processingIds, load, t]);
+    markProcessing(id, true);
+    try {
+      await api.menu.update(id, { stock: newStock });
+      toast(t("Tồn kho: {n} {unit}", { n: newStock, unit: t("suất") }), "success");
+      await load(true);
+    } catch (e) {
+      toast(e.message || t("Không cập nhật được"), "error");
+    } finally {
+      markProcessing(id, false);
+    }
+  }, [processingIds, load, t]);
 
   const handleSyncKitchen = () => toast(t("Đã đồng bộ tồn kho từ KDS Bếp Trưởng"), "success");
   const handleViewLog = () => setShowAuditModal(true);
@@ -266,7 +295,7 @@ export default function EmployeeMenu() {
       {error && (
         <div style={{ background: "var(--st-danger-bg)", border: "1px solid var(--st-danger-border)", borderRadius: "var(--st-radius-md)", padding: "12px 16px", color: "var(--st-danger)", fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
           <AlertCircle size={18} /><span style={{ flex: 1 }}>{error}</span>
-          <button type="button" onClick={() => load(false)} style={{ padding: "6px 12px", background: "var(--st-danger)", color: "#fff", border: 0, borderRadius: "var(--st-radius-sm)", cursor: "pointer", fontFamily: "var(--st-font-head)", fontSize: 12, fontWeight: 700 }}>{t("Thử lại")}</button>
+          <button type="button" onClick={() => load(false)} style={{ padding: "6px 12px", background: "var(--st-danger)", color: "#fff", border: 0, borderRadius: "var(--st-radius-sm)", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{t("Thử lại")}</button>
         </div>
       )}
 
@@ -413,12 +442,12 @@ function Dish86CardRow({ item, isProcessing, onToggleOut, onToggleActive, onAdju
   return (
     <article className={`menu86-card-row ${isDisabled ? "menu86-card-row--disabled" : isOut ? "menu86-card-row--out" : ""}`}>
       <div className="menu86-card-row__img-wrap">
-        <img src={item.image || getFALLBACK_IMG()} alt={item.name} loading="lazy" onError={(e) => { e.target.onerror = null; e.target.src = getFALLBACK_IMG(); }} />
+        <img src={item.image || getFALLBACK_IMG()} alt={tData(item, "name")} loading="lazy" onError={(e) => { e.target.onerror = null; e.target.src = getFALLBACK_IMG(); }} />
         {item.is_signature && <span className="menu86-card-row__badge-signature"><Star size={9} fill="#fff" /> SIGNATURE</span>}
       </div>
 
       <div className="menu86-card-row__info">
-        <span className="menu86-card-row__category">{item.category}</span>
+        <span className="menu86-card-row__category">{t(item.category)}</span>
         <h3 className="menu86-card-row__name">{tData(item, "name") || item.name}</h3>
 
         <div className="menu86-card-row__price-row">
@@ -450,7 +479,7 @@ function Dish86CardRow({ item, isProcessing, onToggleOut, onToggleActive, onAdju
             <button type="button" className="menu86-card-row__quick-btn" onClick={() => onAdjustStock(20)} disabled={isProcessing || isDisabled}>+20</button>
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className={`menu86-card-row__toggle-out ${isOut ? "menu86-card-row__toggle-out--reopen" : "menu86-card-row__toggle-out--out"}`} onClick={onToggleOut} disabled={isProcessing || isDisabled} title={isDisabled ? t("Món đã bị admin tắt — không thể thao tác") : isOut ? t("Mở bán lại") : t("Báo tạm hết hàng")}>
               {isProcessing ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : isOut ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
               <span>{isOut ? t("Mở bán lại") : t("Tạm hết hàng")}</span>

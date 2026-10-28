@@ -1,15 +1,16 @@
 // ============================================================
-// OWNERSETTINGS.JSX — Cài đặt hệ thống (Admin) (V2)
+// OWNERSETTINGS.JSX — Cài đặt hệ thống (Admin) (V3 — B9.6a)
 // ============================================================
-// V2:
-//   - 🔧 Thêm getToken() guard chặn spam 401/403.
+// V3:
+//   - Bug 1: thêm submittingRef chống double-submit
 // ============================================================
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
-  CreditCard, Save, QrCode, Building2, Phone, Mail, MapPin, CheckCircle2, Loader2, AlertCircle, RefreshCw, X,
+  CreditCard, Save, QrCode, Building2, Phone, Mail, MapPin, CheckCircle2,
+  Loader2, AlertCircle, RefreshCw, X,
 } from "lucide-react";
-import { api, getToken } from "../../api"; // 🔧 Thêm getToken
+import { api, getToken } from "../../api";
 import { toast } from "../../components/Effects";
 import { useI18n } from "../../hooks/useI18n";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -38,7 +39,7 @@ const EMPTY_FORM = {
   qrCustomImage: "",
 };
 
-const MAX_QR_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_QR_SIZE = 2 * 1024 * 1024;
 
 export default function OwnerSettings() {
   const { t } = useI18n();
@@ -53,8 +54,10 @@ export default function OwnerSettings() {
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
+  // 🔧 B9.6a — chống double-submit
+  const submittingRef = useRef(false);
+
   const load = useCallback(async () => {
-    // 🔧 FIX: Chặn gọi API khi chưa đăng nhập
     if (!getToken()) return;
 
     setLoading(true);
@@ -89,10 +92,13 @@ export default function OwnerSettings() {
     return () => clearTimeout(timer);
   }, [saved]);
 
-  useEffect(() => {
-    const isDirty = JSON.stringify(form) !== JSON.stringify(original);
-    if (!isDirty) return;
+  const isDirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(original),
+    [form, original]
+  );
 
+  useEffect(() => {
+    if (!isDirty) return;
     const handler = (e) => {
       e.preventDefault();
       e.returnValue = "";
@@ -100,12 +106,7 @@ export default function OwnerSettings() {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [form, original]);
-
-  const isDirty = useMemo(
-    () => JSON.stringify(form) !== JSON.stringify(original),
-    [form, original]
-  );
+  }, [isDirty]);
 
   const selectedBankName = useMemo(
     () => BANKS.find((b) => b.code === form.bank)?.name || form.bank,
@@ -178,10 +179,11 @@ export default function OwnerSettings() {
   };
 
   const save = async () => {
-    if (saving) return;
+    if (submittingRef.current) return;
     const errMsg = validate();
     if (errMsg) return toast(errMsg, "error");
 
+    submittingRef.current = true;
     setSaving(true);
     try {
       const payload = {
@@ -200,6 +202,7 @@ export default function OwnerSettings() {
     } catch (e) {
       toast(e.message || t("Không lưu được"), "error");
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   };

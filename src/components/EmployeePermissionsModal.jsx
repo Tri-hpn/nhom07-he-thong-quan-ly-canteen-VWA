@@ -1,13 +1,8 @@
 // ============================================================
 // EMPLOYEEPERMISSIONSMODAL.JSX — Phân quyền nhân viên (Admin)
 // ============================================================
-// 🔧 Batch 13 FIX:
-//   1. Import getToken + guard loadData() chống spam 401
-//   2. Fix message error (copy-paste sai "chấm công" → "phân quyền")
-//   3. btnToolbarStyle dùng đúng variant primary (nút "Sửa" có màu xanh)
-//   4. Mounted guard cho save()/resetCustom() tránh setState on unmounted
-//   5. Chặn đóng modal (X/Hủy) khi đang saving
-// ============================================================
+// B7: group.label qua t(); save/resetCustom tách lỗi update vs refresh;
+//     ESC + body scroll lock
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -29,7 +24,6 @@ const CATEGORY_META = [
   { prefix: "settings.",   label: "Cài đặt",    icon: SettingsIcon,   color: "#f97316" },
 ];
 
-// 🔧 Batch 13 FIX: dùng đúng variant primary
 const btnToolbarStyle = ({ disabled, primary, danger }) => ({
   padding: "8px 14px",
   background: primary ? (disabled ? "#94a3b8" : "#2634d5") : "var(--bg-tertiary, #f5f7fb)",
@@ -70,7 +64,6 @@ export default function EmployeePermissionsModal({ user, onClose }) {
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState("");
 
-  // 🔧 Batch 13 FIX: mounted guard tránh setState on unmounted
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -78,7 +71,7 @@ export default function EmployeePermissionsModal({ user, onClose }) {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!getToken()) { // 🔧 Batch 13 FIX
+    if (!getToken()) {
       setLoading(false);
       return;
     }
@@ -98,7 +91,6 @@ export default function EmployeePermissionsModal({ user, onClose }) {
       });
     } catch (e) {
       if (!mountedRef.current) return;
-      // 🔧 Batch 13 FIX: đúng message
       setError(e.message || t("Không tải được dữ liệu phân quyền"));
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -115,9 +107,11 @@ export default function EmployeePermissionsModal({ user, onClose }) {
     }
     const knownPrefixes = CATEGORY_META.map((m) => m.prefix);
     const orphans = allPermissions.filter((p) => !knownPrefixes.some((pre) => p.key.startsWith(pre)));
-    if (orphans.length > 0) groups.push({ prefix: "__other__", label: t("Khác"), icon: Shield, color: "#64748b", items: orphans });
+    if (orphans.length > 0) {
+      groups.push({ prefix: "__other__", label: "Khác", icon: Shield, color: "#64748b", items: orphans });
+    }
     return groups;
-  }, [allPermissions, t]);
+  }, [allPermissions]);
 
   const togglePerm = (key) => {
     if (!isEditing) { toast(t("Bấm Sửa để chỉnh quyền"), "info"); return; }
@@ -153,51 +147,92 @@ export default function EmployeePermissionsModal({ user, onClose }) {
   const save = async () => {
     if (saving) return;
     setSaving(true);
+
+    // 🔧 B7: tách lỗi update (fatal) khỏi lỗi refresh (non-fatal)
     try {
       await api.permissions.update(user.id, userPerms.custom);
-      if (!mountedRef.current) return;
-      toast(`${t("Đã cập nhật quyền cho")} ${user.name}`, "success");
-      const res = await api.permissions.ofUser(user.id);
-      if (!mountedRef.current) return;
-      setUserPerms({ custom: res.custom || [], permissions: res.permissions || [] });
-      setIsEditing(false);
     } catch (e) {
       if (!mountedRef.current) return;
       toast(e.message || t("Không lưu được"), "error");
-    } finally {
       if (mountedRef.current) setSaving(false);
+      return;
+    }
+
+    if (!mountedRef.current) return;
+    toast(`${t("Đã cập nhật quyền cho")} ${user.name}`, "success");
+    setIsEditing(false);
+    setSaving(false);
+
+    // Refresh là best-effort — lỗi refresh không ảnh hưởng việc save đã thành công
+    try {
+      const res = await api.permissions.ofUser(user.id);
+      if (mountedRef.current) {
+        setUserPerms({ custom: res.custom || [], permissions: res.permissions || [] });
+      }
+    } catch {
+      // ignore refresh error
     }
   };
 
   const resetCustom = async () => {
+    if (saving) return;
     if (!isEditing) { toast(t("Bấm Sửa để chỉnh quyền"), "info"); return; }
     setSaving(true);
+
+    // 🔧 B7: tách lỗi update khỏi lỗi refresh
     try {
       await api.permissions.update(user.id, []);
-      if (!mountedRef.current) return;
-      const res = await api.permissions.ofUser(user.id);
-      if (!mountedRef.current) return;
-      setUserPerms({ custom: res.custom || [], permissions: res.permissions || [] });
-      toast(t("Đã reset về quyền mặc định"), "success");
     } catch (e) {
       if (!mountedRef.current) return;
       toast(e.message || t("Không reset được"), "error");
-    } finally {
       if (mountedRef.current) setSaving(false);
+      return;
+    }
+
+    if (!mountedRef.current) return;
+    toast(t("Đã reset về quyền mặc định"), "success");
+    setSaving(false);
+
+    try {
+      const res = await api.permissions.ofUser(user.id);
+      if (mountedRef.current) {
+        setUserPerms({ custom: res.custom || [], permissions: res.permissions || [] });
+      }
+    } catch {
+      // ignore refresh error
     }
   };
 
-  // 🔧 Batch 13 FIX: chặn đóng khi đang saving
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (saving) return;
     onClose?.();
-  };
+  }, [saving, onClose]);
+
+  // 🔧 B7: ESC đóng modal
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleClose]);
+
+  // 🔧 B7: body scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center", zIndex: 2147483605, padding: 20 }}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("Phân quyền nhân viên")}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "grid", placeItems: "center", zIndex: 2147483605, padding: 20 }}
+    >
       <div style={{ background: "var(--card-bg, #fff)", borderRadius: 14, width: "100%", maxWidth: 800, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-        {/* Header */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-color, #eef2f7)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-tertiary, #f8fafc)" }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, color: "var(--text-primary, #172033)" }}>{t("Phân quyền nhân viên")}</h2>
@@ -213,7 +248,6 @@ export default function EmployeePermissionsModal({ user, onClose }) {
           </button>
         </div>
 
-        {/* Toolbar */}
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border-color, #eef2f7)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={resetCustom} disabled={saving || !isEditing} style={btnToolbarStyle({ disabled: saving || !isEditing })}>
             <RotateCcw size={14} /> {t("Reset")}
@@ -232,7 +266,6 @@ export default function EmployeePermissionsModal({ user, onClose }) {
           </button>
         </div>
 
-        {/* Body */}
         <div style={{ padding: 20, overflowY: "auto", flex: 1 }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: 40, color: "var(--text-muted, #64748b)" }}>
@@ -262,7 +295,7 @@ export default function EmployeePermissionsModal({ user, onClose }) {
                         <div style={{ width: 28, height: 28, borderRadius: 8, background: group.color + "25", color: group.color, display: "grid", placeItems: "center" }}>
                           <GroupIcon size={15} />
                         </div>
-                        <b style={{ fontSize: 14, color: "var(--text-primary, #172033)" }}>{group.label}</b>
+                        <b style={{ fontSize: 14, color: "var(--text-primary, #172033)" }}>{t(group.label)}</b>
                         <span style={{ fontSize: 11, fontWeight: 700, color: group.color, background: group.color + "18", padding: "2px 8px", borderRadius: 10 }}>
                           {checkedCount}/{totalCount}
                         </span>

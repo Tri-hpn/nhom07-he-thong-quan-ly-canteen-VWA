@@ -1,11 +1,8 @@
 // ============================================================
 // REVIEWSECTION.JSX — Đánh giá món ăn (V2)
 // ============================================================
-// V2 (2026-10):
-//   - 🔧 FIX #37: safeAvg dùng Number(r?.rating) nhưng rating có thể
-//                 là string → ép Number an toàn + guard isFinite
-//   - Giữ nguyên logic còn lại
-// ============================================================
+// V2: safeAvg dùng Number.isFinite
+// B7: fmtDate bỏ hardcode "vi-VN" → theo locale trình duyệt
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
@@ -19,7 +16,6 @@ import { useI18n } from "../hooks/useI18n";
 const MAX_COMMENT_LENGTH = 500;
 const MAX_REVIEWS_SHOWN = 20;
 
-// 🔧 FIX #37: guard rating không phải number
 function safeAvg(list) {
   if (!Array.isArray(list) || list.length === 0) return 0;
   const sum = list.reduce((s, r) => {
@@ -36,7 +32,7 @@ function fmtDate(iso) {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("vi-VN");
+    return d.toLocaleDateString();
   } catch {
     return "";
   }

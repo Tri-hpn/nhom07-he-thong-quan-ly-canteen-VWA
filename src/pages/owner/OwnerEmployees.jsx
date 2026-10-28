@@ -1,15 +1,17 @@
 // ============================================================
-// OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin) V4
+// OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin) — PHẦN 1/2
 // ============================================================
-// V4 (2025-11) — FINAL FIX:
-//   🔧 FIX #1 (CRITICAL): OwnerShiftsInner.load() setLoading(false) trước
-//                          return khi !getToken → không kẹt skeleton.
-//   🔧 FIX #2 (MEDIUM): Tách state todayAttendances, fetch riêng
-//                        (from=to=today) → KPI không bị ảnh hưởng bởi
-//                        historyMonth filter.
-//   🔧 FIX #3 (MEDIUM): Guard getToken() trong onViewShifts.
-//   🔧 FIX #4 (LOW): Đổi nhãn "Ca làm hôm nay" → "Ca làm sắp tới".
-//   🔧 FIX #5 (LOW): Thay window.confirm bằng setConfirm.
+// B9.6d1 (phần đầu file):
+//   - Fix ~27 bug (hardcoded text, UTC date, submittingRef, scroll lock)
+//   - Extract ViewShiftsModal component (scroll lock + ESC + locale)
+//   - t(s.shift) khi hiển thị ca
+//   - Object interpolation cho toast/confirm
+//   - Local date thay vì UTC
+//
+// ⚠️ PHẦN 2 (B9.6d2) chứa: OwnerShiftsInner, ShiftAssignModal,
+//    ShiftAttendanceBadge, SummaryCard, ShiftStat, SHIFT_TABS,
+//    formatters, OwnerEmployees wrapper.
+//    → Ghép 2 phần để có file hoàn chỉnh.
 // ============================================================
 
 import { SkeletonList, Skeleton, SkeletonStats } from "../../components/Skeleton";
@@ -25,7 +27,7 @@ import { api, getToken } from "../../api";
 import { toast } from "../../components/Effects";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useI18n } from "../../hooks/useI18n";
-import EmployeePermissionsModal from '../../components/EmployeePermissionsModal';
+import EmployeePermissionsModal from "../../components/EmployeePermissionsModal";
 
 // ============================================================
 // CONSTANTS
@@ -47,6 +49,19 @@ const SHIFT_OPTIONS = [
   { id: "Ca sáng", label: "Ca sáng (06:30-12:30)" },
   { id: "Ca chiều", label: "Ca chiều (12:30-18:30)" },
 ];
+
+// 🔧 B9.6d1 — SHIFT_DEFS đặt ở top để cả 2 phần dùng chung
+const SHIFT_DEFS = [
+  { id: "Ca sáng",  label: "Ca sáng",  time: "06:30 - 12:30", icon: Sunrise, color: "#f59e0b" },
+  { id: "Ca chiều", label: "Ca chiều", time: "12:30 - 18:30", icon: Sun,     color: "#2634d5" },
+];
+
+function getShiftTime(shiftId) {
+  const def = SHIFT_DEFS.find((d) => d.id === shiftId || d.name === shiftId);
+  if (def?.time) return def.time;
+  if (shiftId === "Ca tối") return "18:30 - 22:30";
+  return "";
+}
 
 const PRIORITY_OPTIONS = [
   { id: "low", label: "Thấp", color: "#64748b" },
@@ -106,12 +121,18 @@ function isOverdue(task) {
   return due < today;
 }
 
+// 🔧 B9.6d1 — ngày hôm nay theo LOCAL timezone (không dùng UTC)
+function getTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 
 function OwnerEmployeesInner() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [activeTab, setActiveTab] = useState("employees");
 
   // ---------- Data ----------
@@ -120,43 +141,39 @@ function OwnerEmployeesInner() {
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-
-  // ---------- Pagination ----------
   const [page, setPage] = useState(1);
 
-  // ---------- Ca làm + chấm công hôm nay (map theo employee_id) ----------
+  // ---------- Ca làm + chấm công hôm nay ----------
   const [todayShiftsMap, setTodayShiftsMap] = useState({});
   const [todayAttendanceMap, setTodayAttendanceMap] = useState({});
-
-  // ---------- Task map (đếm task pending theo employee_id) ----------
   const [taskCountMap, setTaskCountMap] = useState({});
 
-  // ---------- Detail modal ----------
+  // ---------- Modals ----------
   const [detailModal, setDetailModal] = useState(null);
   const [showPw, setShowPw] = useState(false);
   const [permModal, setPermModal] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // ---------- Add modal ----------
   const [addModal, setAddModal] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  // ---------- Assign task modal ----------
   const [assignModal, setAssignModal] = useState(null);
   const [viewShiftsModal, setViewShiftsModal] = useState(null);
   const [chartWeekOffset, setChartWeekOffset] = useState(0);
   const [assigning, setAssigning] = useState(false);
 
-  // ---------- Task list modal ----------
   const [taskListModal, setTaskListModal] = useState(null);
   const [taskListLoading, setTaskListLoading] = useState(false);
 
-  // ---------- Confirm dialog ----------
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // ---------- All users for email dup check ----------
   const [allUsers, setAllUsers] = useState([]);
+
+  // 🔧 B9.6d1 — chống double-submit
+  const saveEditRef = useRef(false);
+  const saveAddRef = useRef(false);
+  const submitAssignRef = useRef(false);
 
   // ============================================================
   // LOAD
@@ -191,10 +208,11 @@ function OwnerEmployeesInner() {
     if (!getToken()) return;
     try {
       const data = await api.shifts.all();
-      const today = new Date().toISOString().split("T")[0];
+      const todayStr = getTodayStr();
       const map = {};
       for (const s of data) {
-        if (s.date >= today && (!s.status || s.status === "approved")) {
+        const sDate = s.date ? String(s.date).split("T")[0] : "";
+        if (sDate >= todayStr && (!s.status || s.status === "approved")) {
           if (!map[s.employee_id]) map[s.employee_id] = [];
           map[s.employee_id].push(s);
         }
@@ -208,7 +226,7 @@ function OwnerEmployeesInner() {
   const loadTodayAttendance = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = getTodayStr();
       const data = await api.attendance.all({ from: todayStr, to: todayStr });
       const map = {};
       (Array.isArray(data) ? data : []).forEach((a) => {
@@ -242,25 +260,13 @@ function OwnerEmployeesInner() {
     loadTaskCounts();
   }, [load, loadAllUsers, loadTodayShifts, loadTodayAttendance, loadTaskCounts]);
 
-  // ESC đóng modals
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
-      if (taskListModal) {
-        setTaskListModal(null);
-        return;
-      }
-      if (assignModal && !assigning) {
-        setAssignModal(null);
-        return;
-      }
-      if (addModal && !adding) {
-        setAddModal(false);
-        return;
-      }
-      if (detailModal && !saving) {
-        closeDetail();
-      }
+      if (taskListModal) { setTaskListModal(null); return; }
+      if (assignModal && !assigning) { setAssignModal(null); return; }
+      if (addModal && !adding) { setAddModal(false); return; }
+      if (detailModal && !saving) closeDetail();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -280,13 +286,11 @@ function OwnerEmployeesInner() {
 
   const filtered = useMemo(() => {
     let result = list;
-
     if (statusFilter === "active") {
       result = result.filter((e) => (e.status || "Hoạt động") === "Hoạt động");
     } else if (statusFilter === "locked") {
       result = result.filter((e) => e.status === "Bị khóa");
     }
-
     if (q.trim()) {
       const s = normalize(q);
       result = result.filter(
@@ -296,7 +300,6 @@ function OwnerEmployeesInner() {
           String(e.id).includes(s)
       );
     }
-
     return result;
   }, [list, q, statusFilter]);
 
@@ -312,7 +315,7 @@ function OwnerEmployeesInner() {
   }, [filtered, currentPage]);
 
   // ============================================================
-  // HANDLERS — Detail / Add / Edit
+  // HANDLERS
   // ============================================================
 
   const openDetail = (emp, mode = "view") => {
@@ -331,15 +334,9 @@ function OwnerEmployeesInner() {
     setShowPw(false);
   };
 
-  const switchToView = () => {
-    if (!detailModal) return;
-    setDetailModal({ ...detailModal, mode: "view" });
-    setShowPw(false);
-  };
-
   const saveEdit = async (e) => {
     e.preventDefault();
-    if (saving) return;
+    if (saveEditRef.current) return;
 
     const f = new FormData(e.currentTarget);
     const data = {
@@ -350,15 +347,12 @@ function OwnerEmployeesInner() {
     const newPwd = f.get("password");
     if (newPwd && newPwd.trim()) data.password = newPwd.trim();
 
-    if (!data.name) {
-      toast(t("Vui lòng nhập họ tên"), "error");
-      return;
-    }
+    if (!data.name) return toast(t("Vui lòng nhập họ tên"), "error");
     if (newPwd && newPwd.trim().length < 6) {
-      toast(t("Mật khẩu phải từ 6 ký tự"), "error");
-      return;
+      return toast(t("Mật khẩu phải từ 6 ký tự"), "error");
     }
 
+    saveEditRef.current = true;
     setSaving(true);
     try {
       await api.users.update(detailModal.employee.id, data);
@@ -377,13 +371,14 @@ function OwnerEmployeesInner() {
     } catch (e) {
       toast(e.message || t("Không lưu được"), "error");
     } finally {
+      saveEditRef.current = false;
       setSaving(false);
     }
   };
 
   const saveAdd = async (e) => {
     e.preventDefault();
-    if (adding) return;
+    if (saveAddRef.current) return;
 
     const f = new FormData(e.currentTarget);
     const name = f.get("name")?.trim();
@@ -400,25 +395,22 @@ function OwnerEmployeesInner() {
 
     if (existingEmails.has(email)) {
       return toast(
-        `${t("Email")} "${email}" ${t("đã được sử dụng — vui lòng dùng email khác")}`,
+        t('Email "{email}" đã được sử dụng — vui lòng dùng email khác', { email }),
         "error"
       );
     }
 
+    saveAddRef.current = true;
     setAdding(true);
     try {
       await api.users.create({
-        name,
-        email,
-        phone,
+        name, email, phone,
         role: "EMPLOYEE",
         status: f.get("status") || "Hoạt động",
         password,
       });
       toast(
-        t("Đã thêm nhân viên mới") +
-          " — " +
-          t("nhân viên sẽ phải đổi mật khẩu khi đăng nhập lần đầu"),
+        t("Đã thêm nhân viên mới — nhân viên sẽ phải đổi mật khẩu khi đăng nhập lần đầu"),
         "success"
       );
       setAddModal(false);
@@ -427,13 +419,10 @@ function OwnerEmployeesInner() {
     } catch (e) {
       toast(e.message || t("Không thêm được"), "error");
     } finally {
+      saveAddRef.current = false;
       setAdding(false);
     }
   };
-
-  // ============================================================
-  // HANDLERS — Confirm
-  // ============================================================
 
   const closeConfirm = useCallback(() => {
     if (confirmBusy) return;
@@ -452,7 +441,7 @@ function OwnerEmployeesInner() {
 
   const remove = (emp) => {
     setConfirm({
-      title: `${t("Xóa nhân viên")} "${emp.name}"?`,
+      title: t('Xóa nhân viên "{name}"?', { name: emp.name }),
       message:
         t("Hành động này không thể hoàn tác. Tất cả dữ liệu liên quan") +
         " " +
@@ -473,9 +462,10 @@ function OwnerEmployeesInner() {
 
   const resetPassword = (emp) => {
     setConfirm({
-      title: `${t("Reset mật khẩu của")} "${emp.name}"?`,
+      title: t('Reset mật khẩu của "{name}"?', { name: emp.name }),
       message:
-        `${t("Mật khẩu sẽ được đặt lại về")} "${DEFAULT_PASSWORD}".\n\n` +
+        t('Mật khẩu sẽ được đặt lại về "{password}".', { password: DEFAULT_PASSWORD }) +
+        "\n\n" +
         t("Hãy thông báo mật khẩu mới cho nhân viên sau khi reset.") +
         "\n\n" +
         t("Nhân viên sẽ được yêu cầu đổi mật khẩu ngay khi đăng nhập lần tới."),
@@ -485,8 +475,9 @@ function OwnerEmployeesInner() {
       onConfirm: async () => {
         await api.users.update(emp.id, { password: DEFAULT_PASSWORD });
         toast(
-          `${t("Đã reset mật khẩu về")} "${DEFAULT_PASSWORD}" — ` +
-            t("nhân viên phải đổi mật khẩu khi đăng nhập"),
+          t('Đã reset mật khẩu về "{password}" — nhân viên phải đổi mật khẩu khi đăng nhập', {
+            password: DEFAULT_PASSWORD,
+          }),
           "success"
         );
         setConfirm(null);
@@ -495,13 +486,7 @@ function OwnerEmployeesInner() {
     });
   };
 
-  // ============================================================
-  // HANDLERS — Assign task
-  // ============================================================
-
-  const openAssign = (emp) => {
-    setAssignModal({ employee: emp });
-  };
+  const openAssign = (emp) => setAssignModal({ employee: emp });
 
   const closeAssign = () => {
     if (assigning) return;
@@ -510,7 +495,7 @@ function OwnerEmployeesInner() {
 
   const submitAssign = async (e) => {
     e.preventDefault();
-    if (assigning || !assignModal) return;
+    if (submitAssignRef.current || !assignModal) return;
 
     const f = new FormData(e.currentTarget);
     const title = f.get("title")?.trim();
@@ -521,18 +506,16 @@ function OwnerEmployeesInner() {
 
     if (!title) return toast(t("Vui lòng nhập tiêu đề công việc"), "error");
 
+    submitAssignRef.current = true;
     setAssigning(true);
     try {
       await api.tasks.create({
-        title,
-        description,
+        title, description,
         assigned_to: assignModal.employee.id,
-        due_date,
-        shift,
-        priority,
+        due_date, shift, priority,
       });
       toast(
-        `${t("Đã giao việc cho")} ${assignModal.employee.name}`,
+        t("Đã giao việc cho {name}", { name: assignModal.employee.name }),
         "success"
       );
       setAssignModal(null);
@@ -540,13 +523,10 @@ function OwnerEmployeesInner() {
     } catch (e) {
       toast(e.message || t("Không giao được việc"), "error");
     } finally {
+      submitAssignRef.current = false;
       setAssigning(false);
     }
   };
-
-  // ============================================================
-  // HANDLERS — View task list
-  // ============================================================
 
   const openTaskList = async (emp) => {
     setTaskListModal({ employee: emp, tasks: [] });
@@ -562,13 +542,11 @@ function OwnerEmployeesInner() {
     }
   };
 
-  const closeTaskList = () => {
-    setTaskListModal(null);
-  };
+  const closeTaskList = () => setTaskListModal(null);
 
   const deleteTask = (task) => {
     setConfirm({
-      title: `${t("Xoá công việc")} "${task.title}"?`,
+      title: t('Xoá công việc "{name}"?', { name: task.title }),
       message: t("Công việc sẽ bị xoá vĩnh viễn khỏi hệ thống."),
       confirmText: t("Xoá"),
       cancelText: t("Hủy"),
@@ -578,9 +556,7 @@ function OwnerEmployeesInner() {
           await api.tasks.remove(task.id);
           toast(t("Đã xoá công việc"), "success");
           setConfirm(null);
-          if (taskListModal) {
-            openTaskList(taskListModal.employee);
-          }
+          if (taskListModal) openTaskList(taskListModal.employee);
           loadTaskCounts();
         } catch (e) {
           toast(e.message || t("Không xoá được"), "error");
@@ -606,397 +582,181 @@ function OwnerEmployeesInner() {
         </div>
 
         {activeTab === "employees" && (
-        <>
-        {/* ============ TOOLBAR ============ */}
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            marginBottom: 20,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              background: "var(--card-bg, #fff)",
-              border: "1px solid var(--border-color, #e5e9ef)",
-              borderRadius: 10,
-              padding: "10px 14px",
-              flex: 1,
-              minWidth: 220,
-              maxWidth: 400,
-            }}
-          >
-            <Search size={18} style={{ color: "var(--text-light, #8993a3)" }} />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t("Tìm nhân viên...")}
-              style={{
-                flex: 1,
-                border: 0,
-                outline: "none",
-                fontSize: 13,
-                background: "transparent",
-                color: "var(--text-primary, #172033)",
-              }}
-            />
-            {q && (
-              <button
-                onClick={() => setQ("")}
-                style={{
-                  background: "transparent",
-                  border: 0,
-                  cursor: "pointer",
-                  color: "var(--text-light, #8993a3)",
-                  padding: 2,
-                }}
-                aria-label={t("Xoá tìm kiếm")}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: 4,
-              background: "var(--card-bg, #fff)",
-              border: "1px solid var(--border-color, #e5e9ef)",
-              borderRadius: 10,
-            }}
-          >
-            <Filter
-              size={14}
-              style={{
-                color: "var(--text-light, #8993a3)",
-                marginLeft: 8,
-                marginRight: 4,
-              }}
-            />
-            {STATUS_FILTERS.map((f) => {
-              const active = statusFilter === f.id;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setStatusFilter(f.id)}
-                  style={{
-                    padding: "6px 12px",
-                    background: active ? "#2634d5" : "transparent",
-                    color: active ? "#fff" : "var(--text-muted, #475569)",
-                    border: 0,
-                    borderRadius: 7,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {t(f.label)}
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={() => setAddModal(true)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                background: "#2634d5",
-                color: "#fff",
-                padding: "10px 16px",
-                border: 0,
-                borderRadius: 10,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontSize: 13,
-                marginLeft: "auto",
-              }}
-            >
-              <Plus size={16} /> {t("Thêm nhân viên")}
-            </button>
-          </div>
-        </div>
-
-        {!loading && !error && filtered.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 14,
-              fontSize: 13,
-              color: "var(--text-muted, #64748b)",
-              flexWrap: "wrap",
-              gap: 10,
-            }}
-          >
-            <span>
-              {t("Hiển thị")}{" "}
-              <b style={{ color: "var(--text-primary, #172033)" }}>
-                {paginatedItems.length}
-              </b>{" "}
-              / {filtered.length} {t("nhân viên")}
-            </span>
-          </div>
-        )}
-
-        {loading && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <SkeletonList />
-            <SkeletonList />
-            <SkeletonList />
-          </div>
-        )}
-
-        {!loading && error && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: 30,
-              background: "rgba(239, 68, 68, 0.08)",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
-              borderRadius: 10,
-              color: "#ef4444",
-            }}
-          >
-            <AlertCircle size={26} style={{ marginBottom: 10 }} />
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>
-              {t("Không tải được dữ liệu")}
-            </div>
-            <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 12 }}>
-              {error}
-            </div>
-            <button
-              onClick={load}
-              style={{
-                padding: "8px 16px",
-                background: "#ef4444",
-                color: "#fff",
-                border: 0,
-                borderRadius: 8,
-                cursor: "pointer",
-                fontWeight: 600,
-                fontSize: 13,
-              }}
-            >
-              {t("Thử lại")}
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && filtered.length === 0 && (
-          <div
-            style={{
-              padding: 60,
-              textAlign: "center",
-              color: "var(--text-light, #8993a3)",
-              background: "var(--card-bg, #fff)",
-              borderRadius: 14,
-            }}
-          >
-            <Users size={40} style={{ opacity: 0.3, marginBottom: 8 }} />
-            <div>
-              {q || statusFilter !== "all"
-                ? t("Không có nhân viên nào khớp bộ lọc")
-                : t("Chưa có nhân viên nào")}
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && filtered.length > 0 && (
           <>
-            <div className="admin-employees-grid">
-              {paginatedItems.map((emp) => (
-                <EmployeeCard
-                  key={emp.id}
-                  emp={emp}
-                  todayShifts={todayShiftsMap[emp.id] || []}
-                  todayAttendance={todayAttendanceMap[emp.id]}
-                  taskCount={taskCountMap[emp.id] || 0}
-                  onView={() => openDetail(emp, "view")}
-                  onEdit={() => openDetail(emp, "edit")}
-                  onReset={() => resetPassword(emp)}
-                  onDelete={() => remove(emp)}
-                  onPermissions={() => setPermModal(emp)}
-                  onAssign={() => openAssign(emp)}
-                  onViewShifts={async () => {
-                    // 🔧 FIX #3: chặn spam 401 khi mất phiên
-                    if (!getToken()) return;
-                    setChartWeekOffset(0);
-                    try {
-                      const data = await api.shifts.all();
-                      const empShifts = data.filter(s => String(s.employee_id) === String(emp.id) && s.status !== 'rejected');
-                      setViewShiftsModal({ employee: emp, shifts: empShifts });
-                    } catch(e) {
-                      toast("Lỗi tải danh sách ca làm", "error");
-                    }
-                  }}
-                  onViewTasks={() => openTaskList(emp)}
-                  t={t}
+            <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 10, padding: "10px 14px", flex: 1, minWidth: 220, maxWidth: 400 }}>
+                <Search size={18} style={{ color: "var(--text-light, #8993a3)" }} />
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder={t("Tìm nhân viên...")}
+                  style={{ flex: 1, border: 0, outline: "none", fontSize: 13, background: "transparent", color: "var(--text-primary, #172033)" }}
                 />
-              ))}
+                {q && (
+                  <button onClick={() => setQ("")} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 2 }} aria-label={t("Xoá tìm kiếm")}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 4, padding: 4, background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 10 }}>
+                <Filter size={14} style={{ color: "var(--text-light, #8993a3)", marginLeft: 8, marginRight: 4 }} />
+                {STATUS_FILTERS.map((f) => {
+                  const active = statusFilter === f.id;
+                  return (
+                    <button key={f.id} type="button" onClick={() => setStatusFilter(f.id)} style={{ padding: "6px 12px", background: active ? "#2634d5" : "transparent", color: active ? "#fff" : "var(--text-muted, #475569)", border: 0, borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                      {t(f.label)}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setAddModal(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#2634d5", color: "#fff", padding: "10px 16px", border: 0, borderRadius: 10, fontWeight: 600, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>
+                  <Plus size={16} /> {t("Thêm nhân viên")}
+                </button>
+              </div>
             </div>
 
-            {totalPages > 1 && (
-              <div className="admin-employees-pagination">
-                <button
-                  type="button"
-                  className="admin-employees-page-btn"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage <= 1}
-                  aria-label={t("Trang trước")}
-                >
-                  <ChevronLeft size={18} />
-                  <span>{t("Trang trước")}</span>
-                </button>
+            {!loading && !error && filtered.length > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, fontSize: 13, color: "var(--text-muted, #64748b)", flexWrap: "wrap", gap: 10 }}>
+                <span>
+                  {t("Hiển thị")}{" "}
+                  <b style={{ color: "var(--text-primary, #172033)" }}>{paginatedItems.length}</b>{" "}
+                  / {filtered.length} {t("nhân viên")}
+                </span>
+              </div>
+            )}
 
-                <div className="admin-employees-page-indicator">
-                  <span className="admin-employees-page-indicator__label">
-                    {t("Trang")}
-                  </span>
-                  <span className="admin-employees-page-indicator__current">
-                    {currentPage}
-                  </span>
-                  <span className="admin-employees-page-indicator__sep">/</span>
-                  <span className="admin-employees-page-indicator__total">
-                    {totalPages}
-                  </span>
-                </div>
+            {loading && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <SkeletonList />
+                <SkeletonList />
+                <SkeletonList />
+              </div>
+            )}
 
-                <button
-                  type="button"
-                  className="admin-employees-page-btn"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages}
-                  aria-label={t("Trang sau")}
-                >
-                  <span>{t("Trang sau")}</span>
-                  <ChevronRight size={18} />
+            {!loading && error && (
+              <div style={{ textAlign: "center", padding: 30, background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: 10, color: "#ef4444" }}>
+                <AlertCircle size={26} style={{ marginBottom: 10 }} />
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{t("Không tải được dữ liệu")}</div>
+                <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 12 }}>{error}</div>
+                <button onClick={load} style={{ padding: "8px 16px", background: "#ef4444", color: "#fff", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+                  {t("Thử lại")}
                 </button>
               </div>
             )}
+
+            {!loading && !error && filtered.length === 0 && (
+              <div style={{ padding: 60, textAlign: "center", color: "var(--text-light, #8993a3)", background: "var(--card-bg, #fff)", borderRadius: 14 }}>
+                <Users size={40} style={{ opacity: 0.3, marginBottom: 8 }} />
+                <div>
+                  {q || statusFilter !== "all"
+                    ? t("Không có nhân viên nào khớp bộ lọc")
+                    : t("Chưa có nhân viên nào")}
+                </div>
+              </div>
+            )}
+
+            {!loading && !error && filtered.length > 0 && (
+              <>
+                <div className="admin-employees-grid">
+                  {paginatedItems.map((emp) => (
+                    <EmployeeCard
+                      key={emp.id}
+                      emp={emp}
+                      todayShifts={todayShiftsMap[emp.id] || []}
+                      todayAttendance={todayAttendanceMap[emp.id]}
+                      taskCount={taskCountMap[emp.id] || 0}
+                      onView={() => openDetail(emp, "view")}
+                      onEdit={() => openDetail(emp, "edit")}
+                      onReset={() => resetPassword(emp)}
+                      onDelete={() => remove(emp)}
+                      onPermissions={() => setPermModal(emp)}
+                      onAssign={() => openAssign(emp)}
+                      onViewShifts={async () => {
+                        if (!getToken()) return;
+                        setChartWeekOffset(0);
+                        try {
+                          const data = await api.shifts.all();
+                          const empShifts = data.filter(
+                            (s) => String(s.employee_id) === String(emp.id) && s.status !== "rejected"
+                          );
+                          setViewShiftsModal({ employee: emp, shifts: empShifts });
+                        } catch {
+                          toast(t("Lỗi tải danh sách ca làm"), "error");
+                        }
+                      }}
+                      onViewTasks={() => openTaskList(emp)}
+                      t={t}
+                    />
+                  ))}
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="admin-employees-pagination">
+                    <button type="button" className="admin-employees-page-btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage <= 1} aria-label={t("Trang trước")}>
+                      <ChevronLeft size={18} />
+                      <span>{t("Trang trước")}</span>
+                    </button>
+
+                    <div className="admin-employees-page-indicator">
+                      <span className="admin-employees-page-indicator__label">{t("Trang")}</span>
+                      <span className="admin-employees-page-indicator__current">{currentPage}</span>
+                      <span className="admin-employees-page-indicator__sep">/</span>
+                      <span className="admin-employees-page-indicator__total">{totalPages}</span>
+                    </div>
+
+                    <button type="button" className="admin-employees-page-btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} aria-label={t("Trang sau")}>
+                      <span>{t("Trang sau")}</span>
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </>
-        )}
-        </>
         )}
 
         {activeTab === "shifts" && <OwnerShiftsInner />}
       </div>
 
-      {/* ============ DETAIL/EDIT MODAL ============ */}
+      {/* DETAIL/EDIT MODAL */}
       {detailModal && (
-        <Modal onClose={() => !saving && closeDetail()} maxWidth={480}>
+        <Modal onClose={() => !saving && closeDetail()} maxWidth={480} t={t}>
           {detailModal.mode === "view" && (
             <>
               <div style={modalHeaderStyle}>
                 <h3 style={modalTitleStyle}>
                   <UserIcon size={20} /> {t("Chi tiết nhân viên")}
                 </h3>
-                <button
-                  onClick={closeDetail}
-                  style={modalCloseStyle}
-                  aria-label={t("Đóng")}
-                >
+                <button onClick={closeDetail} style={modalCloseStyle} aria-label={t("Đóng")}>
                   <X size={20} />
                 </button>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  marginBottom: 20,
-                }}
-              >
-                <div
-                  style={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: "50%",
-                    background: EMPLOYEE_GRADIENT,
-                    color: "#fff",
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 800,
-                    fontSize: 28,
-                    marginBottom: 12,
-                  }}
-                >
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ width: 80, height: 80, borderRadius: "50%", background: EMPLOYEE_GRADIENT, color: "#fff", display: "grid", placeItems: "center", fontWeight: 800, fontSize: 28, marginBottom: 12 }}>
                   {getInitials(detailModal.employee.name)}
                 </div>
-                <h3
-                  style={{
-                    margin: "0 0 4px",
-                    color: "var(--text-primary, #172033)",
-                  }}
-                >
-                  {detailModal.employee.name}
-                </h3>
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "4px 12px",
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    background: "#eef2ff",
-                    color: "#2634d5",
-                  }}
-                >
+                <h3 style={{ margin: "0 0 4px", color: "var(--text-primary, #172033)" }}>{detailModal.employee.name}</h3>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "#eef2ff", color: "#2634d5" }}>
                   <Shield size={12} /> {t("Nhân viên")}
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  marginBottom: 20,
-                }}
-              >
-                <InfoRow
-                  icon={<UserIcon size={16} />}
-                  label={t("Mã nhân viên")}
-                  value={`NV${detailModal.employee.id}`}
-                />
-                <InfoRow
-                  icon={<UserIcon size={16} />}
-                  label={t("Họ và tên")}
-                  value={detailModal.employee.name}
-                />
-                <InfoRow
-                  icon={<Mail size={16} />}
-                  label={t("Email")}
-                  value={detailModal.employee.email}
-                />
-                <InfoRow
-                  icon={<Phone size={16} />}
-                  label={t("Số điện thoại")}
-                  value={detailModal.employee.phone || "—"}
-                />
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                <InfoRow icon={<UserIcon size={16} />} label={t("Mã nhân viên")} value={`NV${detailModal.employee.id}`} />
+                <InfoRow icon={<UserIcon size={16} />} label={t("Họ và tên")} value={detailModal.employee.name} />
+                <InfoRow icon={<Mail size={16} />} label={t("Email")} value={detailModal.employee.email} />
+                <InfoRow icon={<Phone size={16} />} label={t("Số điện thoại")} value={detailModal.employee.phone || "—"} />
 
                 <InfoRow
                   icon={<Calendar size={16} />}
                   label={t("Ca làm sắp tới")}
                   value={
                     (todayShiftsMap[detailModal.employee.id] || []).length > 0
-                      ? (todayShiftsMap[detailModal.employee.id] || []).map(s => s.shift || s).join(", ")
+                      ? (todayShiftsMap[detailModal.employee.id] || []).map((s) => t(s.shift || s)).join(", ")
                       : t("Chưa phân ca")
                   }
                 />
@@ -1026,114 +786,39 @@ function OwnerEmployeesInner() {
                   }
                 />
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    padding: 14,
-                    background: "var(--bg-tertiary, #f8fafc)",
-                    borderRadius: 10,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      background: "#fef3c7",
-                      color: "#92400e",
-                      display: "grid",
-                      placeItems: "center",
-                      flexShrink: 0,
-                    }}
-                  >
+                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: "#fef3c7", color: "#92400e", display: "grid", placeItems: "center", flexShrink: 0 }}>
                     <Lock size={16} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-light, #8993a3)",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                        marginBottom: 2,
-                      }}
-                    >
+                    <div style={{ fontSize: 11, color: "var(--text-light, #8993a3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>
                       {t("Mật khẩu hiện tại")}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: "var(--text-primary, #172033)",
-                        fontWeight: 600,
-                        fontFamily: "monospace",
-                      }}
-                    >
+                    <div style={{ fontSize: 14, color: "var(--text-primary, #172033)", fontWeight: 600, fontFamily: "monospace" }}>
                       {detailModal.employee.plainPassword
                         ? showPw
                           ? detailModal.employee.plainPassword
-                          : "•".repeat(
-                              detailModal.employee.plainPassword.length || 6
-                            )
+                          : "•".repeat(detailModal.employee.plainPassword.length || 6)
                         : t("(Chưa có)")}
                     </div>
                   </div>
                   {detailModal.employee.plainPassword && (
-                    <button
-                      onClick={() => setShowPw(!showPw)}
-                      style={{
-                        background: "transparent",
-                        border: 0,
-                        cursor: "pointer",
-                        color: "var(--text-light, #8993a3)",
-                        padding: 4,
-                      }}
-                      aria-label={
-                        showPw ? t("Ẩn mật khẩu") : t("Hiện mật khẩu")
-                      }
-                    >
+                    <button onClick={() => setShowPw(!showPw)} style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 4 }} aria-label={showPw ? t("Ẩn mật khẩu") : t("Hiện mật khẩu")}>
                       {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   )}
                 </div>
 
-                <InfoRow
-                  icon={<UserIcon size={16} />}
-                  label={t("Trạng thái")}
-                  value={
-                    <StatusBadge
-                      status={detailModal.employee.status || "Hoạt động"}
-                      t={t}
-                    />
-                  }
-                />
+                <InfoRow icon={<UserIcon size={16} />} label={t("Trạng thái")} value={<StatusBadge status={detailModal.employee.status || "Hoạt động"} t={t} />} />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <button
-                  onClick={() => {
-                    closeDetail();
-                    openTaskList(detailModal.employee);
-                  }}
-                  style={{
-                    ...btnPrimaryStyle,
-                    background: "#0ea5e9",
-                  }}
-                >
+                <button onClick={() => { closeDetail(); openTaskList(detailModal.employee); }} style={{ ...btnPrimaryStyle, background: "#0ea5e9" }}>
                   <ClipboardList size={14} /> {t("Xem danh sách công việc")}
                 </button>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                  }}
-                >
-                  <button onClick={closeDetail} style={btnCancelStyle}>
-                    {t("Đóng")}
-                  </button>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button onClick={closeDetail} style={btnCancelStyle}>{t("Đóng")}</button>
                   <button onClick={switchToEdit} style={btnPrimaryStyle}>
                     <Pencil size={14} /> {t("Sửa")}
                   </button>
@@ -1146,115 +831,44 @@ function OwnerEmployeesInner() {
             <>
               <div style={modalHeaderStyle}>
                 <h3 style={modalTitleStyle}>{t("Sửa nhân viên")}</h3>
-                <button
-                  onClick={closeDetail}
-                  style={modalCloseStyle}
-                  aria-label={t("Đóng")}
-                >
+                <button onClick={closeDetail} style={modalCloseStyle} aria-label={t("Đóng")}>
                   <X size={20} />
                 </button>
               </div>
 
               <form onSubmit={saveEdit} autoComplete="off">
                 <label style={labelStyle}>{t("Họ và tên")} *</label>
-                <input
-                  name="name"
-                  defaultValue={detailModal.employee.name || ""}
-                  required
-                  style={inputStyle}
-                  autoFocus
-                />
+                <input name="name" defaultValue={detailModal.employee.name || ""} required style={inputStyle} autoFocus />
 
-                <label style={labelStyle}>
-                  {t("Email (không sửa được)")}
-                </label>
-                <input
-                  name="email"
-                  type="email"
-                  defaultValue={detailModal.employee.email || ""}
-                  disabled
-                  style={{
-                    ...inputStyle,
-                    background: "var(--bg-tertiary, #f5f7fb)",
-                    cursor: "not-allowed",
-                    opacity: 0.7,
-                  }}
-                />
+                <label style={labelStyle}>{t("Email (không sửa được)")}</label>
+                <input name="email" type="email" defaultValue={detailModal.employee.email || ""} disabled style={{ ...inputStyle, background: "var(--bg-tertiary, #f5f7fb)", cursor: "not-allowed", opacity: 0.7 }} />
 
                 <label style={labelStyle}>{t("Số điện thoại")}</label>
-                <input
-                  name="phone"
-                  defaultValue={detailModal.employee.phone || ""}
-                  style={inputStyle}
-                />
+                <input name="phone" defaultValue={detailModal.employee.phone || ""} style={inputStyle} />
 
-                <label style={labelStyle}>
-                  {t("Mật khẩu mới (để trống = giữ nguyên)")}
-                </label>
+                <label style={labelStyle}>{t("Mật khẩu mới (để trống = giữ nguyên)")}</label>
                 <div style={{ position: "relative" }}>
-                  <input
-                    name="password"
-                    type={showPw ? "text" : "password"}
-                    placeholder={t("Ít nhất 6 ký tự")}
-                    style={inputStyle}
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPw(!showPw)}
-                    style={{
-                      position: "absolute",
-                      right: 10,
-                      top: 12,
-                      background: "none",
-                      border: 0,
-                      cursor: "pointer",
-                      color: "var(--text-light, #8993a3)",
-                    }}
-                    aria-label={
-                      showPw ? t("Ẩn mật khẩu") : t("Hiện mật khẩu")
-                    }
-                  >
+                  <input name="password" type={showPw ? "text" : "password"} placeholder={t("Ít nhất 6 ký tự")} style={inputStyle} autoComplete="new-password" />
+                  <button type="button" onClick={() => setShowPw(!showPw)} style={{ position: "absolute", right: 10, top: 12, background: "none", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)" }} aria-label={showPw ? t("Ẩn mật khẩu") : t("Hiện mật khẩu")}>
                     {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
 
                 <label style={labelStyle}>{t("Trạng thái")}</label>
-                <select
-                  name="status"
-                  defaultValue={detailModal.employee.status || "Hoạt động"}
-                  style={inputStyle}
-                >
+                <select name="status" defaultValue={detailModal.employee.status || "Hoạt động"} style={inputStyle}>
                   <option>{t("Hoạt động")}</option>
                   <option>{t("Bị khóa")}</option>
                 </select>
 
                 <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => setDetailModal(null)}
-                    disabled={saving}
-                    style={{ ...btnCancelStyle, flex: 1 }}
-                  >
+                  <button type="button" onClick={() => setDetailModal(null)} disabled={saving} style={{ ...btnCancelStyle, flex: 1 }}>
                     <X size={14} /> {t("Hủy")}
                   </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    style={{ ...btnPrimaryStyle, flex: 1, width: "auto" }}
-                  >
+                  <button type="submit" disabled={saving} style={{ ...btnPrimaryStyle, flex: 1, width: "auto" }}>
                     {saving ? (
-                      <>
-                        <Loader2
-                          size={14}
-                          style={{ animation: "spin 1s linear infinite" }}
-                        />
-                        {t("Đang lưu...")}
-                      </>
+                      <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang lưu...")}</>
                     ) : (
-                      <>
-                        <Save size={14} /> {t("Lưu")}
-                      </>
+                      <><Save size={14} /> {t("Lưu")}</>
                     )}
                   </button>
                 </div>
@@ -1264,16 +878,12 @@ function OwnerEmployeesInner() {
         </Modal>
       )}
 
-      {/* ============ ADD MODAL ============ */}
+      {/* ADD MODAL */}
       {addModal && (
-        <Modal onClose={() => !adding && setAddModal(false)} maxWidth={480}>
+        <Modal onClose={() => !adding && setAddModal(false)} maxWidth={480} t={t}>
           <div style={modalHeaderStyle}>
             <h3 style={modalTitleStyle}>{t("Thêm nhân viên")}</h3>
-            <button
-              onClick={() => !adding && setAddModal(false)}
-              style={modalCloseStyle}
-              aria-label={t("Đóng")}
-            >
+            <button onClick={() => !adding && setAddModal(false)} style={modalCloseStyle} aria-label={t("Đóng")}>
               <X size={20} />
             </button>
           </div>
@@ -1289,16 +899,9 @@ function OwnerEmployeesInner() {
             <input name="phone" style={inputStyle} />
 
             <label style={labelStyle}>
-              {t("Mật khẩu (để trống = {password})", {
-                password: DEFAULT_PASSWORD,
-              })}
+              {t("Mật khẩu (để trống = {password})", { password: DEFAULT_PASSWORD })}
             </label>
-            <input
-              name="password"
-              placeholder={DEFAULT_PASSWORD}
-              style={inputStyle}
-              autoComplete="new-password"
-            />
+            <input name="password" placeholder={DEFAULT_PASSWORD} style={inputStyle} autoComplete="new-password" />
 
             <label style={labelStyle}>{t("Trạng thái")}</label>
             <select name="status" defaultValue={t("Hoạt động")} style={inputStyle}>
@@ -1307,31 +910,14 @@ function OwnerEmployeesInner() {
             </select>
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button
-                type="button"
-                onClick={() => setAddModal(false)}
-                disabled={adding}
-                style={{ ...btnCancelStyle, flex: 1 }}
-              >
+              <button type="button" onClick={() => setAddModal(false)} disabled={adding} style={{ ...btnCancelStyle, flex: 1 }}>
                 {t("Hủy")}
               </button>
-              <button
-                type="submit"
-                disabled={adding}
-                style={{ ...btnPrimaryStyle, flex: 1, width: "auto" }}
-              >
+              <button type="submit" disabled={adding} style={{ ...btnPrimaryStyle, flex: 1, width: "auto" }}>
                 {adding ? (
-                  <>
-                    <Loader2
-                      size={14}
-                      style={{ animation: "spin 1s linear infinite" }}
-                    />
-                    {t("Đang tạo...")}
-                  </>
+                  <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang tạo...")}</>
                 ) : (
-                  <>
-                    <Save size={14} /> {t("Tạo nhân viên")}
-                  </>
+                  <><Save size={14} /> {t("Tạo nhân viên")}</>
                 )}
               </button>
             </div>
@@ -1339,113 +925,47 @@ function OwnerEmployeesInner() {
         </Modal>
       )}
 
-      {/* ============ ASSIGN TASK MODAL ============ */}
+      {/* ASSIGN TASK MODAL */}
       {assignModal && (
-        <Modal onClose={closeAssign} maxWidth={520}>
+        <Modal onClose={closeAssign} maxWidth={520} t={t}>
           <div style={modalHeaderStyle}>
             <h3 style={modalTitleStyle}>
               <ClipboardList size={20} style={{ color: "#0ea5e9" }} />
               {t("Giao việc cho nhân viên")}
             </h3>
-            <button
-              onClick={closeAssign}
-              style={modalCloseStyle}
-              aria-label={t("Đóng")}
-            >
+            <button onClick={closeAssign} style={modalCloseStyle} aria-label={t("Đóng")}>
               <X size={20} />
             </button>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 14px",
-              background: "var(--bg-tertiary, #f5f7fb)",
-              borderRadius: 10,
-              marginBottom: 16,
-            }}
-          >
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                background: EMPLOYEE_GRADIENT,
-                color: "#fff",
-                display: "grid",
-                placeItems: "center",
-                fontWeight: 700,
-                fontSize: 12,
-                flexShrink: 0,
-              }}
-            >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "var(--bg-tertiary, #f5f7fb)", borderRadius: 10, marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: EMPLOYEE_GRADIENT, color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
               {getInitials(assignModal.employee.name)}
             </div>
             <div style={{ minWidth: 0 }}>
-              <b
-                style={{
-                  display: "block",
-                  fontSize: 13,
-                  color: "var(--text-primary, #172033)",
-                }}
-              >
-                {assignModal.employee.name}
-              </b>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-light, #8993a3)",
-                }}
-              >
-                NV{assignModal.employee.id} · {assignModal.employee.email}
-              </span>
+              <b style={{ display: "block", fontSize: 13, color: "var(--text-primary, #172033)" }}>{assignModal.employee.name}</b>
+              <span style={{ fontSize: 11, color: "var(--text-light, #8993a3)" }}>NV{assignModal.employee.id} · {assignModal.employee.email}</span>
             </div>
           </div>
 
           <form onSubmit={submitAssign} autoComplete="off">
             <label style={labelStyle}>{t("Tiêu đề công việc")} *</label>
-            <input
-              name="title"
-              required
-              placeholder={t("VD: Kiểm tra nhiệt độ tủ mát")}
-              style={inputStyle}
-              autoFocus
-            />
+            <input name="title" required placeholder={t("VD: Kiểm tra nhiệt độ tủ mát")} style={inputStyle} autoFocus />
 
             <label style={labelStyle}>{t("Mô tả chi tiết")}</label>
-            <textarea
-              name="description"
-              placeholder={t("Mô tả công việc, yêu cầu cụ thể...")}
-              style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
-            />
+            <textarea name="description" placeholder={t("Mô tả công việc, yêu cầu cụ thể...")} style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} />
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <label style={labelStyle}>{t("Ca làm việc")}</label>
                 <select name="shift" defaultValue="" style={inputStyle}>
-                  {SHIFT_OPTIONS.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {t(o.label)}
-                    </option>
-                  ))}
+                  {SHIFT_OPTIONS.map((o) => <option key={o.id} value={o.id}>{t(o.label)}</option>)}
                 </select>
               </div>
               <div>
                 <label style={labelStyle}>{t("Ưu tiên")}</label>
                 <select name="priority" defaultValue="normal" style={inputStyle}>
-                  {PRIORITY_OPTIONS.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {t(o.label)}
-                    </option>
-                  ))}
+                  {PRIORITY_OPTIONS.map((o) => <option key={o.id} value={o.id}>{t(o.label)}</option>)}
                 </select>
               </div>
             </div>
@@ -1454,36 +974,14 @@ function OwnerEmployeesInner() {
             <input name="due_date" type="date" style={inputStyle} />
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button
-                type="button"
-                onClick={closeAssign}
-                disabled={assigning}
-                style={{ ...btnCancelStyle, flex: 1 }}
-              >
+              <button type="button" onClick={closeAssign} disabled={assigning} style={{ ...btnCancelStyle, flex: 1 }}>
                 {t("Hủy")}
               </button>
-              <button
-                type="submit"
-                disabled={assigning}
-                style={{
-                  ...btnPrimaryStyle,
-                  flex: 1,
-                  width: "auto",
-                  background: "#0ea5e9",
-                }}
-              >
+              <button type="submit" disabled={assigning} style={{ ...btnPrimaryStyle, flex: 1, width: "auto", background: "#0ea5e9" }}>
                 {assigning ? (
-                  <>
-                    <Loader2
-                      size={14}
-                      style={{ animation: "spin 1s linear infinite" }}
-                    />
-                    {t("Đang giao...")}
-                  </>
+                  <><Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />{t("Đang giao...")}</>
                 ) : (
-                  <>
-                    <ClipboardList size={14} /> {t("Giao việc")}
-                  </>
+                  <><ClipboardList size={14} /> {t("Giao việc")}</>
                 )}
               </button>
             </div>
@@ -1491,217 +989,72 @@ function OwnerEmployeesInner() {
         </Modal>
       )}
 
-      {/* ============ TASK LIST MODAL ============ */}
+      {/* TASK LIST MODAL */}
       {taskListModal && (
-        <Modal onClose={closeTaskList} maxWidth={640}>
+        <Modal onClose={closeTaskList} maxWidth={640} t={t}>
           <div style={modalHeaderStyle}>
             <h3 style={modalTitleStyle}>
               <ClipboardList size={20} style={{ color: "#0ea5e9" }} />
-              {t("Công việc của")} {taskListModal.employee.name}
+              {t("Công việc của {name}", { name: taskListModal.employee.name })}
             </h3>
-            <button
-              onClick={closeTaskList}
-              style={modalCloseStyle}
-              aria-label={t("Đóng")}
-            >
+            <button onClick={closeTaskList} style={modalCloseStyle} aria-label={t("Đóng")}>
               <X size={20} />
             </button>
           </div>
 
           {taskListLoading ? (
-            <div
-              style={{
-                padding: 40,
-                textAlign: "center",
-                color: "var(--text-light, #8993a3)",
-              }}
-            >
-              <Loader2
-                size={24}
-                style={{ animation: "spin 1s linear infinite", marginBottom: 8 }}
-              />
+            <div style={{ padding: 40, textAlign: "center", color: "var(--text-light, #8993a3)" }}>
+              <Loader2 size={24} style={{ animation: "spin 1s linear infinite", marginBottom: 8 }} />
               <div>{t("Đang tải danh sách...")}</div>
             </div>
           ) : taskListModal.tasks.length === 0 ? (
-            <div
-              style={{
-                padding: 40,
-                textAlign: "center",
-                color: "var(--text-light, #8993a3)",
-              }}
-            >
+            <div style={{ padding: 40, textAlign: "center", color: "var(--text-light, #8993a3)" }}>
               <ClipboardList size={40} style={{ opacity: 0.3, marginBottom: 8 }} />
               <div>{t("Chưa có công việc nào được giao")}</div>
             </div>
           ) : (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                maxHeight: 500,
-                overflowY: "auto",
-                marginBottom: 16,
-              }}
-            >
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 500, overflowY: "auto", marginBottom: 16 }}>
               {taskListModal.tasks.map((task) => {
                 const prio = PRIORITY_MAP[task.priority] || PRIORITY_MAP.normal;
                 const stat = STATUS_MAP[task.status] || STATUS_MAP.pending;
                 const overdue = isOverdue(task);
 
                 return (
-                  <div
-                    key={task.id}
-                    style={{
-                      padding: 14,
-                      background: "var(--card-bg, #fff)",
-                      border: "1px solid var(--border-color, #e5e9ef)",
-                      borderRadius: 10,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: 10,
-                      }}
-                    >
+                  <div key={task.id} style={{ padding: 14, background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            flexWrap: "wrap",
-                            marginBottom: 4,
-                          }}
-                        >
-                          <b
-                            style={{
-                              fontSize: 13.5,
-                              color: "var(--text-primary, #172033)",
-                            }}
-                          >
-                            {task.title}
-                          </b>
-                          <span
-                            style={{
-                              padding: "1px 8px",
-                              borderRadius: 10,
-                              background: prio.bg,
-                              color: prio.color,
-                              fontSize: 10,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {t(prio.label)}
-                          </span>
-                          <span
-                            style={{
-                              padding: "1px 8px",
-                              borderRadius: 10,
-                              background: stat.bg,
-                              color: stat.color,
-                              fontSize: 10,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {t(stat.label)}
-                          </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                          <b style={{ fontSize: 13.5, color: "var(--text-primary, #172033)" }}>{task.title}</b>
+                          <span style={{ padding: "1px 8px", borderRadius: 10, background: prio.bg, color: prio.color, fontSize: 10, fontWeight: 700 }}>{t(prio.label)}</span>
+                          <span style={{ padding: "1px 8px", borderRadius: 10, background: stat.bg, color: stat.color, fontSize: 10, fontWeight: 700 }}>{t(stat.label)}</span>
                           {overdue && (
-                            <span
-                              style={{
-                                padding: "1px 8px",
-                                borderRadius: 10,
-                                background: "#fee2e2",
-                                color: "#b91c1c",
-                                fontSize: 10,
-                                fontWeight: 700,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 3,
-                              }}
-                            >
+                            <span style={{ padding: "1px 8px", borderRadius: 10, background: "#fee2e2", color: "#b91c1c", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}>
                               <AlertTriangle size={10} />
                               {t("Quá hạn")}
                             </span>
                           )}
                         </div>
                         {task.description && (
-                          <p
-                            style={{
-                              margin: "4px 0 0",
-                              fontSize: 12.5,
-                              color: "var(--text-muted, #64748b)",
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {task.description}
-                          </p>
+                          <p style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--text-muted, #64748b)", lineHeight: 1.5 }}>{task.description}</p>
                         )}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            marginTop: 8,
-                            flexWrap: "wrap",
-                            fontSize: 11.5,
-                            color: "var(--text-light, #8993a3)",
-                          }}
-                        >
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap", fontSize: 11.5, color: "var(--text-light, #8993a3)" }}>
                           {task.due_date && (
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 4,
-                              }}
-                            >
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                               <Calendar size={11} />
                               {fmtDate(task.due_date)}
                             </span>
                           )}
                           {task.shift && (
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 4,
-                              }}
-                            >
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                               <Clock size={11} />
-                              {task.shift}
+                              {t(task.shift)}
                             </span>
                           )}
-                          <span>
-                            {t("Giao bởi")}: {task.assigned_by_name || t("Admin")}
-                          </span>
+                          <span>{t("Giao bởi")}: {task.assigned_by_name || t("Admin")}</span>
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                        <button
-                          type="button"
-                          onClick={() => deleteTask(task)}
-                          title={t("Xoá công việc")}
-                          aria-label={t("Xoá công việc")}
-                          style={{
-                            padding: 6,
-                            border: "1px solid var(--border-color, #e5e9ef)",
-                            borderRadius: 6,
-                            background: "var(--card-bg, #fff)",
-                            color: "#ef4444",
-                            cursor: "pointer",
-                            display: "grid",
-                            placeItems: "center",
-                            width: 30,
-                            height: 30,
-                          }}
-                        >
+                        <button type="button" onClick={() => deleteTask(task)} title={t("Xoá công việc")} aria-label={t("Xoá công việc")} style={{ padding: 6, border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 6, background: "var(--card-bg, #fff)", color: "#ef4444", cursor: "pointer", display: "grid", placeItems: "center", width: 30, height: 30 }}>
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -1726,10 +1079,7 @@ function OwnerEmployeesInner() {
       `}</style>
 
       {permModal && (
-        <EmployeePermissionsModal
-          user={permModal}
-          onClose={() => setPermModal(null)}
-        />
+        <EmployeePermissionsModal user={permModal} onClose={() => setPermModal(null)} />
       )}
 
       {confirm && (
@@ -1746,159 +1096,210 @@ function OwnerEmployeesInner() {
         />
       )}
 
-      {/* SHIFT DETAIL MODAL */}
-      {viewShiftsModal && (() => {
-        const getShiftTime = (shiftId) => {
-          const def = typeof SHIFT_DEFS !== 'undefined' ? SHIFT_DEFS.find(d => d.id === shiftId || d.name === shiftId) : null;
-          if (def) {
-            if (def.time) return def.time;
-            if (def.start && def.end) return `${def.start} - ${def.end}`;
-            if (def.startTime && def.endTime) return `${def.startTime} - ${def.endTime}`;
-          }
-          if (shiftId === "Ca sáng") return "06:30 - 12:30";
-          if (shiftId === "Ca chiều") return "12:30 - 18:30";
-          if (shiftId === "Ca tối") return "18:30 - 22:30";
-          return "";
-        };
-
-        const today = new Date();
-        const day = today.getDay();
-        const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-        const monday = new Date(today.setDate(diff));
-        monday.setDate(monday.getDate() + (chartWeekOffset * 7));
-
-        const weekDays = Array.from({ length: 7 }).map((_, i) => {
-          const d = new Date(monday);
-          d.setDate(monday.getDate() + i);
-          const yyyy = d.getFullYear();
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const dd = String(d.getDate()).padStart(2, '0');
-          return {
-            dateStr: `${yyyy}-${mm}-${dd}`,
-            dayName: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][i],
-            dateNum: `${dd}/${mm}`
-          };
-        });
-
-        const startDate = weekDays[0].dateNum;
-        const endDate = weekDays[6].dateNum;
-
-        return (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 99999 }}>
-            <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: "100%", maxWidth: 850 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <h3 style={{ margin: 0, fontSize: 18, color: "var(--text-primary, #172033)" }}>Lịch làm việc - {viewShiftsModal.employee.name}</h3>
-                <button onClick={() => setViewShiftsModal(null)} style={{ background: "transparent", border: 0, cursor: "pointer", color: "#64748b" }}><X size={20} /></button>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, background: "var(--bg-tertiary, #f8fafc)", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color, #e5e9ef)" }}>
-                <button onClick={() => setChartWeekOffset(prev => prev - 1)} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
-                  &larr; Tuần trước
-                </button>
-                <div style={{ fontWeight: 700, color: "#2634d5", fontSize: 15 }}>
-                  {chartWeekOffset === 0 ? "Tuần này" : (chartWeekOffset > 0 ? `Tuần sau (+${chartWeekOffset})` : `Tuần trước (${chartWeekOffset})`)} ({startDate} - {endDate})
-                </div>
-                <button onClick={() => setChartWeekOffset(prev => prev + 1)} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
-                  Tuần sau &rarr;
-                </button>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
-                {weekDays.map((wd, idx) => {
-                  const shiftsInDay = viewShiftsModal.shifts.filter(s => {
-                    const shiftDateStr = s.date ? s.date.split('T')[0] : "";
-                    return shiftDateStr === wd.dateStr;
-                  }).sort((a, b) => {
-                    const order = { "Ca sáng": 1, "Ca chiều": 2, "Ca tối": 3 };
-                    return (order[a.shift] || 99) - (order[b.shift] || 99);
-                  });
-
-                  return (
-                    <div key={idx} style={{ display: "flex", flexDirection: "column", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, overflow: "hidden", minHeight: 170, background: "var(--bg-tertiary, #f8fafc)" }}>
-                      <div style={{ padding: "10px 0", textAlign: "center", background: chartWeekOffset === 0 && idx === (new Date().getDay() === 0 ? 6 : new Date().getDay() - 1) ? "#18a967" : "#2634d5", color: "#fff", fontWeight: 600, fontSize: 13 }}>
-                        <div>{wd.dayName}</div>
-                        <div style={{ fontSize: 11, opacity: 0.9 }}>{wd.dateNum}</div>
-                      </div>
-
-                      <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
-                        {shiftsInDay.length === 0 ? (
-                          <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 10 }}>Trống</div>
-                        ) : (
-                          shiftsInDay.map(s => (
-                            <div key={s.id} style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: s.status === 'pending' ? "1px dashed #f59e0b" : "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 2 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <span style={{ fontSize: 12, fontWeight: 600, color: s.status === 'pending' ? "#f59e0b" : "#172033" }}>{s.shift}</span>
-                                <button
-                                  onClick={() => {
-                                    // 🔧 FIX #5: dùng ConfirmDialog thay window.confirm
-                                    setConfirm({
-                                      title: "Hủy ca làm này?",
-                                      message: `Ca "${s.shift}" ngày ${s.date} của ${viewShiftsModal.employee.name} sẽ bị xóa khỏi lịch.`,
-                                      confirmText: "Hủy ca",
-                                      cancelText: "Giữ lại",
-                                      danger: true,
-                                      onConfirm: async () => {
-                                        try {
-                                          await api.shifts.remove(s.id);
-                                          toast("Đã hủy ca làm", "success");
-                                          setViewShiftsModal({ ...viewShiftsModal, shifts: viewShiftsModal.shifts.filter(x => x.id !== s.id) });
-                                          loadTodayShifts();
-                                          setConfirm(null);
-                                        } catch(e) {
-                                          toast("Lỗi khi hủy ca", "error");
-                                        }
-                                      },
-                                    });
-                                  }}
-                                  style={{ background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "none", padding: 4, borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center" }}
-                                  title="Hủy ca này"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              </div>
-                              <div style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>
-                                {getShiftTime(s.shift)}
-                              </div>
-                              {s.status === 'pending' && <span style={{ fontSize: 10, color: "#f59e0b", fontStyle: "italic", marginTop: 2 }}>Chờ duyệt</span>}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+      {/* VIEW SHIFTS MODAL — extracted component */}
+      {viewShiftsModal && (
+        <ViewShiftsModal
+          modal={viewShiftsModal}
+          weekOffset={chartWeekOffset}
+          setWeekOffset={setChartWeekOffset}
+          onClose={() => setViewShiftsModal(null)}
+          onDeleteShift={(s) => {
+            setConfirm({
+              title: t("Hủy ca làm này?"),
+              message: t('Ca "{shift}" ngày {date} của {name} sẽ bị xóa khỏi lịch.', {
+                shift: t(s.shift),
+                date: fmtDate(s.date),
+                name: viewShiftsModal.employee.name,
+              }),
+              confirmText: t("Hủy ca"),
+              cancelText: t("Giữ lại"),
+              danger: true,
+              onConfirm: async () => {
+                try {
+                  await api.shifts.remove(s.id);
+                  toast(t("Đã hủy ca làm"), "success");
+                  setViewShiftsModal((prev) =>
+                    prev ? { ...prev, shifts: prev.shifts.filter((x) => x.id !== s.id) } : prev
                   );
-                })}
-              </div>
-
-              <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <button onClick={() => setChartWeekOffset(0)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f8fafc)", border: "1px solid var(--border-color, #e5e9ef)", color: "var(--text-primary, #172033)", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Về tuần này</button>
-                <button onClick={() => setViewShiftsModal(null)} style={{ padding: "8px 24px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Đóng</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+                  loadTodayShifts();
+                  setConfirm(null);
+                } catch {
+                  toast(t("Lỗi khi hủy ca"), "error");
+                }
+              },
+            });
+          }}
+          confirmOpen={!!confirm}
+          t={t}
+          locale={locale}
+        />
+      )}
     </>
   );
 }
 
 // ============================================================
-// SUB-COMPONENT: EmployeeCard — Card grid (đồng bộ OwnerMenu)
+// SUB-COMPONENT: ViewShiftsModal (B9.6d1 — extracted + fixed)
+// ============================================================
+
+function ViewShiftsModal({ modal, weekOffset, setWeekOffset, onClose, onDeleteShift, confirmOpen, t, locale }) {
+  // Body scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // ESC (skip if confirm open)
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape" && !confirmOpen) onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose, confirmOpen]);
+
+  // Locale-aware weekday formatter
+  const weekdayFmt = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale || "vi", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        weekday: "short",
+      }),
+    [locale]
+  );
+
+  const today = new Date();
+  const day = today.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + diffToMon + weekOffset * 7);
+  monday.setHours(0, 0, 0, 0);
+
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return {
+      dateStr: `${yyyy}-${mm}-${dd}`,
+      dayName: weekdayFmt.format(d),
+      dateNum: `${dd}/${mm}`,
+      idx: i,
+    };
+  });
+
+  const startDate = weekDays[0].dateNum;
+  const endDate = weekDays[6].dateNum;
+
+  const todayIdx = (() => {
+    const d = new Date();
+    const dow = d.getDay();
+    return dow === 0 ? 6 : dow - 1; // Mon=0 ... Sun=6
+  })();
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: 99999 }}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: "100%", maxWidth: 850 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 18, color: "var(--text-primary, #172033)" }}>
+            {t("Lịch làm việc - {name}", { name: modal.employee.name })}
+          </h3>
+          <button onClick={onClose} style={{ background: "transparent", border: 0, cursor: "pointer", color: "#64748b" }} aria-label={t("Đóng")}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, background: "var(--bg-tertiary, #f8fafc)", padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border-color, #e5e9ef)" }}>
+          <button onClick={() => setWeekOffset((prev) => prev - 1)} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
+            ← {t("Tuần trước")}
+          </button>
+          <div style={{ fontWeight: 700, color: "#2634d5", fontSize: 15 }}>
+            {weekOffset === 0
+              ? t("Tuần này")
+              : weekOffset > 0
+              ? t("Tuần sau (+{n})", { n: weekOffset })
+              : t("Tuần trước ({n})", { n: weekOffset })}{" "}
+            ({startDate} - {endDate})
+          </div>
+          <button onClick={() => setWeekOffset((prev) => prev + 1)} style={{ padding: "6px 12px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
+            {t("Tuần sau")} →
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+          {weekDays.map((wd) => {
+            const shiftsInDay = modal.shifts
+              .filter((s) => {
+                const d = s.date ? String(s.date).split("T")[0] : "";
+                return d === wd.dateStr;
+              })
+              .sort((a, b) => {
+                const order = { "Ca sáng": 1, "Ca chiều": 2, "Ca tối": 3 };
+                return (order[a.shift] || 99) - (order[b.shift] || 99);
+              });
+
+            const isToday = weekOffset === 0 && wd.idx === todayIdx;
+
+            return (
+              <div key={wd.idx} style={{ display: "flex", flexDirection: "column", border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8, overflow: "hidden", minHeight: 170, background: "var(--bg-tertiary, #f8fafc)" }}>
+                <div style={{ padding: "10px 0", textAlign: "center", background: isToday ? "#18a967" : "#2634d5", color: "#fff", fontWeight: 600, fontSize: 13 }}>
+                  <div>{wd.dayName}</div>
+                  <div style={{ fontSize: 11, opacity: 0.9 }}>{wd.dateNum}</div>
+                </div>
+
+                <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+                  {shiftsInDay.length === 0 ? (
+                    <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 10 }}>{t("Trống")}</div>
+                  ) : (
+                    shiftsInDay.map((s) => (
+                      <div key={s.id} style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: s.status === "pending" ? "1px dashed #f59e0b" : "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 2 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: s.status === "pending" ? "#f59e0b" : "#172033" }}>
+                            {t(s.shift)}
+                          </span>
+                          <button
+                            onClick={() => onDeleteShift(s)}
+                            style={{ background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "none", padding: 4, borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center" }}
+                            title={t("Hủy ca này")}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>{getShiftTime(s.shift)}</div>
+                        {s.status === "pending" && (
+                          <span style={{ fontSize: 10, color: "#f59e0b", fontStyle: "italic", marginTop: 2 }}>{t("Chờ duyệt")}</span>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button onClick={() => setWeekOffset(0)} style={{ padding: "8px 16px", background: "var(--bg-tertiary, #f8fafc)", border: "1px solid var(--border-color, #e5e9ef)", color: "var(--text-primary, #172033)", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>
+            {t("Về tuần này")}
+          </button>
+          <button onClick={onClose} style={{ padding: "8px 24px", background: "#2634d5", color: "#fff", border: 0, borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>
+            {t("Đóng")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// SUB-COMPONENT: EmployeeCard (B9.6d1 — fixed)
 // ============================================================
 
 function EmployeeCard({
-  onViewShifts,
-  emp,
-  todayShifts = [],
-  todayAttendance,
-  taskCount = 0,
-  onView,
-  onEdit,
-  onReset,
-  onDelete,
-  onPermissions,
-  onAssign,
-  onViewTasks,
-  t,
+  onViewShifts, emp, todayShifts = [], todayAttendance, taskCount = 0,
+  onView, onEdit, onReset, onDelete, onPermissions, onAssign, onViewTasks, t,
 }) {
   const isActive = (emp.status || "Hoạt động") === "Hoạt động";
   const hasShiftToday = todayShifts.length > 0;
@@ -1922,20 +1323,11 @@ function EmployeeCard({
   }
 
   return (
-    <article
-      className={`admin-emp-card ${
-        !isActive ? "admin-emp-card--locked" : ""
-      }`}
-      style={{ display: "flex", flexDirection: "column", height: "100%" }}
-    >
+    <article className={`admin-emp-card ${!isActive ? "admin-emp-card--locked" : ""}`} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div className="admin-emp-card__header">
         <div className="admin-emp-card__avatar">
           {getInitials(emp.name)}
-          <span
-            className={`admin-emp-card__status-dot admin-emp-card__status-dot--${
-              isActive ? "active" : "locked"
-            }`}
-          />
+          <span className={`admin-emp-card__status-dot admin-emp-card__status-dot--${isActive ? "active" : "locked"}`} />
         </div>
 
         <div className="admin-emp-card__title">
@@ -1953,107 +1345,61 @@ function EmployeeCard({
         </div>
         <div className="admin-emp-card__info-row">
           <Phone size={12} />
-          <span className="admin-emp-card__info-text">
-            {emp.phone || "—"}
-          </span>
+          <span className="admin-emp-card__info-text">{emp.phone || "—"}</span>
         </div>
       </div>
 
       <div className="admin-emp-card__status-row">
         <div
-          className={`admin-emp-card__chip ${
-            hasShiftToday ? "admin-emp-card__chip--shift" : ""
-          }`} onClick={(e) => { e.stopPropagation(); onViewShifts(); }} style={{ cursor: "pointer", background: "rgba(38, 52, 213, 0.08)", color: "#2634d5", fontWeight: 600, padding: "4px 10px", borderRadius: 20 }}
+          className={`admin-emp-card__chip ${hasShiftToday ? "admin-emp-card__chip--shift" : ""}`}
+          onClick={(e) => { e.stopPropagation(); onViewShifts(); }}
+          style={{ cursor: "pointer", background: "rgba(38, 52, 213, 0.08)", color: "#2634d5", fontWeight: 600, padding: "4px 10px", borderRadius: 20 }}
         >
           {hasShiftToday ? <Sunrise size={11} /> : <Sun size={11} />}
           <span>
             {hasShiftToday
-              ? `Xem ca làm (${todayShifts.length})`
+              ? t("Xem ca làm ({n})", { n: todayShifts.length })
               : t("Chưa phân ca")}
           </span>
         </div>
 
         {attendanceLabel && (
-          <div
-            className={`admin-emp-card__chip admin-emp-card__chip--att-${attendanceVariant}`}
-          >
+          <div className={`admin-emp-card__chip admin-emp-card__chip--att-${attendanceVariant}`}>
             <Clock size={11} />
             <span>{attendanceLabel}</span>
           </div>
         )}
 
         {taskCount > 0 && (
-          <button
-            type="button"
-            className="admin-emp-card__chip admin-emp-card__chip--tasks"
-            onClick={onViewTasks}
-            title={t("Xem công việc")}
-          >
+          <button type="button" className="admin-emp-card__chip admin-emp-card__chip--tasks" onClick={onViewTasks} title={t("Xem công việc")}>
             <ClipboardList size={11} />
-            <span>
-              {taskCount} {t("việc")}
-            </span>
+            <span>{taskCount} {t("việc")}</span>
           </button>
         )}
       </div>
 
       <div className="admin-emp-card__actions" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto", paddingTop: 12 }}>
-        <button style={{ flex: 1, justifyContent: "center", margin: 0, padding: "8px 12px" }}
-          type="button"
-          className="admin-emp-card__btn admin-emp-card__btn--primary"
-          onClick={onAssign}
-          title={t("Giao việc cho nhân viên")}
-        >
+        <button style={{ flex: 1, justifyContent: "center", margin: 0, padding: "8px 12px" }} type="button" className="admin-emp-card__btn admin-emp-card__btn--primary" onClick={onAssign} title={t("Giao việc cho nhân viên")}>
           <ClipboardList size={14} />
           <span>{t("Giao việc")}</span>
         </button>
 
         <div className="admin-emp-card__icon-actions">
           {onPermissions && (
-            <button
-              type="button"
-              className="admin-emp-card__icon-btn"
-              onClick={onPermissions}
-              title={t("Phân quyền")}
-              aria-label={t("Phân quyền")}
-            >
+            <button type="button" className="admin-emp-card__icon-btn" onClick={onPermissions} title={t("Phân quyền")} aria-label={t("Phân quyền")}>
               <Shield size={14} />
             </button>
           )}
-          <button
-            type="button"
-            className="admin-emp-card__icon-btn"
-            onClick={onView}
-            title={t("Xem chi tiết")}
-            aria-label={t("Xem chi tiết")}
-          >
+          <button type="button" className="admin-emp-card__icon-btn" onClick={onView} title={t("Xem chi tiết")} aria-label={t("Xem chi tiết")}>
             <Eye size={14} />
           </button>
-          <button
-            type="button"
-            className="admin-emp-card__icon-btn"
-            onClick={onEdit}
-            title={t("Sửa")}
-            aria-label={t("Sửa")}
-          >
+          <button type="button" className="admin-emp-card__icon-btn" onClick={onEdit} title={t("Sửa")} aria-label={t("Sửa")}>
             <Pencil size={14} />
           </button>
-          <button
-            type="button"
-            className="admin-emp-card__icon-btn admin-emp-card__icon-btn--warning"
-            onClick={onReset}
-            title={t("Reset mật khẩu")}
-            aria-label={t("Reset mật khẩu")}
-          >
+          <button type="button" className="admin-emp-card__icon-btn admin-emp-card__icon-btn--warning" onClick={onReset} title={t("Reset mật khẩu")} aria-label={t("Reset mật khẩu")}>
             <KeyRound size={14} />
           </button>
-          <button
-            type="button"
-            className="admin-emp-card__icon-btn admin-emp-card__icon-btn--danger"
-            onClick={onDelete}
-            title={t("Xóa")}
-            aria-label={t("Xóa")}
-          >
+          <button type="button" className="admin-emp-card__icon-btn admin-emp-card__icon-btn--danger" onClick={onDelete} title={t("Xóa")} aria-label={t("Xóa")}>
             <Trash2 size={14} />
           </button>
         </div>
@@ -2069,20 +1415,7 @@ function EmployeeCard({
 function StatusBadge({ status, t }) {
   const active = status === "Hoạt động";
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "4px 10px",
-        borderRadius: 20,
-        fontSize: 11,
-        fontWeight: 600,
-        background: active ? "#e8f9f1" : "#fde8e8",
-        color: active ? "#18a967" : "#ef4444",
-        whiteSpace: "nowrap",
-      }}
-    >
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: active ? "#e8f9f1" : "#fde8e8", color: active ? "#18a967" : "#ef4444", whiteSpace: "nowrap" }}>
       {t(status)}
     </span>
   );
@@ -2090,50 +1423,15 @@ function StatusBadge({ status, t }) {
 
 function InfoRow({ icon, label, value }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: 14,
-        background: "var(--bg-tertiary, #f8fafc)",
-        borderRadius: 10,
-      }}
-    >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          background: "#eef2ff",
-          color: "#2634d5",
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
-        }}
-      >
+    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, background: "var(--bg-tertiary, #f8fafc)", borderRadius: 10 }}>
+      <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff", color: "#2634d5", display: "grid", placeItems: "center", flexShrink: 0 }}>
         {icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--text-light, #8993a3)",
-            textTransform: "uppercase",
-            letterSpacing: 0.5,
-            marginBottom: 2,
-          }}
-        >
+        <div style={{ fontSize: 11, color: "var(--text-light, #8993a3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>
           {label}
         </div>
-        <div
-          style={{
-            fontSize: 14,
-            color: "var(--text-primary, #172033)",
-            fontWeight: 600,
-            wordBreak: "break-word",
-          }}
-        >
+        <div style={{ fontSize: 14, color: "var(--text-primary, #172033)", fontWeight: 600, wordBreak: "break-word" }}>
           {value}
         </div>
       </div>
@@ -2141,51 +1439,78 @@ function InfoRow({ icon, label, value }) {
   );
 }
 
+// 🔧 B9.6d1 — Modal thêm body scroll lock
 function Modal({ children, onClose, maxWidth = 480 }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   return (
-    <div
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: MODAL_Z,
-        padding: 20,
-        overflowY: "auto",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--card-bg, #fff)",
-          borderRadius: 14,
-          padding: 24,
-          width: "100%",
-          maxWidth,
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-      >
+    <div onClick={onClose} role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", zIndex: MODAL_Z, padding: 20, overflowY: "auto" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--card-bg, #fff)", borderRadius: 14, padding: 24, width: "100%", maxWidth, maxHeight: "90vh", overflowY: "auto" }}>
         {children}
       </div>
     </div>
   );
 }
 
-function normalizeShift(s) {
-  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").trim();
-}
-function isApproved(shift) { return !shift.status || shift.status === "approved"; }
-function isPending(shift) { return shift.status === "pending"; }
+// ============================================================
+// STYLE CONSTANTS
+// ============================================================
 
-const SHIFT_DEFS = [
-  { id: "Ca sáng",  label: "Ca sáng",  time: "06:30 - 12:30", icon: Sunrise, color: "#f59e0b" },
-  { id: "Ca chiều", label: "Ca chiều", time: "12:30 - 18:30", icon: Sun,     color: "#2634d5" },
-];
+const labelStyle = {
+  display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4, marginTop: 12,
+  color: "var(--text-muted, #475569)",
+};
+
+const inputStyle = {
+  width: "100%", padding: 10, border: "1px solid var(--border-color, #e5e9ef)",
+  borderRadius: 8, outline: "none", background: "var(--bg-secondary, #fff)",
+  color: "var(--text-primary, #172033)", fontSize: 13, boxSizing: "border-box", marginBottom: 4,
+};
+
+const modalHeaderStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 };
+
+const modalTitleStyle = {
+  margin: 0, color: "var(--text-primary, #172033)", fontSize: 16,
+  display: "flex", alignItems: "center", gap: 8,
+};
+
+const modalCloseStyle = {
+  background: "transparent", border: 0, cursor: "pointer",
+  color: "var(--text-light, #8993a3)", padding: 4, display: "grid", placeItems: "center",
+};
+
+const btnPrimaryStyle = {
+  padding: 12, background: "#2634d5", color: "#fff", border: 0, borderRadius: 8,
+  fontWeight: 700, cursor: "pointer", display: "inline-flex",
+  alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13,
+};
+
+const btnCancelStyle = {
+  padding: 12, border: "1px solid var(--border-color, #e5e9ef)", borderRadius: 8,
+  background: "var(--card-bg, #fff)", cursor: "pointer",
+  color: "var(--text-primary, #172033)", fontWeight: 600, fontSize: 13,
+  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+};
+// ============================================================
+// OWNEREMPLOYEES.JSX — Quản lý nhân viên (Admin) — PHẦN 2/2
+// ============================================================
+// B9.6d2 (phần cuối file):
+//   - Fix 16 bug (hardcoded locale, template literal, submittingRef, scroll lock)
+//   - Formatters locale-aware qua useMemo
+//   - approveShift/rejectShift/saveAssignment dùng object interpolation
+//   - ShiftAssignModal: submittingRef + ESC ref + body scroll lock
+//
+// ⚠️ Ghép PHẦN 1 (B9.6d1) + PHẦN 2 (B9.6d2) để có file hoàn chỉnh.
+// ============================================================
+
+// ============================================================
+// CONSTANTS (tiếp phần 1)
+// ============================================================
+
 const SHIFT_TABS = [
   { id: "today",   label: "Hôm nay" },
   { id: "week",    label: "Theo tuần" },
@@ -2193,45 +1518,65 @@ const SHIFT_TABS = [
   { id: "history", label: "Lịch sử" },
 ];
 
-const TIME_FORMATTER = new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", hour12: false });
-const DATE_SHORT_FORMATTER = new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", weekday: "short", day: "2-digit", month: "2-digit" });
-const DATE_LONG_FORMATTER = new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
-const WEEKDAY_SHORT_FORMATTER = new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", weekday: "short" });
+const REFRESH_MS = 30000;
+
+function normalizeShift(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").trim();
+}
+
+function isApproved(shift) { return !shift.status || shift.status === "approved"; }
+function isPending(shift) { return shift.status === "pending"; }
 
 function getToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function fmtTime(d) {
-  if (!d) return "—";
-  const date = new Date(d);
-  return isNaN(date.getTime()) ? "—" : TIME_FORMATTER.format(date);
-}
-function fmtShiftDate(dateStr) {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr + "T00:00:00");
-  return isNaN(d.getTime()) ? "—" : DATE_SHORT_FORMATTER.format(d);
-}
+
 function shiftColor(shiftId) {
   const sh = SHIFT_DEFS.find((x) => x.id === shiftId);
   return sh ? sh.color : "#64748b";
 }
+
 function shiftCode(shiftId) {
   if (shiftId === "Ca sáng") return "S";
   if (shiftId === "Ca chiều") return "C";
   return "?";
 }
 
-const REFRESH_MS = 30000;
+// 🔧 B9.6d2 — hook formatter locale-aware (thay module-level const)
+function useShiftFormatters(locale) {
+  return useMemo(() => {
+    const loc = locale || "vi";
+    const tz = "Asia/Ho_Chi_Minh";
+    const opts = (extra) => ({ timeZone: tz, ...extra });
+    let time, dateShort, dateLong, weekdayShort;
+    try {
+      time = new Intl.DateTimeFormat(loc, opts({ hour: "2-digit", minute: "2-digit", hour12: false }));
+      dateShort = new Intl.DateTimeFormat(loc, opts({ weekday: "short", day: "2-digit", month: "2-digit" }));
+      dateLong = new Intl.DateTimeFormat(loc, opts({ weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }));
+      weekdayShort = new Intl.DateTimeFormat(loc, opts({ weekday: "short" }));
+    } catch {
+      time = new Intl.DateTimeFormat("en-GB", opts({ hour: "2-digit", minute: "2-digit", hour12: false }));
+      dateShort = new Intl.DateTimeFormat("en-GB", opts({ weekday: "short", day: "2-digit", month: "2-digit" }));
+      dateLong = new Intl.DateTimeFormat("en-GB", opts({ weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }));
+      weekdayShort = new Intl.DateTimeFormat("en-GB", opts({ weekday: "short" }));
+    }
+    return { time, dateShort, dateLong, weekdayShort };
+  }, [locale]);
+}
+
+// ============================================================
+// OwnerShiftsInner
+// ============================================================
 
 function OwnerShiftsInner() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [tab, setTab] = useState("today");
 
   const [shifts, setShifts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [attendances, setAttendances] = useState([]);
-  const [todayAttendances, setTodayAttendances] = useState([]); // 🔧 FIX #2
+  const [todayAttendances, setTodayAttendances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -2247,6 +1592,23 @@ function OwnerShiftsInner() {
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   const reqIdRef = useRef(0);
+  // 🔧 B9.6d2 — chống double-submit
+  const approvingRef = useRef(false);
+  const assigningRef = useRef(false);
+
+  const formatters = useShiftFormatters(locale);
+
+  const fmtTime = useCallback((d) => {
+    if (!d) return "—";
+    const date = new Date(d);
+    return isNaN(date.getTime()) ? "—" : formatters.time.format(date);
+  }, [formatters]);
+
+  const fmtShiftDate = useCallback((dateStr) => {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr + "T00:00:00");
+    return isNaN(d.getTime()) ? "—" : formatters.dateShort.format(d);
+  }, [formatters]);
 
   const [tabVisible, setTabVisible] = useState(
     typeof document === "undefined" || !document.hidden
@@ -2259,7 +1621,6 @@ function OwnerShiftsInner() {
   }, []);
 
   const load = useCallback(async (silent = false) => {
-    // 🔧 FIX #1 (CRITICAL): setLoading(false) trước return để không kẹt skeleton vĩnh viễn
     if (!getToken()) { setLoading(false); return; }
     const myReqId = ++reqIdRef.current;
     if (!silent) setLoading(true);
@@ -2271,7 +1632,6 @@ function OwnerShiftsInner() {
         api.users.list("EMPLOYEE").catch(() => []),
         api.attendance.all({ month: historyMonth }).catch(() => []),
         api.shifts.all({ include_pending: 1 }).catch(() => []),
-        // 🔧 FIX #2: luôn fetch attendance hôm nay riêng (không phụ thuộc historyMonth)
         api.attendance.all({ from: todayStr, to: todayStr }).catch(() => []),
       ]);
 
@@ -2301,7 +1661,6 @@ function OwnerShiftsInner() {
   }, [load, tabVisible]);
 
   const stats = useMemo(() => {
-    // 🔧 FIX #2: dùng todayAttendances thay vì attendances
     const today = getToday();
     const todayAtts = todayAttendances.filter((a) => a.date === today);
     return {
@@ -2316,20 +1675,13 @@ function OwnerShiftsInner() {
     const today = getToday();
     return SHIFT_DEFS.map((s) => ({
       ...s,
-      employees: shifts.filter(
-        (x) =>
-          x.date === today &&
-          x.shift === s.id &&
-          isApproved(x)
-      ),
+      employees: shifts.filter((x) => x.date === today && x.shift === s.id && isApproved(x)),
     }));
   }, [shifts]);
 
   const pendingTodayCount = useMemo(() => {
     const today = getToday();
-    return shifts.filter(
-      (s) => s.date === today && isPending(s)
-    ).length;
+    return shifts.filter((s) => s.date === today && isPending(s)).length;
   }, [shifts]);
 
   const weekDays = useMemo(() => {
@@ -2354,16 +1706,8 @@ function OwnerShiftsInner() {
     if (!weekDays.length) return "";
     const s = new Date(weekDays[0] + "T00:00:00");
     const e = new Date(weekDays[6] + "T00:00:00");
-    return (
-      s.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }) +
-      " - " +
-      e.toLocaleDateString("vi-VN", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
-    );
-  }, [weekDays]);
+    return formatters.dateShort.format(s) + " - " + formatters.dateLong.format(e);
+  }, [weekDays, formatters]);
 
   const [sundayReminder, setSundayReminder] = useState(null);
   useEffect(() => {
@@ -2430,14 +1774,14 @@ function OwnerShiftsInner() {
         const d = new Date(date + "T00:00:00");
         return {
           date,
-          label: DATE_LONG_FORMATTER.format(d),
-          weekdayShort: WEEKDAY_SHORT_FORMATTER.format(d),
+          label: formatters.dateLong.format(d),
+          weekdayShort: formatters.weekdayShort.format(d),
           dayNum: String(d.getDate()).padStart(2, "0"),
           shifts: list,
           shiftTypes,
         };
       });
-  }, [filteredShifts]);
+  }, [filteredShifts, formatters]);
 
   const uniqueEmployees = useMemo(
     () => new Set(filteredShifts.map((s) => s.employee_id)).size,
@@ -2457,38 +1801,48 @@ function OwnerShiftsInner() {
 
   const approveShift = useCallback(
     async (shift) => {
-      if (processingId !== null) return;
-
+      if (approvingRef.current) return;
+      approvingRef.current = true;
       setProcessingId(shift.id);
       try {
         await api.shifts.approve(shift.id);
         toast(
-          `${t("Đã duyệt")} ${shift.shift} ${t("của")} ${shift.employee_name}`,
+          t("Đã duyệt ca {shift} của {name}", {
+            shift: t(shift.shift),
+            name: shift.employee_name,
+          }),
           "success"
         );
         await load(true);
       } catch (e) {
         toast(e.message || t("Không duyệt được"), "error");
       } finally {
+        approvingRef.current = false;
         setProcessingId(null);
       }
     },
-    [load, processingId, t]
+    [load, t]
   );
 
   const rejectShift = useCallback(
     (shift) => {
-      if (processingId !== null) return;
+      if (approvingRef.current) return;
 
       setConfirm({
-        title: `${t("Từ chối")} ${shift.shift} ${t("của")} "${shift.employee_name}"?`,
+        title: t('Từ chối ca {shift} của "{name}"?', {
+          shift: t(shift.shift),
+          name: shift.employee_name,
+        }),
         message:
-          `${t("Ca ngày")} ${fmtShiftDate(shift.date)} ${t("sẽ bị xóa khỏi lịch của nhân viên.")} ` +
-          t("Hành động này không thể hoàn tác."),
+          t("Ca ngày {date} sẽ bị xóa khỏi lịch của nhân viên.", {
+            date: fmtShiftDate(shift.date),
+          }) + " " + t("Hành động này không thể hoàn tác."),
         confirmText: t("Từ chối"),
         cancelText: t("Giữ lại"),
         danger: true,
         onConfirm: async () => {
+          if (approvingRef.current) return;
+          approvingRef.current = true;
           setProcessingId(shift.id);
           try {
             await api.shifts.reject(shift.id);
@@ -2498,15 +1852,18 @@ function OwnerShiftsInner() {
           } catch (e) {
             toast(e.message || t("Không từ chối được"), "error");
           } finally {
+            approvingRef.current = false;
             setProcessingId(null);
           }
         },
       });
     },
-    [load, processingId, t]
+    [load, t, fmtShiftDate]
   );
 
   const saveAssignment = async (formData, isEdit) => {
+    if (assigningRef.current) return;
+    assigningRef.current = true;
     try {
       if (isEdit) {
         await api.shifts.update(formData.id, {
@@ -2532,18 +1889,24 @@ function OwnerShiftsInner() {
           totalSkipped += res?.skipped || 0;
         }
 
-        toast(
-          `${t("Đã phân")} ${totalCreated} ${t("ca")}` +
-            (totalSkipped
-              ? ` (${t("bỏ qua")} ${totalSkipped} ${t("ca trùng")})`
-              : ""),
-          "success"
-        );
+        if (totalSkipped > 0) {
+          toast(
+            t("Đã phân {created} ca (bỏ qua {skipped} ca trùng)", {
+              created: totalCreated,
+              skipped: totalSkipped,
+            }),
+            "success"
+          );
+        } else {
+          toast(t("Đã phân {n} ca", { n: totalCreated }), "success");
+        }
       }
       setAssignModal(null);
       load(false);
     } catch (e) {
       toast(e.message || t("Không lưu được"), "error");
+    } finally {
+      assigningRef.current = false;
     }
   };
 
@@ -2599,9 +1962,7 @@ function OwnerShiftsInner() {
               sundayReminder === "urgent"
                 ? "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(245, 158, 11, 0.15))"
                 : "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(38, 52, 213, 0.08))",
-            border:
-              "2px solid " +
-              (sundayReminder === "urgent" ? "#ef4444" : "#f59e0b"),
+            border: "2px solid " + (sundayReminder === "urgent" ? "#ef4444" : "#f59e0b"),
             borderRadius: 12,
             display: "flex",
             alignItems: "center",
@@ -2611,14 +1972,9 @@ function OwnerShiftsInner() {
         >
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
+              width: 44, height: 44, borderRadius: "50%",
               background: sundayReminder === "urgent" ? "#ef4444" : "#f59e0b",
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              flexShrink: 0,
+              color: "#fff", display: "grid", placeItems: "center", flexShrink: 0,
             }}
           >
             <CalendarDays size={22} />
@@ -2627,9 +1983,7 @@ function OwnerShiftsInner() {
             <b
               style={{
                 color: sundayReminder === "urgent" ? "#991b1b" : "#92400e",
-                fontSize: 15,
-                display: "block",
-                marginBottom: 2,
+                fontSize: 15, display: "block", marginBottom: 2,
               }}
             >
               {sundayReminder === "urgent"
@@ -2652,13 +2006,8 @@ function OwnerShiftsInner() {
             style={{
               padding: "10px 16px",
               background: sundayReminder === "urgent" ? "#ef4444" : "#f59e0b",
-              color: "#fff",
-              border: 0,
-              borderRadius: 8,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontSize: 13,
-              whiteSpace: "nowrap",
+              color: "#fff", border: 0, borderRadius: 8,
+              fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap",
             }}
           >
             {t("Xếp ca ngay")}
@@ -2671,40 +2020,23 @@ function OwnerShiftsInner() {
           style={{
             marginBottom: 16,
             padding: "14px 18px",
-            background:
-              "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))",
-            border: "2px solid #f59e0b",
-            borderRadius: 12,
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            flexWrap: "wrap",
+            background: "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))",
+            border: "2px solid #f59e0b", borderRadius: 12,
+            display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
           }}
         >
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              background: "#f59e0b",
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              flexShrink: 0,
+              width: 44, height: 44, borderRadius: "50%",
+              background: "#f59e0b", color: "#fff",
+              display: "grid", placeItems: "center", flexShrink: 0,
               animation: "pulse 1.5s ease-in-out infinite",
             }}
           >
             <Bell size={22} />
           </div>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <b
-              style={{
-                color: "#92400e",
-                fontSize: 15,
-                display: "block",
-                marginBottom: 2,
-              }}
-            >
+            <b style={{ color: "#92400e", fontSize: 15, display: "block", marginBottom: 2 }}>
               🔔 {t("Có {n} ca chờ duyệt hôm nay", { n: pendingTodayCount })}
             </b>
             <span style={{ color: "#78350f", fontSize: 13 }}>
@@ -2714,15 +2046,9 @@ function OwnerShiftsInner() {
           <button
             onClick={() => setTab("assign")}
             style={{
-              padding: "10px 16px",
-              background: "#f59e0b",
-              color: "#fff",
-              border: 0,
-              borderRadius: 8,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontSize: 13,
-              whiteSpace: "nowrap",
+              padding: "10px 16px", background: "#f59e0b", color: "#fff",
+              border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer",
+              fontSize: 13, whiteSpace: "nowrap",
             }}
           >
             {t("Xử lý ngay")}
@@ -2735,47 +2061,22 @@ function OwnerShiftsInner() {
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 16,
-          marginBottom: 20,
+          gap: 16, marginBottom: 20,
         }}
       >
-        <ShiftStat
-          icon={<Users size={18} />}
-          label={t("Tổng nhân viên")}
-          value={stats.total}
-          color="#2634d5"
-        />
-        <ShiftStat
-          icon={<CheckCircle2 size={18} />}
-          label={t("Đang làm việc")}
-          value={stats.working}
-          color="#18a967"
-        />
-        <ShiftStat
-          icon={<AlertTriangle size={18} />}
-          label={t("Đi muộn")}
-          value={stats.late}
-          color="#f59e0b"
-        />
-        <ShiftStat
-          icon={<UserX size={18} />}
-          label={t("Vắng mặt")}
-          value={stats.absent}
-          color="#ef4444"
-        />
+        <ShiftStat icon={<Users size={18} />} label={t("Tổng nhân viên")} value={stats.total} color="#2634d5" />
+        <ShiftStat icon={<CheckCircle2 size={18} />} label={t("Đang làm việc")} value={stats.working} color="#18a967" />
+        <ShiftStat icon={<AlertTriangle size={18} />} label={t("Đi muộn")} value={stats.late} color="#f59e0b" />
+        <ShiftStat icon={<UserX size={18} />} label={t("Vắng mặt")} value={stats.absent} color="#ef4444" />
       </div>
 
       <div
         className="shifts-tabs"
         style={{
-          display: "flex",
-          gap: 6,
-          marginBottom: 20,
+          display: "flex", gap: 6, marginBottom: 20,
           background: "var(--card-bg, #fff)",
           border: "1px solid var(--border-color, #e7ebf0)",
-          borderRadius: 12,
-          padding: 8,
-          flexWrap: "wrap",
+          borderRadius: 12, padding: 8, flexWrap: "wrap",
         }}
       >
         {SHIFT_TABS.map((tabItem) => (
@@ -2786,11 +2087,8 @@ function OwnerShiftsInner() {
               padding: "10px 18px",
               background: tab === tabItem.id ? "#2634d5" : "transparent",
               color: tab === tabItem.id ? "#fff" : "var(--text-muted, #475569)",
-              border: 0,
-              borderRadius: 8,
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: tab === tabItem.id ? 700 : 500,
+              border: 0, borderRadius: 8, cursor: "pointer",
+              fontSize: 13, fontWeight: tab === tabItem.id ? 700 : 500,
             }}
           >
             {t(tabItem.label)}
@@ -2801,21 +2099,15 @@ function OwnerShiftsInner() {
       {loading && (
         <>
           <div style={{ marginBottom: 20 }}>
-            <SkeletonStats
-              count={4}
-              columns="repeat(auto-fit, minmax(180px, 1fr))"
-            />
+            <SkeletonStats count={4} columns="repeat(auto-fit, minmax(180px, 1fr))" />
           </div>
           <div
             aria-hidden="true"
             style={{
               background: "var(--card-bg, #fff)",
               border: "1px solid var(--border-color, #e7ebf0)",
-              borderRadius: 12,
-              padding: 8,
-              marginBottom: 20,
-              display: "flex",
-              gap: 6,
+              borderRadius: 12, padding: 8, marginBottom: 20,
+              display: "flex", gap: 6,
             }}
           >
             {Array.from({ length: 4 }).map((_, i) => (
@@ -2827,8 +2119,7 @@ function OwnerShiftsInner() {
             style={{
               background: "var(--card-bg, #fff)",
               border: "1px solid var(--border-color, #e7ebf0)",
-              borderRadius: 12,
-              padding: 20,
+              borderRadius: 12, padding: 20,
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
               gap: 16,
@@ -2839,11 +2130,8 @@ function OwnerShiftsInner() {
                 key={i}
                 style={{
                   background: "var(--bg-tertiary, #f8fafc)",
-                  borderRadius: 12,
-                  padding: 16,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
+                  borderRadius: 12, padding: 16,
+                  display: "flex", flexDirection: "column", gap: 12,
                 }}
               >
                 <Skeleton width="60%" height={16} />
@@ -2859,32 +2147,21 @@ function OwnerShiftsInner() {
       {!loading && error && (
         <div
           style={{
-            padding: 30,
-            textAlign: "center",
+            padding: 30, textAlign: "center",
             background: "rgba(239, 68, 68, 0.08)",
             border: "1px solid rgba(239, 68, 68, 0.2)",
-            borderRadius: 12,
-            color: "#ef4444",
+            borderRadius: 12, color: "#ef4444",
           }}
         >
           <AlertCircle size={26} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            {t("Không tải được dữ liệu")}
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 12 }}>
-            {error}
-          </div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{t("Không tải được dữ liệu")}</div>
+          <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 12 }}>{error}</div>
           <button
             onClick={() => load(false)}
             style={{
-              padding: "8px 16px",
-              background: "#ef4444",
-              color: "#fff",
-              border: 0,
-              borderRadius: 8,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 13,
+              padding: "8px 16px", background: "#ef4444", color: "#fff",
+              border: 0, borderRadius: 8, cursor: "pointer",
+              fontWeight: 600, fontSize: 13,
             }}
           >
             {t("Thử lại")}
@@ -2906,53 +2183,29 @@ function OwnerShiftsInner() {
               <div key={s.id} style={shiftCardStyle}>
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 14,
-                    paddingBottom: 12,
+                    display: "flex", alignItems: "center", gap: 10,
+                    marginBottom: 14, paddingBottom: 12,
                     borderBottom: "1px solid var(--border-color, #eef2f7)",
                   }}
                 >
                   <div
                     style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      background: s.color + "20",
-                      color: s.color,
-                      display: "grid",
-                      placeItems: "center",
+                      width: 40, height: 40, borderRadius: 10,
+                      background: s.color + "20", color: s.color,
+                      display: "grid", placeItems: "center",
                     }}
                   >
                     <Icon size={20} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <b
-                      style={{
-                        color: "var(--text-primary, #172033)",
-                        fontSize: 14,
-                      }}
-                    >
-                      {t(s.label)}
-                    </b>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-light, #8993a3)",
-                      }}
-                    >
-                      {s.time}
-                    </div>
+                    <b style={{ color: "var(--text-primary, #172033)", fontSize: 14 }}>{t(s.label)}</b>
+                    <div style={{ fontSize: 11, color: "var(--text-light, #8993a3)" }}>{s.time}</div>
                   </div>
                   <span
                     style={{
-                      background: s.color + "20",
-                      color: s.color,
-                      padding: "4px 10px",
-                      borderRadius: 20,
-                      fontSize: 11,
-                      fontWeight: 700,
+                      background: s.color + "20", color: s.color,
+                      padding: "4px 10px", borderRadius: 20,
+                      fontSize: 11, fontWeight: 700,
                     }}
                   >
                     {s.employees.length}
@@ -2960,78 +2213,42 @@ function OwnerShiftsInner() {
                 </div>
 
                 {s.employees.length === 0 ? (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: 30,
-                      color: "var(--text-light, #8993a3)",
-                      fontSize: 12,
-                    }}
-                  >
+                  <div style={{ textAlign: "center", padding: 30, color: "var(--text-light, #8993a3)", fontSize: 12 }}>
                     {t("Chưa có ca")}
                   </div>
                 ) : (
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {s.employees.map((emp) => {
                       const today = getToday();
                       const att = attendances.find(
-                        (a) =>
-                          String(a.employee_id) === String(emp.employee_id) &&
-                          a.date === today
+                        (a) => String(a.employee_id) === String(emp.employee_id) && a.date === today
                       );
                       return (
                         <div
                           key={`${emp.id}-${emp.shift}-${emp.date}`}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            padding: 10,
-                            background: "var(--bg-tertiary, #f8fafc)",
+                            display: "flex", alignItems: "center", gap: 10,
+                            padding: 10, background: "var(--bg-tertiary, #f8fafc)",
                             borderRadius: 10,
                           }}
                         >
                           <div
                             style={{
-                              width: 32,
-                              height: 32,
-                              borderRadius: "50%",
-                              background:
-                                "linear-gradient(135deg, #2634d5, #20c779)",
-                              color: "#fff",
-                              display: "grid",
-                              placeItems: "center",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              flexShrink: 0,
+                              width: 32, height: 32, borderRadius: "50%",
+                              background: "linear-gradient(135deg, #2634d5, #20c779)",
+                              color: "#fff", display: "grid", placeItems: "center",
+                              fontSize: 11, fontWeight: 700, flexShrink: 0,
                             }}
                           >
                             {(emp.employee_name || "?").slice(0, 2).toUpperCase()}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <b
-                              style={{
-                                fontSize: 13,
-                                color: "var(--text-primary, #172033)",
-                                display: "block",
-                              }}
-                            >
+                            <b style={{ fontSize: 13, color: "var(--text-primary, #172033)", display: "block" }}>
                               {emp.employee_name}
                             </b>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "var(--text-light, #8993a3)",
-                              }}
-                            >
+                            <span style={{ fontSize: 11, color: "var(--text-light, #8993a3)" }}>
                               {att
-                                ? `${t("Vào")} ` +
-                                  fmtTime(att.checkIn) +
-                                  (att.checkOut
-                                    ? ` · ${t("Ra")} ` + fmtTime(att.checkOut)
-                                    : "")
+                                ? `${t("Vào")} ${fmtTime(att.checkIn)}${att.checkOut ? ` · ${t("Ra")} ${fmtTime(att.checkOut)}` : ""}`
                                 : t("Chưa chấm công")}
                             </span>
                           </div>
@@ -3067,92 +2284,46 @@ function OwnerShiftsInner() {
         <div style={shiftCardStyle}>
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 16,
-              flexWrap: "wrap",
-              gap: 12,
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              marginBottom: 16, flexWrap: "wrap", gap: 12,
             }}
           >
             <div>
-              <h3
-                style={{
-                  margin: "0 0 4px",
-                  color: "var(--text-primary, #172033)",
-                  fontSize: 15,
-                }}
-              >
+              <h3 style={{ margin: "0 0 4px", color: "var(--text-primary, #172033)", fontSize: 15 }}>
                 {t("Lịch phân ca tuần")}
               </h3>
-              <span
-                style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}
-              >
-                📅 {weekLabel}
-              </span>
+              <span style={{ fontSize: 12, color: "var(--text-muted, #64748b)" }}>📅 {weekLabel}</span>
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                onClick={() => changeWeek(-1)}
-                title={t("Tuần trước")}
-                aria-label={t("Tuần trước")}
-                style={shiftNavBtn}
-              >
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button onClick={() => changeWeek(-1)} title={t("Tuần trước")} aria-label={t("Tuần trước")} style={shiftNavBtn}>
                 <ChevronLeft size={18} />
               </button>
               <button onClick={goToThisWeek} style={shiftNavBtnWide}>
                 <CalendarDays size={14} /> {t("Tuần này")}
               </button>
-              <button
-                onClick={() => changeWeek(1)}
-                title={t("Tuần sau")}
-                aria-label={t("Tuần sau")}
-                style={shiftNavBtn}
-              >
+              <button onClick={() => changeWeek(1)} title={t("Tuần sau")} aria-label={t("Tuần sau")} style={shiftNavBtn}>
                 <ChevronRight size={18} />
               </button>
             </div>
           </div>
 
           <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                minWidth: 700,
-              }}
-            >
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
               <thead>
                 <tr style={{ background: "var(--bg-tertiary, #f5f7fb)" }}>
-                  <th style={{ ...shiftThStyle, minWidth: 150 }}>
-                    {t("Nhân viên")}
-                  </th>
+                  <th style={{ ...shiftThStyle, minWidth: 150 }}>{t("Nhân viên")}</th>
                   {weekDays.map((d) => {
                     const dayObj = new Date(d + "T00:00:00");
                     return (
                       <th
                         key={d}
                         style={{
-                          ...shiftThStyle,
-                          textAlign: "center",
-                          fontSize: 11,
-                          minWidth: 80,
-                          padding: 8,
+                          ...shiftThStyle, textAlign: "center",
+                          fontSize: 11, minWidth: 80, padding: 8,
                         }}
                       >
-                        <div style={{ fontWeight: 700 }}>
-                          {WEEKDAY_SHORT_FORMATTER.format(dayObj)}
-                        </div>
-                        <div style={{ fontSize: 10, opacity: 0.7 }}>
-                          {d.slice(8)}/{d.slice(5, 7)}
-                        </div>
+                        <div style={{ fontWeight: 700 }}>{formatters.weekdayShort.format(dayObj)}</div>
+                        <div style={{ fontSize: 10, opacity: 0.7 }}>{d.slice(8)}/{d.slice(5, 7)}</div>
                       </th>
                     );
                   })}
@@ -3160,60 +2331,29 @@ function OwnerShiftsInner() {
               </thead>
               <tbody>
                 {employees.map((emp) => (
-                  <tr
-                    key={emp.id}
-                    style={{
-                      borderBottom: "1px solid var(--border-color, #eef2f7)",
-                    }}
-                  >
-                    <td style={shiftTdStyle}>
-                      <b>{emp.name}</b>
-                    </td>
+                  <tr key={emp.id} style={{ borderBottom: "1px solid var(--border-color, #eef2f7)" }}>
+                    <td style={shiftTdStyle}><b>{emp.name}</b></td>
                     {weekDays.map((d) => {
                       const empShifts = shifts.filter(
-                        (s) =>
-                          String(s.employee_id) === String(emp.id) &&
-                          s.date === d &&
-                          isApproved(s)
+                        (s) => String(s.employee_id) === String(emp.id) && s.date === d && isApproved(s)
                       );
                       return (
                         <td key={d} style={{ padding: 6, textAlign: "center" }}>
                           {empShifts.length === 0 ? (
-                            <span
-                              style={{
-                                color: "var(--text-light, #cbd5e1)",
-                                fontSize: 12,
-                              }}
-                            >
-                              —
-                            </span>
+                            <span style={{ color: "var(--text-light, #cbd5e1)", fontSize: 12 }}>—</span>
                           ) : (
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 2,
-                                justifyContent: "center",
-                                flexWrap: "wrap",
-                              }}
-                            >
+                            <div style={{ display: "flex", gap: 2, justifyContent: "center", flexWrap: "wrap" }}>
                               {empShifts.map((s) => (
                                 <button
                                   key={s.id}
                                   onClick={() => openEdit(s)}
-                                  title={`${s.shift} — ${t("Bấm để sửa")}`}
-                                  aria-label={`${t("Sửa ca")} ${s.shift}`}
+                                  title={t("{shift} — Bấm để sửa", { shift: t(s.shift) })}
+                                  aria-label={t("Sửa ca {shift}", { shift: t(s.shift) })}
                                   style={{
-                                    width: 24,
-                                    height: 24,
-                                    borderRadius: 6,
-                                    border: 0,
-                                    background: shiftColor(s.shift),
-                                    color: "#fff",
-                                    display: "grid",
-                                    placeItems: "center",
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    cursor: "pointer",
+                                    width: 24, height: 24, borderRadius: 6, border: 0,
+                                    background: shiftColor(s.shift), color: "#fff",
+                                    display: "grid", placeItems: "center",
+                                    fontSize: 11, fontWeight: 700, cursor: "pointer",
                                   }}
                                 >
                                   {shiftCode(s.shift)}
@@ -3230,11 +2370,7 @@ function OwnerShiftsInner() {
                   <tr>
                     <td
                       colSpan={weekDays.length + 1}
-                      style={{
-                        textAlign: "center",
-                        padding: 40,
-                        color: "var(--text-light, #8993a3)",
-                      }}
+                      style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}
                     >
                       {t("Chưa có nhân viên nào")}
                     </td>
@@ -3244,47 +2380,22 @@ function OwnerShiftsInner() {
             </table>
           </div>
 
-          <div
-            style={{
-              marginTop: 14,
-              display: "flex",
-              gap: 16,
-              fontSize: 12,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ marginTop: 14, display: "flex", gap: 16, fontSize: 12, flexWrap: "wrap" }}>
             {SHIFT_DEFS.map((s) => (
-              <div
-                key={s.id}
-                style={{ display: "flex", alignItems: "center", gap: 6 }}
-              >
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span
                   style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 5,
-                    background: s.color,
-                    display: "grid",
-                    placeItems: "center",
-                    color: "#fff",
-                    fontSize: 10,
-                    fontWeight: 700,
+                    width: 20, height: 20, borderRadius: 5,
+                    background: s.color, display: "grid", placeItems: "center",
+                    color: "#fff", fontSize: 10, fontWeight: 700,
                   }}
                 >
                   {shiftCode(s.id)}
                 </span>
-                <span style={{ color: "var(--text-muted, #64748b)" }}>
-                  {t(s.label)}
-                </span>
+                <span style={{ color: "var(--text-muted, #64748b)" }}>{t(s.label)}</span>
               </div>
             ))}
-            <span
-              style={{
-                marginLeft: "auto",
-                color: "var(--text-light, #8993a3)",
-                fontStyle: "italic",
-              }}
-            >
+            <span style={{ marginLeft: "auto", color: "var(--text-light, #8993a3)", fontStyle: "italic" }}>
               💡 {t("Bấm vào ô để sửa ca")}
             </span>
           </div>
@@ -3295,54 +2406,33 @@ function OwnerShiftsInner() {
         <div>
           <div
             style={{
-              display: "flex",
-              gap: 12,
-              marginBottom: 16,
-              flexWrap: "wrap",
-              alignItems: "center",
+              display: "flex", gap: 12, marginBottom: 16,
+              flexWrap: "wrap", alignItems: "center",
             }}
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
+                display: "flex", alignItems: "center", gap: 8,
                 background: "var(--card-bg, #fff)",
                 border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 8,
-                padding: "9px 12px",
-                flex: 1,
-                minWidth: 200,
-                maxWidth: 400,
+                borderRadius: 8, padding: "9px 12px",
+                flex: 1, minWidth: 200, maxWidth: 400,
               }}
             >
-              <Search
-                size={16}
-                style={{ color: "var(--text-light, #8993a3)" }}
-              />
+              <Search size={16} style={{ color: "var(--text-light, #8993a3)" }} />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("Tìm nhân viên...")}
                 style={{
-                  flex: 1,
-                  border: 0,
-                  outline: "none",
-                  background: "transparent",
-                  color: "var(--text-primary, #172033)",
-                  fontSize: 13,
+                  flex: 1, border: 0, outline: "none", background: "transparent",
+                  color: "var(--text-primary, #172033)", fontSize: 13,
                 }}
               />
               {search && (
                 <button
                   onClick={() => setSearch("")}
-                  style={{
-                    background: "transparent",
-                    border: 0,
-                    cursor: "pointer",
-                    color: "var(--text-light, #8993a3)",
-                    padding: 2,
-                  }}
+                  style={{ background: "transparent", border: 0, cursor: "pointer", color: "var(--text-light, #8993a3)", padding: 2 }}
                   aria-label={t("Xoá tìm kiếm")}
                 >
                   <X size={14} />
@@ -3350,15 +2440,7 @@ function OwnerShiftsInner() {
               )}
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 4,
-                background: "var(--bg-tertiary, #f5f7fb)",
-                padding: 4,
-                borderRadius: 8,
-              }}
-            >
+            <div style={{ display: "flex", gap: 4, background: "var(--bg-tertiary, #f5f7fb)", padding: 4, borderRadius: 8 }}>
               {[
                 { id: "week", label: t("Tuần này") },
                 { id: "nextWeek", label: t("Tuần sau") },
@@ -3370,17 +2452,10 @@ function OwnerShiftsInner() {
                   type="button"
                   style={{
                     padding: "6px 14px",
-                    background:
-                      historyFilter === f.id ? "#2634d5" : "transparent",
-                    color:
-                      historyFilter === f.id
-                        ? "#fff"
-                        : "var(--text-muted, #475569)",
-                    border: 0,
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    background: historyFilter === f.id ? "#2634d5" : "transparent",
+                    color: historyFilter === f.id ? "#fff" : "var(--text-muted, #475569)",
+                    border: 0, borderRadius: 6, cursor: "pointer",
+                    fontSize: 12, fontWeight: 600,
                   }}
                 >
                   {f.label}
@@ -3392,17 +2467,10 @@ function OwnerShiftsInner() {
               onClick={openNew}
               type="button"
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "#2634d5",
-                color: "#fff",
-                padding: "10px 16px",
-                border: 0,
-                borderRadius: 8,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontSize: 13,
+                display: "inline-flex", alignItems: "center", gap: 6,
+                background: "#2634d5", color: "#fff",
+                padding: "10px 16px", border: 0, borderRadius: 8,
+                fontWeight: 700, cursor: "pointer", fontSize: 13,
               }}
             >
               <Plus size={16} /> {t("Phân ca")}
@@ -3413,41 +2481,20 @@ function OwnerShiftsInner() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: 12,
-              marginBottom: 14,
+              gap: 12, marginBottom: 14,
             }}
           >
-            <SummaryCard
-              label={t("Tổng ca")}
-              value={filteredShifts.length}
-              color="#2634d5"
-            />
-            <SummaryCard
-              label={t("Chờ duyệt")}
-              value={filteredShifts.filter(isPending).length}
-              color="#f59e0b"
-            />
-            <SummaryCard
-              label={t("Số ngày")}
-              value={groupedShifts.length}
-              color="#18a967"
-            />
-            <SummaryCard
-              label={t("Nhân viên")}
-              value={uniqueEmployees}
-              color="#8b5cf6"
-            />
+            <SummaryCard label={t("Tổng ca")} value={filteredShifts.length} color="#2634d5" />
+            <SummaryCard label={t("Chờ duyệt")} value={filteredShifts.filter(isPending).length} color="#f59e0b" />
+            <SummaryCard label={t("Số ngày")} value={groupedShifts.length} color="#18a967" />
+            <SummaryCard label={t("Nhân viên")} value={uniqueEmployees} color="#8b5cf6" />
           </div>
 
           {groupedShifts.length === 0 ? (
             <div style={{ ...shiftCardStyle, textAlign: "center", padding: 40 }}>
               <CalendarDays
                 size={36}
-                style={{
-                  opacity: 0.35,
-                  marginBottom: 10,
-                  color: "var(--text-light, #8993a3)",
-                }}
+                style={{ opacity: 0.35, marginBottom: 10, color: "var(--text-light, #8993a3)" }}
               />
               <div style={{ color: "var(--text-light, #8993a3)", fontSize: 13 }}>
                 {search || historyFilter !== "all"
@@ -3467,66 +2514,28 @@ function OwnerShiftsInner() {
                       padding: "12px 18px",
                       background: "var(--bg-tertiary, #f5f7fb)",
                       borderBottom: "1px solid var(--border-color, #eef2f7)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: 10,
+                      display: "flex", justifyContent: "space-between",
+                      alignItems: "center", flexWrap: "wrap", gap: 10,
                     }}
                   >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 12 }}
-                    >
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <div
                         style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 12,
-                          background:
-                            "linear-gradient(135deg, #2634d5, #20c779)",
-                          color: "#fff",
-                          display: "grid",
-                          placeItems: "center",
+                          width: 44, height: 44, borderRadius: 12,
+                          background: "linear-gradient(135deg, #2634d5, #20c779)",
+                          color: "#fff", display: "grid", placeItems: "center",
                         }}
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: 1,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 9,
-                              fontWeight: 600,
-                              opacity: 0.9,
-                            }}
-                          >
-                            {group.weekdayShort}
-                          </span>
-                          <span style={{ fontSize: 15, fontWeight: 800 }}>
-                            {group.dayNum}
-                          </span>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                          <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.9 }}>{group.weekdayShort}</span>
+                          <span style={{ fontSize: 15, fontWeight: 800 }}>{group.dayNum}</span>
                         </div>
                       </div>
                       <div>
-                        <b
-                          style={{
-                            fontSize: 14,
-                            color: "var(--text-primary, #172033)",
-                            display: "block",
-                          }}
-                        >
+                        <b style={{ fontSize: 14, color: "var(--text-primary, #172033)", display: "block" }}>
                           {group.label}
                         </b>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-light, #8993a3)",
-                          }}
-                        >
+                        <span style={{ fontSize: 11, color: "var(--text-light, #8993a3)" }}>
                           {group.shifts.length} {t("ca")}
                         </span>
                       </div>
@@ -3536,12 +2545,9 @@ function OwnerShiftsInner() {
                         <span
                           key={s}
                           style={{
-                            padding: "4px 10px",
-                            borderRadius: 20,
-                            fontSize: 10,
-                            fontWeight: 700,
-                            background: shiftColor(s) + "20",
-                            color: shiftColor(s),
+                            padding: "4px 10px", borderRadius: 20,
+                            fontSize: 10, fontWeight: 700,
+                            background: shiftColor(s) + "20", color: shiftColor(s),
                           }}
                         >
                           {t(s)}
@@ -3560,92 +2566,46 @@ function OwnerShiftsInner() {
                           key={s.id}
                           style={{
                             padding: "12px 18px",
-                            borderBottom:
-                              i < group.shifts.length - 1
-                                ? "1px solid var(--border-color, #f5f7fb)"
-                                : "none",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
+                            borderBottom: i < group.shifts.length - 1 ? "1px solid var(--border-color, #f5f7fb)" : "none",
+                            display: "flex", alignItems: "center", gap: 12,
                             flexWrap: "wrap",
-                            background: isPendingShift
-                              ? "rgba(245, 158, 11, 0.04)"
-                              : "transparent",
+                            background: isPendingShift ? "rgba(245, 158, 11, 0.04)" : "transparent",
                             opacity: isProcessing ? 0.6 : 1,
                           }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 10,
-                              minWidth: 0,
-                              flex: 1,
-                            }}
-                          >
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
                             <div
                               style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: "50%",
-                                background:
-                                  "linear-gradient(135deg, #2634d5, #20c779)",
-                                color: "#fff",
-                                display: "grid",
-                                placeItems: "center",
-                                fontSize: 11,
-                                fontWeight: 700,
-                                flexShrink: 0,
+                                width: 32, height: 32, borderRadius: "50%",
+                                background: "linear-gradient(135deg, #2634d5, #20c779)",
+                                color: "#fff", display: "grid", placeItems: "center",
+                                fontSize: 11, fontWeight: 700, flexShrink: 0,
                               }}
                             >
-                              {(s.employee_name || "?")
-                                .slice(0, 2)
-                                .toUpperCase()}
+                              {(s.employee_name || "?").slice(0, 2).toUpperCase()}
                             </div>
                             <div style={{ minWidth: 0 }}>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <b
-                                  style={{
-                                    fontSize: 13,
-                                    color: "var(--text-primary, #172033)",
-                                  }}
-                                >
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                <b style={{ fontSize: 13, color: "var(--text-primary, #172033)" }}>
                                   {s.employee_name}
                                 </b>
 
                                 <span
                                   style={{
-                                    padding: "2px 8px",
-                                    borderRadius: 10,
-                                    fontSize: 10,
-                                    fontWeight: 700,
-                                    background: isPendingShift
-                                      ? "#fef3c7"
-                                      : "#d1fae5",
-                                    color: isPendingShift
-                                      ? "#92400e"
-                                      : "#065f46",
+                                    padding: "2px 8px", borderRadius: 10,
+                                    fontSize: 10, fontWeight: 700,
+                                    background: isPendingShift ? "#fef3c7" : "#d1fae5",
+                                    color: isPendingShift ? "#92400e" : "#065f46",
                                     whiteSpace: "nowrap",
                                   }}
                                 >
-                                  {isPendingShift
-                                    ? t("Chờ duyệt")
-                                    : t("Đã duyệt")}
+                                  {isPendingShift ? t("Chờ duyệt") : t("Đã duyệt")}
                                 </span>
 
                                 <span
                                   style={{
-                                    padding: "2px 10px",
-                                    borderRadius: 20,
-                                    fontSize: 10.5,
-                                    fontWeight: 700,
+                                    padding: "2px 10px", borderRadius: 20,
+                                    fontSize: 10.5, fontWeight: 700,
                                     background: shiftColor(s.shift) + "20",
                                     color: shiftColor(s.shift),
                                     whiteSpace: "nowrap",
@@ -3656,23 +2616,14 @@ function OwnerShiftsInner() {
                               </div>
 
                               {s.note && (
-                                <span
-                                  style={{
-                                    fontSize: 11,
-                                    color: "var(--text-light, #8993a3)",
-                                    display: "block",
-                                    marginTop: 2,
-                                  }}
-                                >
+                                <span style={{ fontSize: 11, color: "var(--text-light, #8993a3)", display: "block", marginTop: 2 }}>
                                   {s.note}
                                 </span>
                               )}
                             </div>
                           </div>
 
-                          <div
-                            style={{ display: "flex", gap: 6, flexShrink: 0 }}
-                          >
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                             {isPendingShift && (
                               <>
                                 <button
@@ -3683,34 +2634,17 @@ function OwnerShiftsInner() {
                                   type="button"
                                   style={{
                                     padding: "7px 12px",
-                                    background:
-                                      processingId !== null
-                                        ? "#94a3b8"
-                                        : "#18a967",
-                                    color: "#fff",
-                                    border: 0,
-                                    borderRadius: 7,
-                                    cursor:
-                                      processingId !== null
-                                        ? "not-allowed"
-                                        : "pointer",
-                                    fontSize: 11.5,
-                                    fontWeight: 700,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 4,
+                                    background: processingId !== null ? "#94a3b8" : "#18a967",
+                                    color: "#fff", border: 0, borderRadius: 7,
+                                    cursor: processingId !== null ? "not-allowed" : "pointer",
+                                    fontSize: 11.5, fontWeight: 700,
+                                    display: "inline-flex", alignItems: "center", gap: 4,
                                     whiteSpace: "nowrap",
                                   }}
                                 >
                                   {isProcessing ? (
                                     <>
-                                      <Loader2
-                                        size={12}
-                                        style={{
-                                          animation:
-                                            "spin 1s linear infinite",
-                                        }}
-                                      />
+                                      <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
                                       {t("Đang xử lý...")}
                                     </>
                                   ) : (
@@ -3732,17 +2666,10 @@ function OwnerShiftsInner() {
                                     color: "#ef4444",
                                     border: "1px solid #ef4444",
                                     borderRadius: 7,
-                                    cursor:
-                                      processingId !== null
-                                        ? "not-allowed"
-                                        : "pointer",
-                                    fontSize: 11.5,
-                                    fontWeight: 700,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                    opacity:
-                                      processingId !== null ? 0.5 : 1,
+                                    cursor: processingId !== null ? "not-allowed" : "pointer",
+                                    fontSize: 11.5, fontWeight: 700,
+                                    display: "inline-flex", alignItems: "center", gap: 4,
+                                    opacity: processingId !== null ? 0.5 : 1,
                                     whiteSpace: "nowrap",
                                   }}
                                 >
@@ -3785,21 +2712,12 @@ function OwnerShiftsInner() {
         <div style={shiftCardStyle}>
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 16,
-              flexWrap: "wrap",
-              gap: 12,
+              display: "flex", justifyContent: "space-between",
+              alignItems: "center", marginBottom: 16,
+              flexWrap: "wrap", gap: 12,
             }}
           >
-            <h3
-              style={{
-                margin: 0,
-                color: "var(--text-primary, #172033)",
-                fontSize: 15,
-              }}
-            >
+            <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 15 }}>
               {t("Lịch sử chấm công")}
             </h3>
             <input
@@ -3809,11 +2727,9 @@ function OwnerShiftsInner() {
               style={{
                 padding: "8px 12px",
                 border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 8,
-                outline: "none",
+                borderRadius: 8, outline: "none",
                 background: "var(--bg-secondary, #fff)",
-                color: "var(--text-primary, #172033)",
-                fontSize: 13,
+                color: "var(--text-primary, #172033)", fontSize: 13,
               }}
             />
           </div>
@@ -3836,35 +2752,22 @@ function OwnerShiftsInner() {
                   <tr>
                     <td
                       colSpan="7"
-                      style={{
-                        textAlign: "center",
-                        padding: 40,
-                        color: "var(--text-light, #8993a3)",
-                      }}
+                      style={{ textAlign: "center", padding: 40, color: "var(--text-light, #8993a3)" }}
                     >
                       {t("Chưa có dữ liệu chấm công")}
                     </td>
                   </tr>
                 ) : (
                   attendances.map((a) => (
-                    <tr
-                      key={a.id}
-                      style={{
-                        borderBottom: "1px solid var(--border-color, #eef2f7)",
-                      }}
-                    >
-                      <td style={shiftTdStyle}>
-                        <b>{fmtShiftDate(a.date)}</b>
-                      </td>
+                    <tr key={a.id} style={{ borderBottom: "1px solid var(--border-color, #eef2f7)" }}>
+                      <td style={shiftTdStyle}><b>{fmtShiftDate(a.date)}</b></td>
                       <td style={shiftTdStyle}>{a.employee_name}</td>
                       <td style={shiftTdStyle}>
                         {a.shift ? (
                           <span
                             style={{
-                              padding: "4px 10px",
-                              borderRadius: 20,
-                              fontSize: 11,
-                              fontWeight: 700,
+                              padding: "4px 10px", borderRadius: 20,
+                              fontSize: 11, fontWeight: 700,
                               background: shiftColor(a.shift) + "20",
                               color: shiftColor(a.shift),
                             }}
@@ -3872,23 +2775,11 @@ function OwnerShiftsInner() {
                             {t(a.shift)}
                           </span>
                         ) : (
-                          <span
-                            style={{
-                              color: "var(--text-light, #8993a3)",
-                              fontSize: 12,
-                            }}
-                          >
-                            —
-                          </span>
+                          <span style={{ color: "var(--text-light, #8993a3)", fontSize: 12 }}>—</span>
                         )}
                       </td>
                       <td style={shiftTdStyle}>{fmtTime(a.checkIn)}</td>
-                      <td
-                        style={{
-                          ...shiftTdStyle,
-                          color: "var(--text-muted, #64748b)",
-                        }}
-                      >
+                      <td style={{ ...shiftTdStyle, color: "var(--text-muted, #64748b)" }}>
                         {fmtTime(a.checkOut)}
                       </td>
                       <td style={shiftTdStyle}>
@@ -3915,6 +2806,7 @@ function OwnerShiftsInner() {
           onSave={saveAssignment}
           onClose={() => setAssignModal(null)}
           t={t}
+          locale={locale}
         />
       )}
 
@@ -3947,9 +2839,8 @@ function OwnerShiftsInner() {
 }
 
 // ============================================================
-// SUB-COMPONENT: ShiftAssignModal
+// SUB-COMPONENT: ShiftAssignModal (B9.6d2 — fixed)
 // ============================================================
-
 function ShiftAssignModal({
   modal,
   employees,
@@ -3958,10 +2849,31 @@ function ShiftAssignModal({
   onSave,
   onClose,
   t,
+  locale,
 }) {
   const isEdit = modal._isEdit === true;
 
   const [saving, setSaving] = useState(false);
+  // 🔧 B9.6d2 — chống double-submit
+  const submittingRef = useRef(false);
+
+  const formatters = useShiftFormatters(locale);
+
+  // Body scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // ESC — dùng ref để tránh stale closure
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape" && !submittingRef.current) onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   const displayWeekDays = useMemo(() => {
     if (isEdit) return weekDays;
@@ -3997,27 +2909,14 @@ function ShiftAssignModal({
     const empId = String(employeeId);
     return new Set(
       shifts
-        .filter(
-          (s) =>
-            String(s.employee_id) === empId &&
-            displayWeekDays.includes(s.date)
-        )
+        .filter((s) => String(s.employee_id) === empId && displayWeekDays.includes(s.date))
         .map((s) => s.date)
     );
   }, [shifts, employeeId, displayWeekDays, isEdit]);
 
   const currentShifts = activeDate ? dateShifts[activeDate] || [] : [];
 
-  const isDayAssigned = (d) =>
-    (dateShifts[d] && dateShifts[d].length > 0) || assignedDays.has(d);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape" && !saving) onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose, saving]);
+  const isDayAssigned = (d) => (dateShifts[d] && dateShifts[d].length > 0) || assignedDays.has(d);
 
   const toggleShift = (shiftId) => {
     if (isEdit) {
@@ -4042,9 +2941,7 @@ function ShiftAssignModal({
   const applyToWholeWeek = () => {
     const tpl = currentShifts.length > 0 ? currentShifts : ["Ca sáng"];
     const next = { ...dateShifts };
-    displayWeekDays.forEach((d) => {
-      next[d] = [...tpl];
-    });
+    displayWeekDays.forEach((d) => { next[d] = [...tpl]; });
     setDateShifts(next);
   };
 
@@ -4055,59 +2952,37 @@ function ShiftAssignModal({
 
   const submit = async (e) => {
     e.preventDefault();
-    if (saving) return;
+    if (submittingRef.current) return;
 
-    if (!employeeId) {
-      return toast(t("Vui lòng chọn nhân viên"), "error");
-    }
-    const dates = Object.keys(dateShifts).filter(
-      (d) => dateShifts[d]?.length > 0
-    );
-    if (!dates.length) {
-      return toast(t("Vui lòng chọn ít nhất 1 ngày và 1 ca"), "error");
-    }
+    if (!employeeId) return toast(t("Vui lòng chọn nhân viên"), "error");
 
+    const dates = Object.keys(dateShifts).filter((d) => dateShifts[d]?.length > 0);
+    if (!dates.length) return toast(t("Vui lòng chọn ít nhất 1 ngày và 1 ca"), "error");
+
+    submittingRef.current = true;
     setSaving(true);
     try {
       if (isEdit) {
         await onSave(
-          {
-            id: modal.id,
-            date: dates[0],
-            shift: dateShifts[dates[0]][0],
-            note,
-          },
+          { id: modal.id, date: dates[0], shift: dateShifts[dates[0]][0], note },
           true
         );
       } else {
-        await onSave(
-          { employeeId: Number(employeeId), dateShifts, note },
-          false
-        );
+        await onSave({ employeeId: Number(employeeId), dateShifts, note }, false);
       }
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   };
 
-  const totalAssignments = Object.values(dateShifts).reduce(
-    (s, arr) => s + (arr?.length || 0),
-    0
-  );
-  const totalDays = Object.keys(dateShifts).filter(
-    (d) => dateShifts[d]?.length > 0
-  ).length;
+  const totalAssignments = Object.values(dateShifts).reduce((s, arr) => s + (arr?.length || 0), 0);
+  const totalDays = Object.keys(dateShifts).filter((d) => dateShifts[d]?.length > 0).length;
 
   const weekLabel = displayWeekDays.length
-    ? new Date(displayWeekDays[0] + "T00:00:00").toLocaleDateString("vi-VN", {
-        day: "2-digit",
-        month: "2-digit",
-      }) +
+    ? formatters.dateShort.format(new Date(displayWeekDays[0] + "T00:00:00")) +
       " - " +
-      new Date(displayWeekDays[6] + "T00:00:00").toLocaleDateString("vi-VN", {
-        day: "2-digit",
-        month: "2-digit",
-      })
+      formatters.dateShort.format(new Date(displayWeekDays[6] + "T00:00:00"))
     : "";
 
   return (
@@ -4116,43 +2991,20 @@ function ShiftAssignModal({
       role="dialog"
       aria-modal="true"
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 99999,
-        padding: 20,
-        overflowY: "auto",
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+        display: "grid", placeItems: "center",
+        zIndex: 99999, padding: 20, overflowY: "auto",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--card-bg, #fff)",
-          borderRadius: 14,
-          padding: 24,
-          width: "100%",
-          maxWidth: 560,
-          maxHeight: "90vh",
-          overflowY: "auto",
+          background: "var(--card-bg, #fff)", borderRadius: 14, padding: 24,
+          width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <h3
-            style={{
-              margin: 0,
-              color: "var(--text-primary, #172033)",
-              fontSize: 16,
-            }}
-          >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <h3 style={{ margin: 0, color: "var(--text-primary, #172033)", fontSize: 16 }}>
             {isEdit ? t("Sửa ca làm việc") : t("Phân ca làm việc")}
           </h3>
           <button
@@ -4160,13 +3012,10 @@ function ShiftAssignModal({
             disabled={saving}
             aria-label={t("Đóng")}
             style={{
-              background: "transparent",
-              border: 0,
+              background: "transparent", border: 0,
               cursor: saving ? "not-allowed" : "pointer",
-              color: "var(--text-light, #8993a3)",
-              padding: 4,
-              display: "grid",
-              placeItems: "center",
+              color: "var(--text-light, #8993a3)", padding: 4,
+              display: "grid", placeItems: "center",
             }}
           >
             <X size={20} />
@@ -4176,14 +3025,10 @@ function ShiftAssignModal({
         {!isEdit && (
           <div
             style={{
-              marginBottom: 14,
-              padding: "8px 12px",
+              marginBottom: 14, padding: "8px 12px",
               background: "rgba(38, 52, 213, 0.08)",
               border: "1px solid rgba(38, 52, 213, 0.25)",
-              borderRadius: 8,
-              fontSize: 12,
-              color: "#2634d5",
-              fontWeight: 600,
+              borderRadius: 8, fontSize: 12, color: "#2634d5", fontWeight: 600,
             }}
           >
             {t("Đang phân ca cho tuần sau")} ({weekLabel})
@@ -4193,17 +3038,15 @@ function ShiftAssignModal({
         {isEdit && (
           <div
             style={{
-              marginBottom: 14,
-              padding: "8px 12px",
+              marginBottom: 14, padding: "8px 12px",
               background: "rgba(245, 158, 11, 0.1)",
               border: "1px solid rgba(245, 158, 11, 0.3)",
-              borderRadius: 8,
-              fontSize: 12,
-              color: "#92400e",
-              fontWeight: 600,
+              borderRadius: 8, fontSize: 12, color: "#92400e", fontWeight: 600,
             }}
           >
-            ✏️ {t("Đang sửa ca ngày")} {modal.date} — {t("chỉ đổi được ca, không đổi nhân viên")}
+            ✏️ {t("Đang sửa ca ngày {date}", {
+              date: formatters.dateShort.format(new Date(modal.date + "T00:00:00")),
+            })} — {t("chỉ đổi được ca, không đổi nhân viên")}
           </div>
         )}
 
@@ -4218,22 +3061,16 @@ function ShiftAssignModal({
           >
             <option value="">-- {t("Chọn nhân viên")} --</option>
             {employees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
+              <option key={e.id} value={e.id}>{e.name}</option>
             ))}
           </select>
 
           {!isEdit && (
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: 16,
-                marginBottom: 8,
-                gap: 8,
-                flexWrap: "wrap",
+                display: "flex", justifyContent: "space-between",
+                alignItems: "center", marginTop: 16, marginBottom: 8,
+                gap: 8, flexWrap: "wrap",
               }}
             >
               <label style={{ ...shiftLabelStyle, margin: 0 }}>{t("Ngày")} *</label>
@@ -4244,13 +3081,11 @@ function ShiftAssignModal({
                   disabled={saving}
                   style={{
                     padding: "4px 10px",
-                    background: "rgba(38, 52, 213, 0.1)",
-                    color: "#2634d5",
+                    background: "rgba(38, 52, 213, 0.1)", color: "#2634d5",
                     border: "1px solid rgba(38, 52, 213, 0.3)",
                     borderRadius: 6,
                     cursor: saving ? "not-allowed" : "pointer",
-                    fontSize: 11,
-                    fontWeight: 600,
+                    fontSize: 11, fontWeight: 600,
                   }}
                 >
                   {t("Áp dụng cả tuần")}
@@ -4262,13 +3097,11 @@ function ShiftAssignModal({
                     disabled={saving}
                     style={{
                       padding: "4px 10px",
-                      background: "rgba(239, 68, 68, 0.1)",
-                      color: "#ef4444",
+                      background: "rgba(239, 68, 68, 0.1)", color: "#ef4444",
                       border: "1px solid rgba(239, 68, 68, 0.3)",
                       borderRadius: 6,
                       cursor: saving ? "not-allowed" : "pointer",
-                      fontSize: 11,
-                      fontWeight: 600,
+                      fontSize: 11, fontWeight: 600,
                     }}
                   >
                     {t("Xóa hết")}
@@ -4281,26 +3114,21 @@ function ShiftAssignModal({
 
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              gap: 4,
-              marginBottom: 16,
+              display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
+              gap: 4, marginBottom: 16,
             }}
           >
             {displayWeekDays.map((d) => {
               const isActive = activeDate === d;
               const isAssigned = isDayAssigned(d);
               const dayObj = new Date(d + "T00:00:00");
-              const dayLabel = WEEKDAY_SHORT_FORMATTER.format(dayObj);
+              const dayLabel = formatters.weekdayShort.format(dayObj);
 
               let bg = "var(--bg-tertiary, #f5f7fb)";
               let color = "var(--text-primary, #172033)";
               let border = "1px solid var(--border-color, #e5e9ef)";
-
               if (isAssigned && !isActive) {
-                bg = "#d1fae5";
-                color = "#065f46";
-                border = "1px solid #18a967";
+                bg = "#d1fae5"; color = "#065f46"; border = "1px solid #18a967";
               }
               if (isActive) {
                 bg = isAssigned ? "#18a967" : "#2634d5";
@@ -4320,47 +3148,30 @@ function ShiftAssignModal({
                       : t("Bấm để chọn ngày")
                   }
                   style={{
-                    padding: "8px 4px",
-                    borderRadius: 8,
-                    background: bg,
-                    color: color,
-                    border: border,
+                    padding: "8px 4px", borderRadius: 8,
+                    background: bg, color, border,
                     cursor: saving || isEdit ? "not-allowed" : "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                    position: "relative",
-                    transition: "all 0.15s",
+                    display: "flex", flexDirection: "column", gap: 2,
+                    position: "relative", transition: "all 0.15s",
                     opacity: isEdit && !isActive ? 0.5 : 1,
                   }}
                 >
                   {isAssigned && (
                     <span
                       style={{
-                        position: "absolute",
-                        top: 2,
-                        right: 2,
-                        width: 14,
-                        height: 14,
-                        borderRadius: "50%",
+                        position: "absolute", top: 2, right: 2,
+                        width: 14, height: 14, borderRadius: "50%",
                         background: isActive ? "#fff" : "#18a967",
                         color: isActive ? "#18a967" : "#fff",
-                        display: "grid",
-                        placeItems: "center",
-                        fontSize: 9,
-                        fontWeight: 800,
-                        lineHeight: 1,
+                        display: "grid", placeItems: "center",
+                        fontSize: 9, fontWeight: 800, lineHeight: 1,
                       }}
                     >
                       ✓
                     </span>
                   )}
-                  <span style={{ fontSize: 10, fontWeight: 600 }}>
-                    {dayLabel}
-                  </span>
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>
-                    {d.slice(8)}
-                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 600 }}>{dayLabel}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>{d.slice(8)}</span>
                 </button>
               );
             })}
@@ -4369,21 +3180,12 @@ function ShiftAssignModal({
           <label style={shiftLabelStyle}>
             {t("Ca làm")} *{" "}
             {!isEdit && activeDate && (
-              <span
-                style={{ fontWeight: 400, color: "var(--text-light, #94a3b8)" }}
-              >
+              <span style={{ fontWeight: 400, color: "var(--text-light, #94a3b8)" }}>
                 ({t("ngày")} {activeDate.slice(8)}/{activeDate.slice(5, 7)})
               </span>
             )}
           </label>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 8,
-              marginBottom: 16,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
             {SHIFT_DEFS.map((s) => {
               const Icon = s.icon;
               const sel = currentShifts.includes(s.id);
@@ -4394,41 +3196,18 @@ function ShiftAssignModal({
                   onClick={() => toggleShift(s.id)}
                   disabled={saving}
                   style={{
-                    padding: "10px 8px",
-                    borderRadius: 10,
-                    background: sel
-                      ? s.color + "20"
-                      : "var(--card-bg, #fff)",
-                    border: sel
-                      ? "2px solid " + s.color
-                      : "2px solid var(--border-color, #e5e9ef)",
+                    padding: "10px 8px", borderRadius: 10,
+                    background: sel ? s.color + "20" : "var(--card-bg, #fff)",
+                    border: sel ? "2px solid " + s.color : "2px solid var(--border-color, #e5e9ef)",
                     cursor: saving ? "not-allowed" : "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                   }}
                 >
-                  <Icon
-                    size={18}
-                    style={{
-                      color: sel ? s.color : "var(--text-light, #94a3b8)",
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: sel ? s.color : "var(--text-muted, #475569)",
-                    }}
-                  >
+                  <Icon size={18} style={{ color: sel ? s.color : "var(--text-light, #94a3b8)" }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: sel ? s.color : "var(--text-muted, #475569)" }}>
                     {t(s.label)}
                   </span>
-                  <span
-                    style={{ fontSize: 9, color: "var(--text-light, #94a3b8)" }}
-                  >
-                    {s.time}
-                  </span>
+                  <span style={{ fontSize: 9, color: "var(--text-light, #94a3b8)" }}>{s.time}</span>
                 </button>
               );
             })}
@@ -4446,14 +3225,10 @@ function ShiftAssignModal({
           {!isEdit && totalAssignments > 0 && (
             <div
               style={{
-                marginTop: 12,
-                padding: "10px 14px",
+                marginTop: 12, padding: "10px 14px",
                 background: "rgba(24, 169, 103, 0.1)",
                 border: "1px solid rgba(24, 169, 103, 0.3)",
-                borderRadius: 8,
-                fontSize: 12,
-                color: "#18a967",
-                fontWeight: 600,
+                borderRadius: 8, fontSize: 12, color: "#18a967", fontWeight: 600,
               }}
             >
               {t("Đã chọn")} <b>{totalAssignments}</b> {t("ca trên")}{" "}
@@ -4467,15 +3242,12 @@ function ShiftAssignModal({
               onClick={onClose}
               disabled={saving}
               style={{
-                flex: 1,
-                padding: 12,
+                flex: 1, padding: 12,
                 border: "1px solid var(--border-color, #e5e9ef)",
-                borderRadius: 8,
-                background: "var(--card-bg, #fff)",
+                borderRadius: 8, background: "var(--card-bg, #fff)",
                 cursor: saving ? "not-allowed" : "pointer",
                 color: "var(--text-primary, #172033)",
-                fontWeight: 600,
-                fontSize: 13,
+                fontWeight: 600, fontSize: 13,
               }}
             >
               {t("Hủy")}
@@ -4484,33 +3256,22 @@ function ShiftAssignModal({
               type="submit"
               disabled={saving}
               style={{
-                flex: 1,
-                padding: 12,
+                flex: 1, padding: 12,
                 background: saving ? "#94a3b8" : "#2634d5",
-                color: "#fff",
-                border: 0,
-                borderRadius: 8,
-                fontWeight: 700,
-                cursor: saving ? "not-allowed" : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                fontSize: 13,
+                color: "#fff", border: 0, borderRadius: 8,
+                fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
+                display: "inline-flex", alignItems: "center",
+                justifyContent: "center", gap: 6, fontSize: 13,
               }}
             >
               {saving ? (
                 <>
-                  <Loader2
-                    size={14}
-                    style={{ animation: "spin 1s linear infinite" }}
-                  />
+                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
                   {t("Đang lưu...")}
                 </>
               ) : (
                 <>
-                  <Save size={14} />{" "}
-                  {isEdit ? t("Lưu thay đổi") : t("Phân ca")}
+                  <Save size={14} /> {isEdit ? t("Lưu thay đổi") : t("Phân ca")}
                 </>
               )}
             </button>
@@ -4537,13 +3298,9 @@ function ShiftAttendanceBadge({ status, t }) {
   return (
     <span
       style={{
-        padding: "3px 8px",
-        borderRadius: 12,
-        fontSize: 10,
-        fontWeight: 700,
-        background: c.bg,
-        color: c.fg,
-        whiteSpace: "nowrap",
+        padding: "3px 8px", borderRadius: 12,
+        fontSize: 10, fontWeight: 700,
+        background: c.bg, color: c.fg, whiteSpace: "nowrap",
       }}
     >
       {t(status)}
@@ -4557,24 +3314,18 @@ function SummaryCard({ label, value, color }) {
       style={{
         background: "var(--card-bg, #fff)",
         border: "1px solid var(--border-color, #e7ebf0)",
-        borderRadius: 12,
-        padding: "14px 16px",
+        borderRadius: 12, padding: "14px 16px",
       }}
     >
       <span
         style={{
-          fontSize: 11,
-          color: "var(--text-light, #8993a3)",
-          textTransform: "uppercase",
-          letterSpacing: 0.5,
-          fontWeight: 600,
+          fontSize: 11, color: "var(--text-light, #8993a3)",
+          textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600,
         }}
       >
         {label}
       </span>
-      <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 4 }}>
-        {value}
-      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 4 }}>{value}</div>
     </div>
   );
 }
@@ -4585,34 +3336,22 @@ function ShiftStat({ icon, label, value, color }) {
       style={{
         background: "var(--card-bg, #fff)",
         border: "1px solid var(--border-color, #e7ebf0)",
-        borderRadius: 12,
-        padding: 18,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
+        borderRadius: 12, padding: 18,
+        display: "flex", alignItems: "center", gap: 12,
       }}
     >
       <div
         style={{
-          width: 44,
-          height: 44,
-          borderRadius: 12,
-          background: color + "18",
-          color,
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
+          width: 44, height: 44, borderRadius: 12,
+          background: color + "18", color,
+          display: "grid", placeItems: "center", flexShrink: 0,
         }}
       >
         {icon}
       </div>
       <div>
-        <span style={{ fontSize: 12, color: "var(--text-light, #8993a3)" }}>
-          {label}
-        </span>
-        <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 2 }}>
-          {value}
-        </div>
+        <span style={{ fontSize: 12, color: "var(--text-light, #8993a3)" }}>{label}</span>
+        <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: 2 }}>{value}</div>
       </div>
     </div>
   );
@@ -4630,166 +3369,57 @@ const shiftCardStyle = {
 };
 
 const shiftThStyle = {
-  padding: 11,
-  textAlign: "left",
-  fontSize: 12,
-  color: "var(--text-muted, #64748b)",
-  fontWeight: 600,
+  padding: 11, textAlign: "left", fontSize: 12,
+  color: "var(--text-muted, #64748b)", fontWeight: 600,
 };
 
 const shiftTdStyle = {
-  padding: 11,
-  fontSize: 13,
-  color: "var(--text-primary, #172033)",
+  padding: 11, fontSize: 13, color: "var(--text-primary, #172033)",
 };
 
 const shiftLabelStyle = {
-  display: "block",
-  fontSize: 12,
-  fontWeight: 600,
-  marginBottom: 4,
-  marginTop: 12,
-  color: "var(--text-muted, #475569)",
+  display: "block", fontSize: 12, fontWeight: 600,
+  marginBottom: 4, marginTop: 12, color: "var(--text-muted, #475569)",
 };
 
 const shiftInputStyle = {
-  width: "100%",
-  padding: 10,
+  width: "100%", padding: 10,
   border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  outline: "none",
+  borderRadius: 8, outline: "none",
   background: "var(--bg-secondary, #fff)",
   color: "var(--text-primary, #172033)",
-  fontSize: 13,
-  boxSizing: "border-box",
+  fontSize: 13, boxSizing: "border-box",
 };
 
 const shiftIconBtnSmall = {
-  padding: 6,
-  border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 6,
-  background: "var(--card-bg, #fff)",
-  cursor: "pointer",
-  display: "grid",
-  placeItems: "center",
+  padding: 6, border: "1px solid var(--border-color, #e5e9ef)",
+  borderRadius: 6, background: "var(--card-bg, #fff)",
+  cursor: "pointer", display: "grid", placeItems: "center",
   color: "var(--text-primary, #172033)",
-  width: 30,
-  height: 30,
-  flexShrink: 0,
+  width: 30, height: 30, flexShrink: 0,
 };
 
 const shiftNavBtn = {
-  width: 36,
-  height: 36,
-  borderRadius: 8,
+  width: 36, height: 36, borderRadius: 8,
   border: "1px solid var(--border-color, #e5e9ef)",
   background: "var(--card-bg, #fff)",
   color: "var(--text-primary, #172033)",
-  cursor: "pointer",
-  display: "grid",
-  placeItems: "center",
+  cursor: "pointer", display: "grid", placeItems: "center",
 };
 
 const shiftNavBtnWide = {
-  padding: "9px 14px",
-  borderRadius: 8,
+  padding: "9px 14px", borderRadius: 8,
   border: "1px solid var(--border-color, #e5e9ef)",
   background: "var(--card-bg, #fff)",
   color: "var(--text-primary, #172033)",
-  cursor: "pointer",
-  fontWeight: 600,
-  fontSize: 12,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
+  cursor: "pointer", fontWeight: 600, fontSize: 12,
+  display: "inline-flex", alignItems: "center", gap: 6,
 };
 
 // ============================================================
-// WRAPPER: OwnerEmployees
+// WRAPPER — OwnerEmployees (export default)
 // ============================================================
 
 export default function OwnerEmployees() {
   return <OwnerEmployeesInner />;
 }
-
-// ============================================================
-// STYLE CONSTANTS
-// ============================================================
-
-const labelStyle = {
-  display: "block",
-  fontSize: 12,
-  fontWeight: 600,
-  marginBottom: 4,
-  marginTop: 12,
-  color: "var(--text-muted, #475569)",
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: 10,
-  border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  outline: "none",
-  background: "var(--bg-secondary, #fff)",
-  color: "var(--text-primary, #172033)",
-  fontSize: 13,
-  boxSizing: "border-box",
-  marginBottom: 4,
-};
-
-const modalHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 20,
-};
-
-const modalTitleStyle = {
-  margin: 0,
-  color: "var(--text-primary, #172033)",
-  fontSize: 16,
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-};
-
-const modalCloseStyle = {
-  background: "transparent",
-  border: 0,
-  cursor: "pointer",
-  color: "var(--text-light, #8993a3)",
-  padding: 4,
-  display: "grid",
-  placeItems: "center",
-};
-
-const btnPrimaryStyle = {
-  padding: 12,
-  background: "#2634d5",
-  color: "#fff",
-  border: 0,
-  borderRadius: 8,
-  fontWeight: 700,
-  cursor: "pointer",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-  fontSize: 13,
-};
-
-const btnCancelStyle = {
-  padding: 12,
-  border: "1px solid var(--border-color, #e5e9ef)",
-  borderRadius: 8,
-  background: "var(--card-bg, #fff)",
-  cursor: "pointer",
-  color: "var(--text-primary, #172033)",
-  fontWeight: 600,
-  fontSize: 13,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-};

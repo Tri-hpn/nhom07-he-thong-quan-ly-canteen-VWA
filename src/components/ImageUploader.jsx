@@ -1,10 +1,8 @@
 // ============================================================
 // IMAGEUPLOADER.JSX — Upload ảnh với drag & drop (V2)
 // ============================================================
-// V2:
-//   - 🔧 Thêm kiểm tra dung lượng Base64 sau khi nén để chặn lỗi
-//     413 Payload Too Large của Vercel (giới hạn ~4.5MB body).
-// ============================================================
+// B7: bỏ namespace upload.* → source-text; replace() → object interpolation;
+//     message 3MB qua t(); inline style thay global .spin class
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -14,6 +12,7 @@ import { toast } from "./Effects";
 import { useI18n } from "../hooks/useI18n";
 
 const MAX_SIZE = 100 * 1024 * 1024;
+const MAX_BASE64_SIZE = 3 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
@@ -98,7 +97,7 @@ export default function ImageUploader({ value, onChange, label }) {
   const inputRef = useRef(null);
   const mountedRef = useRef(true);
 
-  const finalLabel = label || t("upload.label");
+  const finalLabel = label || t("Tải ảnh lên");
 
   useEffect(() => {
     mountedRef.current = true;
@@ -118,16 +117,16 @@ export default function ImageUploader({ value, onChange, label }) {
 
   const validateFile = useCallback(
     (file) => {
-      if (!file) return { ok: false, msg: t("upload.noFile") };
+      if (!file) return { ok: false, msg: t("Vui lòng chọn một file ảnh") };
 
       const typeOk = ALLOWED_TYPES.includes(file.type);
       const extOk = ALLOWED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
 
-      if (!typeOk && !extOk) return { ok: false, msg: t("upload.wrongType") };
+      if (!typeOk && !extOk) return { ok: false, msg: t("Chỉ chấp nhận ảnh JPG, PNG, WEBP") };
 
       if (file.size > MAX_SIZE) {
         const mb = (file.size / 1024 / 1024).toFixed(2);
-        return { ok: false, msg: t("upload.tooLarge").replace("{size}", mb) };
+        return { ok: false, msg: t("Ảnh quá lớn ({size}MB). Vui lòng chọn ảnh nhỏ hơn.", { size: mb }) };
       }
       return { ok: true };
     },
@@ -150,16 +149,14 @@ export default function ImageUploader({ value, onChange, label }) {
         if (!mountedRef.current) return;
 
         if (typeof dataUri !== "string") {
-          setError(t("upload.readError"));
+          setError(t("Không đọc được file ảnh"));
           return;
         }
 
-        // 🔧 FIX: Chặn lỗi 413 Payload Too Large từ Vercel
-        // Vercel giới hạn body request ~ 4.5MB. Base64 phình to hơn file thật.
-        // Giới hạn an toàn cho Base64 là ~3MB (tương đương file ~2.2MB).
-        if (dataUri.length > 3 * 1024 * 1024) {
+        // Chặn lỗi 413 Payload Too Large từ Vercel (body ~4.5MB)
+        if (dataUri.length > MAX_BASE64_SIZE) {
           const mb = (dataUri.length / 1024 / 1024).toFixed(1);
-          const msg = `Ảnh sau khi nén vẫn quá lớn (${mb}MB). Vui lòng chọn ảnh khác nhẹ hơn.`;
+          const msg = t("Ảnh sau khi nén vẫn quá lớn ({size}MB). Vui lòng chọn ảnh nhẹ hơn.", { size: mb });
           setError(msg);
           toast(msg, "error");
           return;
@@ -167,10 +164,10 @@ export default function ImageUploader({ value, onChange, label }) {
 
         setPreview(dataUri);
         onChange?.(dataUri);
-        toast(t("upload.success"), "success");
+        toast(t("Tải ảnh thành công"), "success");
       } catch {
         if (!mountedRef.current) return;
-        setError(t("upload.readError"));
+        setError(t("Không đọc được file ảnh"));
       } finally {
         if (mountedRef.current) setLoading(false);
       }
@@ -189,7 +186,7 @@ export default function ImageUploader({ value, onChange, label }) {
     setDragging(false);
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0) return;
-    if (files.length > 1) toast(t("upload.multipleFiles"), "info");
+    if (files.length > 1) toast(t("Chỉ chấp nhận 1 file. Đã chọn file đầu tiên."), "info");
     handleFile(files[0]);
   };
 
@@ -236,7 +233,7 @@ export default function ImageUploader({ value, onChange, label }) {
         onDrop={onDrop}
         role="button"
         tabIndex={0}
-        aria-label={preview ? t("upload.changeAria") : t("upload.chooseAria")}
+        aria-label={preview ? t("Nhấn để đổi ảnh") : t("Chọn ảnh để tải lên")}
         style={{
           position: "relative",
           border: dragging ? "2px dashed #2634d5" : "2px dashed var(--border-color, #cbd5e1)",
@@ -257,22 +254,22 @@ export default function ImageUploader({ value, onChange, label }) {
       >
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "#2634d5" }}>
-            <Loader2 size={28} className="spin" />
-            <span style={{ fontSize: 13 }}>{t("upload.processing")}</span>
+            <Loader2 size={28} style={{ animation: "imgUploaderSpin 1s linear infinite" }} />
+            <span style={{ fontSize: 13 }}>{t("Đang xử lý ảnh...")}</span>
           </div>
         ) : preview ? (
           <>
             <img
               src={preview}
-              alt={t("upload.previewAlt")}
+              alt={t("Xem trước ảnh")}
               onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_PREVIEW; }}
               style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 10, display: "block" }}
             />
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); clear(); }}
-              aria-label={t("upload.removeAria")}
-              title={t("upload.removeAria")}
+              aria-label={t("Xóa ảnh")}
+              title={t("Xóa ảnh")}
               style={{ position: "absolute", top: 8, right: 8, background: "#ef4444", color: "#fff", border: 0, width: 30, height: 30, borderRadius: "50%", cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 2px 8px rgba(239, 68, 68, 0.4)", transition: "transform 0.15s" }}
               onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.1)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
@@ -283,8 +280,8 @@ export default function ImageUploader({ value, onChange, label }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center", color: "var(--text-muted, #64748b)" }}>
             <ImageIcon size={32} style={{ color: dragging ? "#2634d5" : "var(--text-light, #94a3b8)" }} />
-            <b style={{ color: "var(--text-primary, #172033)", fontSize: 14 }}>{t("upload.dragHint")}</b>
-            <span style={{ fontSize: 12 }}>{t("upload.formatHint")}</span>
+            <b style={{ color: "var(--text-primary, #172033)", fontSize: 14 }}>{t("Kéo thả ảnh hoặc nhấn để chọn")}</b>
+            <span style={{ fontSize: 12 }}>{t("JPG, PNG, WEBP · Tối đa 100MB")}</span>
           </div>
         )}
       </div>
@@ -294,7 +291,7 @@ export default function ImageUploader({ value, onChange, label }) {
         type="file"
         accept="image/jpeg,image/png,image/webp"
         onChange={onInputChange}
-        aria-label={t("upload.chooseAria")}
+        aria-label={t("Chọn ảnh để tải lên")}
         tabIndex={-1}
         style={{ display: "none" }}
       />
@@ -308,7 +305,6 @@ export default function ImageUploader({ value, onChange, label }) {
 
       <style>{`
         @keyframes imgUploaderSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .spin { animation: imgUploaderSpin 1s linear infinite; }
       `}</style>
     </div>
   );
